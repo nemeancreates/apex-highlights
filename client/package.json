@@ -12,5 +12,9 @@
   "type": "commonjs",
   "devDependencies": {
     "electron": "^43.0.0"
+  },
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "fluent-ffmpeg": "^2.1.3"
   }
 }

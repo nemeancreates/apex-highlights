@@ -2,15 +2,146 @@
 <html>
   <head>
     <title>Apex Highlights</title>
+    <style>
+      body {
+        background: #1a1a2e;
+        color: #eee;
+        font-family: Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 40px;
+      }
+      h1 { color: #e94560; }
+      .section {
+        width: 100%;
+        max-width: 600px;
+        background: #16213e;
+        border-radius: 8px;
+        padding: 20px;
+        margin: 10px 0;
+      }
+      .section h3 {
+        margin-top: 0;
+        color: #e94560;
+      }
+      select {
+        width: 100%;
+        padding: 10px;
+        background: #0f3460;
+        color: #eee;
+        border: 1px solid #e94560;
+        border-radius: 6px;
+        font-size: 14px;
+        margin-bottom: 10px;
+      }
+      button {
+        margin: 5px;
+        padding: 12px 30px;
+        background: #e94560;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 16px;
+        cursor: pointer;
+        width: 100%;
+      }
+      button:hover { background: #c73652; }
+      button:disabled {
+        background: #555;
+        cursor: not-allowed;
+      }
+      .status {
+        padding: 10px;
+        border-radius: 6px;
+        font-size: 14px;
+        margin: 10px 0;
+        text-align: center;
+      }
+      .status.recording { color: #ff4444; }
+      .status.idle { color: #aaa; }
+      .clip-item {
+        background: #0f3460;
+        padding: 10px;
+        margin: 5px 0;
+        border-radius: 6px;
+        font-size: 12px;
+        word-break: break-all;
+      }
+      .clip-item.error { color: #ff4444; }
+      .clip-item.success { color: #44ff88; }
+    </style>
   </head>
   <body>
     <h1>Apex Highlights</h1>
-    <button id="recordBtn">Start Recording</button>
+
+    <div class="section">
+      <h3>Monitor Selection</h3>
+      <select id="monitorSelect">
+        <option>Loading monitors...</option>
+      </select>
+      <button id="startBtn" onclick="startRecording()">▶ Start Recording</button>
+    </div>
+
+    <div class="section">
+      <div class="status idle" id="statusText">● Idle — select a monitor and start recording</div>
+      <button id="saveBtn" onclick="saveHighlight()" disabled>💾 Save Highlight (or press F9)</button>
+    </div>
+
+    <div class="section">
+      <h3>Saved Highlights</h3>
+      <div id="clipList"></div>
+    </div>
 
     <script>
-      document.getElementById('recordBtn').addEventListener('click', () => {
-        alert('Recording would start here!');
+      const { ipcRenderer } = require('electron');
+
+      // Request monitor list on load
+      ipcRenderer.send('get-monitors');
+
+      ipcRenderer.on('monitors-list', (event, monitors) => {
+        const select = document.getElementById('monitorSelect');
+        select.innerHTML = '';
+        monitors.forEach((m, i) => {
+          const option = document.createElement('option');
+          option.value = m.index;
+          option.textContent = `Monitor ${i + 1} — ${m.width}x${m.height}${m.primary ? ' (Primary)' : ''}`;
+          select.appendChild(option);
+        });
       });
+
+      function startRecording() {
+        const index = parseInt(document.getElementById('monitorSelect').value);
+        ipcRenderer.send('start-recording', index);
+        document.getElementById('startBtn').textContent = '↺ Switch Monitor';
+        document.getElementById('statusText').textContent = '● Recording buffer...';
+        document.getElementById('statusText').className = 'status recording';
+        document.getElementById('saveBtn').disabled = false;
+      }
+
+      function saveHighlight() {
+        ipcRenderer.send('save-highlight');
+      }
+
+      ipcRenderer.on('recording-started', (event, index) => {
+        addClipItem(`Recording started on Monitor ${index + 1}`, false);
+      });
+
+      ipcRenderer.on('highlight-saved', (event, filePath) => {
+        addClipItem('✅ Saved: ' + filePath, false);
+      });
+
+      ipcRenderer.on('highlight-error', (event, message) => {
+        addClipItem('❌ ' + message, true);
+      });
+
+      function addClipItem(text, isError) {
+        const list = document.getElementById('clipList');
+        const item = document.createElement('div');
+        item.className = 'clip-item ' + (isError ? 'error' : 'success');
+        item.textContent = text;
+        list.prepend(item);
+      }
     </script>
   </body>
 </html>
