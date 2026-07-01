@@ -19,6 +19,11 @@ const io = new Server(server, {
 
 app.use(cors({ origin: 'http://localhost' }));
 app.use(express.json());
+// Serve the web player
+app.use('/player', express.static(path.join(__dirname, '..', 'web-player')));
+
+// Serve uploaded videos (read-only access for playback)
+app.use('/media', express.static(path.join(__dirname, 'uploads')));
 
 // ================================
 // SECURITY: Upload configuration
