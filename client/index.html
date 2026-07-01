@@ -166,13 +166,41 @@
       </div>
     </div>
 
-    <!-- RECORDING SETUP (unchanged) -->
+    <!-- RECORDING SETUP -->
     <div class="section">
       <h3>Recording Setup</h3>
       <label>Monitor</label>
       <select id="monitorSelect">
         <option>Loading monitors...</option>
       </select>
+
+      <div class="row">
+        <div>
+          <label>Buffer Length</label>
+          <select id="bufferSelect" onchange="updateSettings()">
+            <option value="30">30 seconds</option>
+            <option value="60">1 minute</option>
+            <option value="180" selected>3 minutes</option>
+            <option value="300">5 minutes</option>
+            <option value="600">10 minutes</option>
+          </select>
+        </div>
+        <div>
+          <label>Framerate</label>
+          <select id="fpsSelect" onchange="updateSettings()">
+            <option value="30" selected>30 FPS</option>
+            <option value="60">60 FPS</option>
+          </select>
+        </div>
+      </div>
+
+      <label>Recording Quality</label>
+      <select id="resolutionSelect" onchange="updateSettings()">
+        <option value="native" selected>Native (1080p)</option>
+        <option value="720">720p (better performance)</option>
+        <option value="480">480p (low-end PCs)</option>
+      </select>
+
       <button id="startBtn" onclick="startRecording()">▶ Start Recording</button>
       <button id="stopBtn" onclick="stopRecording()" disabled>⏹ Stop Recording</button>
     </div>
@@ -498,6 +526,20 @@
         item.textContent = text;
         list.prepend(item);
       }
+      function updateSettings() {
+        const settings = {
+          bufferSeconds: document.getElementById('bufferSelect').value,
+          fps: parseInt(document.getElementById('fpsSelect').value),
+          resolution: document.getElementById('resolutionSelect').value
+        };
+        ipcRenderer.send('update-settings', settings);
+      }
+
+      // Send initial settings on load
+      window.addEventListener('DOMContentLoaded', () => {
+        updateSettings();
+      });
+
     </script>
   </body>
 </html>

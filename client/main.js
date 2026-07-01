@@ -11,7 +11,11 @@ const BUFFER_DIR = path.join(os.tmpdir(), 'apex-highlights-buffer');
 const AUDIO_DIR = path.join(os.tmpdir(), 'apex-highlights-audio');
 const CLIPS_DIR = path.join(app.getPath('videos'), 'PeakAbu');
 const CHUNK_SECONDS = 10;
-const MAX_CHUNKS = 18;
+
+// Settings (adjustable from UI)
+let maxChunks = 18;          // default 3 minutes (18 × 10sec)
+let recordFps = 30;          // default 30fps
+let recordResolution = null; // null = native, or { width, height }
 
 let clockOffset = 0; // milliseconds - difference between local clock and true UTC
 let ffmpegProcess = null;
@@ -48,7 +52,7 @@ function pruneOldChunks() {
     }))
     .sort((a, b) => a.time - b.time);
 
-  while (files.length > MAX_CHUNKS) {
+  while (files.length > maxChunks) {
     const oldest = files.shift();
     fs.unlinkSync(path.join(BUFFER_DIR, oldest.name));
   }
@@ -63,30 +67,54 @@ function startRecording(monitor) {
   const { x, y, width, height } = target.bounds;
 
   console.log(`Recording monitor ${monitor}: ${width}x${height} at (${x},${y})`);
+  console.log(`Settings: ${recordFps}fps, resolution: ${recordResolution ? recordResolution.width + 'x' + recordResolution.height : 'native'}, buffer: ${maxChunks * CHUNK_SECONDS}s`);
 
   const chunkPattern = path.join(BUFFER_DIR, 'chunk_%03d.mp4');
 
-  ffmpegProcess = spawn('ffmpeg', [
+  // Build FFmpeg args
+  const ffmpegArgs = [
     '-f', 'gdigrab',
-    '-framerate', '30',
+    '-framerate', String(recordFps),
     '-offset_x', String(x),
     '-offset_y', String(y),
     '-video_size', `${width}x${height}`,
-    '-i', 'desktop',
+    '-i', 'desktop'
+  ];
+
+  // Add scaling filter if not recording at native resolution
+  if (recordResolution) {
+    ffmpegArgs.push('-vf', `scale=${recordResolution.width}:${recordResolution.height}`);
+  }
+
+  ffmpegArgs.push(
     '-c:v', 'h264_nvenc',
     '-preset', 'p4',
     '-tune', 'hq',
-    '-b:v', '8M',
-    '-g', '30',
-    '-keyint_min', '30',
-    '-force_key_frames', 'expr:gte(t,n_forced*10)',
+    '-b:v', recordResolution ? (recordResolution.height <= 480 ? '3M' : '5M') : '8M',
+    '-g', String(recordFps),
+    '-keyint_min', String(recordFps),
+    '-force_key_frames', `expr:gte(t,n_forced*${CHUNK_SECONDS})`,
     '-an',
     '-f', 'segment',
     '-segment_time', String(CHUNK_SECONDS),
     '-reset_timestamps', '1',
     '-y',
     chunkPattern
-  ]);
+  );
+
+  ffmpegProcess = spawn('ffmpeg', ffmpegArgs, {
+    // SECURITY/PERFORMANCE: Run FFmpeg at below-normal priority so the game gets CPU/GPU priority
+    windowsHide: true
+  });
+
+  // Set FFmpeg to below-normal priority on Windows so game performance isn't impacted
+  if (process.platform === 'win32' && ffmpegProcess.pid) {
+    spawn('wmic', [
+      'process', 'where', `ProcessId=${ffmpegProcess.pid}`,
+      'CALL', 'SetPriority', '16384'
+    ], { windowsHide: true });
+    console.log(`FFmpeg process ${ffmpegProcess.pid} set to below-normal priority`);
+  }
 
   ffmpegProcess.stderr.on('data', (data) => {
     console.log('FFmpeg:', data.toString());
@@ -97,6 +125,7 @@ function startRecording(monitor) {
     console.log('FFmpeg stopped with code', code);
   });
 }
+
 
 function saveHighlight() {
   const allVideoFiles = fs.readdirSync(BUFFER_DIR)
@@ -364,6 +393,31 @@ function createWindow() {
       ffmpegProcess = null;
       console.log('Recording stopped');
       mainWindow.webContents.send('recording-stopped');
+    }
+  });
+  ipcMain.on('update-settings', (event, settings) => {
+    // Buffer duration
+    const bufferMap = { '30': 3, '60': 6, '180': 18, '300': 30, '600': 60 };
+    if (settings.bufferSeconds && bufferMap[settings.bufferSeconds]) {
+      maxChunks = bufferMap[settings.bufferSeconds];
+      console.log(`Buffer length set to ${settings.bufferSeconds}s (${maxChunks} chunks)`);
+    }
+
+    // Framerate
+    if (settings.fps && [30, 60].includes(settings.fps)) {
+      recordFps = settings.fps;
+      console.log(`Framerate set to ${recordFps}fps`);
+    }
+
+    // Resolution
+    const resMap = {
+      'native': null,
+      '720': { width: 1280, height: 720 },
+      '480': { width: 854, height: 480 }
+    };
+    if (settings.resolution && settings.resolution in resMap) {
+      recordResolution = resMap[settings.resolution];
+      console.log(`Resolution set to ${settings.resolution}`);
     }
   });
 
