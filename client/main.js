@@ -3,7 +3,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const sntp = require('sntp');
+const NTPClient = require('ntp-time').Client;
 const FormData = require('form-data');
 const http = require('http');
 
@@ -29,8 +29,11 @@ function ensureFolders() {
 
 async function syncClock() {
   try {
-    const time = await sntp.time({ host: 'pool.ntp.org', timeout: 5000 });
-    clockOffset = time.t;
+    const client = new NTPClient('pool.ntp.org', 123, { timeout: 5000 });
+    const packet = await client.syncTime();
+    // transmitTimestamp is seconds since Unix epoch — convert to ms
+    const serverTimeMs = (packet.transmitTimestamp - 2208988800) * 1000;
+    clockOffset = serverTimeMs - Date.now();
     console.log(`Clock synced. Local offset from true UTC: ${clockOffset.toFixed(2)}ms`);
   } catch (err) {
     console.log('NTP sync failed, using local clock:', err.message);
