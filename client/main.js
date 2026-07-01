@@ -4,22 +4,21 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-// Where we store the rolling buffer chunks
 const BUFFER_DIR = path.join(os.tmpdir(), 'apex-highlights-buffer');
+const AUDIO_DIR = path.join(os.tmpdir(), 'apex-highlights-audio');
 const CLIPS_DIR = path.join(app.getPath('videos'), 'ApexHighlights');
 const CHUNK_SECONDS = 10;
-const MAX_CHUNKS = 18; // 3 minutes worth
+const MAX_CHUNKS = 18;
 
 let ffmpegProcess = null;
 let mainWindow = null;
 
-// Make sure our folders exist
 function ensureFolders() {
   if (!fs.existsSync(BUFFER_DIR)) fs.mkdirSync(BUFFER_DIR, { recursive: true });
+  if (!fs.existsSync(AUDIO_DIR)) fs.mkdirSync(AUDIO_DIR, { recursive: true });
   if (!fs.existsSync(CLIPS_DIR)) fs.mkdirSync(CLIPS_DIR, { recursive: true });
 }
 
-// Delete old chunks beyond our 3 minute limit
 function pruneOldChunks() {
   const files = fs.readdirSync(BUFFER_DIR)
     .filter(f => f.endsWith('.mp4'))
@@ -35,15 +34,12 @@ function pruneOldChunks() {
   }
 }
 
-// Start the rolling buffer capture
 function startRecording(monitor) {
   ensureFolders();
 
-  // Default to primary monitor if none specified
   const screen = require('electron').screen;
   const displays = screen.getAllDisplays();
   const target = monitor !== undefined ? displays[monitor] : displays[0];
-  
   const { x, y, width, height } = target.bounds;
 
   console.log(`Recording monitor ${monitor}: ${width}x${height} at (${x},${y})`);
@@ -52,7 +48,7 @@ function startRecording(monitor) {
 
   ffmpegProcess = spawn('ffmpeg', [
     '-f', 'gdigrab',
-    '-framerate', '60',
+    '-framerate', '30',
     '-offset_x', String(x),
     '-offset_y', String(y),
     '-video_size', `${width}x${height}`,
@@ -61,9 +57,10 @@ function startRecording(monitor) {
     '-preset', 'p4',
     '-tune', 'hq',
     '-b:v', '8M',
-    '-g', '60',
-    '-keyint_min', '60',
+    '-g', '30',
+    '-keyint_min', '30',
     '-force_key_frames', 'expr:gte(t,n_forced*10)',
+    '-an',
     '-f', 'segment',
     '-segment_time', String(CHUNK_SECONDS),
     '-reset_timestamps', '1',
@@ -81,9 +78,8 @@ function startRecording(monitor) {
   });
 }
 
-// Save the current buffer as a highlight clip
 function saveHighlight() {
-  const allFiles = fs.readdirSync(BUFFER_DIR)
+  const allVideoFiles = fs.readdirSync(BUFFER_DIR)
     .filter(f => f.endsWith('.mp4'))
     .map(f => ({
       name: f,
@@ -94,78 +90,182 @@ function saveHighlight() {
     .filter(f => f.size > 100000)
     .sort((a, b) => a.time - b.time);
 
-  // Always skip the newest chunk - FFmpeg is still writing to it
-  const files = allFiles.slice(0, -1);
+  const videoFiles = allVideoFiles.slice(0, -1);
 
-  if (files.length === 0) {
-    console.log('No completed chunks yet - wait a few more seconds');
+  if (videoFiles.length === 0) {
+    console.log('No completed chunks yet');
     mainWindow.webContents.send('highlight-error', 'Buffer not ready yet, wait a few more seconds');
     return;
   }
 
-  console.log(`Saving highlight from ${files.length} chunks...`);
+  const audioChunks = fs.existsSync(AUDIO_DIR)
+    ? fs.readdirSync(AUDIO_DIR)
+        .filter(f => f.endsWith('.webm'))
+        .map(f => ({
+          name: f,
+          path: path.join(AUDIO_DIR, f),
+          time: parseInt(f.replace('audio_', '').replace('.webm', '')),
+          size: fs.statSync(path.join(AUDIO_DIR, f)).size
+        }))
+        .filter(f => f.size > 1000)
+        .sort((a, b) => a.time - b.time)
+    : [];
 
-  // Create file list for FFmpeg concat
-  const listPath = path.join(BUFFER_DIR, 'filelist.txt');
-  const fileContent = files
-    .map(f => `file '${f.path.replace(/\\/g, '/')}'`)
-    .join('\n');
-  fs.writeFileSync(listPath, fileContent);
+  const hasAudio = audioChunks.length > 0;
+  console.log(`Saving highlight: ${videoFiles.length} video chunks, ${audioChunks.length} audio chunks`);
 
-  // Output filename with timestamp
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const outputPath = path.join(CLIPS_DIR, `highlight-${timestamp}.mp4`);
 
-  console.log('File list:', fileContent);
-  console.log('Output path:', outputPath);
+  const videoListPath = path.join(BUFFER_DIR, 'filelist.txt');
+  const videoContent = videoFiles
+    .map(f => `file '${f.path.replace(/\\/g, '/')}'`)
+    .join('\n');
+  fs.writeFileSync(videoListPath, videoContent);
 
-  const concat = spawn('ffmpeg', [
-    '-f', 'concat',
-    '-safe', '0',
-    '-i', listPath,
-    '-c', 'copy',
-    '-y',
-    outputPath
-  ]);
+  if (hasAudio) {
+    const oldestVideoTime = videoFiles[0].time - (CHUNK_SECONDS * 1000);
+    const matchingAudio = audioChunks.filter(a => a.time >= oldestVideoTime);
+    console.log(`Matching audio chunks: ${matchingAudio.length}`);
 
-  concat.stderr.on('data', (data) => {
-    console.log('Concat FFmpeg:', data.toString());
-  });
+    const audioListPath = path.join(AUDIO_DIR, 'audiolist.txt');
+    const audioContent = matchingAudio
+      .map(f => `file '${f.path.replace(/\\/g, '/')}'`)
+      .join('\n');
+    fs.writeFileSync(audioListPath, audioContent);
 
-  concat.on('close', (code) => {
-    if (code === 0) {
-      console.log('Highlight saved to', outputPath);
-      mainWindow.webContents.send('highlight-saved', outputPath);
-    } else {
-      console.log('Concat failed with code', code);
-      mainWindow.webContents.send('highlight-error', 'Failed to save highlight');
-    }
-  });
+    const tempVideoPath = path.join(BUFFER_DIR, 'temp_video.mp4');
+    const tempAudioPath = path.join(AUDIO_DIR, 'temp_audio.webm');
+
+    const concatVideo = spawn('ffmpeg', [
+      '-f', 'concat', '-safe', '0',
+      '-i', videoListPath,
+      '-c', 'copy', '-y',
+      tempVideoPath
+    ]);
+
+    concatVideo.stderr.on('data', d => console.log('ConcatVideo:', d.toString()));
+
+    concatVideo.on('close', (videoCode) => {
+      if (videoCode !== 0) {
+        mainWindow.webContents.send('highlight-error', 'Failed to concat video');
+        return;
+      }
+
+      const concatAudio = spawn('ffmpeg', [
+        '-f', 'concat', '-safe', '0',
+        '-i', audioListPath,
+        '-c', 'copy', '-y',
+        tempAudioPath
+      ]);
+
+      concatAudio.stderr.on('data', d => console.log('ConcatAudio:', d.toString()));
+
+      concatAudio.on('close', (audioCode) => {
+        if (audioCode !== 0) {
+          console.log('Audio concat failed, saving video only');
+          fs.copyFileSync(tempVideoPath, outputPath);
+          mainWindow.webContents.send('highlight-saved', outputPath);
+          return;
+        }
+
+        const merge = spawn('ffmpeg', [
+          '-i', tempVideoPath,
+          '-i', tempAudioPath,
+          '-c:v', 'copy',
+          '-c:a', 'aac',
+          '-b:a', '192k',
+          '-shortest',
+          '-y',
+          outputPath
+        ]);
+
+        merge.stderr.on('data', d => console.log('Merge:', d.toString()));
+
+        merge.on('close', (code) => {
+          if (code === 0) {
+            console.log('Highlight saved to', outputPath);
+            mainWindow.webContents.send('highlight-saved', outputPath);
+          } else {
+            mainWindow.webContents.send('highlight-error', 'Failed to merge');
+          }
+        });
+      });
+    });
+  } else {
+    const concat = spawn('ffmpeg', [
+      '-f', 'concat', '-safe', '0',
+      '-i', videoListPath,
+      '-c', 'copy', '-y',
+      outputPath
+    ]);
+
+    concat.stderr.on('data', d => console.log('Concat:', d.toString()));
+
+    concat.on('close', (code) => {
+      if (code === 0) {
+        console.log('Highlight saved to', outputPath);
+        mainWindow.webContents.send('highlight-saved', outputPath);
+      } else {
+        mainWindow.webContents.send('highlight-error', 'Failed to save highlight');
+      }
+    });
+  }
 }
+
+app.commandLine.appendSwitch('enable-features', 'WebRtcAllowInputVolumeAdjustment');
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 900,
+    height: 700,
     webPreferences: {
       nodeIntegration: true,
-      contextIsolation: false
+      contextIsolation: false,
+      experimentalFeatures: true
     }
   });
 
   mainWindow.loadFile('index.html');
+  mainWindow.webContents.openDevTools();
 
-  ipcMain.on('save-highlight', () => {
-    saveHighlight();
+  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    callback(permission === 'media');
   });
 
-  ipcMain.on('start-recording', (event, monitorIndex) => {
+  ipcMain.handle('get-desktop-sources', async () => {
+    const { desktopCapturer } = require('electron');
+    const sources = await desktopCapturer.getSources({ types: ['screen'] });
+    return sources.map(s => ({ id: s.id, name: s.name }));
+  });
+
+  ipcMain.on('save-highlight', () => saveHighlight());
+
+  ipcMain.on('start-recording', (event, { monitorIndex }) => {
     if (ffmpegProcess) {
       ffmpegProcess.kill();
       ffmpegProcess = null;
     }
     startRecording(monitorIndex);
     mainWindow.webContents.send('recording-started', monitorIndex);
+  });
+
+  ipcMain.on('save-audio-chunk', (event, buffer) => {
+    ensureFolders();
+    const timestamp = Date.now();
+    const chunkPath = path.join(AUDIO_DIR, `audio_${timestamp}.webm`);
+    fs.writeFileSync(chunkPath, Buffer.from(buffer));
+    console.log(`Audio chunk saved: ${chunkPath} (${buffer.byteLength} bytes)`);
+
+    const chunks = fs.readdirSync(AUDIO_DIR)
+      .filter(f => f.endsWith('.webm'))
+      .map(f => ({ name: f, time: parseInt(f.replace('audio_', '').replace('.webm', '')) }))
+      .sort((a, b) => a.time - b.time);
+
+    while (chunks.length > 20) {
+      const oldest = chunks.shift();
+      fs.unlinkSync(path.join(AUDIO_DIR, oldest.name));
+    }
   });
 
   ipcMain.on('get-monitors', (event) => {
@@ -185,17 +285,14 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow();
-  // Wait for monitor selection from UI before starting
 
-  // F9 hotkey to save highlight
   globalShortcut.register('F9', () => {
-    console.log('F9 pressed - saving highlight');
+    console.log('F9 pressed');
     saveHighlight();
   });
 });
 
 app.on('window-all-closed', () => {
-  // Stop FFmpeg when app closes
   if (ffmpegProcess) ffmpegProcess.kill();
   globalShortcut.unregisterAll();
   if (process.platform !== 'darwin') app.quit();
