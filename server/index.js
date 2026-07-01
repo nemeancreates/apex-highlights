@@ -6,6 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const helmet = require('helmet');
 
 // --- Setup ---
 const app = express();
@@ -17,6 +18,7 @@ const io = new Server(server, {
   }
 });
 
+app.use(helmet());
 app.use(cors({ origin: 'http://localhost' }));
 app.use(express.json());
 // Serve the web player
