@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Peak-Abu</title>
+    <style>
+      body {
+        background: #1a1a2e;
+        color: #eee;
+        font-family: Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 40px;
+      }
+      h1 { color: #e94560; }
+      .section {
+        width: 100%;
+        max-width: 600px;
+        background: #16213e;
+        border-radius: 8px;
+        padding: 20px;
+        margin: 10px 0;
+      }
+      .section h3 {
+        margin-top: 0;
+        color: #e94560;
+      }
+      label {
+        font-size: 13px;
+        color: #aaa;
+        display: block;
+        margin-bottom: 4px;
+      }
+      select {
+        width: 100%;
+        padding: 10px;
+        background: #0f3460;
+        color: #eee;
+        border: 1px solid #e94560;
+        border-radius: 6px;
+        font-size: 14px;
+        margin-bottom: 10px;
+      }
+      button {
+        margin: 5px 0;
+        padding: 12px 30px;
+        background: #e94560;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 16px;
+        cursor: pointer;
+        width: 100%;
+      }
+      button:hover { background: #c73652; }
+      button:disabled { background: #555; cursor: not-allowed; }
+      .status {
+        padding: 10px;
+        border-radius: 6px;
+        font-size: 14px;
+        margin: 10px 0;
+        text-align: center;
+      }
+      .status.recording { color: #ff4444; }
+      .status.idle { color: #aaa; }
+      .clip-item {
+        background: #0f3460;
+        padding: 10px;
+        margin: 5px 0;
+        border-radius: 6px;
+        font-size: 12px;
+        word-break: break-all;
+      }
+      .clip-item.error { color: #ff4444; }
+      .clip-item.success { color: #44ff88; }
+    </style>
+  </head>
+  <body>
+    <h1>🙈 Peak-Abu</h1>
+
+    <div class="section">
+      <h3>Recording Setup</h3>
+      <label>Monitor</label>
+      <select id="monitorSelect">
+        <option>Loading monitors...</option>
+      </select>
+      <button id="startBtn" onclick="startRecording()">▶ Start Recording</button>
+      <button id="stopBtn" onclick="stopRecording()" disabled>⏹ Stop Recording</button>
+    </div>
+
+    <div class="section">
+      <div class="status idle" id="statusText">● Idle</div>
+      <button id="saveBtn" onclick="saveHighlight()" disabled>💾 Save Highlight (or press F9)</button>
+    </div>
+
+    <div class="section">
+      <h3>Saved Highlights</h3>
+      <div id="clipList"></div>
+    </div>
+
+    <script>
+      const { ipcRenderer } = require('electron');
+
+      let mediaRecorder = null;
+
+      ipcRenderer.send('get-monitors');
+
+      ipcRenderer.on('monitors-list', (event, monitors) => {
+        const select = document.getElementById('monitorSelect');
+        select.innerHTML = '';
+        monitors.forEach((m, i) => {
+          const option = document.createElement('option');
+          option.value = m.index;
+          option.textContent = `Monitor ${i + 1} — ${m.width}x${m.height}${m.primary ? ' (Primary)' : ''}`;
+          select.appendChild(option);
+        });
+      });
+
+      async function startAudioCapture() {
+        try {
+          console.log('=== Starting audio capture ===');
+          const sources = await ipcRenderer.invoke('get-desktop-sources');
+          console.log('Sources:', sources.map(s => s.name));
+
+          const screen = sources[0];
+          console.log('Using source:', screen.name, 'ID:', screen.id);
+
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              mandatory: {
+                chromeMediaSource: 'desktop',
+                chromeMediaSourceId: screen.id
+              }
+            },
+            video: {
+              mandatory: {
+                chromeMediaSource: 'desktop',
+                chromeMediaSourceId: screen.id,
+                maxWidth: 1,
+                maxHeight: 1
+              }
+            }
+          });
+
+          console.log('Stream tracks - audio:', stream.getAudioTracks().length, 'video:', stream.getVideoTracks().length);
+
+          stream.getVideoTracks().forEach(t => t.stop());
+
+          const audioTrack = stream.getAudioTracks()[0];
+          if (!audioTrack) {
+            console.log('ERROR: No audio track');
+            return;
+          }
+
+          console.log('Audio track label:', audioTrack.label);
+          console.log('Audio track settings:', audioTrack.getSettings());
+
+          const audioOnlyStream = new MediaStream([audioTrack]);
+
+          mediaRecorder = new MediaRecorder(audioOnlyStream, {
+            mimeType: 'audio/webm;codecs=opus',
+            audioBitsPerSecond: 192000
+          });
+
+          mediaRecorder.ondataavailable = async (event) => {
+            console.log(`Audio chunk received: ${event.data.size} bytes`);
+            if (event.data && event.data.size > 0) {
+              const buffer = await event.data.arrayBuffer();
+              ipcRenderer.send('save-audio-chunk', buffer);
+            }
+          };
+
+          mediaRecorder.onerror = (e) => console.log('MediaRecorder error:', e);
+
+          mediaRecorder.start(10000);
+          console.log('=== MediaRecorder state:', mediaRecorder.state, '===');
+
+        } catch (err) {
+          console.log('Audio capture failed:', err.name, err.message);
+        }
+      }
+
+      async function startRecording() {
+        const monitorIndex = parseInt(document.getElementById('monitorSelect').value);
+        ipcRenderer.send('start-recording', { monitorIndex });
+        document.getElementById('startBtn').textContent = '↺ Switch Monitor';
+        document.getElementById('stopBtn').disabled = false;
+        document.getElementById('statusText').textContent = '● Recording buffer...';
+        document.getElementById('statusText').className = 'status recording';
+        document.getElementById('saveBtn').disabled = false;
+
+        await startAudioCapture();
+      }
+
+      function stopRecording() {
+        ipcRenderer.send('stop-recording');
+
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          mediaRecorder.stop();
+          mediaRecorder = null;
+        }
+
+        document.getElementById('startBtn').textContent = '▶ Start Recording';
+        document.getElementById('startBtn').disabled = false;
+        document.getElementById('stopBtn').disabled = true;
+        document.getElementById('saveBtn').disabled = true;
+        document.getElementById('statusText').textContent = '● Stopped';
+        document.getElementById('statusText').className = 'status idle';
+      }
+
+      function saveHighlight() {
+        ipcRenderer.send('save-highlight');
+      }
+
+      ipcRenderer.on('recording-started', (event, index) => {
+        addClipItem(`Recording started on Monitor ${index + 1}`, false);
+      });
+
+      ipcRenderer.on('highlight-saved', (event, filePath) => {
+        addClipItem('✅ Saved: ' + filePath, false);
+      });
+
+      ipcRenderer.on('highlight-error', (event, message) => {
+        addClipItem('❌ ' + message, true);
+      });
+
+      function addClipItem(text, isError) {
+        const list = document.getElementById('clipList');
+        const item = document.createElement('div');
+        item.className = 'clip-item ' + (isError ? 'error' : 'success');
+        item.textContent = text;
+        list.prepend(item);
+      }
+    </script>
+  </body>
+</html>

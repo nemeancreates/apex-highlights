@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "sntp": "^3.0.2"
+  }
+}
