@@ -319,26 +319,35 @@
 
       function addMember(username, isRecording) {
         const list = document.getElementById('memberList');
-        // Don't add duplicates
-        if (document.getElementById('member-' + username)) return;
+        // SECURITY: CSS.escape prevents DOM manipulation via crafted usernames
+        const safeId = 'member-' + CSS.escape(username);
+        if (document.getElementById(safeId)) return;
 
         const item = document.createElement('div');
         item.className = 'member-item';
-        item.id = 'member-' + username;
-        item.innerHTML = `
-          <span class="member-name">${username}</span>
-          <span class="member-status ${isRecording ? 'rec' : 'idle'}">${isRecording ? 'REC' : 'Idle'}</span>
-        `;
+        item.id = safeId;
+
+        // SECURITY: textContent instead of innerHTML — treats username as plain text, never code
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'member-name';
+        nameSpan.textContent = username;
+
+        const statusSpan = document.createElement('span');
+        statusSpan.className = 'member-status ' + (isRecording ? 'rec' : 'idle');
+        statusSpan.textContent = isRecording ? 'REC' : 'Idle';
+
+        item.appendChild(nameSpan);
+        item.appendChild(statusSpan);
         list.appendChild(item);
       }
 
       function removeMember(username) {
-        const el = document.getElementById('member-' + username);
+        const el = document.getElementById('member-' + CSS.escape(username));
         if (el) el.remove();
       }
 
       function updateMemberRecording(username, isRecording) {
-        const el = document.getElementById('member-' + username);
+        const el = document.getElementById('member-' + CSS.escape(username));
         if (!el) return;
         const badge = el.querySelector('.member-status');
         badge.className = 'member-status ' + (isRecording ? 'rec' : 'idle');

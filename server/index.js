@@ -9,20 +9,97 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: '*', // allows any client to connect (we'll lock this down later)
+    origin: 'http://localhost',
     methods: ['GET', 'POST']
   }
 });
 
-app.use(cors());
+app.use(cors({ origin: 'http://localhost' }));
 app.use(express.json());
 
-// --- In-memory storage (replaced with a database later) ---
-const sessions = new Map(); // sessionCode -> session object
+// ================================
+// SECURITY: Rate limiting (HTTP)
+// ================================
+const rateLimits = new Map();
+const RATE_LIMIT_MAX = 30;
+const RATE_LIMIT_WINDOW = 60000;
+
+function rateLimit(req, res, next) {
+  const ip = req.ip;
+  const now = Date.now();
+  let entry = rateLimits.get(ip);
+
+  if (!entry || now > entry.resetTime) {
+    entry = { count: 0, resetTime: now + RATE_LIMIT_WINDOW };
+    rateLimits.set(ip, entry);
+  }
+
+  entry.count++;
+
+  if (entry.count > RATE_LIMIT_MAX) {
+    return res.status(429).json({ error: 'Too many requests. Try again later.' });
+  }
+
+  next();
+}
+
+app.use(rateLimit);
+
+// Clean up stale rate limit entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of rateLimits) {
+    if (now > entry.resetTime) rateLimits.delete(ip);
+  }
+}, 5 * 60 * 1000);
+
+// ================================
+// SECURITY: Rate limiting (WebSocket)
+// ================================
+const socketRateLimits = new Map();
+const SOCKET_RATE_MAX = 20;
+const SOCKET_RATE_WINDOW = 10000;
+
+function checkSocketRate(socketId) {
+  const now = Date.now();
+  let entry = socketRateLimits.get(socketId);
+
+  if (!entry || now > entry.resetTime) {
+    entry = { count: 0, resetTime: now + SOCKET_RATE_WINDOW };
+    socketRateLimits.set(socketId, entry);
+  }
+
+  entry.count++;
+  return entry.count <= SOCKET_RATE_MAX;
+}
+
+// ================================
+// SECURITY: Input sanitization
+// ================================
+function sanitizeUsername(input) {
+  if (typeof input !== 'string') return null;
+  const clean = input.trim().replace(/[^a-zA-Z0-9 _\-]/g, '');
+  if (clean.length < 1 || clean.length > 24) return null;
+  return clean;
+}
+
+function sanitizeCode(input) {
+  if (typeof input !== 'string') return null;
+  return input.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 6);
+}
+
+// ================================
+// SECURITY: Capacity limits
+// ================================
+const MAX_SESSIONS = 100;
+const MAX_MEMBERS_PER_SESSION = 30;
+
+// --- In-memory storage ---
+const sessions = new Map();
 
 // --- Helper: generate a short session code ---
 function generateCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no I/1/O/0 to avoid confusion
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
   for (let i = 0; i < 6; i++) {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -32,21 +109,24 @@ function generateCode() {
 
 // --- HTTP Routes ---
 
-// Health check (just confirms the server is running)
 app.get('/', (req, res) => {
   res.json({ status: 'Peak-Abu server running', activeSessions: sessions.size });
 });
 
-// Create a new session
 app.post('/sessions', (req, res) => {
-  const { username } = req.body;
+  // SECURITY: Sanitize username
+  const username = sanitizeUsername(req.body.username);
 
   if (!username) {
-    return res.status(400).json({ error: 'Username is required' });
+    return res.status(400).json({ error: 'Invalid username. Use 1-24 characters: letters, numbers, spaces, _ or -' });
+  }
+
+  // SECURITY: Capacity limit
+  if (sessions.size >= MAX_SESSIONS) {
+    return res.status(503).json({ error: 'Server is at capacity. Try again later.' });
   }
 
   let code = generateCode();
-  // make sure code isn't already in use (very unlikely, but just in case)
   while (sessions.has(code)) {
     code = generateCode();
   }
@@ -56,7 +136,7 @@ app.post('/sessions', (req, res) => {
     code: code,
     createdBy: username,
     createdAt: new Date().toISOString(),
-    members: [] // populated when people connect via WebSocket
+    members: []
   };
 
   sessions.set(code, session);
@@ -65,9 +145,11 @@ app.post('/sessions', (req, res) => {
   res.status(201).json({ sessionCode: code, sessionId: session.id });
 });
 
-// Get session info
 app.get('/sessions/:code', (req, res) => {
-  const code = req.params.code.toUpperCase();
+  // SECURITY: Sanitize code input
+  const code = sanitizeCode(req.params.code);
+  if (!code) return res.status(400).json({ error: 'Invalid session code' });
+
   const session = sessions.get(code);
 
   if (!session) {
@@ -90,9 +172,22 @@ app.get('/sessions/:code', (req, res) => {
 io.on('connection', (socket) => {
   console.log(`Client connected: ${socket.id}`);
 
-  // When a client joins a session
   socket.on('join-session', ({ code, username }) => {
-    const sessionCode = code.toUpperCase();
+    // SECURITY: Rate check
+    if (!checkSocketRate(socket.id)) {
+      socket.emit('error-message', { message: 'Too many requests. Slow down.' });
+      return;
+    }
+
+    // SECURITY: Sanitize all inputs
+    const sessionCode = sanitizeCode(code);
+    const cleanUsername = sanitizeUsername(username);
+
+    if (!sessionCode || !cleanUsername) {
+      socket.emit('error-message', { message: 'Invalid session code or username' });
+      return;
+    }
+
     const session = sessions.get(sessionCode);
 
     if (!session) {
@@ -100,22 +195,38 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Add this user to the session
+    // SECURITY: Prevent session from exceeding member limit
+    if (session.members.length >= MAX_MEMBERS_PER_SESSION) {
+      socket.emit('error-message', { message: 'Session is full' });
+      return;
+    }
+
+    // SECURITY: Prevent duplicate usernames (impersonation)
+    if (session.members.some(m => m.username === cleanUsername)) {
+      socket.emit('error-message', { message: 'Username already taken in this session' });
+      return;
+    }
+
+    // SECURITY: Prevent one socket joining multiple sessions
+    if (socket.sessionCode) {
+      socket.emit('error-message', { message: 'Already in a session. Leave first.' });
+      return;
+    }
+
     const member = {
       socketId: socket.id,
-      username: username,
+      username: cleanUsername,
       isRecording: false,
       joinedAt: new Date().toISOString()
     };
 
     session.members.push(member);
-    socket.join(sessionCode); // Socket.IO "room" so we can broadcast to the session
-    socket.sessionCode = sessionCode; // remember which session this socket belongs to
-    socket.username = username;
+    socket.join(sessionCode);
+    socket.sessionCode = sessionCode;
+    socket.username = cleanUsername;
 
-    console.log(`${username} joined session ${sessionCode}`);
+    console.log(`${cleanUsername} joined session ${sessionCode}`);
 
-    // Tell the person who joined: here's who's already in the session
     socket.emit('session-joined', {
       code: sessionCode,
       members: session.members.map(m => ({
@@ -124,26 +235,29 @@ io.on('connection', (socket) => {
       }))
     });
 
-    // Tell everyone else in the session: someone new joined
     socket.to(sessionCode).emit('member-joined', {
-      username: username
+      username: cleanUsername
     });
   });
 
-  // When a client starts or stops recording
   socket.on('recording-status', ({ isRecording }) => {
+    // SECURITY: Rate check
+    if (!checkSocketRate(socket.id)) return;
+
     const sessionCode = socket.sessionCode;
     if (!sessionCode) return;
 
     const session = sessions.get(sessionCode);
     if (!session) return;
 
+    // SECURITY: Validate type
+    if (typeof isRecording !== 'boolean') return;
+
     const member = session.members.find(m => m.socketId === socket.id);
     if (member) {
       member.isRecording = isRecording;
     }
 
-    // Tell everyone in the session about the recording status change
     io.to(sessionCode).emit('member-recording-update', {
       username: socket.username,
       isRecording: isRecording
@@ -152,25 +266,24 @@ io.on('connection', (socket) => {
     console.log(`${socket.username} ${isRecording ? 'started' : 'stopped'} recording in ${sessionCode}`);
   });
 
-  // When a client disconnects
   socket.on('disconnect', () => {
     const sessionCode = socket.sessionCode;
+    // SECURITY: Clean up rate limit entry
+    socketRateLimits.delete(socket.id);
+
     if (!sessionCode) return;
 
     const session = sessions.get(sessionCode);
     if (!session) return;
 
-    // Remove them from the session
     session.members = session.members.filter(m => m.socketId !== socket.id);
 
     console.log(`${socket.username} left session ${sessionCode} (${session.members.length} remaining)`);
 
-    // Tell everyone else
     socket.to(sessionCode).emit('member-left', {
       username: socket.username
     });
 
-    // If session is empty, clean it up after 5 minutes
     if (session.members.length === 0) {
       setTimeout(() => {
         const current = sessions.get(sessionCode);
