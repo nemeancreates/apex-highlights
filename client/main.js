@@ -6,7 +6,7 @@ const os = require('os');
 
 const BUFFER_DIR = path.join(os.tmpdir(), 'apex-highlights-buffer');
 const AUDIO_DIR = path.join(os.tmpdir(), 'apex-highlights-audio');
-const CLIPS_DIR = path.join(app.getPath('videos'), 'ApexHighlights');
+const CLIPS_DIR = path.join(app.getPath('videos'), 'PeakAbu');
 const CHUNK_SECONDS = 10;
 const MAX_CHUNKS = 18;
 
