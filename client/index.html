@@ -85,6 +85,7 @@
         <option>Loading monitors...</option>
       </select>
       <button id="startBtn" onclick="startRecording()">▶ Start Recording</button>
+      <button id="stopBtn" onclick="stopRecording()" disabled>⏹ Stop Recording</button>
     </div>
 
     <div class="section">
@@ -183,11 +184,28 @@
         const monitorIndex = parseInt(document.getElementById('monitorSelect').value);
         ipcRenderer.send('start-recording', { monitorIndex });
         document.getElementById('startBtn').textContent = '↺ Switch Monitor';
+        document.getElementById('stopBtn').disabled = false;
         document.getElementById('statusText').textContent = '● Recording buffer...';
         document.getElementById('statusText').className = 'status recording';
         document.getElementById('saveBtn').disabled = false;
 
         await startAudioCapture();
+      }
+
+      function stopRecording() {
+        ipcRenderer.send('stop-recording');
+
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          mediaRecorder.stop();
+          mediaRecorder = null;
+        }
+
+        document.getElementById('startBtn').textContent = '▶ Start Recording';
+        document.getElementById('startBtn').disabled = false;
+        document.getElementById('stopBtn').disabled = true;
+        document.getElementById('saveBtn').disabled = true;
+        document.getElementById('statusText').textContent = '● Stopped';
+        document.getElementById('statusText').className = 'status idle';
       }
 
       function saveHighlight() {

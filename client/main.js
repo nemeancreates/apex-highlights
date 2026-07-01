@@ -3,6 +3,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const sntp = require('sntp');
 
 const BUFFER_DIR = path.join(os.tmpdir(), 'apex-highlights-buffer');
 const AUDIO_DIR = path.join(os.tmpdir(), 'apex-highlights-audio');
@@ -10,6 +11,7 @@ const CLIPS_DIR = path.join(app.getPath('videos'), 'PeakAbu');
 const CHUNK_SECONDS = 10;
 const MAX_CHUNKS = 18;
 
+let clockOffset = 0; // milliseconds - difference between local clock and true UTC
 let ffmpegProcess = null;
 let mainWindow = null;
 
@@ -17,6 +19,21 @@ function ensureFolders() {
   if (!fs.existsSync(BUFFER_DIR)) fs.mkdirSync(BUFFER_DIR, { recursive: true });
   if (!fs.existsSync(AUDIO_DIR)) fs.mkdirSync(AUDIO_DIR, { recursive: true });
   if (!fs.existsSync(CLIPS_DIR)) fs.mkdirSync(CLIPS_DIR, { recursive: true });
+}
+
+async function syncClock() {
+  try {
+    const time = await sntp.time({ host: 'pool.ntp.org', timeout: 5000 });
+    clockOffset = time.t; // offset in ms
+    console.log(`Clock synced. Local offset from true UTC: ${clockOffset.toFixed(2)}ms`);
+  } catch (err) {
+    console.log('NTP sync failed, using local clock:', err.message);
+    clockOffset = 0;
+  }
+}
+
+function getPreciseUTC() {
+  return Date.now() + clockOffset;
 }
 
 function pruneOldChunks() {
@@ -114,8 +131,27 @@ function saveHighlight() {
   const hasAudio = audioChunks.length > 0;
   console.log(`Saving highlight: ${videoFiles.length} video chunks, ${audioChunks.length} audio chunks`);
 
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const saveTimeUTC = getPreciseUTC();
+  const timestamp = new Date(saveTimeUTC).toISOString().replace(/[:.]/g, '-');
   const outputPath = path.join(CLIPS_DIR, `highlight-${timestamp}.mp4`);
+  const metadataPath = path.join(CLIPS_DIR, `highlight-${timestamp}.json`);
+  
+  // Calculate the true start time of this highlight (oldest video chunk's mtime, corrected)
+  const oldestChunkTime = videoFiles[0].time;
+  const chunkAgeMs = Date.now() - oldestChunkTime;
+  const startTimeUTC = saveTimeUTC - chunkAgeMs;
+  
+  const metadata = {
+    version: 1,
+    saveTimeUTC,
+    startTimeUTC,
+    endTimeUTC: saveTimeUTC,
+    durationMs: chunkAgeMs,
+    frameRate: 30,
+    clockOffsetMs: clockOffset,
+    userId: null, // will fill in when we add accounts
+    sessionId: null // will fill in when we add sessions
+  };
 
   const videoListPath = path.join(BUFFER_DIR, 'filelist.txt');
   const videoContent = videoFiles
@@ -182,9 +218,11 @@ function saveHighlight() {
 
         merge.stderr.on('data', d => console.log('Merge:', d.toString()));
 
-        merge.on('close', (code) => {
+       merge.on('close', (code) => {
           if (code === 0) {
+            fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
             console.log('Highlight saved to', outputPath);
+            console.log('Metadata saved to', metadataPath);
             mainWindow.webContents.send('highlight-saved', outputPath);
           } else {
             mainWindow.webContents.send('highlight-error', 'Failed to merge');
@@ -204,6 +242,7 @@ function saveHighlight() {
 
     concat.on('close', (code) => {
       if (code === 0) {
+        fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
         console.log('Highlight saved to', outputPath);
         mainWindow.webContents.send('highlight-saved', outputPath);
       } else {
@@ -250,6 +289,15 @@ function createWindow() {
     mainWindow.webContents.send('recording-started', monitorIndex);
   });
 
+  ipcMain.on('stop-recording', () => {
+    if (ffmpegProcess) {
+      ffmpegProcess.kill();
+      ffmpegProcess = null;
+      console.log('Recording stopped');
+      mainWindow.webContents.send('recording-stopped');
+    }
+  });
+
   ipcMain.on('save-audio-chunk', (event, buffer) => {
     ensureFolders();
     const timestamp = Date.now();
@@ -283,7 +331,8 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await syncClock();
   createWindow();
 
   globalShortcut.register('F9', () => {
