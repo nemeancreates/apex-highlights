@@ -264,6 +264,7 @@
           updateMemberList(data.members);
 
           addClipItem('Joined session ' + data.code, false);
+          ipcRenderer.send('session-connected', { code: data.code, username: document.getElementById('usernameInput').value.trim() });
         });
 
         socket.on('member-joined', (data) => {
@@ -307,6 +308,7 @@
         document.getElementById('sessionPanel-disconnected').style.display = 'block';
         document.getElementById('sessionPanel-connected').style.display = 'none';
         document.getElementById('memberList').innerHTML = '';
+        ipcRenderer.send('session-disconnected');
       }
 
       // --- Member list UI helpers ---

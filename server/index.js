@@ -3,6 +3,9 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 
 // --- Setup ---
 const app = express();
@@ -16,6 +19,49 @@ const io = new Server(server, {
 
 app.use(cors({ origin: 'http://localhost' }));
 app.use(express.json());
+
+// ================================
+// SECURITY: Upload configuration
+// ================================
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+// SECURITY: Only allow specific file types
+const ALLOWED_EXTENSIONS = ['.mp4', '.json'];
+const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB max per file
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      // SECURITY: Sanitize session code for folder name
+      const code = (req.params.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const sessionDir = path.join(UPLOADS_DIR, code);
+      if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
+      cb(null, sessionDir);
+    },
+    filename: (req, file, cb) => {
+      // SECURITY: Generate safe filename - strip path components, only allow safe characters
+      const ext = path.extname(file.originalname).toLowerCase();
+      const baseName = path.basename(file.originalname, ext)
+        .replace(/[^a-zA-Z0-9_\-]/g, '_')
+        .substring(0, 100);
+      const safeName = `${baseName}_${Date.now()}${ext}`;
+      cb(null, safeName);
+    }
+  }),
+  limits: {
+    fileSize: MAX_FILE_SIZE,
+    files: 2 // max 2 files per upload (video + metadata)
+  },
+  fileFilter: (req, file, cb) => {
+    // SECURITY: Validate file extension
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      return cb(new Error('Invalid file type. Only .mp4 and .json allowed.'));
+    }
+    cb(null, true);
+  }
+});
 
 // ================================
 // SECURITY: Rate limiting (HTTP)
@@ -114,14 +160,12 @@ app.get('/', (req, res) => {
 });
 
 app.post('/sessions', (req, res) => {
-  // SECURITY: Sanitize username
   const username = sanitizeUsername(req.body.username);
 
   if (!username) {
     return res.status(400).json({ error: 'Invalid username. Use 1-24 characters: letters, numbers, spaces, _ or -' });
   }
 
-  // SECURITY: Capacity limit
   if (sessions.size >= MAX_SESSIONS) {
     return res.status(503).json({ error: 'Server is at capacity. Try again later.' });
   }
@@ -136,7 +180,8 @@ app.post('/sessions', (req, res) => {
     code: code,
     createdBy: username,
     createdAt: new Date().toISOString(),
-    members: []
+    members: [],
+    uploads: [] // track uploaded files per session
   };
 
   sessions.set(code, session);
@@ -146,7 +191,6 @@ app.post('/sessions', (req, res) => {
 });
 
 app.get('/sessions/:code', (req, res) => {
-  // SECURITY: Sanitize code input
   const code = sanitizeCode(req.params.code);
   if (!code) return res.status(400).json({ error: 'Invalid session code' });
 
@@ -164,8 +208,106 @@ app.get('/sessions/:code', (req, res) => {
       username: m.username,
       isRecording: m.isRecording,
       joinedAt: m.joinedAt
-    }))
+    })),
+    uploads: session.uploads
   });
+});
+
+// ================================
+// UPLOAD ENDPOINT
+// ================================
+app.post('/sessions/:code/upload', (req, res) => {
+  const code = sanitizeCode(req.params.code);
+  if (!code) return res.status(400).json({ error: 'Invalid session code' });
+
+  const session = sessions.get(code);
+  if (!session) {
+    return res.status(404).json({ error: 'Session not found' });
+  }
+
+  // SECURITY: Verify uploader is a member of this session
+  const uploaderName = sanitizeUsername(req.headers['x-username']);
+  if (!uploaderName) {
+    return res.status(400).json({ error: 'Missing or invalid username header' });
+  }
+
+  const isMember = session.members.some(m => m.username === uploaderName) ||
+                   session.createdBy === uploaderName;
+  if (!isMember) {
+    return res.status(403).json({ error: 'You are not a member of this session' });
+  }
+
+  // SECURITY: Check session upload limit (prevent disk exhaustion)
+  const MAX_UPLOADS_PER_SESSION = 50;
+  if (session.uploads.length >= MAX_UPLOADS_PER_SESSION) {
+    return res.status(400).json({ error: 'Session upload limit reached' });
+  }
+
+  // Handle the upload with multer
+  upload.fields([
+    { name: 'video', maxCount: 1 },
+    { name: 'metadata', maxCount: 1 }
+  ])(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(413).json({ error: 'File too large. Maximum 500MB.' });
+        }
+        return res.status(400).json({ error: 'Upload error: ' + err.message });
+      }
+      return res.status(400).json({ error: err.message });
+    }
+
+    const videoFile = req.files && req.files.video && req.files.video[0];
+    if (!videoFile) {
+      return res.status(400).json({ error: 'No video file provided' });
+    }
+
+    // SECURITY: Verify the saved file is actually within our uploads directory (path traversal check)
+    const resolvedPath = path.resolve(videoFile.path);
+    if (!resolvedPath.startsWith(path.resolve(UPLOADS_DIR))) {
+      // Something went wrong — file ended up outside our uploads folder
+      fs.unlinkSync(resolvedPath);
+      return res.status(400).json({ error: 'Invalid upload path' });
+    }
+
+    const uploadRecord = {
+      id: uuidv4(),
+      username: uploaderName,
+      videoFile: videoFile.filename,
+      metadataFile: req.files.metadata ? req.files.metadata[0].filename : null,
+      uploadedAt: new Date().toISOString(),
+      fileSize: videoFile.size
+    };
+
+    session.uploads.push(uploadRecord);
+
+    console.log(`Upload received: ${uploaderName} -> session ${code} (${(videoFile.size / 1024 / 1024).toFixed(1)}MB)`);
+
+    // Notify session members about the new upload
+    io.to(code).emit('upload-received', {
+      username: uploaderName,
+      uploadId: uploadRecord.id
+    });
+
+    res.status(201).json({
+      message: 'Upload successful',
+      uploadId: uploadRecord.id
+    });
+  });
+});
+
+// Get uploads for a session
+app.get('/sessions/:code/uploads', (req, res) => {
+  const code = sanitizeCode(req.params.code);
+  if (!code) return res.status(400).json({ error: 'Invalid session code' });
+
+  const session = sessions.get(code);
+  if (!session) {
+    return res.status(404).json({ error: 'Session not found' });
+  }
+
+  res.json({ uploads: session.uploads });
 });
 
 // --- WebSocket (real-time) ---
@@ -173,13 +315,11 @@ io.on('connection', (socket) => {
   console.log(`Client connected: ${socket.id}`);
 
   socket.on('join-session', ({ code, username }) => {
-    // SECURITY: Rate check
     if (!checkSocketRate(socket.id)) {
       socket.emit('error-message', { message: 'Too many requests. Slow down.' });
       return;
     }
 
-    // SECURITY: Sanitize all inputs
     const sessionCode = sanitizeCode(code);
     const cleanUsername = sanitizeUsername(username);
 
@@ -195,19 +335,16 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // SECURITY: Prevent session from exceeding member limit
     if (session.members.length >= MAX_MEMBERS_PER_SESSION) {
       socket.emit('error-message', { message: 'Session is full' });
       return;
     }
 
-    // SECURITY: Prevent duplicate usernames (impersonation)
     if (session.members.some(m => m.username === cleanUsername)) {
       socket.emit('error-message', { message: 'Username already taken in this session' });
       return;
     }
 
-    // SECURITY: Prevent one socket joining multiple sessions
     if (socket.sessionCode) {
       socket.emit('error-message', { message: 'Already in a session. Leave first.' });
       return;
@@ -241,7 +378,6 @@ io.on('connection', (socket) => {
   });
 
   socket.on('recording-status', ({ isRecording }) => {
-    // SECURITY: Rate check
     if (!checkSocketRate(socket.id)) return;
 
     const sessionCode = socket.sessionCode;
@@ -250,7 +386,6 @@ io.on('connection', (socket) => {
     const session = sessions.get(sessionCode);
     if (!session) return;
 
-    // SECURITY: Validate type
     if (typeof isRecording !== 'boolean') return;
 
     const member = session.members.find(m => m.socketId === socket.id);
@@ -268,7 +403,6 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     const sessionCode = socket.sessionCode;
-    // SECURITY: Clean up rate limit entry
     socketRateLimits.delete(socket.id);
 
     if (!sessionCode) return;

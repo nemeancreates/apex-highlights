@@ -4,6 +4,8 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const sntp = require('sntp');
+const FormData = require('form-data');
+const http = require('http');
 
 const BUFFER_DIR = path.join(os.tmpdir(), 'apex-highlights-buffer');
 const AUDIO_DIR = path.join(os.tmpdir(), 'apex-highlights-audio');
@@ -14,6 +16,7 @@ const MAX_CHUNKS = 18;
 let clockOffset = 0; // milliseconds - difference between local clock and true UTC
 let ffmpegProcess = null;
 let mainWindow = null;
+let currentSession = null; // { code, username } when connected to a session
 
 function ensureFolders() {
   if (!fs.existsSync(BUFFER_DIR)) fs.mkdirSync(BUFFER_DIR, { recursive: true });
@@ -202,6 +205,7 @@ function saveHighlight() {
           console.log('Audio concat failed, saving video only');
           fs.copyFileSync(tempVideoPath, outputPath);
           mainWindow.webContents.send('highlight-saved', outputPath);
+          uploadHighlight(outputPath, metadataPath);
           return;
         }
 
@@ -224,6 +228,7 @@ function saveHighlight() {
             console.log('Highlight saved to', outputPath);
             console.log('Metadata saved to', metadataPath);
             mainWindow.webContents.send('highlight-saved', outputPath);
+            uploadHighlight(outputPath, metadataPath);
           } else {
             mainWindow.webContents.send('highlight-error', 'Failed to merge');
           }
@@ -245,11 +250,65 @@ function saveHighlight() {
         fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
         console.log('Highlight saved to', outputPath);
         mainWindow.webContents.send('highlight-saved', outputPath);
+        uploadHighlight(outputPath, metadataPath);
       } else {
         mainWindow.webContents.send('highlight-error', 'Failed to save highlight');
       }
     });
   }
+}
+
+function uploadHighlight(videoPath, metadataPath) {
+  if (!currentSession) {
+    console.log('No active session, skipping upload');
+    return;
+  }
+
+  console.log(`Uploading highlight to session ${currentSession.code}...`);
+
+  const form = new FormData();
+  form.append('video', fs.createReadStream(videoPath));
+
+  if (metadataPath && fs.existsSync(metadataPath)) {
+    form.append('metadata', fs.createReadStream(metadataPath));
+  }
+
+  const options = {
+    hostname: 'localhost',
+    port: 3000,
+    path: `/sessions/${currentSession.code}/upload`,
+    method: 'POST',
+    headers: {
+      ...form.getHeaders(),
+      'x-username': currentSession.username
+    }
+  };
+
+  const req = http.request(options, (res) => {
+    let body = '';
+    res.on('data', chunk => body += chunk);
+    res.on('end', () => {
+      try {
+        const result = JSON.parse(body);
+        if (res.statusCode === 201) {
+          console.log('Upload successful:', result.uploadId);
+          mainWindow.webContents.send('upload-complete', result.uploadId);
+        } else {
+          console.log('Upload failed:', result.error);
+          mainWindow.webContents.send('upload-error', result.error);
+        }
+      } catch (err) {
+        console.log('Upload response parse error:', err.message);
+      }
+    });
+  });
+
+  req.on('error', (err) => {
+    console.log('Upload connection error:', err.message);
+    mainWindow.webContents.send('upload-error', 'Could not reach server');
+  });
+
+  form.pipe(req);
 }
 
 app.commandLine.appendSwitch('enable-features', 'WebRtcAllowInputVolumeAdjustment');
@@ -279,6 +338,16 @@ function createWindow() {
   });
 
   ipcMain.on('save-highlight', () => saveHighlight());
+
+  ipcMain.on('session-connected', (event, { code, username }) => {
+    currentSession = { code, username };
+    console.log(`Session tracked in main: ${code} as ${username}`);
+  });
+
+  ipcMain.on('session-disconnected', () => {
+    currentSession = null;
+    console.log('Session cleared in main');
+  });
 
   ipcMain.on('start-recording', (event, { monitorIndex }) => {
     if (ffmpegProcess) {
