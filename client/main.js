@@ -335,10 +335,16 @@ app.whenReady().then(async () => {
   await syncClock();
   createWindow();
 
-  globalShortcut.register('F9', () => {
+  const registered = globalShortcut.register('F9', () => {
     console.log('F9 pressed');
     saveHighlight();
   });
+
+  if (registered) {
+    console.log('F9 hotkey registered successfully');
+  } else {
+    console.log('WARNING: F9 hotkey registration FAILED - another app may be using it');
+  }
 });
 
 app.on('window-all-closed', () => {
