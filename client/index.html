@@ -31,7 +31,7 @@
         display: block;
         margin-bottom: 4px;
       }
-      select {
+      select, input[type="text"] {
         width: 100%;
         padding: 10px;
         background: #0f3460;
@@ -40,7 +40,9 @@
         border-radius: 6px;
         font-size: 14px;
         margin-bottom: 10px;
+        box-sizing: border-box;
       }
+      input[type="text"]::placeholder { color: #667; }
       button {
         margin: 5px 0;
         padding: 12px 30px;
@@ -54,6 +56,11 @@
       }
       button:hover { background: #c73652; }
       button:disabled { background: #555; cursor: not-allowed; }
+      .btn-secondary {
+        background: #0f3460;
+        border: 1px solid #e94560;
+      }
+      .btn-secondary:hover { background: #1a4a8a; }
       .status {
         padding: 10px;
         border-radius: 6px;
@@ -73,11 +80,93 @@
       }
       .clip-item.error { color: #ff4444; }
       .clip-item.success { color: #44ff88; }
+
+      /* Session panel styles */
+      .session-code {
+        font-size: 32px;
+        font-weight: bold;
+        color: #e94560;
+        text-align: center;
+        letter-spacing: 6px;
+        padding: 15px;
+        background: #0f3460;
+        border-radius: 6px;
+        margin: 10px 0;
+        user-select: all;
+      }
+      .member-list {
+        margin: 10px 0;
+      }
+      .member-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 12px;
+        background: #0f3460;
+        border-radius: 6px;
+        margin: 4px 0;
+        font-size: 14px;
+      }
+      .member-name { color: #eee; }
+      .member-status {
+        font-size: 12px;
+        padding: 3px 8px;
+        border-radius: 4px;
+      }
+      .member-status.rec {
+        background: #ff4444;
+        color: white;
+      }
+      .member-status.idle {
+        background: #333;
+        color: #888;
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+      }
+      .row > * { flex: 1; }
+      .divider {
+        text-align: center;
+        color: #555;
+        margin: 10px 0;
+        font-size: 13px;
+      }
+      #sessionPanel-connected { display: none; }
     </style>
   </head>
   <body>
     <h1>🙈 Peak-Abu</h1>
 
+    <!-- SESSION PANEL -->
+    <div class="section" id="sessionPanel">
+      <h3>Squad Session</h3>
+
+      <!-- Not connected state -->
+      <div id="sessionPanel-disconnected">
+        <label>Your Name</label>
+        <input type="text" id="usernameInput" placeholder="Enter your username" />
+
+        <button onclick="createSession()">Create New Session</button>
+
+        <div class="divider">— or join a friend —</div>
+
+        <label>Session Code</label>
+        <input type="text" id="joinCodeInput" placeholder="e.g. ABCD12" maxlength="6"
+               style="text-transform: uppercase; letter-spacing: 3px; text-align: center;" />
+        <button class="btn-secondary" onclick="joinSession()">Join Session</button>
+      </div>
+
+      <!-- Connected state -->
+      <div id="sessionPanel-connected">
+        <label>Session Code (share this with your squad)</label>
+        <div class="session-code" id="sessionCodeDisplay">------</div>
+        <div class="member-list" id="memberList"></div>
+        <button class="btn-secondary" onclick="leaveSession()">Leave Session</button>
+      </div>
+    </div>
+
+    <!-- RECORDING SETUP (unchanged) -->
     <div class="section">
       <h3>Recording Setup</h3>
       <label>Monitor</label>
@@ -100,8 +189,165 @@
 
     <script>
       const { ipcRenderer } = require('electron');
+      const socketIO = require('socket.io-client');
 
       let mediaRecorder = null;
+      let socket = null;
+      let currentSessionCode = null;
+
+      // =====================
+      // SESSION LOGIC
+      // =====================
+
+      function createSession() {
+        const username = document.getElementById('usernameInput').value.trim();
+        if (!username) {
+          alert('Enter a username first!');
+          return;
+        }
+
+        // Create session via HTTP, then connect via WebSocket
+        fetch('http://localhost:3000/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: username })
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.error) {
+            alert('Error: ' + data.error);
+            return;
+          }
+          connectToSession(data.sessionCode, username);
+        })
+        .catch(err => {
+          alert('Could not reach server. Is it running?');
+          console.log('Create session error:', err);
+        });
+      }
+
+      function joinSession() {
+        const username = document.getElementById('usernameInput').value.trim();
+        const code = document.getElementById('joinCodeInput').value.trim().toUpperCase();
+
+        if (!username) {
+          alert('Enter a username first!');
+          return;
+        }
+        if (!code || code.length < 4) {
+          alert('Enter a valid session code!');
+          return;
+        }
+
+        connectToSession(code, username);
+      }
+
+      function connectToSession(code, username) {
+        // Connect WebSocket to server
+        socket = socketIO('http://localhost:3000');
+
+        socket.on('connect', () => {
+          console.log('WebSocket connected, joining session', code);
+          socket.emit('join-session', { code: code, username: username });
+        });
+
+        socket.on('session-joined', (data) => {
+          console.log('Joined session:', data);
+          currentSessionCode = data.code;
+
+          // Switch UI to connected state
+          document.getElementById('sessionPanel-disconnected').style.display = 'none';
+          document.getElementById('sessionPanel-connected').style.display = 'block';
+          document.getElementById('sessionCodeDisplay').textContent = data.code;
+
+          // Show current members
+          updateMemberList(data.members);
+
+          addClipItem('Joined session ' + data.code, false);
+        });
+
+        socket.on('member-joined', (data) => {
+          console.log('Member joined:', data.username);
+          addMember(data.username, false);
+          addClipItem(data.username + ' joined the session', false);
+        });
+
+        socket.on('member-left', (data) => {
+          console.log('Member left:', data.username);
+          removeMember(data.username);
+          addClipItem(data.username + ' left the session', false);
+        });
+
+        socket.on('member-recording-update', (data) => {
+          console.log('Recording update:', data.username, data.isRecording);
+          updateMemberRecording(data.username, data.isRecording);
+        });
+
+        socket.on('error-message', (data) => {
+          alert('Session error: ' + data.message);
+          if (socket) {
+            socket.disconnect();
+            socket = null;
+          }
+        });
+
+        socket.on('disconnect', () => {
+          console.log('WebSocket disconnected');
+        });
+      }
+
+      function leaveSession() {
+        if (socket) {
+          socket.disconnect();
+          socket = null;
+        }
+        currentSessionCode = null;
+
+        // Switch UI back to disconnected state
+        document.getElementById('sessionPanel-disconnected').style.display = 'block';
+        document.getElementById('sessionPanel-connected').style.display = 'none';
+        document.getElementById('memberList').innerHTML = '';
+      }
+
+      // --- Member list UI helpers ---
+
+      function updateMemberList(members) {
+        const list = document.getElementById('memberList');
+        list.innerHTML = '';
+        members.forEach(m => addMember(m.username, m.isRecording));
+      }
+
+      function addMember(username, isRecording) {
+        const list = document.getElementById('memberList');
+        // Don't add duplicates
+        if (document.getElementById('member-' + username)) return;
+
+        const item = document.createElement('div');
+        item.className = 'member-item';
+        item.id = 'member-' + username;
+        item.innerHTML = `
+          <span class="member-name">${username}</span>
+          <span class="member-status ${isRecording ? 'rec' : 'idle'}">${isRecording ? 'REC' : 'Idle'}</span>
+        `;
+        list.appendChild(item);
+      }
+
+      function removeMember(username) {
+        const el = document.getElementById('member-' + username);
+        if (el) el.remove();
+      }
+
+      function updateMemberRecording(username, isRecording) {
+        const el = document.getElementById('member-' + username);
+        if (!el) return;
+        const badge = el.querySelector('.member-status');
+        badge.className = 'member-status ' + (isRecording ? 'rec' : 'idle');
+        badge.textContent = isRecording ? 'REC' : 'Idle';
+      }
+
+      // =====================
+      // RECORDING LOGIC (unchanged)
+      // =====================
 
       ipcRenderer.send('get-monitors');
 
@@ -190,6 +436,11 @@
         document.getElementById('saveBtn').disabled = false;
 
         await startAudioCapture();
+
+        // Notify the session that we started recording
+        if (socket) {
+          socket.emit('recording-status', { isRecording: true });
+        }
       }
 
       function stopRecording() {
@@ -206,6 +457,11 @@
         document.getElementById('saveBtn').disabled = true;
         document.getElementById('statusText').textContent = '● Stopped';
         document.getElementById('statusText').className = 'status idle';
+
+        // Notify the session that we stopped recording
+        if (socket) {
+          socket.emit('recording-status', { isRecording: false });
+        }
       }
 
       function saveHighlight() {
