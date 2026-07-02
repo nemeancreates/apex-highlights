@@ -1,5 +1,11 @@
 const { app, BrowserWindow, globalShortcut, ipcMain } = require('electron');
 const { spawn } = require('child_process');
+function getFFmpegPath() {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'ffmpeg', 'ffmpeg.exe');
+  }
+  return path.join(__dirname, 'ffmpeg', 'ffmpeg.exe');
+}
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -104,7 +110,7 @@ function startRecording(monitor) {
     chunkPattern
   );
 
-  ffmpegProcess = spawn('ffmpeg', ffmpegArgs, {
+  ffmpegProcess = spawn(getFFmpegPath(), ffmpegArgs, {
     windowsHide: true
   });
 
@@ -177,7 +183,7 @@ function saveHighlight() {
 
     // Concat video chunks first
     const tempVideoPath = path.join(BUFFER_DIR, 'temp_video.mp4');
-    const concatVideo = spawn('ffmpeg', [
+    const concatVideo = spawn(getFFmpegPath(), [
       '-f', 'concat', '-safe', '0',
       '-i', videoListPath,
       '-c', 'copy', '-y',
@@ -193,7 +199,7 @@ function saveHighlight() {
       }
 
       // Merge video + audio into final file
-      const merge = spawn('ffmpeg', [
+      const merge = spawn(getFFmpegPath(), [
         '-i', tempVideoPath,
         '-i', tempAudioPath,
         '-c:v', 'copy',
@@ -216,7 +222,7 @@ function saveHighlight() {
         } else {
           // Audio merge failed, save video only
           console.log('Audio merge failed, saving video only');
-          const concatOnly = spawn('ffmpeg', [
+          const concatOnly = spawn(getFFmpegPath(), [
             '-f', 'concat', '-safe', '0',
             '-i', videoListPath,
             '-c', 'copy', '-y',
@@ -237,7 +243,7 @@ function saveHighlight() {
     });
   } else {
     // No audio - just concat video
-    const concat = spawn('ffmpeg', [
+    const concat = spawn(getFFmpegPath(), [
       '-f', 'concat', '-safe', '0',
       '-i', videoListPath,
       '-c', 'copy', '-y',
@@ -326,7 +332,9 @@ function createWindow() {
   });
 
   mainWindow.loadFile('index.html');
+  if (!app.isPackaged) {
   mainWindow.webContents.openDevTools();
+}
 
   mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
     callback(permission === 'media');
