@@ -25,14 +25,11 @@
       }
     ],
     "win": {
-      "target": "nsis",
-      "icon": null
+      "target": "nsis"
     },
     "nsis": {
       "oneClick": true,
-      "allowToChangeInstallationDirectory": false,
-      "installerIcon": null,
-      "uninstallerIcon": null
+      "allowToChangeInstallationDirectory": false
     }
   },
   "devDependencies": {
