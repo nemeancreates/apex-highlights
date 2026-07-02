@@ -18,9 +18,21 @@ const io = new Server(server, {
   }
 });
 
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrcAttr: ["'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      mediaSrc: ["'self'", "blob:"],
+      imgSrc: ["'self'", "data:"],
+      connectSrc: ["'self'", "ws://localhost:*"]
+    }
+  }
+}));
 app.use(cors({ origin: 'http://localhost' }));
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 // Serve the web player
 app.use('/player', express.static(path.join(__dirname, '..', 'web-player')));
 
