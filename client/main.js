@@ -6,6 +6,8 @@ const os = require('os');
 const NTPClient = require('ntp-time').Client;
 const FormData = require('form-data');
 const http = require('http');
+const https = require('https');
+
 
 const BUFFER_DIR = path.join(os.tmpdir(), 'apex-highlights-buffer');
 const CLIPS_DIR = path.join(app.getPath('videos'), 'PeakAbu');
@@ -273,8 +275,8 @@ function uploadHighlight(videoPath, metadataPath) {
   }
 
   const options = {
-    hostname: 'localhost',
-    port: 3000,
+    hostname: 'peakabu.app',
+    port: 443,
     path: `/sessions/${currentSession.code}/upload`,
     method: 'POST',
     headers: {
@@ -283,7 +285,7 @@ function uploadHighlight(videoPath, metadataPath) {
     }
   };
 
-  const req = http.request(options, (res) => {
+  const req = https.request(options, (res) => {
     let body = '';
     res.on('data', chunk => body += chunk);
     res.on('end', () => {

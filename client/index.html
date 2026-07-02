@@ -235,7 +235,7 @@
         }
 
         // Create session via HTTP, then connect via WebSocket
-        fetch('http://localhost:3000/sessions', {
+        fetch('https://peakabu.app/sessions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: username })
@@ -272,7 +272,7 @@
 
       function connectToSession(code, username) {
         // Connect WebSocket to server
-        socket = socketIO('http://localhost:3000');
+        socket = socketIO('https://peakabu.app');
 
         socket.on('connect', () => {
           console.log('WebSocket connected, joining session', code);
