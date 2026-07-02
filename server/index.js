@@ -8,16 +8,21 @@ const path = require('path');
 const fs = require('fs');
 const helmet = require('helmet');
 
+// --- Configuration ---
+const PORT = process.env.PORT || 3000;
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://localhost', 'http://localhost:3000'];
+
 // --- Setup ---
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: 'http://localhost',
+    origin: ALLOWED_ORIGINS,
     methods: ['GET', 'POST']
   }
 });
-
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -27,11 +32,11 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'"],
       mediaSrc: ["'self'", "blob:"],
       imgSrc: ["'self'", "data:"],
-      connectSrc: ["'self'", "ws://localhost:*"]
+      connectSrc: ["'self'", "ws:", "wss:"]
     }
   }
 }));
-app.use(cors({ origin: 'http://localhost' }));
+app.use(cors({ origin: ALLOWED_ORIGINS }));
 app.use(express.json({ limit: '1mb' }));
 // Serve the web player
 app.use('/player', express.static(path.join(__dirname, '..', 'web-player')));
@@ -450,7 +455,6 @@ io.on('connection', (socket) => {
 });
 
 // --- Start server ---
-const PORT = 3000;
 server.listen(PORT, () => {
-  console.log(`Peak-Abu server running on http://localhost:${PORT}`);
+  console.log(`Peak-Abu server running on port ${PORT}`);
 });
