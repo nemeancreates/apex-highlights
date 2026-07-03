@@ -121,7 +121,15 @@ function pruneOldChunks() {
 
   while (files.length > maxChunks) {
     const oldest = files.shift();
-    fs.unlinkSync(path.join(BUFFER_DIR, oldest.name));
+    try {
+      fs.unlinkSync(path.join(BUFFER_DIR, oldest.name));
+    } catch (err) {
+      if (err.code === 'EBUSY' || err.code === 'EPERM') {
+        console.log('Skipping locked chunk:', oldest.name);
+      } else {
+        console.log('Prune error:', err.message);
+      }
+    }
   }
 }
 
