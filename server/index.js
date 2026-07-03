@@ -118,6 +118,63 @@ function reencodeVideo(inputPath, outputPath) {
 }
 
 
+
+// ================================
+// SECURITY: Content-type verification
+// ================================
+
+// MP4 magic bytes: ftyp box appears at byte 4-7
+// Common MP4 signatures
+const MP4_SIGNATURES = [
+  Buffer.from([0x66, 0x74, 0x79, 0x70]), // ftyp
+  Buffer.from([0x6D, 0x6F, 0x6F, 0x76]), // moov
+  Buffer.from([0x66, 0x72, 0x65, 0x65]), // free
+  Buffer.from([0x6D, 0x64, 0x61, 0x74]), // mdat
+];
+
+function verifyMP4(filePath) {
+  try {
+    const fd = require('fs').openSync(filePath, 'r');
+    const buf = Buffer.alloc(12);
+    require('fs').readSync(fd, buf, 0, 12, 0);
+    require('fs').closeSync(fd);
+    // MP4: bytes 4-7 contain a known box type
+    const boxType = buf.slice(4, 8);
+    return MP4_SIGNATURES.some(sig => sig.equals(boxType));
+  } catch(e) {
+    return false;
+  }
+}
+
+function verifyJSON(filePath) {
+  try {
+    const content = require('fs').readFileSync(filePath, 'utf8');
+    const parsed = JSON.parse(content);
+    // Validate expected metadata structure
+    if (typeof parsed !== 'object' || parsed === null) return false;
+    if (parsed.version === undefined) return false;
+    if (typeof parsed.saveTimeUTC !== 'number') return false;
+    if (typeof parsed.startTimeUTC !== 'number') return false;
+    // Sanity check timestamps (must be plausible Unix ms — after 2020, before 2100)
+    const MIN_TS = 1577836800000; // 2020-01-01
+    const MAX_TS = 4102444800000; // 2100-01-01
+    if (parsed.saveTimeUTC < MIN_TS || parsed.saveTimeUTC > MAX_TS) return false;
+    if (parsed.startTimeUTC < MIN_TS || parsed.startTimeUTC > MAX_TS) return false;
+    return true;
+  } catch(e) {
+    return false;
+  }
+}
+
+// ================================
+// SECURITY: Generic error responses
+// ================================
+
+// Never leak internal paths, stack traces, or implementation details
+function safeError(res, status, message) {
+  res.status(status).json({ error: message });
+}
+
 // ================================
 // SERVER-SIDE COMPOSITING
 // ================================
@@ -400,7 +457,7 @@ app.post('/sessions', (req, res) => {
   }
 
   if (sessions.size >= MAX_SESSIONS) {
-    return res.status(503).json({ error: 'Server is at capacity. Try again later.' });
+    return safeError(res, 503, 'Server is at capacity. Try again later.');
   }
 
   let code = generateCode();
@@ -464,7 +521,7 @@ app.post('/sessions/:code/upload', (req, res) => {
 
   const MAX_UPLOADS_PER_SESSION = 50;
   if (session.uploads.length >= MAX_UPLOADS_PER_SESSION) {
-    return res.status(400).json({ error: 'Session upload limit reached' });
+    return safeError(res, 400, 'Upload limit reached for this session.');
   }
 
   upload.fields([
@@ -474,22 +531,38 @@ app.post('/sessions/:code/upload', (req, res) => {
     if (err) {
       if (err instanceof multer.MulterError) {
         if (err.code === 'LIMIT_FILE_SIZE') {
-          return res.status(413).json({ error: 'File too large. Maximum 500MB.' });
+          return safeError(res, 413, 'File too large. Maximum 500MB.');
         }
-        return res.status(400).json({ error: 'Upload error: ' + err.message });
+        return safeError(res, 400, 'Upload failed. Check file type and size.');
       }
-      return res.status(400).json({ error: err.message });
+      return safeError(res, 400, 'Upload failed.');
     }
 
     const videoFile = req.files && req.files.video && req.files.video[0];
     if (!videoFile) {
-      return res.status(400).json({ error: 'No video file provided' });
+      return safeError(res, 400, 'No video file provided.');
     }
 
     const resolvedPath = path.resolve(videoFile.path);
     if (!resolvedPath.startsWith(path.resolve(UPLOADS_DIR))) {
       fs.unlinkSync(resolvedPath);
-      return res.status(400).json({ error: 'Invalid upload path' });
+      return safeError(res, 400, 'Invalid upload');
+    }
+
+    // SECURITY: Verify actual file bytes match declared type
+    if (!verifyMP4(videoFile.path)) {
+      fs.unlinkSync(videoFile.path);
+      return safeError(res, 400, 'Invalid file content. File must be a valid MP4.');
+    }
+
+    // SECURITY: Verify metadata JSON structure if provided
+    if (req.files.metadata) {
+      const metaFile = req.files.metadata[0];
+      if (!verifyJSON(metaFile.path)) {
+        fs.unlinkSync(videoFile.path);
+        fs.unlinkSync(metaFile.path);
+        return safeError(res, 400, 'Invalid metadata format.');
+      }
     }
 
     // Generate thumbnail + re-encode async (fire and forget — don't block response)
