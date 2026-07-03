@@ -6,6 +6,7 @@ const os = require('os');
 const NTPClient = require('ntp-time').Client;
 const FormData = require('form-data');
 const http = require('http');
+const { PassThrough } = require('stream');
 const https = require('https');
 
 function getFFmpegPath() {
@@ -328,6 +329,7 @@ function uploadHighlight(videoPath, metadataPath) {
   }
 
   console.log(`Uploading highlight to session ${currentSession.code}...`);
+  mainWindow.webContents.send('upload-progress', 0);
 
   const form = new FormData();
   form.append('video', fs.createReadStream(videoPath));
@@ -336,42 +338,62 @@ function uploadHighlight(videoPath, metadataPath) {
     form.append('metadata', fs.createReadStream(metadataPath));
   }
 
-  const options = {
-    hostname: 'peakabu.app',
-    port: 443,
-    path: `/sessions/${currentSession.code}/upload`,
-    method: 'POST',
-    headers: {
-      ...form.getHeaders(),
-      'x-username': currentSession.username
-    }
-  };
+  // Get total form size for progress calculation
+  form.getLength((err, totalBytes) => {
+    if (err || !totalBytes) totalBytes = 0;
 
-  const req = https.request(options, (res) => {
-    let body = '';
-    res.on('data', chunk => body += chunk);
-    res.on('end', () => {
-      try {
-        const result = JSON.parse(body);
-        if (res.statusCode === 201) {
-          console.log('Upload successful:', result.uploadId);
-          mainWindow.webContents.send('upload-complete', result.uploadId);
-        } else {
-          console.log('Upload failed:', result.error);
-          mainWindow.webContents.send('upload-error', result.error);
+    const options = {
+      hostname: 'peakabu.app',
+      port: 443,
+      path: `/sessions/${currentSession.code}/upload`,
+      method: 'POST',
+      headers: {
+        ...form.getHeaders(),
+        'x-username': currentSession.username
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', chunk => body += chunk);
+      res.on('end', () => {
+        try {
+          const result = JSON.parse(body);
+          if (res.statusCode === 201) {
+            console.log('Upload successful:', result.uploadId);
+            mainWindow.webContents.send('upload-progress', 100);
+            mainWindow.webContents.send('upload-complete', result.uploadId);
+          } else {
+            console.log('Upload failed:', result.error);
+            mainWindow.webContents.send('upload-progress', -1);
+            mainWindow.webContents.send('upload-error', result.error);
+          }
+        } catch (err) {
+          console.log('Upload response parse error:', err.message);
+          mainWindow.webContents.send('upload-progress', -1);
         }
-      } catch (err) {
-        console.log('Upload response parse error:', err.message);
+      });
+    });
+
+    req.on('error', (err) => {
+      console.log('Upload connection error:', err.message);
+      mainWindow.webContents.send('upload-progress', -1);
+      mainWindow.webContents.send('upload-error', 'Could not reach server');
+    });
+
+    // Track bytes sent through a PassThrough stream
+    let bytesSent = 0;
+    const tracker = new PassThrough();
+    tracker.on('data', (chunk) => {
+      bytesSent += chunk.length;
+      if (totalBytes > 0) {
+        const pct = Math.min(99, Math.round((bytesSent / totalBytes) * 100));
+        mainWindow.webContents.send('upload-progress', pct);
       }
     });
-  });
 
-  req.on('error', (err) => {
-    console.log('Upload connection error:', err.message);
-    mainWindow.webContents.send('upload-error', 'Could not reach server');
+    form.pipe(tracker).pipe(req);
   });
-
-  form.pipe(req);
 }
 
 app.commandLine.appendSwitch('enable-features', 'WebRtcAllowInputVolumeAdjustment');

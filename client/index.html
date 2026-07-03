@@ -206,6 +206,36 @@
 
       #sessionPanel-connected { display: none; }
 
+      /* Upload progress bar */
+      .upload-progress-wrap {
+        margin: 8px 0;
+        display: none;
+      }
+      .upload-progress-label {
+        font-size: 12px;
+        color: #aaa;
+        margin-bottom: 4px;
+        display: flex;
+        justify-content: space-between;
+      }
+      .upload-progress-label span { color: #e94560; }
+      .upload-progress-track {
+        width: 100%;
+        height: 8px;
+        background: #0f3460;
+        border-radius: 4px;
+        overflow: hidden;
+      }
+      .upload-progress-fill {
+        height: 100%;
+        width: 0%;
+        background: #e94560;
+        border-radius: 4px;
+        transition: width 0.3s ease;
+      }
+      .upload-progress-fill.success { background: #44ff88; }
+      .upload-progress-fill.error { background: #ff4444; }
+
       /* Modal styles */
       .modal {
         display: none;
@@ -381,6 +411,18 @@
     <div class="section">
       <div class="status idle" id="statusText">● Idle</div>
       <button id="saveBtn" onclick="saveHighlight()" disabled>💾 Save Highlight (or press <span id="saveBtnHotkey">F9</span>)</button>
+    </div>
+
+    <div class="section">
+      <div class="upload-progress-wrap" id="uploadProgressWrap">
+        <div class="upload-progress-label">
+          <span>Uploading clip...</span>
+          <span id="uploadPct">0%</span>
+        </div>
+        <div class="upload-progress-track">
+          <div class="upload-progress-fill" id="uploadProgressFill"></div>
+        </div>
+      </div>
     </div>
 
     <div class="section">
@@ -833,6 +875,35 @@
 
       ipcRenderer.on('highlight-error', (event, message) => {
         addClipItem('❌ ' + message, 'error');
+      });
+
+      ipcRenderer.on('upload-progress', (event, pct) => {
+        const wrap = document.getElementById('uploadProgressWrap');
+        const fill = document.getElementById('uploadProgressFill');
+        const label = document.getElementById('uploadPct');
+
+        if (pct === 0) {
+          // Starting
+          wrap.style.display = 'block';
+          fill.className = 'upload-progress-fill';
+          fill.style.width = '0%';
+          label.textContent = '0%';
+        } else if (pct === 100) {
+          // Done
+          fill.style.width = '100%';
+          fill.classList.add('success');
+          label.textContent = '100%';
+          setTimeout(() => { wrap.style.display = 'none'; }, 2000);
+        } else if (pct === -1) {
+          // Error
+          fill.classList.add('error');
+          label.textContent = 'Failed';
+          setTimeout(() => { wrap.style.display = 'none'; }, 3000);
+        } else {
+          // In progress
+          fill.style.width = pct + '%';
+          label.textContent = pct + '%';
+        }
       });
 
       ipcRenderer.on('upload-complete', (event, uploadId) => {
