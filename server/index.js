@@ -10,6 +10,33 @@ const { spawn } = require('child_process');
 const os = require('os');
 const helmet = require('helmet');
 
+
+// ================================
+// STRUCTURED LOGGING
+// ================================
+const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
+const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
+
+function log(level, event, data = {}) {
+  if (LOG_LEVELS[level] < LOG_LEVELS[LOG_LEVEL]) return;
+
+  // Never log sensitive fields
+  const REDACTED_KEYS = ['password', 'token', 'secret', 'key', 'auth', 'cookie'];
+  const safe = Object.fromEntries(
+    Object.entries(data).filter(([k]) => !REDACTED_KEYS.some(r => k.toLowerCase().includes(r)))
+  );
+
+  const entry = {
+    ts: new Date().toISOString(),
+    level,
+    event,
+    ...safe
+  };
+
+  // Output as JSON — one line per event, easy to grep/parse
+  console.log(JSON.stringify(entry));
+}
+
 // --- Configuration ---
 const PORT = process.env.PORT || 3000;
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
@@ -68,16 +95,16 @@ function generateThumbnail(videoPath, thumbnailPath) {
 
     ffmpeg.on('close', (code) => {
       if (code === 0) {
-        console.log(`Thumbnail generated: ${path.basename(thumbnailPath)}`);
+        log("info", "thumbnail_generated", { file: path.basename(thumbnailPath) });
         resolve(true);
       } else {
-        console.log(`Thumbnail generation failed for ${path.basename(videoPath)}`);
+        log("warn", "thumbnail_failed", { file: path.basename(videoPath) });
         resolve(false);
       }
     });
 
     ffmpeg.on('error', () => {
-      console.log('FFmpeg not available on server for thumbnail generation');
+      log("warn", "ffmpeg_unavailable", { context: "thumbnail" });
       resolve(false);
     });
   });
@@ -102,16 +129,16 @@ function reencodeVideo(inputPath, outputPath) {
 
     ffmpeg.on('close', (code) => {
       if (code === 0) {
-        console.log(`Re-encode complete: ${path.basename(outputPath)}`);
+        log("info", "reencode_complete", { file: path.basename(outputPath) });
         resolve(true);
       } else {
-        console.log(`Re-encode failed for ${path.basename(inputPath)}, keeping original`);
+        log("warn", "reencode_failed", { file: path.basename(inputPath) });
         resolve(false);
       }
     });
 
     ffmpeg.on('error', () => {
-      console.log('FFmpeg re-encode error');
+      log("error", "ffmpeg_error", { context: "reencode" });
       resolve(false);
     });
   });
@@ -305,10 +332,10 @@ async function runComposite(session, code, outputPath, jobId) {
       if (exitCode === 0 && fs.existsSync(outputPath)) {
         job.status = 'done';
         job.fileSize = fs.statSync(outputPath).size;
-        console.log(`Composite done: ${jobId} (${(job.fileSize/1024/1024).toFixed(1)}MB)`);
+        log("info", "composite_done", { jobId, sizeMB: (job.fileSize/1024/1024).toFixed(1) });
       } else {
         job.status = 'failed';
-        console.log(`Composite failed for job ${jobId}`);
+        log("warn", "composite_failed", { jobId });
       }
       resolve();
     });
@@ -473,7 +500,7 @@ app.post('/sessions', (req, res) => {
   };
 
   sessions.set(code, session);
-  console.log(`Session created: ${code} by ${username}`);
+  log("info", "session_created", { code, createdBy: username });
 
   res.status(201).json({ sessionCode: code, sessionId: session.id });
 });
@@ -552,6 +579,7 @@ app.post('/sessions/:code/upload', (req, res) => {
     // SECURITY: Verify actual file bytes match declared type
     if (!verifyMP4(videoFile.path)) {
       fs.unlinkSync(videoFile.path);
+      log('warn', 'upload_rejected', { reason: 'invalid_mp4_bytes', session: code, username: uploaderName });
       return safeError(res, 400, 'Invalid file content. File must be a valid MP4.');
     }
 
@@ -561,6 +589,7 @@ app.post('/sessions/:code/upload', (req, res) => {
       if (!verifyJSON(metaFile.path)) {
         fs.unlinkSync(videoFile.path);
         fs.unlinkSync(metaFile.path);
+        log('warn', 'upload_rejected', { reason: 'invalid_metadata', session: code, username: uploaderName });
         return safeError(res, 400, 'Invalid metadata format.');
       }
     }
@@ -586,7 +615,7 @@ app.post('/sessions/:code/upload', (req, res) => {
           const origSize = videoFile.size;
           const newSize = require('fs').statSync(reencPath).size;
           const saving = (((origSize - newSize) / origSize) * 100).toFixed(1);
-          console.log(`AV1 re-encode: ${(origSize/1024/1024).toFixed(1)}MB -> ${(newSize/1024/1024).toFixed(1)}MB (${saving}% smaller)`);
+          log("info", "reencode_savings", { origMB: (origSize/1024/1024).toFixed(1), newMB: (newSize/1024/1024).toFixed(1), savedPct: saving });
 
           // Swap: replace original with re-encoded, delete original
           require('fs').unlinkSync(videoFile.path);
@@ -612,7 +641,7 @@ app.post('/sessions/:code/upload', (req, res) => {
 
     session.uploads.push(uploadRecord);
 
-    console.log(`Upload received: ${uploaderName} -> session ${code} (${(videoFile.size / 1024 / 1024).toFixed(1)}MB)`);
+    log("info", "upload_received", { session: code, username: uploaderName, sizeMB: (videoFile.size / 1024 / 1024).toFixed(1) });
 
     io.to(code).emit('upload-received', {
       username: uploaderName,
@@ -695,7 +724,7 @@ app.get('/composite/:jobId/download', (req, res) => {
 
 // --- WebSocket ---
 io.on('connection', (socket) => {
-  console.log(`Client connected: ${socket.id}`);
+  log("debug", "client_connected", { socketId: socket.id });
 
   socket.on('join-session', ({ code, username }) => {
     if (!checkSocketRate(socket.id)) {
@@ -729,7 +758,7 @@ io.on('connection', (socket) => {
     socket.sessionCode = sessionCode;
     socket.username = cleanUsername;
 
-    console.log(`${cleanUsername} joined session ${sessionCode}`);
+    log("info", "member_joined", { session: sessionCode, username: cleanUsername });
 
     socket.emit('session-joined', {
       code: sessionCode,
@@ -758,7 +787,7 @@ io.on('connection', (socket) => {
       isRecording
     });
 
-    console.log(`${socket.username} ${isRecording ? 'started' : 'stopped'} recording in ${sessionCode}`);
+    log("info", "recording_status", { session: sessionCode, username: socket.username, isRecording });
   });
 
   socket.on('broadcast-save-highlight', () => {
@@ -769,7 +798,7 @@ io.on('connection', (socket) => {
     if (!session) return;
 
     const coordinated_timestamp = Date.now();
-    console.log(`${socket.username} triggered save-highlight in ${sessionCode} (timestamp: ${coordinated_timestamp})`);
+    log("info", "highlight_triggered", { session: sessionCode, username: socket.username, ts: coordinated_timestamp });
 
     io.to(sessionCode).emit('coordinated-save-highlight', {
       username: socket.username,
@@ -786,7 +815,7 @@ io.on('connection', (socket) => {
     if (!session) return;
 
     session.members = session.members.filter(m => m.socketId !== socket.id);
-    console.log(`${socket.username} left session ${sessionCode} (${session.members.length} remaining)`);
+    log("info", "member_left", { session: sessionCode, username: socket.username, remaining: session.members.length });
 
     socket.to(sessionCode).emit('member-left', { username: socket.username });
 
@@ -795,7 +824,7 @@ io.on('connection', (socket) => {
         const current = sessions.get(sessionCode);
         if (current && current.members.length === 0) {
           sessions.delete(sessionCode);
-          console.log(`Session ${sessionCode} deleted (empty)`);
+          log("info", "session_deleted", { session: sessionCode });
         }
       }, 5 * 60 * 1000);
     }
@@ -803,5 +832,5 @@ io.on('connection', (socket) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Peak-Abu server running on port ${PORT}`);
+  log("info", "server_start", { port: PORT });
 });
