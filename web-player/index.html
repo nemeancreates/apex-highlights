@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Peak-Abu — Multi-POV Player</title>
+  <title>Peak-Abu – Multi-POV Player</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -15,7 +15,6 @@
       flex-direction: column;
     }
 
-    /* ========== HEADER ========== */
     .header {
       display: flex;
       justify-content: space-between;
@@ -27,16 +26,9 @@
       height: 50px;
     }
 
-    .header h1 {
-      color: #e94560;
-      font-size: 20px;
-    }
+    .header h1 { color: #e94560; font-size: 20px; }
 
-    .join-bar {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
+    .join-bar { display: flex; gap: 8px; align-items: center; }
 
     .join-bar input {
       padding: 6px 12px;
@@ -51,11 +43,7 @@
       text-align: center;
     }
 
-    .join-bar input::placeholder {
-      color: #556;
-      text-transform: none;
-      letter-spacing: normal;
-    }
+    .join-bar input::placeholder { color: #556; text-transform: none; letter-spacing: normal; }
 
     .btn {
       padding: 6px 16px;
@@ -66,21 +54,14 @@
       font-size: 13px;
       cursor: pointer;
     }
-
     .btn:hover { background: #c73652; }
     .btn:disabled { background: #555; cursor: not-allowed; }
     .btn-small { padding: 4px 10px; font-size: 12px; }
     .btn-secondary { background: #0f3460; border: 1px solid #e94560; }
     .btn-secondary:hover { background: #1a4a8a; }
 
-    /* ========== MAIN LAYOUT ========== */
-    .main-layout {
-      display: flex;
-      flex: 1;
-      min-height: 0;
-    }
+    .main-layout { display: flex; flex: 1; min-height: 0; }
 
-    /* ========== SECTION 1: VIDEO AREA (left) ========== */
     .video-area {
       flex: 1;
       display: flex;
@@ -89,7 +70,6 @@
       border-right: 2px solid #1a1a2e;
     }
 
-    /* Grid mode: equal sized videos */
     .video-grid {
       flex: 1;
       display: grid;
@@ -103,7 +83,6 @@
     .video-grid::-webkit-scrollbar-track { background: #111; }
     .video-grid::-webkit-scrollbar-thumb { background: #e94560; border-radius: 3px; }
 
-    /* Grid column layouts based on count */
     .grid-1 { grid-template-columns: 1fr; }
     .grid-2 { grid-template-columns: 1fr 1fr; }
     .grid-3, .grid-4 { grid-template-columns: 1fr 1fr; }
@@ -111,26 +90,10 @@
     .grid-7, .grid-8, .grid-9 { grid-template-columns: 1fr 1fr 1fr; }
     .grid-10plus { grid-template-columns: 1fr 1fr 1fr 1fr; }
 
-    /* Focused mode: one big + vertical list */
-    .video-grid.focused-mode {
-      display: flex;
-      flex-direction: column;
-      gap: 0;
-      padding: 0;
-    }
+    .video-grid.focused-mode { display: flex; flex-direction: column; gap: 0; padding: 0; }
 
-    .focused-main {
-      flex: 1;
-      min-height: 60%;
-      position: relative;
-      background: #000;
-    }
-
-    .focused-main video {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-    }
+    .focused-main { flex: 1; min-height: 60%; position: relative; background: #000; }
+    .focused-main video { width: 100%; height: 100%; object-fit: contain; }
 
     .focused-sidebar {
       height: 25%;
@@ -147,13 +110,8 @@
     .focused-sidebar::-webkit-scrollbar-track { background: #111; }
     .focused-sidebar::-webkit-scrollbar-thumb { background: #e94560; border-radius: 3px; }
 
-    .focused-sidebar .pov-container {
-      min-width: 180px;
-      height: 100%;
-      cursor: pointer;
-    }
+    .focused-sidebar .pov-container { min-width: 180px; height: 100%; cursor: pointer; }
 
-    /* POV container */
     .pov-container {
       position: relative;
       background: #111;
@@ -163,7 +121,6 @@
       border: 2px solid transparent;
       transition: border-color 0.2s;
     }
-
     .pov-container:hover { border-color: #e94560; }
     .pov-container.active { border-color: #e94560; }
 
@@ -189,7 +146,45 @@
       pointer-events: none;
     }
 
-    /* Playback controls bar */
+    /* Lazy-load placeholder */
+    .pov-placeholder {
+      width: 100%;
+      height: 100%;
+      min-height: 120px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #0a0a1a;
+      color: #555;
+      font-size: 13px;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    .pov-placeholder .play-icon {
+      font-size: 32px;
+      color: #e94560;
+      opacity: 0.6;
+    }
+
+    .pov-placeholder .load-hint {
+      font-size: 11px;
+      color: #444;
+    }
+
+    .pov-loading {
+      width: 100%;
+      height: 100%;
+      min-height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0a0a1a;
+      color: #e94560;
+      font-size: 13px;
+    }
+
     .playback-controls {
       display: flex;
       align-items: center;
@@ -217,14 +212,8 @@
       pointer-events: none;
     }
 
-    .time-display {
-      font-size: 12px;
-      color: #aaa;
-      min-width: 90px;
-      text-align: center;
-    }
+    .time-display { font-size: 12px; color: #aaa; min-width: 90px; text-align: center; }
 
-    /* ========== RIGHT PANEL (sections 2 & 3) ========== */
     .right-panel {
       width: 240px;
       flex-shrink: 0;
@@ -234,9 +223,7 @@
       border-left: 2px solid #1a1a2e;
     }
 
-    .panel-section {
-      padding: 10px;
-    }
+    .panel-section { padding: 10px; }
 
     .panel-section h3 {
       color: #e94560;
@@ -246,13 +233,7 @@
       letter-spacing: 1px;
     }
 
-    /* Section 2: Member list */
-    .members-section {
-      flex: 1;
-      overflow-y: auto;
-      border-bottom: 1px solid #2a2a4e;
-    }
-
+    .members-section { flex: 1; overflow-y: auto; border-bottom: 1px solid #2a2a4e; }
     .members-section::-webkit-scrollbar { width: 5px; }
     .members-section::-webkit-scrollbar-track { background: #111; }
     .members-section::-webkit-scrollbar-thumb { background: #e94560; border-radius: 3px; }
@@ -267,39 +248,28 @@
       transition: background 0.15s;
       font-size: 13px;
     }
-
     .member-row:hover { background: #1a1a3e; }
     .member-row.active { background: #e94560; color: white; }
 
-    .member-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #44ff88;
-      flex-shrink: 0;
+    .member-dot { width: 8px; height: 8px; border-radius: 50%; background: #44ff88; flex-shrink: 0; }
+    .member-dot.unloaded { background: #555; }
+
+    .member-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .member-badge {
+      font-size: 10px;
+      color: #888;
+      background: #1a1a3e;
+      padding: 2px 5px;
+      border-radius: 3px;
     }
 
-    .member-name {
-      flex: 1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    /* Section 3: Audio controls */
-    .audio-section {
-      max-height: 220px;
-      overflow-y: auto;
-      border-top: 1px solid #2a2a4e;
-    }
-
+    .audio-section { max-height: 220px; overflow-y: auto; border-top: 1px solid #2a2a4e; }
     .audio-section::-webkit-scrollbar { width: 5px; }
     .audio-section::-webkit-scrollbar-track { background: #111; }
     .audio-section::-webkit-scrollbar-thumb { background: #e94560; border-radius: 3px; }
 
-    .audio-row {
-      padding: 4px 8px;
-    }
+    .audio-row { padding: 4px 8px; }
 
     .audio-row-header {
       display: flex;
@@ -309,22 +279,12 @@
       padding: 5px 0;
       font-size: 13px;
     }
-
     .audio-row-header:hover { color: #e94560; }
 
-    .audio-arrow {
-      font-size: 10px;
-      transition: transform 0.2s;
-      color: #888;
-    }
-
+    .audio-arrow { font-size: 10px; transition: transform 0.2s; color: #888; }
     .audio-arrow.open { transform: rotate(90deg); }
 
-    .audio-dropdown {
-      display: none;
-      padding: 6px 0 6px 8px;
-    }
-
+    .audio-dropdown { display: none; padding: 6px 0 6px 8px; }
     .audio-dropdown.open { display: block; }
 
     .audio-control-row {
@@ -335,17 +295,8 @@
       color: #aaa;
       margin-bottom: 4px;
     }
-
-    .audio-control-row label {
-      width: 50px;
-      flex-shrink: 0;
-    }
-
-    .audio-control-row input[type="range"] {
-      flex: 1;
-      accent-color: #e94560;
-      height: 4px;
-    }
+    .audio-control-row label { width: 50px; flex-shrink: 0; }
+    .audio-control-row input[type="range"] { flex: 1; accent-color: #e94560; height: 4px; }
 
     .mute-btn {
       background: none;
@@ -356,11 +307,9 @@
       font-size: 11px;
       cursor: pointer;
     }
-
     .mute-btn:hover { border-color: #e94560; color: #e94560; }
     .mute-btn.muted { background: #e94560; color: white; border-color: #e94560; }
 
-    /* ========== SECTION 4: EXPORT BAR (bottom) ========== */
     .export-bar {
       height: 140px;
       flex-shrink: 0;
@@ -378,17 +327,9 @@
       border-bottom: 1px solid #2a2a4e;
     }
 
-    .export-header h3 {
-      color: #e94560;
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
+    .export-header h3 { color: #e94560; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
 
-    .export-actions {
-      display: flex;
-      gap: 8px;
-    }
+    .export-actions { display: flex; gap: 8px; }
 
     .export-timeline {
       flex: 1;
@@ -414,28 +355,60 @@
       align-items: center;
       justify-content: center;
       font-size: 11px;
-      cursor: grab;
+      cursor: pointer;
       flex-shrink: 0;
       transition: border-color 0.15s;
       padding: 4px 8px;
       text-align: center;
     }
-
     .export-clip:hover { border-color: #e94560; }
     .export-clip.selected { border-color: #e94560; background: #1a3a6e; }
+    .export-clip-name { color: #e94560; font-weight: bold; margin-bottom: 2px; }
+    .export-clip-duration { color: #888; font-size: 10px; }
 
-    .export-clip-name {
-      color: #e94560;
-      font-weight: bold;
-      margin-bottom: 2px;
+    .composite-section {
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-top: 1px solid #2a2a4e;
+      flex-shrink: 0;
     }
 
-    .export-clip-duration {
+    .composite-status {
+      font-size: 12px;
       color: #888;
-      font-size: 10px;
+      flex: 1;
     }
 
-    /* ========== EMPTY STATE ========== */
+    .composite-status.ready { color: #44ff88; }
+    .composite-status.processing { color: #e9a820; }
+    .composite-status.failed { color: #ff4444; }
+
+    .progress-bar {
+      width: 140px;
+      height: 6px;
+      background: #333;
+      border-radius: 3px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: #e9a820;
+      border-radius: 3px;
+      width: 0%;
+      transition: width 0.3s;
+      animation: indeterminate 1.5s infinite;
+    }
+
+    @keyframes indeterminate {
+      0% { width: 20%; margin-left: 0%; }
+      50% { width: 40%; margin-left: 40%; }
+      100% { width: 20%; margin-left: 80%; }
+    }
+
     .empty-state {
       display: flex;
       flex-direction: column;
@@ -446,13 +419,11 @@
       font-size: 16px;
       gap: 10px;
     }
-
     .empty-state .monkey { font-size: 48px; }
   </style>
 </head>
 <body>
 
-  <!-- HEADER -->
   <div class="header">
     <h1>🙈 Peak-Abu Player</h1>
     <div class="join-bar">
@@ -461,10 +432,8 @@
     </div>
   </div>
 
-  <!-- MAIN AREA -->
   <div class="main-layout">
 
-    <!-- SECTION 1: VIDEO AREA -->
     <div class="video-area">
       <div class="video-grid" id="videoGrid">
         <div class="empty-state">
@@ -473,7 +442,6 @@
         </div>
       </div>
 
-      <!-- Playback controls -->
       <div class="playback-controls" id="playbackControls" style="display: none;">
         <button class="btn btn-small" id="playPauseBtn" onclick="togglePlayPause()">▶</button>
         <div class="timeline" id="timeline" onclick="seekTo(event)">
@@ -483,16 +451,11 @@
       </div>
     </div>
 
-    <!-- RIGHT PANEL -->
     <div class="right-panel" id="rightPanel" style="display: none;">
-
-      <!-- SECTION 2: Member list -->
       <div class="members-section panel-section">
         <h3>Players</h3>
         <div id="memberList"></div>
       </div>
-
-      <!-- SECTION 3: Audio controls -->
       <div class="audio-section panel-section">
         <h3>Audio</h3>
         <div id="audioControls"></div>
@@ -500,17 +463,23 @@
     </div>
   </div>
 
-  <!-- SECTION 4: EXPORT BAR -->
   <div class="export-bar" id="exportBar" style="display: none;">
     <div class="export-header">
       <h3>Export Studio</h3>
       <div class="export-actions">
         <button class="btn btn-small btn-secondary" onclick="selectAllClips()">Select All</button>
         <button class="btn btn-small btn-secondary" onclick="deselectAllClips()">Deselect All</button>
-        <button class="btn btn-small" onclick="downloadSelected()">⬇ Download Selected</button>
+        <button class="btn btn-small btn-secondary" onclick="downloadSelected()">⬇ Download Individual</button>
+        <button class="btn btn-small" id="compositeBtn" onclick="startComposite()" disabled>🎬 Export Combined View</button>
       </div>
     </div>
     <div class="export-timeline" id="exportTimeline"></div>
+    <div class="composite-section" id="compositeSection" style="display:none;">
+      <div class="composite-status" id="compositeStatus"></div>
+      <div class="progress-bar" id="compositeProgressBar" style="display:none;">
+        <div class="progress-fill" id="compositeFill"></div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -518,8 +487,12 @@
     let isPlaying = false;
     let masterDuration = 0;
     let animFrameId = null;
-    let focusedIndex = -1; // -1 = grid mode, 0+ = focused on that index
+    let focusedIndex = -1;
     let selectedExportClips = new Set();
+    let expectedClips = 0;
+    let currentSessionCode = null;
+    let compositeJobId = null;
+    let compositePollInterval = null;
 
     // ========================
     // SESSION LOADING
@@ -527,18 +500,11 @@
 
     async function loadSession() {
       const code = document.getElementById('sessionInput').value.trim().toUpperCase();
-      if (!code || code.length < 4) {
-        alert('Enter a valid session code');
-        return;
-      }
+      if (!code || code.length < 4) { alert('Enter a valid session code'); return; }
 
       try {
         const sessionRes = await fetch(`/sessions/${code}`);
-        if (!sessionRes.ok) {
-          alert('Session not found');
-          return;
-        }
-        const session = await sessionRes.json();
+        if (!sessionRes.ok) { alert('Session not found'); return; }
 
         const uploadsRes = await fetch(`/sessions/${code}/uploads`);
         const uploadsData = await uploadsRes.json();
@@ -550,7 +516,10 @@
 
         videos = [];
         focusedIndex = -1;
+        currentSessionCode = code;
+        expectedClips = session.members ? session.members.length : 0;
 
+        // Build video entries WITHOUT setting src yet (lazy load)
         for (const upload of uploadsData.uploads) {
           let metadata = null;
           if (upload.metadataFile) {
@@ -562,9 +531,9 @@
             }
           }
 
+          // Create video element but DO NOT set src yet
           const video = document.createElement('video');
-          video.src = `/media/${code}/${upload.videoFile}`;
-          video.preload = 'auto';
+          video.preload = 'none';
           video.muted = true;
           video.playsInline = true;
 
@@ -574,49 +543,101 @@
             username: upload.username,
             uploadId: upload.id,
             videoFile: upload.videoFile,
+            videoSrc: `/media/${code}/${upload.videoFile}`,
+            thumbnailSrc: upload.thumbnailFile ? `/media/${code}/${upload.thumbnailFile}` : null,
             offset: 0,
             volume: 80,
-            isMuted: true
+            isMuted: true,
+            loaded: false   // track whether src has been set
           });
         }
 
-        // Unmute first by default
+        // Always load the first POV immediately
         if (videos.length > 0) {
-          videos[0].isMuted = false;
-          videos[0].element.muted = false;
-          videos[0].element.volume = 0.8;
+          await loadPOV(0, true);
         }
 
         calculateOffsets();
 
-        // Wait for metadata to load
-        await Promise.all(videos.map(v => new Promise((resolve) => {
-          if (v.element.readyState >= 1) resolve();
-          else {
-            v.element.addEventListener('loadedmetadata', resolve, { once: true });
-            v.element.addEventListener('error', resolve, { once: true });
-          }
-        })));
+        // Get duration from first loaded video
+        masterDuration = (videos[0]?.element.duration || 0) + (videos[0]?.offset || 0);
 
-        masterDuration = Math.max(...videos.map(v => (v.element.duration || 0) + v.offset));
-
-        // Build all UI sections
         renderVideoGrid();
         renderMemberList();
         renderAudioControls();
         renderExportTimeline();
+        updateCompositeButton();
 
-        // Show panels
         document.getElementById('playbackControls').style.display = 'flex';
         document.getElementById('rightPanel').style.display = 'flex';
         document.getElementById('exportBar').style.display = 'flex';
 
-        console.log(`Loaded ${videos.length} POVs for session ${code}`);
+        console.log(`Loaded session ${code} — ${videos.length} POVs (1 loaded, ${videos.length - 1} lazy)`);
 
       } catch (err) {
         alert('Error loading session: ' + err.message);
         console.error(err);
       }
+    }
+
+    // Load a single POV on demand
+    async function loadPOV(index, isFirst = false) {
+      const v = videos[index];
+      if (v.loaded) return; // already loaded
+
+      v.loaded = true;
+
+      // Show loading state in grid
+      const container = document.getElementById('pov-container-' + index);
+      if (container) {
+        const placeholder = container.querySelector('.pov-placeholder, .pov-loading');
+        if (placeholder) {
+          placeholder.className = 'pov-loading';
+          placeholder.textContent = 'Loading...';
+        }
+      }
+
+      // Set src and wait for metadata
+      v.element.src = v.videoSrc;
+      v.element.preload = 'auto';
+
+      await new Promise((resolve) => {
+        if (v.element.readyState >= 1) { resolve(); return; }
+        v.element.addEventListener('loadedmetadata', resolve, { once: true });
+        v.element.addEventListener('error', resolve, { once: true });
+      });
+
+      if (isFirst) {
+        // Unmute first POV by default
+        v.isMuted = false;
+        v.element.muted = false;
+        v.element.volume = v.volume / 100;
+      } else {
+        // Seek new POV to match current playback position
+        const masterTime = getCurrentMasterTime();
+        const adjustedTime = masterTime - v.offset;
+        if (adjustedTime > 0 && adjustedTime <= v.element.duration) {
+          v.element.currentTime = adjustedTime;
+        }
+        if (isPlaying) v.element.play().catch(() => {});
+      }
+
+      // Update master duration if this video is longer
+      const thisDuration = (v.element.duration || 0) + v.offset;
+      if (thisDuration > masterDuration) {
+        masterDuration = thisDuration;
+      }
+
+      // Re-render this specific container with the real video element
+      renderPOVContainer(index);
+      renderMemberList();
+      renderAudioControls();
+    }
+
+    function getCurrentMasterTime() {
+      const primary = videos.find(v => v.loaded);
+      if (!primary) return 0;
+      return (primary.element.currentTime || 0) + (primary.offset || 0);
     }
 
     function calculateOffsets() {
@@ -640,7 +661,7 @@
     }
 
     // ========================
-    // SECTION 1: VIDEO GRID
+    // VIDEO GRID
     // ========================
 
     function renderVideoGrid() {
@@ -648,50 +669,25 @@
       grid.innerHTML = '';
 
       if (focusedIndex >= 0) {
-        // FOCUSED MODE: one big + horizontal strip of others
         grid.className = 'video-grid focused-mode';
 
-        const mainContainer = document.createElement('div');
+        const mainContainer = buildPOVContainer(focusedIndex, true);
         mainContainer.className = 'focused-main';
-
-        const mainLabel = document.createElement('div');
-        mainLabel.className = 'pov-label';
-        mainLabel.textContent = videos[focusedIndex].username;
-
-        mainContainer.appendChild(mainLabel);
-        mainContainer.appendChild(videos[focusedIndex].element);
-
-        // Click main to go back to grid
         mainContainer.addEventListener('click', () => {
           focusedIndex = -1;
           renderVideoGrid();
           highlightActiveMember();
         });
-
         grid.appendChild(mainContainer);
 
-        // Sidebar of other videos
         if (videos.length > 1) {
           const sidebar = document.createElement('div');
           sidebar.className = 'focused-sidebar';
 
           videos.forEach((v, i) => {
             if (i === focusedIndex) return;
-
-            const container = document.createElement('div');
-            container.className = 'pov-container';
-
-            const label = document.createElement('div');
-            label.className = 'pov-label';
-            label.textContent = v.username;
-
-            container.appendChild(label);
-            container.appendChild(v.element);
-
-            container.addEventListener('click', () => {
-              focusOnVideo(i);
-            });
-
+            const container = buildPOVContainer(i, false);
+            container.addEventListener('click', () => focusOnVideo(i));
             sidebar.appendChild(container);
           });
 
@@ -699,40 +695,120 @@
         }
 
       } else {
-        // GRID MODE: equal sized
         const count = videos.length;
         let gridClass = 'grid-' + Math.min(count, 9);
         if (count >= 10) gridClass = 'grid-10plus';
         grid.className = 'video-grid ' + gridClass;
 
         videos.forEach((v, i) => {
-          const container = document.createElement('div');
-          container.className = 'pov-container';
-
-          const label = document.createElement('div');
-          label.className = 'pov-label';
-          label.textContent = v.username;
-
-          container.appendChild(label);
-          container.appendChild(v.element);
-
-          container.addEventListener('click', () => {
-            focusOnVideo(i);
-          });
-
+          const container = buildPOVContainer(i, false);
+          container.addEventListener('click', () => focusOnVideo(i));
           grid.appendChild(container);
         });
       }
     }
 
-    function focusOnVideo(index) {
+    function buildPOVContainer(index, isFocused) {
+      const v = videos[index];
+
+      const container = document.createElement('div');
+      container.className = 'pov-container' + (index === focusedIndex ? ' active' : '');
+      container.id = 'pov-container-' + index;
+
+      const label = document.createElement('div');
+      label.className = 'pov-label';
+      label.textContent = v.username;
+      container.appendChild(label);
+
+      if (v.loaded) {
+        // Already loaded — show real video
+        container.appendChild(v.element);
+      } else {
+        // Not loaded — show thumbnail placeholder
+        const placeholder = document.createElement('div');
+
+        if (v.thumbnailSrc) {
+          // Has thumbnail — show it with play overlay
+          placeholder.className = 'pov-placeholder';
+
+          const img = document.createElement('img');
+          img.src = v.thumbnailSrc;
+          img.alt = v.username;
+
+          const overlay = document.createElement('div');
+          overlay.className = 'thumb-overlay';
+
+          const icon = document.createElement('div');
+          icon.className = 'play-icon';
+          icon.textContent = '▶';
+
+          const hint = document.createElement('div');
+          hint.className = 'load-hint';
+          hint.textContent = 'Click to load';
+
+          overlay.appendChild(icon);
+          overlay.appendChild(hint);
+          placeholder.appendChild(img);
+          placeholder.appendChild(overlay);
+        } else {
+          // No thumbnail — fallback text placeholder
+          placeholder.className = 'pov-placeholder no-thumb';
+
+          const icon = document.createElement('div');
+          icon.className = 'play-icon';
+          icon.textContent = '▶';
+
+          const name = document.createElement('div');
+          name.textContent = v.username;
+
+          const hint = document.createElement('div');
+          hint.className = 'load-hint';
+          hint.textContent = 'Click to load';
+
+          placeholder.appendChild(icon);
+          placeholder.appendChild(name);
+          placeholder.appendChild(hint);
+        }
+
+        container.appendChild(placeholder);
+      }
+
+      return container;
+    }
+
+    // Re-render a single container after lazy load completes
+    function renderPOVContainer(index) {
+      const existing = document.getElementById('pov-container-' + index);
+      if (!existing) return;
+
+      const newContainer = buildPOVContainer(index, index === focusedIndex);
+
+      // Re-attach click handler
+      if (index === focusedIndex) {
+        newContainer.addEventListener('click', () => {
+          focusedIndex = -1;
+          renderVideoGrid();
+          highlightActiveMember();
+        });
+      } else {
+        newContainer.addEventListener('click', () => focusOnVideo(index));
+      }
+
+      existing.replaceWith(newContainer);
+    }
+
+    async function focusOnVideo(index) {
+      // Trigger lazy load if not yet loaded
+      if (!videos[index].loaded) {
+        await loadPOV(index);
+      }
       focusedIndex = index;
       renderVideoGrid();
       highlightActiveMember();
     }
 
     // ========================
-    // SECTION 2: MEMBER LIST
+    // MEMBER LIST
     // ========================
 
     function renderMemberList() {
@@ -745,7 +821,7 @@
         row.id = 'member-row-' + i;
 
         const dot = document.createElement('div');
-        dot.className = 'member-dot';
+        dot.className = 'member-dot' + (v.loaded ? '' : ' unloaded');
 
         const name = document.createElement('div');
         name.className = 'member-name';
@@ -754,10 +830,15 @@
         row.appendChild(dot);
         row.appendChild(name);
 
-        row.addEventListener('click', () => {
-          focusOnVideo(i);
-        });
+        // Show "not loaded" badge for lazy POVs
+        if (!v.loaded) {
+          const badge = document.createElement('div');
+          badge.className = 'member-badge';
+          badge.textContent = 'click to load';
+          row.appendChild(badge);
+        }
 
+        row.addEventListener('click', () => focusOnVideo(i));
         list.appendChild(row);
       });
     }
@@ -769,7 +850,7 @@
     }
 
     // ========================
-    // SECTION 3: AUDIO CONTROLS
+    // AUDIO CONTROLS
     // ========================
 
     function renderAudioControls() {
@@ -780,12 +861,11 @@
         const row = document.createElement('div');
         row.className = 'audio-row';
 
-        // Header (click to expand)
         const header = document.createElement('div');
         header.className = 'audio-row-header';
 
         const headerName = document.createElement('span');
-        headerName.textContent = v.username;
+        headerName.textContent = v.username + (v.loaded ? '' : ' (not loaded)');
 
         const arrow = document.createElement('span');
         arrow.className = 'audio-arrow';
@@ -794,74 +874,77 @@
         header.appendChild(headerName);
         header.appendChild(arrow);
 
-        // Dropdown content
         const dropdown = document.createElement('div');
         dropdown.className = 'audio-dropdown';
 
-        // Volume slider
-        const volRow = document.createElement('div');
-        volRow.className = 'audio-control-row';
+        if (!v.loaded) {
+          const hint = document.createElement('div');
+          hint.style.cssText = 'font-size:11px;color:#555;padding:4px 0;';
+          hint.textContent = 'Click player to load this POV first';
+          dropdown.appendChild(hint);
+        } else {
+          // Volume slider
+          const volRow = document.createElement('div');
+          volRow.className = 'audio-control-row';
 
-        const volLabel = document.createElement('label');
-        volLabel.textContent = 'Volume';
+          const volLabel = document.createElement('label');
+          volLabel.textContent = 'Volume';
 
-        const volSlider = document.createElement('input');
-        volSlider.type = 'range';
-        volSlider.min = '0';
-        volSlider.max = '100';
-        volSlider.value = v.volume;
-        volSlider.addEventListener('input', () => {
-          v.volume = parseInt(volSlider.value);
-          v.element.volume = v.volume / 100;
-          if (v.volume > 0 && v.isMuted) {
-            v.isMuted = false;
-            v.element.muted = false;
-            muteBtn.classList.remove('muted');
-            muteBtn.textContent = 'Mute';
-          }
-        });
-
-        volRow.appendChild(volLabel);
-        volRow.appendChild(volSlider);
-
-        // Mute button
-        const muteRow = document.createElement('div');
-        muteRow.className = 'audio-control-row';
-
-        const muteBtn = document.createElement('button');
-        muteBtn.className = 'mute-btn' + (v.isMuted ? ' muted' : '');
-        muteBtn.textContent = v.isMuted ? 'Unmute' : 'Mute';
-        muteBtn.addEventListener('click', () => {
-          v.isMuted = !v.isMuted;
-          v.element.muted = v.isMuted;
-          muteBtn.classList.toggle('muted');
-          muteBtn.textContent = v.isMuted ? 'Unmute' : 'Mute';
-        });
-
-        // Solo button (mute everyone else)
-        const soloBtn = document.createElement('button');
-        soloBtn.className = 'mute-btn';
-        soloBtn.textContent = 'Solo';
-        soloBtn.addEventListener('click', () => {
-          videos.forEach((other, j) => {
-            if (j === i) {
-              other.isMuted = false;
-              other.element.muted = false;
-            } else {
-              other.isMuted = true;
-              other.element.muted = true;
+          const volSlider = document.createElement('input');
+          volSlider.type = 'range';
+          volSlider.min = '0';
+          volSlider.max = '100';
+          volSlider.value = v.volume;
+          volSlider.addEventListener('input', () => {
+            v.volume = parseInt(volSlider.value);
+            v.element.volume = v.volume / 100;
+            if (v.volume > 0 && v.isMuted) {
+              v.isMuted = false;
+              v.element.muted = false;
+              muteBtn.classList.remove('muted');
+              muteBtn.textContent = 'Mute';
             }
           });
-          renderAudioControls();
-        });
 
-        muteRow.appendChild(muteBtn);
-        muteRow.appendChild(soloBtn);
+          volRow.appendChild(volLabel);
+          volRow.appendChild(volSlider);
 
-        dropdown.appendChild(volRow);
-        dropdown.appendChild(muteRow);
+          const muteRow = document.createElement('div');
+          muteRow.className = 'audio-control-row';
 
-        // Toggle dropdown on click
+          const muteBtn = document.createElement('button');
+          muteBtn.className = 'mute-btn' + (v.isMuted ? ' muted' : '');
+          muteBtn.textContent = v.isMuted ? 'Unmute' : 'Mute';
+          muteBtn.addEventListener('click', () => {
+            v.isMuted = !v.isMuted;
+            v.element.muted = v.isMuted;
+            muteBtn.classList.toggle('muted');
+            muteBtn.textContent = v.isMuted ? 'Unmute' : 'Mute';
+          });
+
+          const soloBtn = document.createElement('button');
+          soloBtn.className = 'mute-btn';
+          soloBtn.textContent = 'Solo';
+          soloBtn.addEventListener('click', () => {
+            videos.forEach((other, j) => {
+              if (j === i) {
+                other.isMuted = false;
+                if (other.loaded) { other.element.muted = false; }
+              } else {
+                other.isMuted = true;
+                if (other.loaded) { other.element.muted = true; }
+              }
+            });
+            renderAudioControls();
+          });
+
+          muteRow.appendChild(muteBtn);
+          muteRow.appendChild(soloBtn);
+
+          dropdown.appendChild(volRow);
+          dropdown.appendChild(muteRow);
+        }
+
         header.addEventListener('click', () => {
           dropdown.classList.toggle('open');
           arrow.classList.toggle('open');
@@ -874,7 +957,7 @@
     }
 
     // ========================
-    // SECTION 4: EXPORT
+    // EXPORT
     // ========================
 
     function renderExportTimeline() {
@@ -894,18 +977,17 @@
         const duration = document.createElement('div');
         duration.className = 'export-clip-duration';
         const dur = v.element.duration || 0;
-        duration.textContent = formatTime(dur) + ' • ' + (v.metadata ? Math.round((v.metadata.durationMs || dur * 1000) / 1000) + 's' : formatTime(dur));
+        duration.textContent = v.loaded
+          ? (formatTime(dur) + ' • ' + (v.metadata ? Math.round((v.metadata.durationMs || dur * 1000) / 1000) + 's' : formatTime(dur)))
+          : (v.metadata ? Math.round((v.metadata.durationMs || 0) / 1000) + 's' : 'Not loaded');
 
         clip.appendChild(name);
         clip.appendChild(duration);
 
         clip.addEventListener('click', () => {
           clip.classList.toggle('selected');
-          if (selectedExportClips.has(i)) {
-            selectedExportClips.delete(i);
-          } else {
-            selectedExportClips.add(i);
-          }
+          if (selectedExportClips.has(i)) selectedExportClips.delete(i);
+          else selectedExportClips.add(i);
         });
 
         timeline.appendChild(clip);
@@ -925,26 +1007,25 @@
       document.querySelectorAll('.export-clip').forEach(el => el.classList.remove('selected'));
     }
 
-    function downloadSelected() {
-      if (selectedExportClips.size === 0) {
-        alert('Select at least one clip to download');
-        return;
-      }
+    async function downloadSelected() {
+      if (selectedExportClips.size === 0) { alert('Select at least one clip to download'); return; }
 
-      // Download each selected clip
-      selectedExportClips.forEach(i => {
+      for (const i of selectedExportClips) {
         const v = videos[i];
+        // Ensure loaded before download
+        if (!v.loaded) await loadPOV(i);
+
         const link = document.createElement('a');
-        link.href = v.element.src;
+        link.href = v.videoSrc;
         link.download = `${v.username}_highlight.mp4`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-      });
+      }
     }
 
     // ========================
-    // PLAYBACK CONTROLS
+    // PLAYBACK
     // ========================
 
     function togglePlayPause() {
@@ -953,14 +1034,14 @@
     }
 
     function playAll() {
-      videos.forEach(v => v.element.play().catch(() => {}));
+      videos.forEach(v => { if (v.loaded) v.element.play().catch(() => {}); });
       isPlaying = true;
       document.getElementById('playPauseBtn').textContent = '⏸';
       startProgressUpdate();
     }
 
     function pauseAll() {
-      videos.forEach(v => v.element.pause());
+      videos.forEach(v => { if (v.loaded) v.element.pause(); });
       isPlaying = false;
       document.getElementById('playPauseBtn').textContent = '▶';
       if (animFrameId) cancelAnimationFrame(animFrameId);
@@ -973,6 +1054,7 @@
       const targetTime = fraction * masterDuration;
 
       videos.forEach(v => {
+        if (!v.loaded) return;
         const adjustedTime = targetTime - v.offset;
         if (adjustedTime < 0) {
           v.element.currentTime = 0;
@@ -990,21 +1072,123 @@
       function update() {
         if (!isPlaying) return;
 
-        const masterTime = (videos[0]?.element.currentTime || 0) + (videos[0]?.offset || 0);
+        const primary = videos.find(v => v.loaded);
+        if (!primary) return;
+
+        const masterTime = (primary.element.currentTime || 0) + (primary.offset || 0);
         const fraction = masterDuration > 0 ? masterTime / masterDuration : 0;
         document.getElementById('timelineProgress').style.width = (fraction * 100) + '%';
         document.getElementById('timeDisplay').textContent =
           formatTime(masterTime) + ' / ' + formatTime(masterDuration);
 
-        const allEnded = videos.every(v => v.element.ended || v.element.paused);
-        if (allEnded && isPlaying) {
-          pauseAll();
-          return;
-        }
+        const allEnded = videos.filter(v => v.loaded).every(v => v.element.ended || v.element.paused);
+        if (allEnded && isPlaying) { pauseAll(); return; }
 
         animFrameId = requestAnimationFrame(update);
       }
       update();
+    }
+
+    // ========================
+    // COMPOSITE EXPORT
+    // ========================
+
+    function updateCompositeButton() {
+      const btn = document.getElementById('compositeBtn');
+      const uploadCount = videos.length;
+      const ready = uploadCount >= 1;
+      btn.disabled = !ready;
+
+      if (!ready) {
+        btn.textContent = `🎬 Export Combined (${uploadCount}/${expectedClips} clips ready)`;
+      } else if (uploadCount < expectedClips) {
+        btn.textContent = `🎬 Export Combined (${uploadCount}/${expectedClips} clips)`;
+        btn.disabled = false; // allow early export with available clips
+      } else {
+        btn.textContent = `🎬 Export Combined View`;
+      }
+    }
+
+    async function startComposite() {
+      if (!currentSessionCode) return;
+
+      const btn = document.getElementById('compositeBtn');
+      const section = document.getElementById('compositeSection');
+      const status = document.getElementById('compositeStatus');
+      const progressBar = document.getElementById('compositeProgressBar');
+
+      btn.disabled = true;
+      btn.textContent = 'Starting...';
+      section.style.display = 'flex';
+      status.className = 'composite-status processing';
+      status.textContent = 'Starting compositing job...';
+      progressBar.style.display = 'block';
+
+      try {
+        const res = await fetch(`/sessions/${currentSessionCode}/composite`, { method: 'POST' });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to start job');
+        }
+        const { jobId } = await res.json();
+        compositeJobId = jobId;
+        status.textContent = 'FFmpeg is stitching your clips — this takes 2-5 minutes...';
+        pollCompositeJob(jobId);
+      } catch (err) {
+        status.className = 'composite-status failed';
+        status.textContent = '❌ ' + err.message;
+        progressBar.style.display = 'none';
+        btn.disabled = false;
+        btn.textContent = '🎬 Export Combined View';
+      }
+    }
+
+    function pollCompositeJob(jobId) {
+      if (compositePollInterval) clearInterval(compositePollInterval);
+
+      compositePollInterval = setInterval(async () => {
+        try {
+          const res = await fetch(`/sessions/${currentSessionCode}/composite/${jobId}`);
+          const data = await res.json();
+
+          if (data.status === 'done') {
+            clearInterval(compositePollInterval);
+            compositePollInterval = null;
+
+            const status = document.getElementById('compositeStatus');
+            const progressBar = document.getElementById('compositeProgressBar');
+            const btn = document.getElementById('compositeBtn');
+
+            const sizeMB = data.fileSize ? (data.fileSize / 1024 / 1024).toFixed(1) + 'MB' : '';
+            status.className = 'composite-status ready';
+            status.textContent = `✅ Combined view ready${sizeMB ? ' (' + sizeMB + ')' : ''} — downloading...`;
+            progressBar.style.display = 'none';
+            btn.disabled = false;
+            btn.textContent = '🎬 Export Combined View';
+
+            // Trigger download
+            const link = document.createElement('a');
+            link.href = data.downloadUrl;
+            link.download = 'peak-abu-composite.mp4';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+          } else if (data.status === 'failed') {
+            clearInterval(compositePollInterval);
+            compositePollInterval = null;
+
+            document.getElementById('compositeStatus').className = 'composite-status failed';
+            document.getElementById('compositeStatus').textContent = '❌ Compositing failed — try again';
+            document.getElementById('compositeProgressBar').style.display = 'none';
+            document.getElementById('compositeBtn').disabled = false;
+            document.getElementById('compositeBtn').textContent = '🎬 Export Combined View';
+          }
+          // else still processing — keep polling
+        } catch(e) {
+          console.log('Poll error:', e);
+        }
+      }, 3000); // poll every 3 seconds
     }
 
     function formatTime(seconds) {
