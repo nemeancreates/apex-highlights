@@ -5,8 +5,6 @@ const fs = require('fs');
 const os = require('os');
 const NTPClient = require('ntp-time').Client;
 const FormData = require('form-data');
-const http = require('http');
-const { PassThrough } = require('stream');
 const https = require('https');
 
 function getFFmpegPath() {
@@ -37,7 +35,6 @@ let ffmpegProcess = null;
 let mainWindow = null;
 let currentSession = null;
 let audioBuffers = []; // in-memory rolling buffer of audio chunks
-let socketIO = null; // Socket.IO connection (set from renderer)
 
 function ensureFolders() {
   if (!fs.existsSync(BUFFER_DIR)) fs.mkdirSync(BUFFER_DIR, { recursive: true });
@@ -50,18 +47,17 @@ function loadUserPreferences() {
     if (fs.existsSync(USER_PREFS_PATH)) {
       const data = fs.readFileSync(USER_PREFS_PATH, 'utf8');
       const prefs = JSON.parse(data);
-      
-      // Load storage directory if set
+
       if (prefs.storageDirectory && fs.existsSync(prefs.storageDirectory)) {
         CLIPS_DIR = path.join(prefs.storageDirectory, 'PeakAbu');
         BUFFER_DIR = path.join(prefs.storageDirectory, '.apex-highlights-buffer');
       }
-      
+
       if (prefs.hotkey && isValidHotkey(prefs.hotkey)) {
         customHotkey = prefs.hotkey;
         console.log(`Loaded user hotkey preference: ${customHotkey}`);
       }
-      
+
       console.log(`Loaded preferences: storageDir=${CLIPS_DIR}`);
       return prefs;
     }
@@ -90,7 +86,7 @@ function isValidHotkey(hotkey) {
     if (!modifiers.includes(parts[i])) return false;
   }
   const lastPart = parts[parts.length - 1];
-  if (!(/^F([1-9]|1[0-2])$/.test(lastPart) || /^[A-Z0-9]$/.test(lastPart) || 
+  if (!(/^F([1-9]|1[0-2])$/.test(lastPart) || /^[A-Z0-9]$/.test(lastPart) ||
         ['Backspace', 'Delete', 'Enter', 'Space', 'Tab', 'Up', 'Down', 'Left', 'Right'].includes(lastPart))) {
     return false;
   }
@@ -322,9 +318,31 @@ function saveHighlight(coordinatedTimestamp = null) {
   }
 }
 
+// ================================
+// UPLOAD HIGHLIGHT
+// Uses form.submit() to handle Content-Length, streaming, and headers correctly.
+// ================================
 function uploadHighlight(videoPath, metadataPath) {
   if (!currentSession) {
     console.log('No active session, skipping upload');
+    return;
+  }
+
+  // Diagnostic: confirm file exists and has real content before we try to send
+  console.log('=== UPLOAD START ===');
+  console.log('videoPath:', videoPath);
+  console.log('exists:', fs.existsSync(videoPath));
+  if (!fs.existsSync(videoPath)) {
+    console.log('ABORT: video file does not exist on disk');
+    mainWindow.webContents.send('upload-error', 'Video file missing on disk');
+    return;
+  }
+  const videoStats = fs.statSync(videoPath);
+  console.log('size:', videoStats.size);
+  console.log('basename:', path.basename(videoPath));
+  if (videoStats.size === 0) {
+    console.log('ABORT: video file is empty');
+    mainWindow.webContents.send('upload-error', 'Video file is empty');
     return;
   }
 
@@ -332,67 +350,64 @@ function uploadHighlight(videoPath, metadataPath) {
   mainWindow.webContents.send('upload-progress', 0);
 
   const form = new FormData();
-  form.append('video', fs.createReadStream(videoPath));
-
+  form.append('video', fs.createReadStream(videoPath), {
+    filename: path.basename(videoPath),
+    contentType: 'video/mp4'
+  });
   if (metadataPath && fs.existsSync(metadataPath)) {
-    form.append('metadata', fs.createReadStream(metadataPath));
+    form.append('metadata', fs.createReadStream(metadataPath), {
+      filename: path.basename(metadataPath),
+      contentType: 'application/json'
+    });
   }
 
-  // Get total form size for progress calculation
-  form.getLength((err, totalBytes) => {
-    if (err || !totalBytes) totalBytes = 0;
-
-    const options = {
-      hostname: 'peakabu.app',
-      port: 443,
-      path: `/sessions/${currentSession.code}/upload`,
-      method: 'POST',
-      headers: {
-        ...form.getHeaders(),
-        'x-username': currentSession.username
-      }
-    };
-
-    const req = https.request(options, (res) => {
-      let body = '';
-      res.on('data', chunk => body += chunk);
-      res.on('end', () => {
-        try {
-          const result = JSON.parse(body);
-          if (res.statusCode === 201) {
-            console.log('Upload successful:', result.uploadId);
-            mainWindow.webContents.send('upload-progress', 100);
-            mainWindow.webContents.send('upload-complete', result.uploadId);
-          } else {
-            console.log('Upload failed:', result.error);
-            mainWindow.webContents.send('upload-progress', -1);
-            mainWindow.webContents.send('upload-error', result.error);
-          }
-        } catch (err) {
-          console.log('Upload response parse error:', err.message);
-          mainWindow.webContents.send('upload-progress', -1);
-        }
-      });
-    });
-
-    req.on('error', (err) => {
+  // form.submit() handles Content-Length calculation, headers, streaming,
+  // and request lifecycle in one call. Much more reliable than manual pipe.
+  form.submit({
+    protocol: 'https:',
+    host: 'peakabu.app',
+    port: 443,
+    path: `/sessions/${currentSession.code}/upload`,
+    method: 'POST',
+    headers: {
+      'x-username': currentSession.username
+    }
+  }, (err, res) => {
+    if (err) {
       console.log('Upload connection error:', err.message);
       mainWindow.webContents.send('upload-progress', -1);
       mainWindow.webContents.send('upload-error', 'Could not reach server');
-    });
+      return;
+    }
 
-    // Track bytes sent through a PassThrough stream
-    let bytesSent = 0;
-    const tracker = new PassThrough();
-    tracker.on('data', (chunk) => {
-      bytesSent += chunk.length;
-      if (totalBytes > 0) {
-        const pct = Math.min(99, Math.round((bytesSent / totalBytes) * 100));
-        mainWindow.webContents.send('upload-progress', pct);
+    console.log('=== UPLOAD RESPONSE ===');
+    console.log('statusCode:', res.statusCode);
+    console.log('headers:', JSON.stringify(res.headers));
+
+    let body = '';
+    res.on('data', chunk => body += chunk);
+    res.on('end', () => {
+      console.log('body:', body);
+      try {
+        const result = JSON.parse(body);
+        if (res.statusCode === 201) {
+          console.log('Upload successful:', result.uploadId);
+          mainWindow.webContents.send('upload-progress', 100);
+          mainWindow.webContents.send('upload-complete', result.uploadId);
+        } else {
+          console.log('Upload failed:', result.error);
+          mainWindow.webContents.send('upload-progress', -1);
+          mainWindow.webContents.send('upload-error', result.error);
+        }
+      } catch (parseErr) {
+        console.log('Upload response parse error:', parseErr.message);
+        console.log('Raw body was:', body);
+        mainWindow.webContents.send('upload-progress', -1);
+        mainWindow.webContents.send('upload-error', 'Server returned invalid response');
       }
+      // Resume the response stream to make sure it's consumed
+      res.resume();
     });
-
-    form.pipe(tracker).pipe(req);
   });
 }
 
@@ -436,11 +451,11 @@ function createWindow() {
       const dirPath = result.filePaths[0];
       CLIPS_DIR = path.join(dirPath, 'PeakAbu');
       BUFFER_DIR = path.join(dirPath, '.apex-highlights-buffer');
-      
+
       const prefs = loadUserPreferences();
       prefs.storageDirectory = dirPath;
       saveUserPreferences(prefs);
-      
+
       ensureFolders();
       console.log(`Storage directory set to: ${CLIPS_DIR}`);
       return { success: true, path: CLIPS_DIR };
@@ -589,10 +604,10 @@ function createWindow() {
 
 app.whenReady().then(async () => {
   await syncClock();
-  
+
   loadUserPreferences();
   ensureFolders();
-  
+
   createWindow();
 
   const registered = globalShortcut.register(customHotkey, () => {
