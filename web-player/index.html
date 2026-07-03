@@ -545,6 +545,7 @@
     let currentSessionCode = null;
     let compositeJobId = null;
     let compositePollInterval = null;
+    let refreshInterval = null;
 
     // ========================
     // SESSION LOADING
@@ -557,15 +558,13 @@
       try {
         const sessionRes = await fetch(`/sessions/${code}`);
         if (!sessionRes.ok) { alert('Session not found'); return; }
-
+        const session = await sessionRes.json();
         const uploadsRes = await fetch(`/sessions/${code}/uploads`);
         const uploadsData = await uploadsRes.json();
-
         if (!uploadsData.uploads || uploadsData.uploads.length === 0) {
-          alert('No uploads in this session yet');
-          return;
+         alert('No uploads in this session yet');
+         return;
         }
-
         videos = [];
         focusedIndex = -1;
         currentSessionCode = code;
@@ -625,11 +624,81 @@
         document.getElementById('rightPanel').style.display = 'flex';
         document.getElementById('exportBar').style.display = 'flex';
 
+        // Auto-refresh: poll for new uploads every 45s
+        if (refreshInterval) clearInterval(refreshInterval);
+        refreshInterval = setInterval(refreshUploads, 45000);
+
         console.log(`Loaded session ${code} — ${videos.length} POVs (1 loaded, ${videos.length - 1} lazy)`);
 
       } catch (err) {
         alert('Error loading session: ' + err.message);
         console.error(err);
+      }
+    }
+
+    // Poll for newly-uploaded POVs and append them without disturbing playback
+    async function refreshUploads() {
+      console.log('refreshUploads fired, session:', currentSessionCode);
+      if (!currentSessionCode) return;
+
+      try {
+        const uploadsRes = await fetch(`/sessions/${currentSessionCode}/uploads`);
+        if (!uploadsRes.ok) return;
+        const uploadsData = await uploadsRes.json();
+        if (!uploadsData.uploads) return;
+
+        // Which uploadIds do we already have?
+        const existingIds = new Set(videos.map(v => v.uploadId));
+
+        const newUploads = uploadsData.uploads.filter(u => !existingIds.has(u.id));
+        if (newUploads.length === 0) return; // nothing new
+
+        const code = currentSessionCode;
+
+        for (const upload of newUploads) {
+          let metadata = null;
+          if (upload.metadataFile) {
+            try {
+              const metaRes = await fetch(`/media/${code}/${upload.metadataFile}`);
+              if (metaRes.ok) metadata = await metaRes.json();
+            } catch (e) {
+              console.log('Could not load metadata for', upload.username);
+            }
+          }
+
+          const video = document.createElement('video');
+          video.preload = 'none';
+          video.muted = true;
+          video.playsInline = true;
+
+          videos.push({
+            element: video,
+            metadata: metadata,
+            username: upload.username,
+            uploadId: upload.id,
+            videoFile: upload.videoFile,
+            videoSrc: `/media/${code}/${upload.videoFile}`,
+            thumbnailSrc: upload.thumbnailFile ? `/media/${code}/${upload.thumbnailFile}` : null,
+            offset: 0,
+            volume: 80,
+            isMuted: true,
+            loaded: false
+          });
+        }
+
+        // Recompute sync offsets now that new metadata is in
+        calculateOffsets();
+
+        // Re-render the lists so the new POVs appear (as unloaded placeholders)
+        renderVideoGrid();
+        renderMemberList();
+        renderAudioControls();
+        renderExportTimeline();
+        updateCompositeButton();
+
+        console.log(`Refresh: added ${newUploads.length} new POV(s)`);
+      } catch (err) {
+        console.log('Refresh error:', err);
       }
     }
 
