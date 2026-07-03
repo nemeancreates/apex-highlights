@@ -607,27 +607,27 @@ app.post('/sessions/:code/upload', (req, res) => {
         if (record) record.thumbnailFile = thumbName;
       }
     });
-
-    reencodeVideo(videoFile.path, reencPath).then(reencOk => {
-      if (reencOk) {
-        const record = session.uploads.find(u => u.videoFile === videoFile.filename);
-        if (record) {
-          const origSize = videoFile.size;
-          const newSize = require('fs').statSync(reencPath).size;
-          const saving = (((origSize - newSize) / origSize) * 100).toFixed(1);
-          log("info", "reencode_savings", { origMB: (origSize/1024/1024).toFixed(1), newMB: (newSize/1024/1024).toFixed(1), savedPct: saving });
-
-          // Swap: replace original with re-encoded, delete original
-          require('fs').unlinkSync(videoFile.path);
-          require('fs').renameSync(reencPath, videoFile.path);
-          record.reencoded = true;
-          record.fileSize = newSize;
-        }
-      } else {
-        // Clean up failed re-encode attempt
-        if (require('fs').existsSync(reencPath)) require('fs').unlinkSync(reencPath);
-      }
-    });
+// DISABLED_AV1: 
+// DISABLED_AV1:     reencodeVideo(videoFile.path, reencPath).then(reencOk => {
+// DISABLED_AV1:       if (reencOk) {
+// DISABLED_AV1:         const record = session.uploads.find(u => u.videoFile === videoFile.filename);
+// DISABLED_AV1:         if (record) {
+// DISABLED_AV1:           const origSize = videoFile.size;
+// DISABLED_AV1:           const newSize = require('fs').statSync(reencPath).size;
+// DISABLED_AV1:           const saving = (((origSize - newSize) / origSize) * 100).toFixed(1);
+// DISABLED_AV1:           log("info", "reencode_savings", { origMB: (origSize/1024/1024).toFixed(1), newMB: (newSize/1024/1024).toFixed(1), savedPct: saving });
+// DISABLED_AV1: 
+// DISABLED_AV1:           // Swap: replace original with re-encoded, delete original
+// DISABLED_AV1:           require('fs').unlinkSync(videoFile.path);
+// DISABLED_AV1:           require('fs').renameSync(reencPath, videoFile.path);
+// DISABLED_AV1:           record.reencoded = true;
+// DISABLED_AV1:           record.fileSize = newSize;
+// DISABLED_AV1:         }
+// DISABLED_AV1:       } else {
+// DISABLED_AV1:         // Clean up failed re-encode attempt
+// DISABLED_AV1:         if (require('fs').existsSync(reencPath)) require('fs').unlinkSync(reencPath);
+// DISABLED_AV1:       }
+// DISABLED_AV1:     });
 
     const uploadRecord = {
       id: uuidv4(),
