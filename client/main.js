@@ -454,6 +454,24 @@ function createWindow() {
     return CLIPS_DIR;
   });
 
+  // IPC: First launch check
+  ipcMain.handle('is-first-launch', () => {
+    const prefs = loadUserPreferences();
+    return !prefs.hasLaunched;
+  });
+
+  ipcMain.handle('mark-first-launch-done', () => {
+    const prefs = loadUserPreferences();
+    prefs.hasLaunched = true;
+    saveUserPreferences(prefs);
+  });
+
+  ipcMain.handle('get-install-path', () => {
+    return app.isPackaged
+      ? path.dirname(process.execPath)
+      : path.join(__dirname);
+  });
+
   // IPC: Save highlight (local hotkey press)
   ipcMain.on('save-highlight', () => saveHighlight());
 

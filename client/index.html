@@ -306,6 +306,47 @@
       .btn-danger:hover {
         background: #a74545;
       }
+
+      /* First-launch modal extras */
+      .welcome-icon {
+        font-size: 48px;
+        text-align: center;
+        margin-bottom: 10px;
+      }
+      .welcome-title {
+        text-align: center;
+        color: #e94560;
+        font-size: 22px;
+        font-weight: bold;
+        margin-bottom: 6px;
+      }
+      .welcome-subtitle {
+        text-align: center;
+        color: #aaa;
+        font-size: 13px;
+        margin-bottom: 24px;
+      }
+      .info-row {
+        background: #0f3460;
+        border-radius: 6px;
+        padding: 12px;
+        margin-bottom: 10px;
+        font-size: 13px;
+      }
+      .info-row-label {
+        color: #aaa;
+        font-size: 11px;
+        margin-bottom: 4px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+      .info-row-value {
+        color: #eee;
+        word-break: break-all;
+        font-family: monospace;
+        font-size: 12px;
+      }
+      .info-row-value.muted { color: #666; font-style: italic; }
     </style>
   </head>
   <body>
@@ -331,6 +372,37 @@
           <h3 style="color: #e94560; margin-top: 0;">Application</h3>
           <button class="btn-secondary" style="width: 100%;" onclick="openUninstallGuide()">🗑️ Uninstall Peak-Abu</button>
         </div>
+      </div>
+    </div>
+
+    <!-- FIRST LAUNCH MODAL -->
+    <div id="firstLaunchModal" class="modal">
+      <div class="modal-content">
+        <div class="welcome-icon">🙈</div>
+        <div class="welcome-title">Welcome to Peak-Abu</div>
+        <div class="welcome-subtitle">Let's get you set up before your first session.</div>
+
+        <div class="info-row">
+          <div class="info-row-label">📂 App Installed At</div>
+          <div class="info-row-value" id="installPathDisplay">Loading...</div>
+        </div>
+
+        <div class="info-row">
+          <div class="info-row-label">🎬 Video Storage Location</div>
+          <div class="info-row-value" id="firstLaunchStorageDisplay">Default — click below to change</div>
+        </div>
+
+        <button class="btn-secondary" style="width:100%; margin: 10px 0;" onclick="pickStorageFirstLaunch()">
+          📁 Choose Video Storage Folder
+        </button>
+
+        <p style="font-size: 11px; color: #555; text-align: center; margin: 8px 0 16px;">
+          Videos save here after each highlight. You can change this anytime in ⚙️ Settings.
+        </p>
+
+        <button onclick="completeFirstLaunch()" style="width:100%;">
+          🚀 Get Started
+        </button>
       </div>
     </div>
 
@@ -478,6 +550,40 @@
           closeSettings();
         }
       });
+
+      // =====================
+      // FIRST LAUNCH MODAL
+      // =====================
+
+      async function checkFirstLaunch() {
+        const isFirst = await ipcRenderer.invoke('is-first-launch');
+        if (isFirst) {
+          // Load install path and default storage path
+          const installPath = await ipcRenderer.invoke('get-install-path');
+          const storagePath = await ipcRenderer.invoke('get-storage-directory');
+
+          document.getElementById('installPathDisplay').textContent = installPath || 'Unknown';
+          document.getElementById('firstLaunchStorageDisplay').textContent = storagePath;
+
+          document.getElementById('firstLaunchModal').classList.add('show');
+        }
+      }
+
+      async function pickStorageFirstLaunch() {
+        const result = await ipcRenderer.invoke('pick-storage-directory');
+        if (result.success) {
+          document.getElementById('firstLaunchStorageDisplay').textContent = result.path;
+        }
+      }
+
+      async function completeFirstLaunch() {
+        await ipcRenderer.invoke('mark-first-launch-done');
+        document.getElementById('firstLaunchModal').classList.remove('show');
+        addClipItem('✅ Setup complete — you're ready to record!', 'success');
+      }
+
+      // Run on load
+      checkFirstLaunch();
 
       // =====================
       // HOTKEY CAPTURE LOGIC
