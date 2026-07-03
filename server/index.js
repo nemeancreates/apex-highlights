@@ -6,6 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { spawn } = require('child_process');
 const helmet = require('helmet');
 
 // --- Configuration ---
@@ -23,6 +24,7 @@ const io = new Server(server, {
     methods: ['GET', 'POST']
   }
 });
+
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -38,33 +40,97 @@ app.use(helmet({
 }));
 app.use(cors({ origin: ALLOWED_ORIGINS }));
 app.use(express.json({ limit: '1mb' }));
+
 // Serve the web player
 app.use('/player', express.static(path.join(__dirname, '..', 'web-player')));
 
-// Serve uploaded videos (read-only access for playback)
+// Serve uploaded videos and thumbnails
 app.use('/media', express.static(path.join(__dirname, 'uploads')));
 
 // ================================
-// SECURITY: Upload configuration
+// THUMBNAIL GENERATION
 // ================================
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
-// SECURITY: Only allow specific file types
+function generateThumbnail(videoPath, thumbnailPath) {
+  return new Promise((resolve) => {
+    const ffmpeg = spawn('ffmpeg', [
+      '-i', videoPath,
+      '-ss', '00:00:01',      // grab frame at 1 second
+      '-vframes', '1',         // one frame only
+      '-vf', 'scale=480:-1',  // 480px wide, maintain aspect ratio
+      '-q:v', '3',             // JPEG quality (2=best, 5=good enough)
+      '-y',
+      thumbnailPath
+    ]);
+
+    ffmpeg.on('close', (code) => {
+      if (code === 0) {
+        console.log(`Thumbnail generated: ${path.basename(thumbnailPath)}`);
+        resolve(true);
+      } else {
+        console.log(`Thumbnail generation failed for ${path.basename(videoPath)}`);
+        resolve(false);
+      }
+    });
+
+    ffmpeg.on('error', () => {
+      console.log('FFmpeg not available on server for thumbnail generation');
+      resolve(false);
+    });
+  });
+}
+
+// ================================
+// RE-ENCODING (AV1 for bandwidth savings)
+// ================================
+function reencodeVideo(inputPath, outputPath) {
+  return new Promise((resolve) => {
+    // SVT-AV1: preset 6 (speed/quality balance), crf 35 (good quality, ~40% smaller than h264)
+    const ffmpeg = spawn('ffmpeg', [
+      '-i', inputPath,
+      '-c:v', 'libsvtav1',
+      '-preset', '6',
+      '-crf', '35',
+      '-c:a', 'libopus',
+      '-b:a', '128k',
+      '-y',
+      outputPath
+    ]);
+
+    ffmpeg.on('close', (code) => {
+      if (code === 0) {
+        console.log(`Re-encode complete: ${path.basename(outputPath)}`);
+        resolve(true);
+      } else {
+        console.log(`Re-encode failed for ${path.basename(inputPath)}, keeping original`);
+        resolve(false);
+      }
+    });
+
+    ffmpeg.on('error', () => {
+      console.log('FFmpeg re-encode error');
+      resolve(false);
+    });
+  });
+}
+
+// ================================
+// SECURITY: Upload configuration
+// ================================
 const ALLOWED_EXTENSIONS = ['.mp4', '.json'];
-const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB max per file
+const MAX_FILE_SIZE = 500 * 1024 * 1024;
 
 const upload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => {
-      // SECURITY: Sanitize session code for folder name
       const code = (req.params.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
       const sessionDir = path.join(UPLOADS_DIR, code);
       if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
       cb(null, sessionDir);
     },
     filename: (req, file, cb) => {
-      // SECURITY: Generate safe filename - strip path components, only allow safe characters
       const ext = path.extname(file.originalname).toLowerCase();
       const baseName = path.basename(file.originalname, ext)
         .replace(/[^a-zA-Z0-9_\-]/g, '_')
@@ -75,10 +141,9 @@ const upload = multer({
   }),
   limits: {
     fileSize: MAX_FILE_SIZE,
-    files: 2 // max 2 files per upload (video + metadata)
+    files: 2
   },
   fileFilter: (req, file, cb) => {
-    // SECURITY: Validate file extension
     const ext = path.extname(file.originalname).toLowerCase();
     if (!ALLOWED_EXTENSIONS.includes(ext)) {
       return cb(new Error('Invalid file type. Only .mp4 and .json allowed.'));
@@ -105,7 +170,6 @@ function rateLimit(req, res, next) {
   }
 
   entry.count++;
-
   if (entry.count > RATE_LIMIT_MAX) {
     return res.status(429).json({ error: 'Too many requests. Try again later.' });
   }
@@ -115,7 +179,6 @@ function rateLimit(req, res, next) {
 
 app.use(rateLimit);
 
-// Clean up stale rate limit entries every 5 minutes
 setInterval(() => {
   const now = Date.now();
   for (const [ip, entry] of rateLimits) {
@@ -164,10 +227,8 @@ function sanitizeCode(input) {
 const MAX_SESSIONS = 100;
 const MAX_MEMBERS_PER_SESSION = 30;
 
-// --- In-memory storage ---
 const sessions = new Map();
 
-// --- Helper: generate a short session code ---
 function generateCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
@@ -195,17 +256,15 @@ app.post('/sessions', (req, res) => {
   }
 
   let code = generateCode();
-  while (sessions.has(code)) {
-    code = generateCode();
-  }
+  while (sessions.has(code)) code = generateCode();
 
   const session = {
     id: uuidv4(),
-    code: code,
+    code,
     createdBy: username,
     createdAt: new Date().toISOString(),
     members: [],
-    uploads: [] // track uploaded files per session
+    uploads: []
   };
 
   sessions.set(code, session);
@@ -219,10 +278,7 @@ app.get('/sessions/:code', (req, res) => {
   if (!code) return res.status(400).json({ error: 'Invalid session code' });
 
   const session = sessions.get(code);
-
-  if (!session) {
-    return res.status(404).json({ error: 'Session not found' });
-  }
+  if (!session) return res.status(404).json({ error: 'Session not found' });
 
   res.json({
     code: session.code,
@@ -245,11 +301,8 @@ app.post('/sessions/:code/upload', (req, res) => {
   if (!code) return res.status(400).json({ error: 'Invalid session code' });
 
   const session = sessions.get(code);
-  if (!session) {
-    return res.status(404).json({ error: 'Session not found' });
-  }
+  if (!session) return res.status(404).json({ error: 'Session not found' });
 
-  // SECURITY: Verify uploader is a member of this session
   const uploaderName = sanitizeUsername(req.headers['x-username']);
   if (!uploaderName) {
     return res.status(400).json({ error: 'Missing or invalid username header' });
@@ -261,17 +314,15 @@ app.post('/sessions/:code/upload', (req, res) => {
     return res.status(403).json({ error: 'You are not a member of this session' });
   }
 
-  // SECURITY: Check session upload limit (prevent disk exhaustion)
   const MAX_UPLOADS_PER_SESSION = 50;
   if (session.uploads.length >= MAX_UPLOADS_PER_SESSION) {
     return res.status(400).json({ error: 'Session upload limit reached' });
   }
 
-  // Handle the upload with multer
   upload.fields([
     { name: 'video', maxCount: 1 },
     { name: 'metadata', maxCount: 1 }
-  ])(req, res, (err) => {
+  ])(req, res, async (err) => {
     if (err) {
       if (err instanceof multer.MulterError) {
         if (err.code === 'LIMIT_FILE_SIZE') {
@@ -287,19 +338,53 @@ app.post('/sessions/:code/upload', (req, res) => {
       return res.status(400).json({ error: 'No video file provided' });
     }
 
-    // SECURITY: Verify the saved file is actually within our uploads directory (path traversal check)
     const resolvedPath = path.resolve(videoFile.path);
     if (!resolvedPath.startsWith(path.resolve(UPLOADS_DIR))) {
-      // Something went wrong — file ended up outside our uploads folder
       fs.unlinkSync(resolvedPath);
       return res.status(400).json({ error: 'Invalid upload path' });
     }
+
+    // Generate thumbnail + re-encode async (fire and forget — don't block response)
+    const thumbName = `thumb_${path.basename(videoFile.filename, '.mp4')}.jpg`;
+    const thumbPath = path.join(path.dirname(videoFile.path), thumbName);
+    const reencName = `av1_${videoFile.filename}`;
+    const reencPath = path.join(path.dirname(videoFile.path), reencName);
+
+    // Run thumbnail first, then re-encode (both async)
+    generateThumbnail(videoFile.path, thumbPath).then(thumbOk => {
+      if (thumbOk) {
+        const record = session.uploads.find(u => u.videoFile === videoFile.filename);
+        if (record) record.thumbnailFile = thumbName;
+      }
+    });
+
+    reencodeVideo(videoFile.path, reencPath).then(reencOk => {
+      if (reencOk) {
+        const record = session.uploads.find(u => u.videoFile === videoFile.filename);
+        if (record) {
+          const origSize = videoFile.size;
+          const newSize = require('fs').statSync(reencPath).size;
+          const saving = (((origSize - newSize) / origSize) * 100).toFixed(1);
+          console.log(`AV1 re-encode: ${(origSize/1024/1024).toFixed(1)}MB -> ${(newSize/1024/1024).toFixed(1)}MB (${saving}% smaller)`);
+
+          // Swap: replace original with re-encoded, delete original
+          require('fs').unlinkSync(videoFile.path);
+          require('fs').renameSync(reencPath, videoFile.path);
+          record.reencoded = true;
+          record.fileSize = newSize;
+        }
+      } else {
+        // Clean up failed re-encode attempt
+        if (require('fs').existsSync(reencPath)) require('fs').unlinkSync(reencPath);
+      }
+    });
 
     const uploadRecord = {
       id: uuidv4(),
       username: uploaderName,
       videoFile: videoFile.filename,
       metadataFile: req.files.metadata ? req.files.metadata[0].filename : null,
+      thumbnailFile: null, // filled in async after FFmpeg runs
       uploadedAt: new Date().toISOString(),
       fileSize: videoFile.size
     };
@@ -308,7 +393,6 @@ app.post('/sessions/:code/upload', (req, res) => {
 
     console.log(`Upload received: ${uploaderName} -> session ${code} (${(videoFile.size / 1024 / 1024).toFixed(1)}MB)`);
 
-    // Notify session members about the new upload
     io.to(code).emit('upload-received', {
       username: uploaderName,
       uploadId: uploadRecord.id
@@ -321,20 +405,17 @@ app.post('/sessions/:code/upload', (req, res) => {
   });
 });
 
-// Get uploads for a session
 app.get('/sessions/:code/uploads', (req, res) => {
   const code = sanitizeCode(req.params.code);
   if (!code) return res.status(400).json({ error: 'Invalid session code' });
 
   const session = sessions.get(code);
-  if (!session) {
-    return res.status(404).json({ error: 'Session not found' });
-  }
+  if (!session) return res.status(404).json({ error: 'Session not found' });
 
   res.json({ uploads: session.uploads });
 });
 
-// --- WebSocket (real-time) ---
+// --- WebSocket ---
 io.on('connection', (socket) => {
   console.log(`Client connected: ${socket.id}`);
 
@@ -353,26 +434,10 @@ io.on('connection', (socket) => {
     }
 
     const session = sessions.get(sessionCode);
-
-    if (!session) {
-      socket.emit('error-message', { message: 'Session not found' });
-      return;
-    }
-
-    if (session.members.length >= MAX_MEMBERS_PER_SESSION) {
-      socket.emit('error-message', { message: 'Session is full' });
-      return;
-    }
-
-    if (session.members.some(m => m.username === cleanUsername)) {
-      socket.emit('error-message', { message: 'Username already taken in this session' });
-      return;
-    }
-
-    if (socket.sessionCode) {
-      socket.emit('error-message', { message: 'Already in a session. Leave first.' });
-      return;
-    }
+    if (!session) { socket.emit('error-message', { message: 'Session not found' }); return; }
+    if (session.members.length >= MAX_MEMBERS_PER_SESSION) { socket.emit('error-message', { message: 'Session is full' }); return; }
+    if (session.members.some(m => m.username === cleanUsername)) { socket.emit('error-message', { message: 'Username already taken in this session' }); return; }
+    if (socket.sessionCode) { socket.emit('error-message', { message: 'Already in a session. Leave first.' }); return; }
 
     const member = {
       socketId: socket.id,
@@ -396,51 +461,56 @@ io.on('connection', (socket) => {
       }))
     });
 
-    socket.to(sessionCode).emit('member-joined', {
-      username: cleanUsername
-    });
+    socket.to(sessionCode).emit('member-joined', { username: cleanUsername });
   });
 
   socket.on('recording-status', ({ isRecording }) => {
     if (!checkSocketRate(socket.id)) return;
-
     const sessionCode = socket.sessionCode;
     if (!sessionCode) return;
-
     const session = sessions.get(sessionCode);
     if (!session) return;
-
     if (typeof isRecording !== 'boolean') return;
 
     const member = session.members.find(m => m.socketId === socket.id);
-    if (member) {
-      member.isRecording = isRecording;
-    }
+    if (member) member.isRecording = isRecording;
 
     io.to(sessionCode).emit('member-recording-update', {
       username: socket.username,
-      isRecording: isRecording
+      isRecording
     });
 
     console.log(`${socket.username} ${isRecording ? 'started' : 'stopped'} recording in ${sessionCode}`);
   });
 
+  socket.on('broadcast-save-highlight', () => {
+    if (!checkSocketRate(socket.id)) return;
+    const sessionCode = socket.sessionCode;
+    if (!sessionCode) return;
+    const session = sessions.get(sessionCode);
+    if (!session) return;
+
+    const coordinated_timestamp = Date.now();
+    console.log(`${socket.username} triggered save-highlight in ${sessionCode} (timestamp: ${coordinated_timestamp})`);
+
+    io.to(sessionCode).emit('coordinated-save-highlight', {
+      username: socket.username,
+      coordinated_timestamp
+    });
+  });
+
   socket.on('disconnect', () => {
     const sessionCode = socket.sessionCode;
     socketRateLimits.delete(socket.id);
-
     if (!sessionCode) return;
 
     const session = sessions.get(sessionCode);
     if (!session) return;
 
     session.members = session.members.filter(m => m.socketId !== socket.id);
-
     console.log(`${socket.username} left session ${sessionCode} (${session.members.length} remaining)`);
 
-    socket.to(sessionCode).emit('member-left', {
-      username: socket.username
-    });
+    socket.to(sessionCode).emit('member-left', { username: socket.username });
 
     if (session.members.length === 0) {
       setTimeout(() => {
@@ -454,7 +524,6 @@ io.on('connection', (socket) => {
   });
 });
 
-// --- Start server ---
 server.listen(PORT, () => {
   console.log(`Peak-Abu server running on port ${PORT}`);
 });
