@@ -420,15 +420,57 @@
       gap: 10px;
     }
     .empty-state .monkey { font-size: 48px; }
+
+    .share-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      background: #0f3460;
+      border-radius: 6px;
+      margin-left: 12px;
+      max-width: 320px;
+    }
+
+    .share-url {
+      flex: 1;
+      font-size: 12px;
+      color: #aaa;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-family: monospace;
+    }
+
+    .btn-copy {
+      background: none;
+      border: 1px solid #e94560;
+      color: #e94560;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .btn-copy:hover { background: #e94560; color: white; }
+    .btn-copy.copied { background: #44ff88; border-color: #44ff88; color: #000; }
   </style>
 </head>
 <body>
 
   <div class="header">
     <h1>🙈 Peak-Abu Player</h1>
-    <div class="join-bar">
-      <input type="text" id="sessionInput" placeholder="Session code" maxlength="6" />
-      <button class="btn" onclick="loadSession()">Load Session</button>
+    <div style="display:flex;align-items:center;gap:8px;flex:1;justify-content:flex-end;">
+      <div class="share-bar" id="shareBar" style="display:none;">
+        <span class="share-url" id="shareUrl"></span>
+        <button class="btn-copy" id="copyBtn" onclick="copyShareLink()">📋 Copy Link</button>
+      </div>
+      <div class="join-bar">
+        <input type="text" id="sessionInput" placeholder="Session code" maxlength="6" />
+        <button class="btn" onclick="loadSession()">Load Session</button>
+      </div>
     </div>
   </div>
 
@@ -483,6 +525,16 @@
   </div>
 
   <script>
+    // Auto-load session from URL param (e.g. /player?code=ABC123)
+    window.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      if (code) {
+        document.getElementById('sessionInput').value = code.toUpperCase();
+        loadSession();
+      }
+    });
+
     let videos = [];
     let isPlaying = false;
     let masterDuration = 0;
@@ -567,6 +619,7 @@
         renderAudioControls();
         renderExportTimeline();
         updateCompositeButton();
+        showShareLink(code);
 
         document.getElementById('playbackControls').style.display = 'flex';
         document.getElementById('rightPanel').style.display = 'flex';
@@ -1087,6 +1140,29 @@
         animFrameId = requestAnimationFrame(update);
       }
       update();
+    }
+
+    // ========================
+    // SHARE LINK
+    // ========================
+
+    function showShareLink(code) {
+      const url = `${window.location.origin}/player?code=${code}`;
+      document.getElementById('shareUrl').textContent = url;
+      document.getElementById('shareBar').style.display = 'flex';
+    }
+
+    function copyShareLink() {
+      const url = document.getElementById('shareUrl').textContent;
+      navigator.clipboard.writeText(url).then(() => {
+        const btn = document.getElementById('copyBtn');
+        btn.textContent = '✅ Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = '📋 Copy Link';
+          btn.classList.remove('copied');
+        }, 2000);
+      });
     }
 
     // ========================
