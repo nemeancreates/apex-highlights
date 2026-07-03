@@ -1,11 +1,5 @@
-const { app, BrowserWindow, globalShortcut, ipcMain } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, dialog } = require('electron');
 const { spawn } = require('child_process');
-function getFFmpegPath() {
-  if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'ffmpeg', 'ffmpeg.exe');
-  }
-  return path.join(__dirname, 'ffmpeg', 'ffmpeg.exe');
-}
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -14,32 +8,98 @@ const FormData = require('form-data');
 const http = require('http');
 const https = require('https');
 
+function getFFmpegPath() {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'ffmpeg', 'ffmpeg.exe');
+  }
+  return path.join(__dirname, 'ffmpeg', 'ffmpeg.exe');
+}
 
-const BUFFER_DIR = path.join(os.tmpdir(), 'apex-highlights-buffer');
-const CLIPS_DIR = path.join(app.getPath('videos'), 'PeakAbu');
+// Default paths (will be overridden by user preferences)
+const DEFAULT_BUFFER_DIR = path.join(os.tmpdir(), 'apex-highlights-buffer');
+const DEFAULT_CLIPS_DIR = path.join(app.getPath('videos'), 'PeakAbu');
+const USER_PREFS_PATH = path.join(app.getPath('userData'), 'user-preferences.json');
 const CHUNK_SECONDS = 10;
+
+// User-configurable paths (loaded from preferences)
+let BUFFER_DIR = DEFAULT_BUFFER_DIR;
+let CLIPS_DIR = DEFAULT_CLIPS_DIR;
 
 // Settings (adjustable from UI)
 let maxChunks = 18;          // default 3 minutes (18 × 10sec)
 let recordFps = 30;          // default 30fps
 let recordResolution = null; // null = native, or { width, height }
+let customHotkey = 'F9';     // default, can be overridden from preferences
 
 let clockOffset = 0;
 let ffmpegProcess = null;
 let mainWindow = null;
 let currentSession = null;
 let audioBuffers = []; // in-memory rolling buffer of audio chunks
+let socketIO = null; // Socket.IO connection (set from renderer)
 
 function ensureFolders() {
   if (!fs.existsSync(BUFFER_DIR)) fs.mkdirSync(BUFFER_DIR, { recursive: true });
   if (!fs.existsSync(CLIPS_DIR)) fs.mkdirSync(CLIPS_DIR, { recursive: true });
 }
 
+// --- User Preferences Management ---
+function loadUserPreferences() {
+  try {
+    if (fs.existsSync(USER_PREFS_PATH)) {
+      const data = fs.readFileSync(USER_PREFS_PATH, 'utf8');
+      const prefs = JSON.parse(data);
+      
+      // Load storage directory if set
+      if (prefs.storageDirectory && fs.existsSync(prefs.storageDirectory)) {
+        CLIPS_DIR = path.join(prefs.storageDirectory, 'PeakAbu');
+        BUFFER_DIR = path.join(prefs.storageDirectory, '.apex-highlights-buffer');
+      }
+      
+      if (prefs.hotkey && isValidHotkey(prefs.hotkey)) {
+        customHotkey = prefs.hotkey;
+        console.log(`Loaded user hotkey preference: ${customHotkey}`);
+      }
+      
+      console.log(`Loaded preferences: storageDir=${CLIPS_DIR}`);
+      return prefs;
+    }
+  } catch (err) {
+    console.log('Could not load user preferences:', err.message);
+  }
+  return {};
+}
+
+function saveUserPreferences(prefs) {
+  try {
+    fs.writeFileSync(USER_PREFS_PATH, JSON.stringify(prefs, null, 2));
+    console.log('User preferences saved');
+  } catch (err) {
+    console.log('Could not save user preferences:', err.message);
+  }
+}
+
+// Validate hotkey format (Electron accelerator format)
+function isValidHotkey(hotkey) {
+  if (typeof hotkey !== 'string') return false;
+  const parts = hotkey.split('+');
+  if (parts.length === 0 || parts.length > 4) return false;
+  const modifiers = ['Ctrl', 'Alt', 'Shift', 'CmdOrCtrl', 'Command', 'Control'];
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (!modifiers.includes(parts[i])) return false;
+  }
+  const lastPart = parts[parts.length - 1];
+  if (!(/^F([1-9]|1[0-2])$/.test(lastPart) || /^[A-Z0-9]$/.test(lastPart) || 
+        ['Backspace', 'Delete', 'Enter', 'Space', 'Tab', 'Up', 'Down', 'Left', 'Right'].includes(lastPart))) {
+    return false;
+  }
+  return true;
+}
+
 async function syncClock() {
   try {
     const client = new NTPClient('pool.ntp.org', 123, { timeout: 5000 });
     const packet = await client.syncTime();
-    // transmitTimestamp is seconds since Unix epoch — convert to ms
     const serverTimeMs = (packet.transmitTimestamp - 2208988800) * 1000;
     clockOffset = serverTimeMs - Date.now();
     console.log(`Clock synced. Local offset from true UTC: ${clockOffset.toFixed(2)}ms`);
@@ -124,7 +184,7 @@ function startRecording(monitor) {
   });
 }
 
-function saveHighlight() {
+function saveHighlight(coordinatedTimestamp = null) {
   const allVideoFiles = fs.readdirSync(BUFFER_DIR)
     .filter(f => f.endsWith('.mp4') && !f.startsWith('temp_'))
     .map(f => ({
@@ -147,7 +207,7 @@ function saveHighlight() {
   const hasAudio = audioBuffers.length > 0;
   console.log(`Saving highlight: ${videoFiles.length} video chunks, ${audioBuffers.length} audio chunks in memory`);
 
-  const saveTimeUTC = getPreciseUTC();
+  const saveTimeUTC = coordinatedTimestamp || getPreciseUTC();
   const timestamp = new Date(saveTimeUTC).toISOString().replace(/[:.]/g, '-');
   const outputPath = path.join(CLIPS_DIR, `highlight-${timestamp}.mp4`);
   const metadataPath = path.join(CLIPS_DIR, `highlight-${timestamp}.json`);
@@ -165,7 +225,8 @@ function saveHighlight() {
     frameRate: recordFps,
     clockOffsetMs: clockOffset,
     userId: null,
-    sessionId: currentSession ? currentSession.code : null
+    sessionId: currentSession ? currentSession.code : null,
+    coordinated_timestamp: coordinatedTimestamp || null
   };
 
   const videoListPath = path.join(BUFFER_DIR, 'filelist.txt');
@@ -175,13 +236,11 @@ function saveHighlight() {
   fs.writeFileSync(videoListPath, videoContent);
 
   if (hasAudio) {
-    // Combine all in-memory audio chunks into one valid WebM file
     const combinedAudio = Buffer.concat(audioBuffers.map(c => c.data));
     const tempAudioPath = path.join(BUFFER_DIR, 'temp_audio.webm');
     fs.writeFileSync(tempAudioPath, combinedAudio);
     console.log(`Combined audio: ${audioBuffers.length} chunks -> ${(combinedAudio.length / 1024).toFixed(0)}KB`);
 
-    // Concat video chunks first
     const tempVideoPath = path.join(BUFFER_DIR, 'temp_video.mp4');
     const concatVideo = spawn(getFFmpegPath(), [
       '-f', 'concat', '-safe', '0',
@@ -198,7 +257,6 @@ function saveHighlight() {
         return;
       }
 
-      // Merge video + audio into final file
       const merge = spawn(getFFmpegPath(), [
         '-i', tempVideoPath,
         '-i', tempAudioPath,
@@ -220,7 +278,6 @@ function saveHighlight() {
           mainWindow.webContents.send('highlight-saved', outputPath);
           uploadHighlight(outputPath, metadataPath);
         } else {
-          // Audio merge failed, save video only
           console.log('Audio merge failed, saving video only');
           const concatOnly = spawn(getFFmpegPath(), [
             '-f', 'concat', '-safe', '0',
@@ -242,7 +299,6 @@ function saveHighlight() {
       });
     });
   } else {
-    // No audio - just concat video
     const concat = spawn(getFFmpegPath(), [
       '-f', 'concat', '-safe', '0',
       '-i', videoListPath,
@@ -333,8 +389,8 @@ function createWindow() {
 
   mainWindow.loadFile('index.html');
   if (!app.isPackaged) {
-  mainWindow.webContents.openDevTools();
-}
+    mainWindow.webContents.openDevTools();
+  }
 
   mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
     callback(permission === 'media');
@@ -346,7 +402,49 @@ function createWindow() {
     return sources.map(s => ({ id: s.id, name: s.name }));
   });
 
+  // IPC: Pick storage directory
+  ipcMain.handle('pick-storage-directory', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose Video Storage Directory',
+      defaultPath: app.getPath('videos'),
+      properties: ['openDirectory', 'createDirectory']
+    });
+
+    if (!result.canceled && result.filePaths.length > 0) {
+      const dirPath = result.filePaths[0];
+      CLIPS_DIR = path.join(dirPath, 'PeakAbu');
+      BUFFER_DIR = path.join(dirPath, '.apex-highlights-buffer');
+      
+      const prefs = loadUserPreferences();
+      prefs.storageDirectory = dirPath;
+      saveUserPreferences(prefs);
+      
+      ensureFolders();
+      console.log(`Storage directory set to: ${CLIPS_DIR}`);
+      return { success: true, path: CLIPS_DIR };
+    }
+
+    return { success: false };
+  });
+
+  // IPC: Get current storage directory
+  ipcMain.handle('get-storage-directory', () => {
+    return CLIPS_DIR;
+  });
+
+  // IPC: Save highlight (local hotkey press)
   ipcMain.on('save-highlight', () => saveHighlight());
+
+  // IPC: Broadcast save highlight
+  ipcMain.on('broadcast-save-highlight', (event, { coordinated_timestamp }) => {
+    console.log(`Received broadcast save-highlight with timestamp: ${coordinated_timestamp}`);
+    saveHighlight(coordinated_timestamp);
+  });
+
+  // IPC: Set socket.io connection
+  ipcMain.on('set-socket-io', (event, socketId) => {
+    console.log('Socket.IO connection noted in main process');
+  });
 
   ipcMain.on('session-connected', (event, { code, username }) => {
     currentSession = { code, username };
@@ -363,7 +461,6 @@ function createWindow() {
       ffmpegProcess.kill();
       ffmpegProcess = null;
     }
-    // Clear audio buffers on new recording
     audioBuffers = [];
     startRecording(monitorIndex);
     mainWindow.webContents.send('recording-started', monitorIndex);
@@ -399,6 +496,26 @@ function createWindow() {
       recordResolution = resMap[settings.resolution];
       console.log(`Resolution set to ${settings.resolution}`);
     }
+
+    if (settings.hotkey && isValidHotkey(settings.hotkey)) {
+      if (customHotkey) {
+        globalShortcut.unregister(customHotkey);
+      }
+      customHotkey = settings.hotkey;
+      const registered = globalShortcut.register(customHotkey, () => {
+        console.log(`${customHotkey} pressed`);
+        saveHighlight();
+      });
+      if (registered) {
+        console.log(`Hotkey changed to: ${customHotkey}`);
+        const prefs = loadUserPreferences();
+        prefs.hotkey = customHotkey;
+        saveUserPreferences(prefs);
+      } else {
+        console.log(`WARNING: Could not register hotkey ${customHotkey}`);
+        mainWindow.webContents.send('hotkey-error', `Failed to register ${customHotkey}. Another app may be using it.`);
+      }
+    }
   });
 
   ipcMain.on('save-audio-chunk', (event, buffer) => {
@@ -406,7 +523,6 @@ function createWindow() {
     audioBuffers.push({ data: Buffer.from(buffer), time: timestamp });
     console.log(`Audio chunk buffered: ${buffer.byteLength} bytes (${audioBuffers.length} chunks in memory)`);
 
-    // Keep only the last 20 chunks in memory
     while (audioBuffers.length > 20) {
       audioBuffers.shift();
     }
@@ -425,21 +541,29 @@ function createWindow() {
     }));
     event.reply('monitors-list', monitorList);
   });
+
+  ipcMain.handle('get-current-hotkey', () => {
+    return customHotkey;
+  });
 }
 
 app.whenReady().then(async () => {
   await syncClock();
+  
+  loadUserPreferences();
+  ensureFolders();
+  
   createWindow();
 
-  const registered = globalShortcut.register('F9', () => {
-    console.log('F9 pressed');
+  const registered = globalShortcut.register(customHotkey, () => {
+    console.log(`${customHotkey} pressed`);
     saveHighlight();
   });
 
   if (registered) {
-    console.log('F9 hotkey registered successfully');
+    console.log(`${customHotkey} hotkey registered successfully`);
   } else {
-    console.log('WARNING: F9 hotkey registration FAILED - another app may be using it');
+    console.log(`WARNING: ${customHotkey} hotkey registration FAILED - another app may be using it`);
   }
 });
 

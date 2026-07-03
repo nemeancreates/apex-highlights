@@ -12,7 +12,25 @@
         align-items: center;
         padding: 40px;
       }
-      h1 { color: #e94560; }
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        max-width: 600px;
+        margin-bottom: 20px;
+      }
+      h1 { color: #e94560; margin: 0; }
+      .btn-settings {
+        background: #0f3460;
+        border: 1px solid #e94560;
+        color: #e94560;
+        padding: 8px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+      .btn-settings:hover { background: #1a4a8a; }
       .section {
         width: 100%;
         max-width: 600px;
@@ -80,8 +98,8 @@
       }
       .clip-item.error { color: #ff4444; }
       .clip-item.success { color: #44ff88; }
+      .clip-item.broadcast { color: #e9a820; }
 
-      /* Session panel styles */
       .session-code {
         font-size: 32px;
         font-weight: bold;
@@ -132,17 +150,164 @@
         margin: 10px 0;
         font-size: 13px;
       }
+
+      .hotkey-row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+      .hotkey-display {
+        flex: 1;
+        padding: 10px 14px;
+        background: #0f3460;
+        border: 1px solid #e94560;
+        border-radius: 6px;
+        font-size: 15px;
+        font-weight: bold;
+        color: #eee;
+        letter-spacing: 2px;
+        text-align: center;
+        font-family: monospace;
+      }
+      .hotkey-display.listening {
+        border-color: #e9a820;
+        color: #e9a820;
+        animation: pulse 1s infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+      }
+      .btn-capture {
+        width: auto;
+        flex-shrink: 0;
+        padding: 10px 16px;
+        font-size: 13px;
+        margin: 0;
+        background: #0f3460;
+        border: 1px solid #e94560;
+        border-radius: 6px;
+        cursor: pointer;
+        color: #eee;
+        white-space: nowrap;
+      }
+      .btn-capture:hover { background: #1a4a8a; }
+      .btn-capture.listening {
+        border-color: #e9a820;
+        color: #e9a820;
+      }
+      .hotkey-hint {
+        font-size: 11px;
+        color: #667;
+        margin-bottom: 10px;
+        margin-top: -6px;
+      }
+
       #sessionPanel-connected { display: none; }
+
+      /* Modal styles */
+      .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+      }
+      .modal.show {
+        display: flex;
+      }
+      .modal-content {
+        background: #16213e;
+        border-radius: 8px;
+        padding: 30px;
+        width: 90%;
+        max-width: 500px;
+        color: #eee;
+      }
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+      }
+      .modal-header h2 {
+        margin: 0;
+        color: #e94560;
+      }
+      .modal-close {
+        background: none;
+        border: none;
+        color: #e94560;
+        font-size: 28px;
+        cursor: pointer;
+        padding: 0;
+        width: auto;
+        margin: 0;
+      }
+      .modal-close:hover { color: #ff6b7a; }
+      .modal-body {
+        margin-bottom: 20px;
+      }
+      .modal-footer {
+        display: flex;
+        gap: 10px;
+      }
+      .modal-footer button {
+        flex: 1;
+      }
+      .storage-path {
+        background: #0f3460;
+        padding: 12px;
+        border-radius: 6px;
+        margin: 10px 0;
+        font-size: 13px;
+        word-break: break-all;
+        border: 1px solid #e94560;
+      }
+      .btn-danger {
+        background: #8b3a3a;
+      }
+      .btn-danger:hover {
+        background: #a74545;
+      }
     </style>
   </head>
   <body>
-    <h1>🙈 Peak-Abu</h1>
+    <div class="header">
+      <h1>🙈 Peak-Abu</h1>
+      <button class="btn-settings" onclick="openSettings()">⚙️ Settings</button>
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settingsModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Settings</h2>
+          <button class="modal-close" onclick="closeSettings()">×</button>
+        </div>
+        <div class="modal-body">
+          <label>Video Storage Location</label>
+          <div class="storage-path" id="storagePathDisplay">Loading...</div>
+          <button class="btn-secondary" style="width: 100%; margin-bottom: 20px;" onclick="pickStorageDirectory()">📁 Change Storage Directory</button>
+
+          <hr style="border: 1px solid #444; margin: 20px 0;">
+
+          <h3 style="color: #e94560; margin-top: 0;">Application</h3>
+          <button class="btn-secondary" style="width: 100%;" onclick="openUninstallGuide()">🗑️ Uninstall Peak-Abu</button>
+        </div>
+      </div>
+    </div>
 
     <!-- SESSION PANEL -->
     <div class="section" id="sessionPanel">
       <h3>Squad Session</h3>
 
-      <!-- Not connected state -->
       <div id="sessionPanel-disconnected">
         <label>Your Name</label>
         <input type="text" id="usernameInput" placeholder="Enter your username" />
@@ -157,7 +322,6 @@
         <button class="btn-secondary" onclick="joinSession()">Join Session</button>
       </div>
 
-      <!-- Connected state -->
       <div id="sessionPanel-connected">
         <label>Session Code (share this with your squad)</label>
         <div class="session-code" id="sessionCodeDisplay">------</div>
@@ -201,13 +365,22 @@
         <option value="480">480p (low-end PCs)</option>
       </select>
 
+      <input type="text" id="hotkeyCapture" readonly
+        style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;" />
+      <label>Save Highlight Hotkey</label>
+      <div class="hotkey-row">
+        <div class="hotkey-display" id="hotkeyDisplay">F9</div>
+        <button class="btn-capture" id="hotkeyBtn" onclick="toggleHotkeyCapture()">Change</button>
+      </div>
+      <div class="hotkey-hint" id="hotkeyHint">Press any F-key, or hold Ctrl / Alt / Shift + a letter or F-key</div>
+
       <button id="startBtn" onclick="startRecording()">▶ Start Recording</button>
       <button id="stopBtn" onclick="stopRecording()" disabled>⏹ Stop Recording</button>
     </div>
 
     <div class="section">
       <div class="status idle" id="statusText">● Idle</div>
-      <button id="saveBtn" onclick="saveHighlight()" disabled>💾 Save Highlight (or press F9)</button>
+      <button id="saveBtn" onclick="saveHighlight()" disabled>💾 Save Highlight (or press <span id="saveBtnHotkey">F9</span>)</button>
     </div>
 
     <div class="section">
@@ -222,6 +395,143 @@
       let mediaRecorder = null;
       let socket = null;
       let currentSessionCode = null;
+      var capturingHotkey = false;
+      var currentHotkey = 'F9';
+
+      // =====================
+      // SETTINGS MODAL
+      // =====================
+
+      function openSettings() {
+        document.getElementById('settingsModal').classList.add('show');
+        loadStoragePath();
+      }
+
+      function closeSettings() {
+        document.getElementById('settingsModal').classList.remove('show');
+      }
+
+      function loadStoragePath() {
+        ipcRenderer.invoke('get-storage-directory').then(dirPath => {
+          document.getElementById('storagePathDisplay').textContent = dirPath;
+        });
+      }
+
+      function pickStorageDirectory() {
+        ipcRenderer.invoke('pick-storage-directory').then(result => {
+          if (result.success) {
+            loadStoragePath();
+            addClipItem('✅ Storage directory updated', 'success');
+          }
+        });
+      }
+
+      function openUninstallGuide() {
+        alert('To uninstall Peak-Abu:\n\n1. Press Win+R\n2. Type "appwiz.cpl" and press Enter\n3. Find "Peak-Abu" in the list\n4. Click it and select "Uninstall"\n5. Follow the prompts\n\nAll your local video files will remain in your chosen storage directory.');
+      }
+
+      // Click outside modal to close
+      document.getElementById('settingsModal').addEventListener('click', (e) => {
+        if (e.target.id === 'settingsModal') {
+          closeSettings();
+        }
+      });
+
+      // =====================
+      // HOTKEY CAPTURE LOGIC
+      // =====================
+
+      ipcRenderer.invoke('get-current-hotkey').then(hotkey => {
+        if (hotkey) {
+          currentHotkey = hotkey;
+          updateHotkeyDisplay(hotkey);
+        }
+      });
+
+      function toggleHotkeyCapture() {
+        if (capturingHotkey) {
+          capturingHotkey = false;
+          document.getElementById('hotkeyCapture').blur();
+          document.getElementById('hotkeyDisplay').classList.remove('listening');
+          document.getElementById('hotkeyBtn').classList.remove('listening');
+          document.getElementById('hotkeyBtn').textContent = 'Change';
+          document.getElementById('hotkeyDisplay').textContent = currentHotkey;
+          document.getElementById('hotkeyHint').textContent = 'Press any F-key, or hold Ctrl / Alt / Shift + a letter or F-key';
+        } else {
+          capturingHotkey = true;
+          document.getElementById('hotkeyCapture').focus();
+          document.getElementById('hotkeyDisplay').classList.add('listening');
+          document.getElementById('hotkeyDisplay').textContent = '...';
+          document.getElementById('hotkeyBtn').classList.add('listening');
+          document.getElementById('hotkeyBtn').textContent = 'Cancel';
+          document.getElementById('hotkeyHint').textContent = 'Listening — press your key combination now';
+        }
+      }
+
+      function updateHotkeyDisplay(hotkey) {
+        document.getElementById('hotkeyDisplay').textContent = hotkey;
+        document.getElementById('saveBtnHotkey').textContent = hotkey;
+      }
+
+      document.getElementById('hotkeyCapture').addEventListener('keydown', (e) => {
+        if (!capturingHotkey) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
+
+        const parts = [];
+        if (e.ctrlKey) parts.push('Ctrl');
+        if (e.altKey) parts.push('Alt');
+        if (e.shiftKey) parts.push('Shift');
+
+        const keyMap = {
+          ' ': 'Space', 'ArrowUp': 'Up', 'ArrowDown': 'Down',
+          'ArrowLeft': 'Left', 'ArrowRight': 'Right',
+          'Backspace': 'Backspace', 'Delete': 'Delete',
+          'Enter': 'Enter', 'Tab': 'Tab'
+        };
+
+        let keyName;
+
+        if (e.key === 'Escape') {
+          toggleHotkeyCapture();
+          return;
+        } else if (keyMap[e.key]) {
+          keyName = keyMap[e.key];
+        } else if (/^F([1-9]|1[0-2])$/.test(e.key)) {
+          keyName = e.key;
+        } else if (e.key.length === 1) {
+          if (parts.length === 0) {
+            document.getElementById('hotkeyHint').textContent = 'Add Ctrl, Alt, or Shift with that key';
+            return;
+          }
+          keyName = e.key.toUpperCase();
+        } else {
+          document.getElementById('hotkeyHint').textContent = 'That key is not supported. Try an F-key or Ctrl/Alt/Shift + letter.';
+          return;
+        }
+
+        parts.push(keyName);
+        const hotkey = parts.join('+');
+
+        capturingHotkey = false;
+        currentHotkey = hotkey;
+        document.getElementById('hotkeyCapture').blur();
+        updateHotkeyDisplay(hotkey);
+        document.getElementById('hotkeyDisplay').classList.remove('listening');
+        document.getElementById('hotkeyBtn').classList.remove('listening');
+        document.getElementById('hotkeyBtn').textContent = 'Change';
+        document.getElementById('hotkeyHint').textContent = 'Hotkey saved — takes effect immediately';
+
+        ipcRenderer.send('update-settings', { hotkey });
+      });
+
+      ipcRenderer.on('hotkey-error', (event, message) => {
+        document.getElementById('hotkeyHint').textContent = '⚠️ ' + message;
+        document.getElementById('hotkeyDisplay').textContent = currentHotkey;
+        updateHotkeyDisplay(currentHotkey);
+      });
 
       // =====================
       // SESSION LOGIC
@@ -234,7 +544,6 @@
           return;
         }
 
-        // Create session via HTTP, then connect via WebSocket
         fetch('https://peakabu.app/sessions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -271,7 +580,6 @@
       }
 
       function connectToSession(code, username) {
-        // Connect WebSocket to server
         socket = socketIO('https://peakabu.app');
 
         socket.on('connect', () => {
@@ -283,33 +591,44 @@
           console.log('Joined session:', data);
           currentSessionCode = data.code;
 
-          // Switch UI to connected state
           document.getElementById('sessionPanel-disconnected').style.display = 'none';
           document.getElementById('sessionPanel-connected').style.display = 'block';
           document.getElementById('sessionCodeDisplay').textContent = data.code;
 
-          // Show current members
           updateMemberList(data.members);
 
-          addClipItem('Joined session ' + data.code, false);
+          addClipItem('Joined session ' + data.code, 'success');
           ipcRenderer.send('session-connected', { code: data.code, username: document.getElementById('usernameInput').value.trim() });
         });
 
         socket.on('member-joined', (data) => {
           console.log('Member joined:', data.username);
           addMember(data.username, false);
-          addClipItem(data.username + ' joined the session', false);
+          addClipItem(data.username + ' joined the session', 'success');
         });
 
         socket.on('member-left', (data) => {
           console.log('Member left:', data.username);
           removeMember(data.username);
-          addClipItem(data.username + ' left the session', false);
+          addClipItem(data.username + ' left the session', 'success');
         });
 
         socket.on('member-recording-update', (data) => {
           console.log('Recording update:', data.username, data.isRecording);
           updateMemberRecording(data.username, data.isRecording);
+        });
+
+        socket.on('coordinated-save-highlight', (data) => {
+          const { username: triggeredBy, coordinated_timestamp } = data;
+          console.log(`Broadcast save-highlight from ${triggeredBy} (timestamp: ${coordinated_timestamp})`);
+
+          addClipItem(`⚡ ${triggeredBy} saved a highlight — syncing all POVs...`, 'broadcast');
+
+          ipcRenderer.send('broadcast-save-highlight', { coordinated_timestamp });
+        });
+
+        socket.on('upload-received', (data) => {
+          addClipItem(`☁️ ${data.username} uploaded their clip`, 'success');
         });
 
         socket.on('error-message', (data) => {
@@ -332,14 +651,11 @@
         }
         currentSessionCode = null;
 
-        // Switch UI back to disconnected state
         document.getElementById('sessionPanel-disconnected').style.display = 'block';
         document.getElementById('sessionPanel-connected').style.display = 'none';
         document.getElementById('memberList').innerHTML = '';
         ipcRenderer.send('session-disconnected');
       }
-
-      // --- Member list UI helpers ---
 
       function updateMemberList(members) {
         const list = document.getElementById('memberList');
@@ -349,7 +665,6 @@
 
       function addMember(username, isRecording) {
         const list = document.getElementById('memberList');
-        // SECURITY: CSS.escape prevents DOM manipulation via crafted usernames
         const safeId = 'member-' + CSS.escape(username);
         if (document.getElementById(safeId)) return;
 
@@ -357,7 +672,6 @@
         item.className = 'member-item';
         item.id = safeId;
 
-        // SECURITY: textContent instead of innerHTML — treats username as plain text, never code
         const nameSpan = document.createElement('span');
         nameSpan.className = 'member-name';
         nameSpan.textContent = username;
@@ -385,7 +699,7 @@
       }
 
       // =====================
-      // RECORDING LOGIC (unchanged)
+      // RECORDING LOGIC
       // =====================
 
       ipcRenderer.send('get-monitors');
@@ -476,7 +790,6 @@
 
         await startAudioCapture();
 
-        // Notify the session that we started recording
         if (socket) {
           socket.emit('recording-status', { isRecording: true });
         }
@@ -497,35 +810,47 @@
         document.getElementById('statusText').textContent = '● Stopped';
         document.getElementById('statusText').className = 'status idle';
 
-        // Notify the session that we stopped recording
         if (socket) {
           socket.emit('recording-status', { isRecording: false });
         }
       }
 
       function saveHighlight() {
-        ipcRenderer.send('save-highlight');
+        if (socket && currentSessionCode) {
+          socket.emit('broadcast-save-highlight');
+        } else {
+          ipcRenderer.send('save-highlight');
+        }
       }
 
       ipcRenderer.on('recording-started', (event, index) => {
-        addClipItem(`Recording started on Monitor ${index + 1}`, false);
+        addClipItem(`Recording started on Monitor ${index + 1}`, 'success');
       });
 
       ipcRenderer.on('highlight-saved', (event, filePath) => {
-        addClipItem('✅ Saved: ' + filePath, false);
+        addClipItem('✅ Saved: ' + filePath, 'success');
       });
 
       ipcRenderer.on('highlight-error', (event, message) => {
-        addClipItem('❌ ' + message, true);
+        addClipItem('❌ ' + message, 'error');
       });
 
-      function addClipItem(text, isError) {
+      ipcRenderer.on('upload-complete', (event, uploadId) => {
+        addClipItem('☁️ Upload complete: ' + uploadId, 'success');
+      });
+
+      ipcRenderer.on('upload-error', (event, message) => {
+        addClipItem('⚠️ Upload failed: ' + message, 'error');
+      });
+
+      function addClipItem(text, type = 'success') {
         const list = document.getElementById('clipList');
         const item = document.createElement('div');
-        item.className = 'clip-item ' + (isError ? 'error' : 'success');
+        item.className = 'clip-item ' + type;
         item.textContent = text;
         list.prepend(item);
       }
+
       function updateSettings() {
         const settings = {
           bufferSeconds: document.getElementById('bufferSelect').value,
@@ -535,7 +860,6 @@
         ipcRenderer.send('update-settings', settings);
       }
 
-      // Send initial settings on load
       window.addEventListener('DOMContentLoaded', () => {
         updateSettings();
       });
