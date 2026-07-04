@@ -611,12 +611,10 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
-  await syncClock();
-
   loadUserPreferences();
   ensureFolders();
-
   createWindow();
+  syncClock(); // runs in background, doesn't block window open
 
   const registered = globalShortcut.register(customHotkey, () => {
     console.log(`${customHotkey} pressed`);
