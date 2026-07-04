@@ -4,4 +4,4 @@ server/uploads
 dist/
 .env
 .vs/
-"@ | Out-File -FilePath .gitignore -Encoding utf8
+"@ | Out-File -FilePath .gitignore -Encoding utf8server/sessions.json
