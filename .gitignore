@@ -5,3 +5,5 @@ dist/
 .env
 .vs/
 "@ | Out-File -FilePath .gitignore -Encoding utf8server/sessions.json
+server/users.json
+server/.env
