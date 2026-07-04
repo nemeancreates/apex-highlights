@@ -460,6 +460,56 @@ const MAX_SESSIONS = 100;
 const MAX_MEMBERS_PER_SESSION = 30;
 
 const sessions = new Map();
+// ================================
+// SESSION PERSISTENCE
+// ================================
+const SESSIONS_FILE = path.join(__dirname, 'sessions.json');
+const SESSION_TTL = 3 * 24 * 60 * 60 * 1000; // 3 days in ms
+
+function loadSessionsFromDisk() {
+  try {
+    if (!fs.existsSync(SESSIONS_FILE)) return;
+    const data = JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8'));
+    const now = Date.now();
+    let loaded = 0;
+    let expired = 0;
+    for (const session of data) {
+      const age = now - new Date(session.createdAt).getTime();
+      if (age > SESSION_TTL) { expired++; continue; }
+      session.members = []; // clear live socket state — members rejoin
+      sessions.set(session.code, session);
+      loaded++;
+    }
+    log('info', 'sessions_loaded', { loaded, expired });
+  } catch (err) {
+    log('warn', 'sessions_load_failed', { error: err.message });
+  }
+}
+
+function saveSessionsToDisk() {
+  try {
+    const data = Array.from(sessions.values());
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(data, null, 2));
+  } catch (err) {
+    log('warn', 'sessions_save_failed', { error: err.message });
+  }
+}
+
+// Purge expired sessions once per day
+setInterval(() => {
+  const now = Date.now();
+  let purged = 0;
+  for (const [code, session] of sessions) {
+    if (now - new Date(session.createdAt).getTime() > SESSION_TTL) {
+      sessions.delete(code);
+      purged++;
+    }
+  }
+  if (purged > 0) {
+    log('info', 'sessions_purged', { purged });
+    saveSessionsToDisk();
+  }
+}, 24 * 60 * 60 * 1000);
 
 function generateCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -500,6 +550,7 @@ app.post('/sessions', (req, res) => {
   };
 
   sessions.set(code, session);
+  log("info", "session_created", { code, createdBy: username });
   log("info", "session_created", { code, createdBy: username });
 
   res.status(201).json({ sessionCode: code, sessionId: session.id });
@@ -640,6 +691,7 @@ app.post('/sessions/:code/upload', (req, res) => {
     };
 
     session.uploads.push(uploadRecord);
+    saveSessionsToDisk();
 
     log("info", "upload_received", { session: code, username: uploaderName, sizeMB: (videoFile.size / 1024 / 1024).toFixed(1) });
 
@@ -824,12 +876,15 @@ io.on('connection', (socket) => {
         const current = sessions.get(sessionCode);
         if (current && current.members.length === 0) {
           sessions.delete(sessionCode);
+          saveSessionsToDisk();
           log("info", "session_deleted", { session: sessionCode });
         }
       }, 5 * 60 * 1000);
     }
   });
 });
+
+loadSessionsFromDisk();
 
 server.listen(PORT, () => {
   log("info", "server_start", { port: PORT });
