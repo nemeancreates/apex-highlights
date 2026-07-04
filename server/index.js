@@ -9,6 +9,15 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 const os = require('os');
 const helmet = require('helmet');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const BCRYPT_ROUNDS = 12;
+const JWT_EXPIRY = '7d';
+const JWT_SECRET = process.env.JWT_SECRET || null;
+if (!JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is not set. Set it and restart.');
+  process.exit(1);
+}
 
 
 // ================================
@@ -461,6 +470,48 @@ const MAX_MEMBERS_PER_SESSION = 30;
 
 const sessions = new Map();
 // ================================
+// USERS STORE + PERSISTENCE
+// ================================
+const USERS_FILE = path.join(__dirname, 'users.json');
+const users = new Map();
+
+function loadUsersFromDisk() {
+  try {
+    if (!fs.existsSync(USERS_FILE)) return;
+    const data = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+    for (const user of data) {
+      users.set(user.username.toLowerCase(), user);
+    }
+    log('info', 'users_loaded', { count: users.size });
+  } catch (err) {
+    log('warn', 'users_load_failed', { error: err.message });
+  }
+}
+
+function saveUsersToDisk() {
+  try {
+    fs.writeFileSync(USERS_FILE, JSON.stringify(Array.from(users.values()), null, 2));
+  } catch (err) {
+    log('warn', 'users_save_failed', { error: err.message });
+  }
+}
+
+// ================================
+// AUTH MIDDLEWARE
+// ================================
+function requireAuth(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return safeError(res, 401, 'Authentication required');
+  }
+  try {
+    req.user = jwt.verify(authHeader.slice(7), JWT_SECRET);
+    next();
+  } catch (err) {
+    return safeError(res, 401, 'Invalid or expired token. Please log in again.');
+  }
+}
+// ================================
 // SESSION PERSISTENCE
 // ================================
 const SESSIONS_FILE = path.join(__dirname, 'sessions.json');
@@ -521,16 +572,59 @@ function generateCode() {
 }
 
 // --- HTTP Routes ---
+// ================================
+// AUTH ROUTES
+// ================================
+app.post('/auth/register', async (req, res) => {
+  const { username, password } = req.body || {};
+  const clean = (username || '').trim().replace(/[^a-zA-Z0-9_\-]/g, '');
+  if (!clean || clean.length < 2 || clean.length > 24) {
+    return safeError(res, 400, 'Username must be 2-24 characters: letters, numbers, _ or -');
+  }
+  if (!password || password.length < 8 || password.length > 128) {
+    return safeError(res, 400, 'Password must be 8-128 characters');
+  }
+  if (users.has(clean.toLowerCase())) {
+    return safeError(res, 409, 'Username already taken');
+  }
+  const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+  const user = { username: clean, passwordHash, createdAt: new Date().toISOString() };
+  users.set(clean.toLowerCase(), user);
+  saveUsersToDisk();
+  const token = jwt.sign({ username: clean }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
+  log('info', 'user_registered', { username: clean });
+  return res.status(201).json({ token, username: clean });
+});
 
+app.post('/auth/login', async (req, res) => {
+  const { username, password } = req.body || {};
+  const clean = (username || '').trim();
+  if (!clean || !password) {
+    return safeError(res, 400, 'Username and password required');
+  }
+  const user = users.get(clean.toLowerCase());
+  // Always hash to prevent timing attacks even on miss
+  const hashToCheck = user ? user.passwordHash : '$2b$12$invalidhashfortimingprotection000000000000000000000000';
+  const valid = await bcrypt.compare(password, hashToCheck);
+  if (!user || !valid) {
+    return safeError(res, 401, 'Invalid username or password');
+  }
+  const token = jwt.sign({ username: user.username }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
+  log('info', 'user_login', { username: user.username });
+  return res.status(200).json({ token, username: user.username });
+});
+
+app.get('/auth/me', requireAuth, (req, res) => {
+  return res.json({ username: req.user.username });
+});
 app.get('/', (req, res) => {
   res.json({ status: 'Peak-Abu server running', activeSessions: sessions.size });
 });
 
-app.post('/sessions', (req, res) => {
-  const username = sanitizeUsername(req.body.username);
-
+app.post('/sessions', requireAuth, (req, res) => {
+  const username = sanitizeUsername(req.user.username);
   if (!username) {
-    return res.status(400).json({ error: 'Invalid username. Use 1-24 characters: letters, numbers, spaces, _ or -' });
+    return safeError(res, 400, 'Invalid account username');
   }
 
   if (sessions.size >= MAX_SESSIONS) {
@@ -579,16 +673,16 @@ app.get('/sessions/:code', (req, res) => {
 // ================================
 // UPLOAD ENDPOINT
 // ================================
-app.post('/sessions/:code/upload', (req, res) => {
+  app.post('/sessions/:code/upload', requireAuth, (req, res) => {
   const code = sanitizeCode(req.params.code);
   if (!code) return res.status(400).json({ error: 'Invalid session code' });
 
   const session = sessions.get(code);
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
-  const uploaderName = sanitizeUsername(req.headers['x-username']);
+  const uploaderName = sanitizeUsername(req.user.username);
   if (!uploaderName) {
-    return res.status(400).json({ error: 'Missing or invalid username header' });
+    return safeError(res, 400, 'Invalid account username');
   }
 
   const isMember = session.members.some(m => m.username === uploaderName) ||
@@ -775,6 +869,17 @@ app.get('/composite/:jobId/download', (req, res) => {
 });
 
 // --- WebSocket ---
+// Require valid JWT on every Socket.IO connection
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token;
+  if (!token) return next(new Error('auth_required'));
+  try {
+    socket.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch (err) {
+    next(new Error('auth_invalid'));
+  }
+});
 io.on('connection', (socket) => {
   log("debug", "client_connected", { socketId: socket.id });
 
@@ -785,7 +890,7 @@ io.on('connection', (socket) => {
     }
 
     const sessionCode = sanitizeCode(code);
-    const cleanUsername = sanitizeUsername(username);
+    const cleanUsername = sanitizeUsername(socket.user.username);
 
     if (!sessionCode || !cleanUsername) {
       socket.emit('error-message', { message: 'Invalid session code or username' });
@@ -884,6 +989,7 @@ io.on('connection', (socket) => {
   });
 });
 
+loadUsersFromDisk();
 loadSessionsFromDisk();
 
 server.listen(PORT, () => {

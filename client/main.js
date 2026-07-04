@@ -35,6 +35,7 @@ let ffmpegProcess = null;
 let mainWindow = null;
 let currentSession = null;
 let audioBuffers = []; // in-memory rolling buffer of audio chunks
+let authToken = null;
 
 function ensureFolders() {
   if (!fs.existsSync(BUFFER_DIR)) fs.mkdirSync(BUFFER_DIR, { recursive: true });
@@ -378,8 +379,9 @@ function uploadHighlight(videoPath, metadataPath) {
     path: `/sessions/${currentSession.code}/upload`,
     method: 'POST',
     headers: {
-      'x-username': currentSession.username
+      'Authorization': 'Bearer ' + authToken
     }
+  },
   }, (err, res) => {
     if (err) {
       console.log('Upload connection error:', err.message);
@@ -507,6 +509,11 @@ function createWindow() {
   // IPC: Set socket.io connection
   ipcMain.on('set-socket-io', (event, socketId) => {
     console.log('Socket.IO connection noted in main process');
+  });
+
+  ipcMain.on('auth-token-updated', (event, token) => {
+    authToken = token;
+    console.log('Auth token updated in main process');
   });
 
   ipcMain.on('session-connected', (event, { code, username }) => {

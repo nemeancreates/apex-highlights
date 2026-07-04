@@ -406,8 +406,30 @@
       </div>
     </div>
 
+
+    <!-- AUTH PANEL -->
+    <div class="section" id="authPanel">
+      <h3>Account</h3>
+      <div id="authLoggedOut">
+        <label>Username</label>
+        <input type="text" id="authUsernameInput" placeholder="Enter username" />
+        <label>Password</label>
+        <input type="password" id="authPasswordInput" placeholder="Enter password" />
+        <div id="authError" style="color:#ff4444;font-size:12px;margin-top:-6px;margin-bottom:6px;display:none;"></div>
+        <div class="row">
+          <button onclick="loginUser()">Log In</button>
+          <button class="btn-secondary" onclick="registerUser()">Register</button>
+        </div>
+      </div>
+      <div id="authLoggedIn" style="display:none;">
+        <div style="font-size:14px;margin-bottom:10px;">Logged in as <strong id="authDisplayName"></strong></div>
+        <button class="btn-secondary" onclick="logoutUser()">Log Out</button>
+      </div>
+    </div>
+
+
     <!-- SESSION PANEL -->
-    <div class="section" id="sessionPanel">
+      <div class="section" id="sessionPanel" style="display:none;">
       <h3>Squad Session</h3>
 
       <div id="sessionPanel-disconnected">
@@ -691,8 +713,11 @@
 
         fetch('https://peakabu.app/sessions', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: username })
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + window.authToken
+          },
+          body: JSON.stringify({})
         })
         .then(res => res.json())
         .then(data => {
@@ -728,7 +753,15 @@
       };
 
       function connectToSession(code, username) {
-        window.socket = io('https://peakabu.app');
+        window.socket = io('https://peakabu.app', {
+        auth: { token: window.authToken }
+      });
+      window.socket.on('connect_error', (err) => {
+        if (err.message === 'auth_required' || err.message === 'auth_invalid') {
+          alert('Session expired. Please log in again.');
+          logoutUser();
+        }
+      });
 
         window.socket.on('connect', () => {
           console.log('WebSocket connected, joining session', code);
@@ -1056,7 +1089,116 @@
       window.addEventListener('DOMContentLoaded', () => {
         window.updateSettings();
       });
+      // =====================
+      // AUTH
+      // =====================
+      window.authToken = localStorage.getItem('peak_abu_token') || null;
+      window.authUsername = localStorage.getItem('peak_abu_username') || null;
 
+      async function checkAuthOnLoad() {
+        if (!window.authToken) { showAuthLoggedOut(); return; }
+        try {
+          const res = await fetch('https://peakabu.app/auth/me', {
+            headers: { 'Authorization': 'Bearer ' + window.authToken }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            showAuthLoggedIn(data.username);
+          } else {
+            clearAuthState();
+            showAuthLoggedOut();
+          }
+        } catch (e) {
+          if (window.authUsername) showAuthLoggedIn(window.authUsername);
+          else showAuthLoggedOut();
+        }
+      }
+
+      window.registerUser = async function() {
+        const username = document.getElementById('authUsernameInput').value.trim();
+        const password = document.getElementById('authPasswordInput').value;
+        if (!username || !password) { showAuthError('Fill in both fields'); return; }
+        try {
+          const res = await fetch('https://peakabu.app/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+          });
+          const data = await res.json();
+          if (!res.ok) { showAuthError(data.error || 'Registration failed'); return; }
+          storeAuthState(data.token, data.username);
+          showAuthLoggedIn(data.username);
+        } catch (e) { showAuthError('Could not reach server'); }
+      };
+
+      window.loginUser = async function() {
+        const username = document.getElementById('authUsernameInput').value.trim();
+        const password = document.getElementById('authPasswordInput').value;
+        if (!username || !password) { showAuthError('Fill in both fields'); return; }
+        try {
+          const res = await fetch('https://peakabu.app/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+          });
+          const data = await res.json();
+          if (!res.ok) { showAuthError(data.error || 'Login failed'); return; }
+          storeAuthState(data.token, data.username);
+          showAuthLoggedIn(data.username);
+        } catch (e) { showAuthError('Could not reach server'); }
+      };
+
+      window.logoutUser = function() {
+        clearAuthState();
+        showAuthLoggedOut();
+        if (window.socket) { window.socket.disconnect(); window.socket = null; }
+        window.currentSessionCode = null;
+        document.getElementById('sessionPanel-disconnected').style.display = 'block';
+        document.getElementById('sessionPanel-connected').style.display = 'none';
+        document.getElementById('memberList').innerHTML = '';
+        ipcRenderer.send('auth-token-updated', null);
+        ipcRenderer.send('session-disconnected');
+      };
+
+      function storeAuthState(token, username) {
+        window.authToken = token;
+        window.authUsername = username;
+        localStorage.setItem('peak_abu_token', token);
+        localStorage.setItem('peak_abu_username', username);
+        ipcRenderer.send('auth-token-updated', token);
+      }
+
+      function clearAuthState() {
+        window.authToken = null;
+        window.authUsername = null;
+        localStorage.removeItem('peak_abu_token');
+        localStorage.removeItem('peak_abu_username');
+        ipcRenderer.send('auth-token-updated', null);
+      }
+
+      function showAuthLoggedIn(username) {
+        window.authUsername = username;
+        document.getElementById('authLoggedOut').style.display = 'none';
+        document.getElementById('authLoggedIn').style.display = 'block';
+        document.getElementById('authDisplayName').textContent = username;
+        document.getElementById('usernameInput').value = username;
+        document.getElementById('sessionPanel').style.display = 'block';
+      }
+
+      function showAuthLoggedOut() {
+        document.getElementById('authLoggedOut').style.display = 'block';
+        document.getElementById('authLoggedIn').style.display = 'none';
+        document.getElementById('sessionPanel').style.display = 'none';
+      }
+
+      function showAuthError(msg) {
+        const el = document.getElementById('authError');
+        el.textContent = msg;
+        el.style.display = 'block';
+        setTimeout(() => { el.style.display = 'none'; }, 4000);
+      }
+
+      checkAuthOnLoad();
     </script>
   </body>
 </html>
