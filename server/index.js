@@ -39,9 +39,9 @@ if (process.env.SPACES_KEY && process.env.SPACES_SECRET) {
       secretAccessKey: process.env.SPACES_SECRET
     }
   });
-  log('info', 'spaces_configured', { bucket: SPACES_BUCKET, region: SPACES_REGION });
+  console.log('Spaces configured:', SPACES_BUCKET, SPACES_REGION);
 } else {
-  log('warn', 'spaces_not_configured', { note: 'SPACES_KEY/SPACES_SECRET missing — uploads will stay local' });
+  console.log('WARNING: Spaces not configured — SPACES_KEY/SPACES_SECRET missing, uploads will stay local');
 }
 
 // Push a local file to Spaces, return its CDN URL. Deletes the local file on success.
