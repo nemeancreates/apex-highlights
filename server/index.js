@@ -90,7 +90,31 @@ app.use('/media', express.static(path.join(__dirname, 'uploads')));
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
-function generateThumbnail(videoPath, thumbnailPath) {
+// ================================
+// THUMBNAIL QUEUE (memory-constrained droplet: one ffmpeg at a time)
+// ================================
+const thumbnailQueue = [];
+let thumbnailRunning = false;
+
+function enqueueThumbnail(videoPath, thumbnailPath, onDone) {
+  thumbnailQueue.push({ videoPath, thumbnailPath, onDone });
+  processThumbnailQueue();
+}
+
+async function processThumbnailQueue() {
+  if (thumbnailRunning || thumbnailQueue.length === 0) return;
+  thumbnailRunning = true;
+  const job = thumbnailQueue.shift();
+  try {
+    const ok = await generateThumbnail(job.videoPath, job.thumbnailPath);
+    if (ok && typeof job.onDone === 'function') job.onDone();
+  } catch (e) {
+    log('warn', 'thumbnail_queue_error', { error: e.message });
+  } finally {
+    thumbnailRunning = false;
+    processThumbnailQueue();
+  }
+}function generateThumbnail(videoPath, thumbnailPath) {
   return new Promise((resolve) => {
     const ffmpeg = spawn('ffmpeg', [
       '-i', videoPath,
@@ -746,11 +770,9 @@ app.get('/sessions/:code', (req, res) => {
     const reencPath = path.join(path.dirname(videoFile.path), reencName);
 
     // Run thumbnail first, then re-encode (both async)
-    generateThumbnail(videoFile.path, thumbPath).then(thumbOk => {
-      if (thumbOk) {
-        const record = session.uploads.find(u => u.videoFile === videoFile.filename);
-        if (record) record.thumbnailFile = thumbName;
-      }
+    enqueueThumbnail(videoFile.path, thumbPath, () => {
+      const record = session.uploads.find(u => u.videoFile === videoFile.filename);
+      if (record) record.thumbnailFile = thumbName;
     });
 // DISABLED_AV1: 
 // DISABLED_AV1:     reencodeVideo(videoFile.path, reencPath).then(reencOk => {
