@@ -413,6 +413,7 @@
       <div id="sessionPanel-disconnected">
         <label>Your Name</label>
         <input type="text" id="usernameInput" placeholder="Enter your username" />
+        <div id="usernameError" style="color:#ff4444;font-size:12px;margin-top:-6px;margin-bottom:6px;display:none;">Enter a username first</div>
 
         <button onclick="createSession()">Create New Session</button>
 
@@ -440,25 +441,11 @@
         <option>Loading monitors...</option>
       </select>
 
-      <div class="row">
-        <div>
-          <label>Buffer Length</label>
-          <select id="bufferSelect" onchange="updateSettings()">
-            <option value="30">30 seconds</option>
-            <option value="60">1 minute</option>
-            <option value="180" selected>3 minutes</option>
-            <option value="300">5 minutes</option>
-            <option value="600">10 minutes</option>
-          </select>
-        </div>
-        <div>
-          <label>Framerate</label>
-          <select id="fpsSelect" onchange="updateSettings()">
-            <option value="30" selected>30 FPS</option>
-            <option value="60">60 FPS</option>
-          </select>
-        </div>
-      </div>
+      <label>Framerate</label>
+      <select id="fpsSelect" onchange="updateSettings()">
+        <option value="30" selected>30 FPS</option>
+        <option value="60">60 FPS</option>
+      </select>
 
       <label>Recording Quality</label>
       <select id="resolutionSelect" onchange="updateSettings()">
@@ -512,6 +499,8 @@
       window.currentSessionCode = null;
       window.capturingHotkey = false;
       window.currentHotkey = 'F9';
+      window.highlightCooldownActive = false;
+      window.highlightCooldownTimer = null;
 
       // =====================
       // SETTINGS MODAL
@@ -693,7 +682,10 @@
       window.createSession = function() {
         const username = document.getElementById('usernameInput').value.trim();
         if (!username) {
-          alert('Enter a username first!');
+          var err = document.getElementById('usernameError');
+          err.style.display = 'block';
+          document.getElementById('usernameInput').focus();
+          setTimeout(function() { err.style.display = 'none'; }, 3000);
           return;
         }
 
@@ -721,7 +713,10 @@
         const code = document.getElementById('joinCodeInput').value.trim().toUpperCase();
 
         if (!username) {
-          alert('Enter a username first!');
+          var err = document.getElementById('usernameError');
+          err.style.display = 'block';
+          document.getElementById('usernameInput').focus();
+          setTimeout(function() { err.style.display = 'none'; }, 3000);
           return;
         }
         if (!code || code.length < 4) {
@@ -969,11 +964,31 @@
       };
 
       window.saveHighlight = function() {
+        if (window.highlightCooldownActive) return;
+
         if (window.socket && window.currentSessionCode) {
           window.socket.emit('broadcast-save-highlight');
         } else {
           ipcRenderer.send('save-highlight');
         }
+
+        window.highlightCooldownActive = true;
+        var remaining = 15;
+        var saveBtn = document.getElementById('saveBtn');
+        saveBtn.innerHTML = '⏳ ' + remaining + 's before next save';
+        saveBtn.disabled = true;
+
+        window.highlightCooldownTimer = setInterval(function() {
+          remaining--;
+          if (remaining <= 0) {
+            clearInterval(window.highlightCooldownTimer);
+            window.highlightCooldownActive = false;
+            saveBtn.innerHTML = '💾 Save Highlight (or press <span id="saveBtnHotkey">' + window.currentHotkey + '</span>)';
+            saveBtn.disabled = false;
+          } else {
+            saveBtn.innerHTML = '⏳ ' + remaining + 's before next save';
+          }
+        }, 1000);
       };
 
       ipcRenderer.on('recording-started', (event, index) => {
@@ -1031,7 +1046,7 @@
 
       window.updateSettings = function() {
         const settings = {
-          bufferSeconds: document.getElementById('bufferSelect').value,
+          bufferSeconds: '180',
           fps: parseInt(document.getElementById('fpsSelect').value),
           resolution: document.getElementById('resolutionSelect').value
         };
