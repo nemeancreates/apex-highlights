@@ -19,6 +19,54 @@ if (!JWT_SECRET) {
   process.exit(1);
 }
 
+const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+
+// ================================
+// DIGITALOCEAN SPACES (S3-compatible object storage)
+// ================================
+const SPACES_REGION = process.env.SPACES_REGION || 'nyc3';
+const SPACES_BUCKET = process.env.SPACES_BUCKET || 'peakbu-media';
+const SPACES_ENDPOINT = `https://${SPACES_REGION}.digitaloceanspaces.com`;
+const SPACES_CDN_BASE = `https://${SPACES_BUCKET}.${SPACES_REGION}.cdn.digitaloceanspaces.com`;
+
+let spacesClient = null;
+if (process.env.SPACES_KEY && process.env.SPACES_SECRET) {
+  spacesClient = new S3Client({
+    endpoint: SPACES_ENDPOINT,
+    region: SPACES_REGION,
+    credentials: {
+      accessKeyId: process.env.SPACES_KEY,
+      secretAccessKey: process.env.SPACES_SECRET
+    }
+  });
+  log('info', 'spaces_configured', { bucket: SPACES_BUCKET, region: SPACES_REGION });
+} else {
+  log('warn', 'spaces_not_configured', { note: 'SPACES_KEY/SPACES_SECRET missing — uploads will stay local' });
+}
+
+// Push a local file to Spaces, return its CDN URL. Deletes the local file on success.
+async function uploadToSpaces(localPath, objectKey, contentType) {
+  const fileBuffer = fs.readFileSync(localPath);
+  await spacesClient.send(new PutObjectCommand({
+    Bucket: SPACES_BUCKET,
+    Key: objectKey,
+    Body: fileBuffer,
+    ContentType: contentType,
+    ACL: 'public-read'
+  }));
+  try { fs.unlinkSync(localPath); } catch (e) {}
+  return `${SPACES_CDN_BASE}/${objectKey}`;
+}
+
+// Delete an object from Spaces by its key (for retention/purge)
+async function deleteFromSpaces(objectKey) {
+  if (!spacesClient) return;
+  try {
+    await spacesClient.send(new DeleteObjectCommand({ Bucket: SPACES_BUCKET, Key: objectKey }));
+  } catch (e) {
+    log('warn', 'spaces_delete_failed', { key: objectKey, error: e.message });
+  }
+}
 
 // ================================
 // STRUCTURED LOGGING
@@ -570,12 +618,18 @@ function saveSessionsToDisk() {
   }
 }
 
-// Purge expired sessions once per day
-setInterval(() => {
+// Purge expired sessions once per day, deleting their Spaces objects too
+setInterval(async () => {
   const now = Date.now();
   let purged = 0;
   for (const [code, session] of sessions) {
     if (now - new Date(session.createdAt).getTime() > SESSION_TTL) {
+      // Delete all Spaces objects for this session before dropping it
+      for (const up of session.uploads) {
+        if (up.videoKey) await deleteFromSpaces(up.videoKey);
+        if (up.thumbnailKey) await deleteFromSpaces(up.thumbnailKey);
+        if (up.metadataKey) await deleteFromSpaces(up.metadataKey);
+      }
       sessions.delete(code);
       purged++;
     }
@@ -763,17 +817,56 @@ app.get('/sessions/:code', (req, res) => {
       }
     }
 
-    // Generate thumbnail + re-encode async (fire and forget — don't block response)
+    // Generate thumbnail locally first (needed before we push to Spaces), then
+    // upload video + thumbnail + metadata to Spaces and remove local copies.
     const thumbName = `thumb_${path.basename(videoFile.filename, '.mp4')}.jpg`;
     const thumbPath = path.join(path.dirname(videoFile.path), thumbName);
-    const reencName = `av1_${videoFile.filename}`;
-    const reencPath = path.join(path.dirname(videoFile.path), reencName);
+    const metaFileObj = req.files.metadata ? req.files.metadata[0] : null;
 
-    // Run thumbnail first, then re-encode (both async)
-    enqueueThumbnail(videoFile.path, thumbPath, () => {
-      const record = session.uploads.find(u => u.videoFile === videoFile.filename);
-      if (record) record.thumbnailFile = thumbName;
-    });
+    // Object keys in Spaces: organize by session for easy purge later
+    const videoKey = `${code}/${videoFile.filename}`;
+    const thumbKey = `${code}/${thumbName}`;
+    const metaKey = metaFileObj ? `${code}/${metaFileObj.filename}` : null;
+
+    // Find the upload record we just pushed so we can fill in URLs as they resolve
+    const findRecord = () => session.uploads.find(u => u.videoFile === videoFile.filename);
+
+    if (spacesClient) {
+      // Thumbnail must be generated before upload. Queue it (one ffmpeg at a
+      // time), and once done, push everything to Spaces.
+      enqueueThumbnail(videoFile.path, thumbPath, async () => {
+        try {
+          const videoUrl = await uploadToSpaces(videoFile.path, videoKey, 'video/mp4');
+          const rec = findRecord();
+          if (rec) { rec.videoUrl = videoUrl; rec.videoKey = videoKey; }
+
+          if (fs.existsSync(thumbPath)) {
+            const thumbUrl = await uploadToSpaces(thumbPath, thumbKey, 'image/jpeg');
+            const r2 = findRecord();
+            if (r2) { r2.thumbnailUrl = thumbUrl; r2.thumbnailKey = thumbKey; }
+          }
+
+          if (metaFileObj && fs.existsSync(metaFileObj.path)) {
+            const metaUrl = await uploadToSpaces(metaFileObj.path, metaKey, 'application/json');
+            const r3 = findRecord();
+            if (r3) { r3.metadataUrl = metaUrl; r3.metadataKey = metaKey; }
+          }
+
+          saveSessionsToDisk();
+          log('info', 'spaces_upload_complete', { session: code, key: videoKey });
+        } catch (e) {
+          log('error', 'spaces_upload_failed', { session: code, error: e.message });
+        }
+      });
+    } else {
+      // Fallback: Spaces not configured, keep old local behavior
+      enqueueThumbnail(videoFile.path, thumbPath, () => {
+        const rec = findRecord();
+        if (rec) rec.thumbnailFile = thumbName;
+      });
+    }
+
+
 // DISABLED_AV1: 
 // DISABLED_AV1:     reencodeVideo(videoFile.path, reencPath).then(reencOk => {
 // DISABLED_AV1:       if (reencOk) {
@@ -801,7 +894,13 @@ app.get('/sessions/:code', (req, res) => {
       username: uploaderName,
       videoFile: videoFile.filename,
       metadataFile: req.files.metadata ? req.files.metadata[0].filename : null,
-      thumbnailFile: null, // filled in async after FFmpeg runs
+      thumbnailFile: null,
+      videoUrl: null,       // Spaces CDN URL, filled in async
+      thumbnailUrl: null,   // Spaces CDN URL, filled in async
+      metadataUrl: null,    // Spaces CDN URL, filled in async
+      videoKey: null,       // Spaces object key, for purge
+      thumbnailKey: null,
+      metadataKey: null,
       uploadedAt: new Date().toISOString(),
       fileSize: videoFile.size
     };

@@ -929,25 +929,25 @@
         if (newRaw.length === 0) return;
 
         for (const upload of newRaw) {
-          let metadata = null;
-          if (upload.metadataFile) {
-            try {
-              const metaRes = await fetch('/media/' + currentSessionCode + '/' + upload.metadataFile);
-              if (metaRes.ok) metadata = await metaRes.json();
-            } catch (e) {}
-          }
-          const video = document.createElement('video');
-          video.preload = 'none';
-          video.muted = true;
-          video.playsInline = true;
-          allUploads.push({
-            element: video, metadata, username: upload.username,
-            uploadId: upload.id, videoFile: upload.videoFile,
-            videoSrc: '/media/' + currentSessionCode + '/' + upload.videoFile,
-            thumbnailSrc: upload.thumbnailFile ? '/media/' + currentSessionCode + '/' + upload.thumbnailFile : null,
-            offset: 0, volume: 80, isMuted: true, loaded: false, missing: false
-          });
-        }
+      let metadata = null;
+      if (upload.metadataFile) {
+        try {
+          const metaRes = await fetch('/media/' + currentSessionCode + '/' + upload.metadataFile);
+          if (metaRes.ok) metadata = await metaRes.json();
+        } catch (e) {}
+      }
+      const video = document.createElement('video');
+      video.preload = 'none';
+      video.muted = true;
+      video.playsInline = true;
+      allUploads.push({
+        element: video, metadata, username: upload.username,
+        uploadId: upload.id, videoFile: upload.videoFile,
+        videoSrc: '/media/' + currentSessionCode + '/' + upload.videoFile,
+        thumbnailSrc: upload.thumbnailFile ? '/media/' + currentSessionCode + '/' + upload.thumbnailFile : null,
+        offset: 0, volume: 80, isMuted: true, loaded: false, missing: false
+      });
+    }
 
         allUsers = deriveAllUsers();
         highlights = clusterHighlights();
