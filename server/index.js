@@ -52,6 +52,7 @@ async function uploadToSpaces(localPath, objectKey, contentType) {
     Key: objectKey,
     Body: fileBuffer,
     ContentType: contentType
+    ACL: 'public-read'
   }));
   try { fs.unlinkSync(localPath); } catch (e) {}
   return `${SPACES_CDN_BASE}/${objectKey}`;
@@ -1100,9 +1101,13 @@ io.on('connection', (socket) => {
       setTimeout(() => {
         const current = sessions.get(sessionCode);
         if (current && current.members.length === 0) {
-          sessions.delete(sessionCode);
-          saveSessionsToDisk();
-          log("info", "session_deleted", { session: sessionCode });
+          if (current.uploads && current.uploads.length > 0) {
+            log("info", "session_archived", { session: sessionCode, uploads: current.uploads.length });
+          } else {
+            sessions.delete(sessionCode);
+            saveSessionsToDisk();
+            log("info", "session_deleted", { session: sessionCode });
+          }
         }
       }, 5 * 60 * 1000);
     }
