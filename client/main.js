@@ -449,7 +449,7 @@ function saveHighlight(coordinatedTimestamp = null) {
       const deltaSec = audioFirstChunkTime
         ? (clipVideoStartMs - audioFirstChunkTime) / 1000
         : 0;
-      const audioSkipSec = Math.max(0, deltaSec + 0.75);
+      const audioSkipSec = Math.max(0, deltaSec + 0.6);
       const audioDelaySec = Math.max(0, -deltaSec);
       console.log(`Audio sync: skip=${audioSkipSec.toFixed(3)}s delay=${audioDelaySec.toFixed(3)}s`);
 
