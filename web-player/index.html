@@ -534,7 +534,7 @@
         </div>
       </div>
 
-      <!-- SESSION TIMELINE (replaces simple playback controls) -->
+      <!-- SESSION TIMELINE -->
       <div class="session-timeline" id="sessionTimeline" style="display:none;">
         <div class="timeline-top-row">
           <button class="btn btn-small btn-secondary" onclick="stepHighlight(-1)" title="Previous highlight">&#8249;</button>
@@ -692,8 +692,7 @@
       const timing = computeSessionTiming();
 
       // First pass: compute raw positions, then resolve overlaps left-to-right
-      const positions = [];
-      let prevEnd = 0; // right edge (%) of the previous pill
+      let prevEnd = 0;
 
       highlights.forEach((hl, i) => {
         const block = document.createElement('div');
@@ -843,10 +842,11 @@
       document.getElementById('timeDisplay').textContent = '0:00 / ' + formatTime(masterDuration);
     }
 
-    <div class="timeline-top-row">
-          <button class="btn btn-small btn-secondary" onclick="stepHighlight(-1)" title="Previous highlight">&#8249;</button>
-          <button class="btn btn-small" id="playPauseBtn" onclick="togglePlayPause()">&#9654;</button>
-          <button class="btn btn-small btn-secondary" onclick="stepHighlight(1)" title="Next highlight">&#8250;</button>
+    function stepHighlight(dir) {
+      const next = currentHighlightIndex + dir;
+      if (next < 0 || next >= highlights.length) return;
+      switchHighlight(next);
+    }
 
     // ========================
     // SESSION LOADING
@@ -950,50 +950,49 @@
         if (!uploadsData.uploads) return;
 
         const existingIds = new Set(allUploads.map(u => u.uploadId));
-    const newRaw = uploadsData.uploads.filter(u => !existingIds.has(u.id));
+        const newRaw = uploadsData.uploads.filter(u => !existingIds.has(u.id));
 
-    // Update existing entries that now have Spaces CDN URLs — the async Spaces
-    // upload may have completed after the initial poll that cached null videoUrls
-    for (const upload of uploadsData.uploads) {
-      if (!existingIds.has(upload.id)) continue;
-      if (!upload.videoUrl) continue;
-      const existing = allUploads.find(u => u.uploadId === upload.id);
-      if (existing && existing.videoSrc && !existing.videoSrc.startsWith('https://peakbu-media')) {
-        existing.videoSrc = upload.videoUrl;
-        if (upload.thumbnailUrl) existing.thumbnailSrc = upload.thumbnailUrl;
-        if (existing.element && existing.element.src && !existing.element.src.startsWith('https://peakbu-media')) {
-          existing.element.src = '';
-          existing.loaded = false;
+        // Update existing entries that now have Spaces CDN URLs
+        for (const upload of uploadsData.uploads) {
+          if (!existingIds.has(upload.id)) continue;
+          if (!upload.videoUrl) continue;
+          const existing = allUploads.find(u => u.uploadId === upload.id);
+          if (existing && existing.videoSrc && !existing.videoSrc.startsWith('https://peakbu-media')) {
+            existing.videoSrc = upload.videoUrl;
+            if (upload.thumbnailUrl) existing.thumbnailSrc = upload.thumbnailUrl;
+            if (existing.element && existing.element.src && !existing.element.src.startsWith('https://peakbu-media')) {
+              existing.element.src = '';
+              existing.loaded = false;
+            }
+            console.log('Updated to CDN URL:', upload.id);
+          }
         }
-        console.log('Updated to CDN URL:', upload.id);
-      }
-    }
 
-    if (newRaw.length === 0) return;
+        if (newRaw.length === 0) return;
 
         for (const upload of newRaw) {
-      let metadata = null;
-      const metaUrl = upload.metadataUrl || (upload.metadataFile ? '/media/' + currentSessionCode + '/' + upload.metadataFile : null);
-      if (metaUrl) {
-        try {
-          const metaRes = await fetch(metaUrl);
-          if (metaRes.ok) metadata = await metaRes.json();
-        } catch (e) {}
-      }
-      const video = document.createElement('video');
-      video.preload = 'none';
-      video.muted = true;
-      video.playsInline = true;
-      const videoSrc = upload.videoUrl || '/media/' + currentSessionCode + '/' + upload.videoFile;
-      const thumbnailSrc = upload.thumbnailUrl || (upload.thumbnailFile ? '/media/' + currentSessionCode + '/' + upload.thumbnailFile : null);
-      allUploads.push({
-        element: video, metadata, username: upload.username,
-        uploadId: upload.id, videoFile: upload.videoFile,
-        videoSrc: videoSrc,
-        thumbnailSrc: thumbnailSrc,
-        offset: 0, volume: 80, isMuted: true, loaded: false, missing: false
-      });
-    }
+          let metadata = null;
+          const metaUrl = upload.metadataUrl || (upload.metadataFile ? '/media/' + currentSessionCode + '/' + upload.metadataFile : null);
+          if (metaUrl) {
+            try {
+              const metaRes = await fetch(metaUrl);
+              if (metaRes.ok) metadata = await metaRes.json();
+            } catch (e) {}
+          }
+          const video = document.createElement('video');
+          video.preload = 'none';
+          video.muted = true;
+          video.playsInline = true;
+          const videoSrc = upload.videoUrl || '/media/' + currentSessionCode + '/' + upload.videoFile;
+          const thumbnailSrc = upload.thumbnailUrl || (upload.thumbnailFile ? '/media/' + currentSessionCode + '/' + upload.thumbnailFile : null);
+          allUploads.push({
+            element: video, metadata, username: upload.username,
+            uploadId: upload.id, videoFile: upload.videoFile,
+            videoSrc: videoSrc,
+            thumbnailSrc: thumbnailSrc,
+            offset: 0, volume: 80, isMuted: true, loaded: false, missing: false
+          });
+        }
 
         allUsers = deriveAllUsers();
         highlights = clusterHighlights();
@@ -1230,7 +1229,6 @@
         const dropdown = document.createElement('div');
         dropdown.className = 'panel-row-dropdown';
 
-        // List all highlights with presence indicator
         highlights.forEach((hl, hlIdx) => {
           const hasClip = hl.clips.some(c => c.username === username);
           const item = document.createElement('div');
@@ -1258,7 +1256,6 @@
           dropdown.appendChild(item);
         });
 
-        // Also allow clicking header row area to focus POV in current highlight
         if (!isMissing) {
           left.style.cursor = 'pointer';
           left.addEventListener('click', e => {
