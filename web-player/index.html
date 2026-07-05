@@ -854,7 +854,8 @@
           let metadata = null;
           if (upload.metadataFile) {
             try {
-              const metaRes = await fetch('/media/' + code + '/' + upload.metadataFile);
+              const metaUrl = upload.metadataUrl || '/media/' + code + '/' + upload.metadataFile;
+              const metaRes = await fetch(metaUrl);
               if (metaRes.ok) metadata = await metaRes.json();
             } catch (e) {}
           }
@@ -867,8 +868,8 @@
           allUploads.push({
             element: video, metadata, username: upload.username,
             uploadId: upload.id, videoFile: upload.videoFile,
-            videoSrc: '/media/' + code + '/' + upload.videoFile,
-            thumbnailSrc: upload.thumbnailFile ? '/media/' + code + '/' + upload.thumbnailFile : null,
+            videoSrc: upload.videoUrl || '/media/' + code + '/' + upload.videoFile,
+            thumbnailSrc: upload.thumbnailUrl || (upload.thumbnailFile ? '/media/' + code + '/' + upload.thumbnailFile : null),
             offset: 0, volume: 80, isMuted: true, loaded: false, missing: false
           });
         }
