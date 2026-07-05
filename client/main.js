@@ -369,7 +369,7 @@ function saveHighlight(coordinatedTimestamp = null) {
     coordinated_timestamp: coordinatedTimestamp || null
   };
 
-  const videoListPath = path.join(BUFFER_DIR, 'filelist.txt');
+  const videoListPath = path.join(BUFFER_DIR, 'filelist_' + Date.now() + '.txt');
   const videoContent = videoFiles
     .map(f => `file '${f.path.replace(/\\/g, '/')}'`)
     .join('\n');
@@ -438,8 +438,14 @@ function saveHighlight(coordinatedTimestamp = null) {
       // Calculate audio-start delay: audio track begins later than video track
       // because startAudioCapture() runs after recording starts. Delay the audio
       // input by this much so it lines up with the video timeline.
-      const audioDelaySec = (audioFirstChunkTime && videoStartTime)
-        ? Math.max(0, (audioFirstChunkTime - videoStartTime) / 1000)
+      // Calculate offset relative to THIS clip's video window, not the
+      // recording session start. audioFirstChunkTime is when audio capture
+      // began; oldestChunkTime is when this clip's first video chunk was
+      // written. The difference is how much later audio started relative
+      // to the video content in this specific save.
+      const clipVideoStartMs = videoFiles[0].time;
+      const audioDelaySec = (audioFirstChunkTime && audioFirstChunkTime > clipVideoStartMs)
+        ? Math.max(0, (audioFirstChunkTime - clipVideoStartMs) / 1000)
         : 0;
       console.log(`Audio sync offset: ${audioDelaySec.toFixed(3)}s`);
 
