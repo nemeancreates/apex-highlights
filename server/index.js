@@ -51,7 +51,7 @@ async function uploadToSpaces(localPath, objectKey, contentType) {
     Bucket: SPACES_BUCKET,
     Key: objectKey,
     Body: fileBuffer,
-    ContentType: contentType
+    ContentType: contentType,
     ACL: 'public-read'
   }));
   try { fs.unlinkSync(localPath); } catch (e) {}
