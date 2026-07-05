@@ -447,7 +447,7 @@ function saveHighlight(coordinatedTimestamp = null) {
       // Derive exact clip start from chunk sequence number (chunk_NNN.mp4),
       // avoiding mtime estimation errors. Add ~0.5s for FFmpeg init ramp.
       const firstChunkNum = parseInt((videoFiles[0].name.match(/chunk_(\d+)\.mp4/) || [])[1] || '0', 10);
-      const clipVideoStartMs = videoStartTime + (firstChunkNum * CHUNK_SECONDS * 1000) + 450;
+      const clipVideoStartMs = videoStartTime + (firstChunkNum * CHUNK_SECONDS * 1000) + 445;
       const deltaSec = audioFirstChunkTime
         ? (clipVideoStartMs - audioFirstChunkTime) / 1000
         : 0;
