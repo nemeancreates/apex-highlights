@@ -468,7 +468,7 @@ const upload = multer({
 // SECURITY: Rate limiting (HTTP)
 // ================================
 const rateLimits = new Map();
-const RATE_LIMIT_MAX = 30;
+const RATE_LIMIT_MAX = 120;
 const RATE_LIMIT_WINDOW = 60000;
 
 function rateLimit(req, res, next) {
