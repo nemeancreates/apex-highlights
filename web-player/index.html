@@ -930,9 +930,10 @@
 
         for (const upload of newRaw) {
       let metadata = null;
-      if (upload.metadataFile) {
+      const metaUrl = upload.metadataUrl || (upload.metadataFile ? '/media/' + currentSessionCode + '/' + upload.metadataFile : null);
+      if (metaUrl) {
         try {
-          const metaRes = await fetch('/media/' + currentSessionCode + '/' + upload.metadataFile);
+          const metaRes = await fetch(metaUrl);
           if (metaRes.ok) metadata = await metaRes.json();
         } catch (e) {}
       }
@@ -940,11 +941,13 @@
       video.preload = 'none';
       video.muted = true;
       video.playsInline = true;
+      const videoSrc = upload.videoUrl || '/media/' + currentSessionCode + '/' + upload.videoFile;
+      const thumbnailSrc = upload.thumbnailUrl || (upload.thumbnailFile ? '/media/' + currentSessionCode + '/' + upload.thumbnailFile : null);
       allUploads.push({
         element: video, metadata, username: upload.username,
         uploadId: upload.id, videoFile: upload.videoFile,
-        videoSrc: '/media/' + currentSessionCode + '/' + upload.videoFile,
-        thumbnailSrc: upload.thumbnailFile ? '/media/' + currentSessionCode + '/' + upload.thumbnailFile : null,
+        videoSrc: videoSrc,
+        thumbnailSrc: thumbnailSrc,
         offset: 0, volume: 80, isMuted: true, loaded: false, missing: false
       });
     }
