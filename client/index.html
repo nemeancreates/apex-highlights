@@ -1119,10 +1119,12 @@
 
           // Capture the exact wall-clock time audio recording starts.
           // This is what main.js needs to align audio to video in the merge.
-          const audioStartWallTime = Date.now();
+          // Sample the wall clock at the exact moment start() is invoked.
+          // Opus encoder adds ~20ms of latency before real audio hits the
+          // stream — bake that into the reported start time.
           window.mediaRecorder.start(10000);
+          const audioStartWallTime = Date.now() + 20;
           ipcRenderer.send('audio-recording-started', audioStartWallTime);
-          console.log('=== MediaRecorder state:', window.mediaRecorder.state, 'at', audioStartWallTime, '===');
 
         } catch (err) {
           console.log('Audio capture failed:', err.name, err.message);
