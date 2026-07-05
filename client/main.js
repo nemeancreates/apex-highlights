@@ -384,14 +384,11 @@ function saveHighlight(coordinatedTimestamp = null) {
     const videoStartMs = oldestChunkTime;
     const videoEndMs = saveTimeUTC;
 
-    const relevantAudio = audioBuffers.filter(c => {
-      const chunkStartMs = c.time - CHUNK_MS;
-      const chunkEndMs = c.time;
-      // Keep chunk if any portion of it overlaps the video window
-      return chunkEndMs >= videoStartMs && chunkStartMs <= videoEndMs;
-    });
-
-    const audioToUse = relevantAudio.length > 0 ? relevantAudio : audioBuffers;
+    // Use the FULL audio stream every time. Chunks after the first aren't
+    // self-contained (no WebM header), so slicing breaks decoding. The merge
+    // step seeks (-ss) into the stream to grab just this clip's window —
+    // WebM cluster timestamps are absolute, so the seek lands correctly.
+    const audioToUse = audioBuffers;
     const combinedAudio = Buffer.concat(audioToUse.map(c => c.data));
     const tempId = Date.now();
     const rawAudioPath = path.join(BUFFER_DIR, 'temp_audio_raw_' + tempId + '.webm');
@@ -443,14 +440,22 @@ function saveHighlight(coordinatedTimestamp = null) {
       // began; oldestChunkTime is when this clip's first video chunk was
       // written. The difference is how much later audio started relative
       // to the video content in this specific save.
-      const clipVideoStartMs = videoFiles[0].time;
-      const audioDelaySec = (audioFirstChunkTime && audioFirstChunkTime > clipVideoStartMs)
-        ? Math.max(0, (audioFirstChunkTime - clipVideoStartMs) / 1000)
+      // Chunk mtime marks the END of its 10s write window, so this clip's
+      // video actually starts CHUNK_SECONDS earlier than the oldest mtime.
+      const clipVideoStartMs = videoFiles[0].time - (CHUNK_SECONDS * 1000);
+      // Position within the audio stream where this clip begins:
+      //  positive -> seek forward into the audio (-ss)
+      //  negative -> audio started after the clip; delay it (-itsoffset)
+      const deltaSec = audioFirstChunkTime
+        ? (clipVideoStartMs - audioFirstChunkTime) / 1000
         : 0;
-      console.log(`Audio sync offset: ${audioDelaySec.toFixed(3)}s`);
+      const audioSkipSec = Math.max(0, deltaSec);
+      const audioDelaySec = Math.max(0, -deltaSec);
+      console.log(`Audio sync: skip=${audioSkipSec.toFixed(3)}s delay=${audioDelaySec.toFixed(3)}s`);
 
       const mergeArgs = [
         '-i', tempVideoPath,
+        '-ss', String(audioSkipSec.toFixed(3)),
         '-itsoffset', String(audioDelaySec.toFixed(3)),
         '-i', tempAudioPath,
         '-map', '0:v:0',
@@ -798,8 +803,10 @@ function createWindow() {
     audioBuffers.push({ data: Buffer.from(buffer), time: timestamp });
     console.log(`Audio chunk buffered: ${buffer.byteLength} bytes (${audioBuffers.length} chunks in memory)`);
 
+    // Evict oldest but ALWAYS keep chunk 0 — it holds the WebM stream header
+    // that every later chunk needs to be decodable.
     while (audioBuffers.length > 20) {
-      audioBuffers.shift();
+      audioBuffers.splice(1, 1);
     }
   });
 
