@@ -116,9 +116,9 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'"],
       scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      mediaSrc: ["'self'", "blob:"],
-      imgSrc: ["'self'", "data:"],
-      connectSrc: ["'self'", "ws:", "wss:"]
+      mediaSrc: ["'self'", "blob:", "https://peakbu-media.nyc3.cdn.digitaloceanspaces.com"],
+      imgSrc: ["'self'", "data:", "https://peakbu-media.nyc3.cdn.digitaloceanspaces.com"],
+      connectSrc: ["'self'", "ws:", "wss:", "https://peakbu-media.nyc3.cdn.digitaloceanspaces.com"]
     }
   }
 }));
