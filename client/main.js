@@ -36,6 +36,11 @@ let mainWindow = null;
 let currentSession = null;
 let audioBuffers = []; // in-memory rolling buffer of audio chunks
 let authToken = null;
+let useCpuEncoder = false; // set true if NVENC fails; persists for the session
+let currentMonitor = null; // remembered so we can respawn on NVENC fallback
+let videoStartTime = null; // timestamp of FFmpeg spawn — for audio sync offset
+let audioFirstChunkTime = null; // timestamp of first audio chunk arrival
+let bufferReadyWatcher = null; // interval that detects the first complete chunk
 
 function ensureFolders() {
   if (!fs.existsSync(BUFFER_DIR)) fs.mkdirSync(BUFFER_DIR, { recursive: true });
@@ -94,6 +99,63 @@ function isValidHotkey(hotkey) {
   return true;
 }
 
+// ================================
+// HOTKEY -> RENDERER ROUTING
+// The global hotkey no longer calls saveHighlight() directly. It notifies the
+// renderer, which runs the exact same window.saveHighlight() the UI button
+// uses. That gives hotkey saves the cooldown timer, buffer-ready guard, and
+// session broadcast — identical behavior to clicking the button.
+// ================================
+function onHotkeyPressed() {
+  console.log(`${customHotkey} pressed — routing to renderer save path`);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('hotkey-save-pressed');
+  } else {
+    // Renderer unavailable (shouldn't happen in practice) — fall back to a
+    // direct local save so the press is never silently lost.
+    saveHighlight();
+  }
+}
+
+// ================================
+// BUFFER-READY WATCHER
+// Polls the buffer dir after recording starts. As soon as one complete chunk
+// exists (a second chunk has started, meaning the first is fully written, OR a
+// single chunk has substantial size), tells the renderer highlights are
+// saveable. Renderer shows "Ready to highlight" and enables the Save button.
+// ================================
+function startBufferReadyWatcher() {
+  stopBufferReadyWatcher();
+  bufferReadyWatcher = setInterval(() => {
+    try {
+      const chunks = fs.readdirSync(BUFFER_DIR)
+        .filter(f => f.endsWith('.mp4') && !f.startsWith('temp_'))
+        .map(f => ({ name: f, size: fs.statSync(path.join(BUFFER_DIR, f)).size }));
+
+      // Two chunks present => the older one is complete (FFmpeg moved on).
+      // One chunk over ~1MB also means real footage exists even mid-write.
+      const ready = chunks.length >= 2 || chunks.some(c => c.size > 1000000);
+
+      if (ready) {
+        stopBufferReadyWatcher();
+        console.log('Buffer ready — first complete chunk detected');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('buffer-ready');
+        }
+      }
+    } catch (e) {
+      // Buffer dir momentarily unreadable — try again next tick
+    }
+  }, 1000);
+}
+
+function stopBufferReadyWatcher() {
+  if (bufferReadyWatcher) {
+    clearInterval(bufferReadyWatcher);
+    bufferReadyWatcher = null;
+  }
+}
+
 async function syncClock() {
   try {
     const client = new NTPClient('pool.ntp.org', 123, { timeout: 5000 });
@@ -136,6 +198,7 @@ function pruneOldChunks() {
 
 function startRecording(monitor) {
   ensureFolders();
+  currentMonitor = monitor;
 
   const screen = require('electron').screen;
   const displays = screen.getAllDisplays();
@@ -160,33 +223,85 @@ function startRecording(monitor) {
     ffmpegArgs.push('-vf', `scale=${recordResolution.width}:${recordResolution.height}`);
   }
 
-  ffmpegArgs.push(
-    '-c:v', 'h264_nvenc',
-    '-preset', 'p4',
-    '-tune', 'hq',
-    '-b:v', recordResolution ? (recordResolution.height <= 480 ? '3M' : '5M') : '8M',
-    '-g', String(recordFps),
-    '-keyint_min', String(recordFps),
-    '-force_key_frames', `expr:gte(t,n_forced*${CHUNK_SECONDS})`,
-    '-an',
-    '-f', 'segment',
-    '-segment_time', String(CHUNK_SECONDS),
-    '-reset_timestamps', '1',
-    '-y',
-    chunkPattern
-  );
+  if (useCpuEncoder) {
+    ffmpegArgs.push(
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-crf', '23',
+      '-pix_fmt', 'yuv420p',
+      '-g', String(recordFps),
+      '-keyint_min', String(recordFps),
+      '-force_key_frames', `expr:gte(t,n_forced*${CHUNK_SECONDS})`,
+      '-an',
+      '-f', 'segment',
+      '-segment_time', String(CHUNK_SECONDS),
+      '-reset_timestamps', '1',
+      '-y',
+      chunkPattern
+    );
+    console.log('Using CPU encoder (libx264)');
+  } else {
+    ffmpegArgs.push(
+      '-c:v', 'h264_nvenc',
+      '-preset', 'p4',
+      '-tune', 'hq',
+      '-b:v', recordResolution ? (recordResolution.height <= 480 ? '3M' : '5M') : '8M',
+      '-g', String(recordFps),
+      '-keyint_min', String(recordFps),
+      '-force_key_frames', `expr:gte(t,n_forced*${CHUNK_SECONDS})`,
+      '-an',
+      '-f', 'segment',
+      '-segment_time', String(CHUNK_SECONDS),
+      '-reset_timestamps', '1',
+      '-y',
+      chunkPattern
+    );
+    console.log('Using GPU encoder (h264_nvenc)');
+  }
 
   ffmpegProcess = spawn(getFFmpegPath(), ffmpegArgs, {
     windowsHide: true
   });
 
+  const spawnStartTime = Date.now();
+  videoStartTime = spawnStartTime;
+  audioFirstChunkTime = null; // reset on each recording start
+  let stderrTail = '';
+
+  // Watch for the first complete chunk so the UI can flip to "Ready to highlight"
+  startBufferReadyWatcher();
+
+  ffmpegProcess.on('error', (err) => {
+    const logPath = path.join(os.tmpdir(), 'peakabu-ffmpeg.log');
+    fs.appendFileSync(logPath, 'SPAWN ERROR: ' + err.message + '\n');
+    console.log('FFmpeg spawn error:', err.message);
+  });
+
   ffmpegProcess.stderr.on('data', (data) => {
-    console.log('FFmpeg:', data.toString());
+    const text = data.toString();
+    console.log('FFmpeg:', text);
+    const logPath = path.join(os.tmpdir(), 'peakabu-ffmpeg.log');
+    fs.appendFileSync(logPath, text);
+    stderrTail = (stderrTail + text).slice(-2000);
     pruneOldChunks();
   });
 
   ffmpegProcess.on('close', (code) => {
     console.log('FFmpeg stopped with code', code);
+    const ranForMs = Date.now() - spawnStartTime;
+    const looksLikeNvencFailure = !useCpuEncoder && code !== 0 && ranForMs < 5000 &&
+      /nvenc|nvcuda|Cannot load|does not support the required nvenc/i.test(stderrTail);
+
+    if (looksLikeNvencFailure) {
+      console.log('NVENC failed early — falling back to CPU encoder (libx264)');
+      const logPath = path.join(os.tmpdir(), 'peakabu-ffmpeg.log');
+      fs.appendFileSync(logPath, '\n=== NVENC FAILED, FALLING BACK TO libx264 ===\n');
+      useCpuEncoder = true;
+      if (mainWindow) {
+        mainWindow.webContents.send('encoder-fallback', 'CPU');
+      }
+      startRecording(currentMonitor);
+    }
   });
 }
 
@@ -202,7 +317,11 @@ function saveHighlight(coordinatedTimestamp = null) {
     .filter(f => f.size > 100000)
     .sort((a, b) => a.time - b.time);
 
-  const videoFiles = allVideoFiles.slice(0, -1);
+  // Drop the newest (still being written by FFmpeg), then keep only the most
+  // recent maxChunks. Older chunks may be stale from previous sessions or
+  // failed prunes and can't be trusted in concat.
+  const withoutInProgress = allVideoFiles.slice(0, -1);
+  const videoFiles = withoutInProgress.slice(-maxChunks);
 
   if (videoFiles.length === 0) {
     console.log('No completed chunks yet');
@@ -242,10 +361,27 @@ function saveHighlight(coordinatedTimestamp = null) {
   fs.writeFileSync(videoListPath, videoContent);
 
   if (hasAudio) {
-    const combinedAudio = Buffer.concat(audioBuffers.map(c => c.data));
+    // Video buffer covers approximately: oldestChunkTime → saveTimeUTC
+    // Each audio chunk's `time` is when the IPC message arrived at main, which
+    // is roughly the END of that chunk's 10-second capture window. So a chunk
+    // stamped at time T contains audio captured from T-10000 to T.
+    const CHUNK_MS = CHUNK_SECONDS * 1000;
+    const videoStartMs = oldestChunkTime;
+    const videoEndMs = saveTimeUTC;
+
+    const relevantAudio = audioBuffers.filter(c => {
+      const chunkStartMs = c.time - CHUNK_MS;
+      const chunkEndMs = c.time;
+      // Keep chunk if any portion of it overlaps the video window
+      return chunkEndMs >= videoStartMs && chunkStartMs <= videoEndMs;
+    });
+
+    const audioToUse = relevantAudio.length > 0 ? relevantAudio : audioBuffers;
+    const combinedAudio = Buffer.concat(audioToUse.map(c => c.data));
+    const rawAudioPath = path.join(BUFFER_DIR, 'temp_audio_raw.webm');
     const tempAudioPath = path.join(BUFFER_DIR, 'temp_audio.webm');
-    fs.writeFileSync(tempAudioPath, combinedAudio);
-    console.log(`Combined audio: ${audioBuffers.length} chunks -> ${(combinedAudio.length / 1024).toFixed(0)}KB`);
+    fs.writeFileSync(rawAudioPath, combinedAudio);
+    console.log(`Combined audio: ${audioToUse.length}/${audioBuffers.length} chunks in window -> ${(combinedAudio.length / 1024).toFixed(0)}KB (video window: ${((videoEndMs - videoStartMs) / 1000).toFixed(1)}s)`);
 
     const tempVideoPath = path.join(BUFFER_DIR, 'temp_video.mp4');
     const concatVideo = spawn(getFFmpegPath(), [
@@ -263,16 +399,49 @@ function saveHighlight(coordinatedTimestamp = null) {
         return;
       }
 
-      const merge = spawn(getFFmpegPath(), [
+      // Repair the raw webm: re-mux it so opus timestamps are rebuilt and the
+      // stream is cleanly terminated. Fixes "File ended prematurely" truncation
+      // and the audio drift it causes during merge.
+      const repairAudio = spawn(getFFmpegPath(), [
+        '-fflags', '+genpts',
+        '-i', rawAudioPath,
+        '-c:a', 'copy',
+        '-y',
+        tempAudioPath
+      ]);
+      repairAudio.stderr.on('data', d => console.log('RepairAudio:', d.toString()));
+      repairAudio.on('close', (repairCode) => {
+        if (repairCode !== 0 || !fs.existsSync(tempAudioPath)) {
+          console.log('Audio repair failed, using raw audio');
+          try { fs.copyFileSync(rawAudioPath, tempAudioPath); } catch (e) {}
+        }
+        runMerge();
+      });
+
+      function runMerge() {
+      // Calculate audio-start delay: audio track begins later than video track
+      // because startAudioCapture() runs after recording starts. Delay the audio
+      // input by this much so it lines up with the video timeline.
+      const audioDelaySec = (audioFirstChunkTime && videoStartTime)
+        ? Math.max(0, (audioFirstChunkTime - videoStartTime) / 1000)
+        : 0;
+      console.log(`Audio sync offset: ${audioDelaySec.toFixed(3)}s`);
+
+      const mergeArgs = [
         '-i', tempVideoPath,
+        '-itsoffset', String(audioDelaySec.toFixed(3)),
         '-i', tempAudioPath,
+        '-map', '0:v:0',
+        '-map', '1:a:0',
         '-c:v', 'copy',
         '-c:a', 'aac',
         '-b:a', '192k',
+        '-af', 'aresample=async=1000',
         '-shortest',
         '-y',
         outputPath
-      ]);
+      ];
+      const merge = spawn(getFFmpegPath(), mergeArgs);
 
       merge.stderr.on('data', d => console.log('Merge:', d.toString()));
 
@@ -303,8 +472,10 @@ function saveHighlight(coordinatedTimestamp = null) {
           });
         }
       });
+      }
     });
-  } else {
+  } 
+  else {
     const concat = spawn(getFFmpegPath(), [
       '-f', 'concat', '-safe', '0',
       '-i', videoListPath,
@@ -381,7 +552,6 @@ function uploadHighlight(videoPath, metadataPath) {
     headers: {
       'Authorization': 'Bearer ' + authToken
     }
-  },
   }, (err, res) => {
     if (err) {
       console.log('Upload connection error:', err.message);
@@ -497,7 +667,7 @@ function createWindow() {
       : path.join(__dirname);
   });
 
-  // IPC: Save highlight (local hotkey press)
+  // IPC: Save highlight (renderer save path — solo, no session)
   ipcMain.on('save-highlight', () => saveHighlight());
 
   // IPC: Broadcast save highlight
@@ -532,11 +702,21 @@ function createWindow() {
       ffmpegProcess = null;
     }
     audioBuffers = [];
+    // Wipe stale chunks from prior sessions so we don't concat old data
+    try {
+      const stale = fs.readdirSync(BUFFER_DIR).filter(f => f.endsWith('.mp4'));
+      for (const f of stale) {
+        try { fs.unlinkSync(path.join(BUFFER_DIR, f)); } catch (e) {}
+      }
+      console.log(`Buffer cleaned: removed ${stale.length} stale chunks`);
+    } catch (e) {
+      console.log('Buffer clean skipped:', e.message);
+    }
     startRecording(monitorIndex);
-    mainWindow.webContents.send('recording-started', monitorIndex);
   });
 
   ipcMain.on('stop-recording', () => {
+    stopBufferReadyWatcher();
     if (ffmpegProcess) {
       ffmpegProcess.kill();
       ffmpegProcess = null;
@@ -572,10 +752,7 @@ function createWindow() {
         globalShortcut.unregister(customHotkey);
       }
       customHotkey = settings.hotkey;
-      const registered = globalShortcut.register(customHotkey, () => {
-        console.log(`${customHotkey} pressed`);
-        saveHighlight();
-      });
+      const registered = globalShortcut.register(customHotkey, onHotkeyPressed);
       if (registered) {
         console.log(`Hotkey changed to: ${customHotkey}`);
         const prefs = loadUserPreferences();
@@ -586,6 +763,12 @@ function createWindow() {
         mainWindow.webContents.send('hotkey-error', `Failed to register ${customHotkey}. Another app may be using it.`);
       }
     }
+  });
+
+  ipcMain.on('audio-recording-started', (event, wallTime) => {
+    audioFirstChunkTime = wallTime;
+    const delta = videoStartTime ? (wallTime - videoStartTime) : 0;
+    console.log(`Audio recording started at ${wallTime} (video started at ${videoStartTime}, delta=${delta}ms)`);
   });
 
   ipcMain.on('save-audio-chunk', (event, buffer) => {
@@ -623,10 +806,7 @@ app.whenReady().then(async () => {
   createWindow();
   syncClock(); // runs in background, doesn't block window open
 
-  const registered = globalShortcut.register(customHotkey, () => {
-    console.log(`${customHotkey} pressed`);
-    saveHighlight();
-  });
+  const registered = globalShortcut.register(customHotkey, onHotkeyPressed);
 
   if (registered) {
     console.log(`${customHotkey} hotkey registered successfully`);
@@ -636,6 +816,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
+  stopBufferReadyWatcher();
   if (ffmpegProcess) ffmpegProcess.kill();
   globalShortcut.unregisterAll();
   if (process.platform !== 'darwin') app.quit();
