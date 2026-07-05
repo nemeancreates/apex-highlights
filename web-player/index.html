@@ -925,8 +925,26 @@
         if (!uploadsData.uploads) return;
 
         const existingIds = new Set(allUploads.map(u => u.uploadId));
-        const newRaw = uploadsData.uploads.filter(u => !existingIds.has(u.id));
-        if (newRaw.length === 0) return;
+    const newRaw = uploadsData.uploads.filter(u => !existingIds.has(u.id));
+
+    // Update existing entries that now have Spaces CDN URLs — the async Spaces
+    // upload may have completed after the initial poll that cached null videoUrls
+    for (const upload of uploadsData.uploads) {
+      if (!existingIds.has(upload.id)) continue;
+      if (!upload.videoUrl) continue;
+      const existing = allUploads.find(u => u.uploadId === upload.id);
+      if (existing && existing.videoSrc && !existing.videoSrc.startsWith('https://peakbu-media')) {
+        existing.videoSrc = upload.videoUrl;
+        if (upload.thumbnailUrl) existing.thumbnailSrc = upload.thumbnailUrl;
+        if (existing.element && existing.element.src && !existing.element.src.startsWith('https://peakbu-media')) {
+          existing.element.src = '';
+          existing.loaded = false;
+        }
+        console.log('Updated to CDN URL:', upload.id);
+      }
+    }
+
+    if (newRaw.length === 0) return;
 
         for (const upload of newRaw) {
       let metadata = null;
