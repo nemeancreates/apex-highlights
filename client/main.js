@@ -41,6 +41,8 @@ let currentMonitor = null; // remembered so we can respawn on NVENC fallback
 let videoStartTime = null; // timestamp of FFmpeg spawn — for audio sync offset
 let audioFirstChunkTime = null; // timestamp of first audio chunk arrival
 let bufferReadyWatcher = null; // interval that detects the first complete chunk
+let recordingStartTime = null; // when this recording session began — for min buffer time
+let lastHighlightBoundary = 0; // mtime of newest chunk in the last save — prevents overlap
 
 function ensureFolders() {
   if (!fs.existsSync(BUFFER_DIR)) fs.mkdirSync(BUFFER_DIR, { recursive: true });
@@ -134,7 +136,11 @@ function startBufferReadyWatcher() {
 
       // Two chunks present => the older one is complete (FFmpeg moved on).
       // One chunk over ~1MB also means real footage exists even mid-write.
-      const ready = chunks.length >= 2 || chunks.some(c => c.size > 1000000);
+      // Also require a minimum 15s of recording so the first highlight has
+      // real content behind it.
+      const elapsedMs = recordingStartTime ? (Date.now() - recordingStartTime) : 0;
+      const ready = elapsedMs >= 15000 &&
+        (chunks.length >= 2 || chunks.some(c => c.size > 1000000));
 
       if (ready) {
         stopBufferReadyWatcher();
@@ -265,6 +271,8 @@ function startRecording(monitor) {
 
   const spawnStartTime = Date.now();
   videoStartTime = spawnStartTime;
+  recordingStartTime = spawnStartTime;
+  lastHighlightBoundary = 0; // fresh recording — no prior save to exclude
   audioFirstChunkTime = null; // reset on each recording start
   let stderrTail = '';
 
@@ -321,13 +329,20 @@ function saveHighlight(coordinatedTimestamp = null) {
   // recent maxChunks. Older chunks may be stale from previous sessions or
   // failed prunes and can't be trusted in concat.
   const withoutInProgress = allVideoFiles.slice(0, -1);
-  const videoFiles = withoutInProgress.slice(-maxChunks);
+  // Only chunks newer than the last save — back-to-back highlights must not
+  // re-include the previous highlight's footage (caused inflated durations
+  // and doubled/corrupted audio).
+  const newSinceLastSave = withoutInProgress.filter(f => f.time > lastHighlightBoundary);
+  const videoFiles = newSinceLastSave.slice(-maxChunks);
 
   if (videoFiles.length === 0) {
     console.log('No completed chunks yet');
     mainWindow.webContents.send('highlight-error', 'Buffer not ready yet, wait a few more seconds');
     return;
   }
+
+  // Mark boundary: the next save starts after the newest chunk in this one
+  lastHighlightBoundary = videoFiles[videoFiles.length - 1].time;
 
   const hasAudio = audioBuffers.length > 0;
   console.log(`Saving highlight: ${videoFiles.length} video chunks, ${audioBuffers.length} audio chunks in memory`);
@@ -378,12 +393,13 @@ function saveHighlight(coordinatedTimestamp = null) {
 
     const audioToUse = relevantAudio.length > 0 ? relevantAudio : audioBuffers;
     const combinedAudio = Buffer.concat(audioToUse.map(c => c.data));
-    const rawAudioPath = path.join(BUFFER_DIR, 'temp_audio_raw.webm');
-    const tempAudioPath = path.join(BUFFER_DIR, 'temp_audio.webm');
+    const tempId = Date.now();
+    const rawAudioPath = path.join(BUFFER_DIR, 'temp_audio_raw_' + tempId + '.webm');
+    const tempAudioPath = path.join(BUFFER_DIR, 'temp_audio_' + tempId + '.webm');
     fs.writeFileSync(rawAudioPath, combinedAudio);
     console.log(`Combined audio: ${audioToUse.length}/${audioBuffers.length} chunks in window -> ${(combinedAudio.length / 1024).toFixed(0)}KB (video window: ${((videoEndMs - videoStartMs) / 1000).toFixed(1)}s)`);
 
-    const tempVideoPath = path.join(BUFFER_DIR, 'temp_video.mp4');
+    const tempVideoPath = path.join(BUFFER_DIR, 'temp_video_' + tempId + '.mp4');
     const concatVideo = spawn(getFFmpegPath(), [
       '-f', 'concat', '-safe', '0',
       '-i', videoListPath,
