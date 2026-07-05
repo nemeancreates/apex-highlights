@@ -442,14 +442,16 @@ function saveHighlight(coordinatedTimestamp = null) {
       // to the video content in this specific save.
       // Chunk mtime marks the END of its 10s write window, so this clip's
       // video actually starts CHUNK_SECONDS earlier than the oldest mtime.
-      const clipVideoStartMs = videoFiles[0].time - (CHUNK_SECONDS * 1000);
-      // Position within the audio stream where this clip begins:
-      //  positive -> seek forward into the audio (-ss)
-      //  negative -> audio started after the clip; delay it (-itsoffset)
+
+
+      // Derive exact clip start from chunk sequence number (chunk_NNN.mp4),
+      // avoiding mtime estimation errors. Add ~0.5s for FFmpeg init ramp.
+      const firstChunkNum = parseInt((videoFiles[0].name.match(/chunk_(\d+)\.mp4/) || [])[1] || '0', 10);
+      const clipVideoStartMs = videoStartTime + (firstChunkNum * CHUNK_SECONDS * 1000) + 500;
       const deltaSec = audioFirstChunkTime
         ? (clipVideoStartMs - audioFirstChunkTime) / 1000
         : 0;
-      const audioSkipSec = Math.max(0, deltaSec + 0.6);
+      const audioSkipSec = Math.max(0, deltaSec);
       const audioDelaySec = Math.max(0, -deltaSec);
       console.log(`Audio sync: skip=${audioSkipSec.toFixed(3)}s delay=${audioDelaySec.toFixed(3)}s`);
 
