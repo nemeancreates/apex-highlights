@@ -3,430 +3,277 @@
   <head>
     <title>Peak-Abu</title>
     <style>
+      * { box-sizing: border-box; }
       body {
         background: #1a1a2e;
-        color: #eee;
-        font-family: Arial, sans-serif;
+        color: #e0e0e0;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
         display: flex;
         flex-direction: column;
         align-items: center;
-        padding: 40px;
+        padding: 30px 20px;
+        margin: 0;
       }
+      h1 { color: #e94560; margin: 0; font-size: 22px; }
+      h3 { margin-top: 0; color: #e94560; font-size: 15px; font-weight: 600; }
+      label { font-size: 12px; color: #999; display: block; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+      /* ===== Layout ===== */
       .header {
         display: flex;
         align-items: center;
         justify-content: space-between;
         width: 100%;
-        max-width: 600px;
-        margin-bottom: 20px;
+        max-width: 560px;
+        margin-bottom: 16px;
       }
-      h1 { color: #e94560; margin: 0; }
-      .btn-settings {
-        background: #0f3460;
-        border: 1px solid #e94560;
-        color: #e94560;
-        padding: 8px 16px;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 14px;
-      }
-      .btn-settings:hover { background: #1a4a8a; }
       .section {
         width: 100%;
-        max-width: 600px;
+        max-width: 560px;
         background: #16213e;
         border-radius: 8px;
-        padding: 20px;
-        margin: 10px 0;
+        padding: 16px 20px;
+        margin: 6px 0;
       }
-      .section h3 {
-        margin-top: 0;
-        color: #e94560;
-      }
-      label {
-        font-size: 13px;
-        color: #aaa;
-        display: block;
-        margin-bottom: 4px;
-      }
-      select, input[type="text"] {
+
+      /* ===== Inputs ===== */
+      select, input[type="text"], input[type="password"] {
         width: 100%;
-        padding: 10px;
+        padding: 9px 12px;
         background: #0f3460;
         color: #eee;
-        border: 1px solid #e94560;
+        border: 1px solid #2a2a5e;
         border-radius: 6px;
         font-size: 14px;
-        margin-bottom: 10px;
-        box-sizing: border-box;
+        font-family: inherit;
+        margin-bottom: 8px;
       }
-      input[type="text"]::placeholder { color: #667; }
+      input::placeholder { color: #556; }
+      select:focus, input:focus { border-color: #e94560; outline: none; }
+
+      /* ===== Buttons ===== */
       button {
-        margin: 5px 0;
-        padding: 12px 30px;
+        margin: 4px 0;
+        padding: 10px 20px;
         background: #e94560;
         color: white;
         border: none;
         border-radius: 6px;
-        font-size: 16px;
+        font-size: 14px;
+        font-family: inherit;
         cursor: pointer;
         width: 100%;
+        transition: background 0.15s;
       }
       button:hover { background: #c73652; }
-      button:disabled { background: #555; cursor: not-allowed; }
-      .btn-secondary {
-        background: #0f3460;
-        border: 1px solid #e94560;
-      }
-      .btn-secondary:hover { background: #1a4a8a; }
-      .status {
-        padding: 10px;
-        border-radius: 6px;
-        font-size: 14px;
-        margin: 10px 0;
-        text-align: center;
-      }
-      .status.recording { color: #ff4444; }
-      .status.idle { color: #aaa; }
-      .status.buffering { color: #e9a820; }
-      .status.ready { color: #44ff88; }
-      .clip-item {
-        background: #0f3460;
-        padding: 8px 10px;
-        margin: 4px 0;
-        border-radius: 6px;
-        font-size: 12px;
-        word-break: break-all;
+      button:disabled { background: #444; cursor: not-allowed; color: #888; }
+      .btn-secondary { background: #0f3460; border: 1px solid #2a2a5e; color: #ccc; }
+      .btn-secondary:hover { background: #1a4a8a; border-color: #e94560; }
+      .btn-sm { padding: 6px 14px; font-size: 13px; width: auto; margin: 0; }
+      .btn-icon { background: none; border: none; color: #e94560; padding: 4px 8px; width: auto; margin: 0; font-size: 16px; }
+      .btn-icon:hover { color: #ff6b8a; background: none; }
+      .btn-settings { background: #0f3460; border: 1px solid #2a2a5e; color: #999; padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; width: auto; }
+      .btn-settings:hover { border-color: #e94560; color: #e94560; }
+
+      /* ===== Auth bar (collapsed after login) ===== */
+      .auth-bar {
         display: flex;
+        align-items: center;
         justify-content: space-between;
-        gap: 8px;
-      }
-      .clip-item .clip-time {
-        color: #667;
-        font-size: 10px;
-        flex-shrink: 0;
-        white-space: nowrap;
-      }
-      .clip-item.error { color: #ff4444; }
-      .clip-item.success { color: #44ff88; }
-      .clip-item.broadcast { color: #e9a820; }
-      .clip-item.info { color: #aaa; }
-
-      /* ===== Tabbed HUD ===== */
-      .hud-tabs {
-        display: flex;
-        gap: 4px;
-        margin-bottom: 10px;
-      }
-      .hud-tab {
-        flex: 1;
-        margin: 0;
-        padding: 8px 4px;
+        width: 100%;
+        max-width: 560px;
+        padding: 8px 16px;
+        background: #12122a;
+        border-radius: 6px;
+        margin-bottom: 6px;
         font-size: 13px;
-        background: #0f3460;
-        border: 1px solid #0f3460;
-        color: #aaa;
-        border-radius: 6px 6px 0 0;
-        width: auto;
       }
-      .hud-tab:hover { background: #1a4a8a; }
-      .hud-tab.active {
-        background: #16213e;
-        border: 1px solid #e94560;
-        border-bottom: 2px solid #16213e;
-        color: #e94560;
-        font-weight: bold;
-      }
-      .hud-tab .tab-badge {
-        display: inline-block;
-        min-width: 16px;
-        padding: 1px 5px;
-        margin-left: 4px;
-        background: #e94560;
-        color: white;
-        border-radius: 10px;
-        font-size: 10px;
-        font-weight: bold;
-      }
-      .hud-tab.active .tab-badge { background: #e94560; }
-      .hud-pane {
-        display: none;
-        height: 220px;
-        overflow-y: auto;
-        background: #101a33;
-        border: 1px solid #0f3460;
-        border-radius: 0 0 6px 6px;
-        padding: 8px;
-      }
-      .hud-pane.active { display: block; }
-      .hud-pane::-webkit-scrollbar { width: 8px; }
-      .hud-pane::-webkit-scrollbar-track { background: #101a33; }
-      .hud-pane::-webkit-scrollbar-thumb {
-        background: #0f3460;
-        border-radius: 4px;
-      }
-      .hud-pane::-webkit-scrollbar-thumb:hover { background: #1a4a8a; }
-      .hud-empty {
-        color: #556;
-        font-size: 12px;
-        text-align: center;
-        padding: 30px 0;
-        font-style: italic;
-      }
+      .auth-bar .user-label { color: #999; }
+      .auth-bar .user-label strong { color: #e94560; }
+      .auth-bar button { width: auto; padding: 5px 12px; font-size: 12px; margin: 0; background: #0f3460; border: 1px solid #2a2a5e; }
+      .auth-bar button:hover { border-color: #e94560; }
 
+      /* ===== Row helpers ===== */
+      .row { display: flex; gap: 8px; }
+      .row > * { flex: 1; }
+      .row-tight { display: flex; gap: 8px; align-items: center; }
+      .divider { text-align: center; color: #444; margin: 8px 0; font-size: 12px; }
+
+      /* ===== Session code ===== */
       .session-code {
-        font-size: 32px;
-        font-weight: bold;
+        font-size: 30px;
+        font-weight: 700;
         color: #e94560;
         text-align: center;
         letter-spacing: 6px;
-        padding: 15px;
+        padding: 12px;
         background: #0f3460;
         border-radius: 6px;
-        margin: 10px 0;
+        margin: 8px 0;
+        cursor: pointer;
         user-select: all;
+        transition: background 0.15s;
+        font-family: 'Consolas', 'Courier New', monospace;
       }
-      .member-list {
-        margin: 10px 0;
+      .session-code:hover { background: #1a4a8a; }
+      .session-code.copied { background: #2a6a3a; }
+      .hint { font-size: 11px; color: #556; text-align: center; margin-top: -4px; margin-bottom: 6px; }
+
+      /* ===== Clip duration ===== */
+      .clip-duration-row {
+        display: flex; align-items: center; gap: 8px;
+        margin: 8px 0; padding: 8px 12px;
+        background: #0f3460; border-radius: 6px; border: 1px solid #2a2a5e;
       }
+      .clip-duration-row label { margin: 0; white-space: nowrap; flex-shrink: 0; }
+      .clip-duration-row select { margin: 0; flex: 1; }
+      .clip-duration-display {
+        font-size: 13px; color: #999; text-align: center;
+        padding: 8px; background: #0f3460; border-radius: 6px; margin: 6px 0;
+      }
+      .clip-duration-display strong { color: #e94560; }
+
+      /* ===== Player link ===== */
+      .player-link {
+        display: block; text-align: center; margin: 6px 0;
+        font-size: 12px; color: #e94560; text-decoration: none;
+      }
+      .player-link:hover { text-decoration: underline; color: #ff6b8a; }
+
+      /* ===== Members ===== */
+      .member-list { margin: 8px 0; }
       .member-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 8px 12px;
-        background: #0f3460;
-        border-radius: 6px;
-        margin: 4px 0;
-        font-size: 14px;
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 7px 12px; background: #0f3460; border-radius: 6px; margin: 3px 0; font-size: 13px;
       }
       .member-name { color: #eee; }
-      .member-status {
-        font-size: 12px;
-        padding: 3px 8px;
-        border-radius: 4px;
+      .member-status { font-size: 11px; padding: 2px 8px; border-radius: 4px; }
+      .member-status.rec { background: #ff4444; color: white; }
+      .member-status.idle { background: #333; color: #666; }
+
+      /* ===== Recording status ===== */
+      .status-bar {
+        padding: 12px 16px; border-radius: 6px; font-size: 14px;
+        text-align: center; font-weight: 600;
       }
-      .member-status.rec {
-        background: #ff4444;
-        color: white;
-      }
-      .member-status.idle {
-        background: #333;
-        color: #888;
-      }
-      .row {
-        display: flex;
-        gap: 10px;
-      }
-      .row > * { flex: 1; }
-      .divider {
-        text-align: center;
-        color: #555;
-        margin: 10px 0;
-        font-size: 13px;
+      .status-bar.idle { color: #666; }
+      .status-bar.buffering { color: #e9a820; }
+      .status-bar.ready { color: #44ff88; }
+      .status-bar.recording { color: #ff4444; }
+      .status-help { font-size: 11px; color: #556; text-align: center; margin-top: 2px; font-weight: normal; }
+
+      /* ===== Monitor indicator ===== */
+      .monitor-active {
+        font-size: 12px; color: #44ff88; text-align: center;
+        margin: 4px 0; padding: 4px; background: #0f3460; border-radius: 4px;
       }
 
-      .hotkey-row {
-        display: flex;
-        gap: 10px;
-        align-items: center;
-        margin-bottom: 10px;
-      }
+      /* ===== Hotkey ===== */
+      .hotkey-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
       .hotkey-display {
-        flex: 1;
-        padding: 10px 14px;
-        background: #0f3460;
-        border: 1px solid #e94560;
-        border-radius: 6px;
-        font-size: 15px;
-        font-weight: bold;
-        color: #eee;
-        letter-spacing: 2px;
-        text-align: center;
-        font-family: monospace;
+        flex: 1; padding: 8px 12px; background: #0f3460; border: 1px solid #2a2a5e;
+        border-radius: 6px; font-size: 14px; font-weight: 600; color: #eee;
+        letter-spacing: 2px; text-align: center; font-family: 'Consolas', monospace;
       }
-      .hotkey-display.listening {
-        border-color: #e9a820;
-        color: #e9a820;
-        animation: pulse 1s infinite;
-      }
-      @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.5; }
-      }
-      .btn-capture {
-        width: auto;
-        flex-shrink: 0;
-        padding: 10px 16px;
-        font-size: 13px;
-        margin: 0;
-        background: #0f3460;
-        border: 1px solid #e94560;
-        border-radius: 6px;
-        cursor: pointer;
-        color: #eee;
-        white-space: nowrap;
-      }
-      .btn-capture:hover { background: #1a4a8a; }
-      .btn-capture.listening {
-        border-color: #e9a820;
-        color: #e9a820;
-      }
-      .hotkey-hint {
-        font-size: 11px;
-        color: #667;
-        margin-bottom: 10px;
-        margin-top: -6px;
-      }
+      .hotkey-display.listening { border-color: #e9a820; color: #e9a820; animation: pulse 1s infinite; }
+      @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+      .hotkey-hint { font-size: 11px; color: #556; margin-bottom: 8px; margin-top: -2px; }
 
-      #sessionPanel-connected { display: none; }
+      /* ===== Mic (compact, inside recording section) ===== */
+      .mic-group { margin-top: 12px; padding-top: 12px; border-top: 1px solid #2a2a4e; }
+      .mic-group h4 { color: #e94560; font-size: 13px; margin: 0 0 6px 0; }
+      .mic-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+      .mic-row label { margin: 0; flex-shrink: 0; min-width: 50px; }
+      .mic-row select { margin: 0; flex: 1; }
+      .mic-row input[type="range"] { flex: 1; accent-color: #e94560; height: 4px; }
+      .mic-mute-btn {
+        background: #0f3460; border: 1px solid #2a2a5e; color: #999;
+        padding: 5px 10px; border-radius: 6px; cursor: pointer;
+        font-size: 12px; width: auto; margin: 0; flex-shrink: 0;
+      }
+      .mic-mute-btn:hover { border-color: #e94560; color: #e94560; }
+      .mic-mute-btn.muted { background: #e94560; color: white; border-color: #e94560; }
+      .mic-pulse {
+      animation: micPulse 2s ease-in-out infinite;
+      border-color: #e9a820;
+    }
+    @keyframes micPulse {
+      0%, 100% { border-color: #2a2a5e; }
+      50% { border-color: #e9a820; }
+    }
+      .mic-status { font-size: 11px; color: #556; }
 
-      /* Upload progress bar */
-      .upload-progress-wrap {
-        margin: 8px 0;
-        display: none;
-      }
-      .upload-progress-label {
-        font-size: 12px;
-        color: #aaa;
-        margin-bottom: 4px;
-        display: flex;
-        justify-content: space-between;
-      }
+      /* ===== Upload progress ===== */
+      .upload-progress-wrap { margin: 8px 0; display: none; }
+      .upload-progress-label { font-size: 12px; color: #999; margin-bottom: 3px; display: flex; justify-content: space-between; }
       .upload-progress-label span { color: #e94560; }
-      .upload-progress-track {
-        width: 100%;
-        height: 8px;
-        background: #0f3460;
-        border-radius: 4px;
-        overflow: hidden;
-      }
-      .upload-progress-fill {
-        height: 100%;
-        width: 0%;
-        background: #e94560;
-        border-radius: 4px;
-        transition: width 0.3s ease;
-      }
+      .upload-progress-track { width: 100%; height: 6px; background: #0f3460; border-radius: 3px; overflow: hidden; }
+      .upload-progress-fill { height: 100%; width: 0%; background: #e94560; border-radius: 3px; transition: width 0.3s ease; }
       .upload-progress-fill.success { background: #44ff88; }
       .upload-progress-fill.error { background: #ff4444; }
 
-      /* Modal styles */
-      .modal {
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.8);
-        z-index: 1000;
-        justify-content: center;
-        align-items: center;
+      /* ===== HUD ===== */
+      .hud-tabs { display: flex; gap: 3px; margin-bottom: 0; }
+      .hud-tab {
+        flex: 1; margin: 0; padding: 7px 4px; font-size: 12px;
+        background: #0f3460; border: 1px solid #0f3460; color: #888;
+        border-radius: 6px 6px 0 0; width: auto;
       }
-      .modal.show {
-        display: flex;
+      .hud-tab:hover { background: #1a4a8a; }
+      .hud-tab.active { background: #16213e; border: 1px solid #2a2a5e; border-bottom: 2px solid #16213e; color: #e94560; font-weight: 600; }
+      .hud-tab .tab-badge {
+        display: inline-block; min-width: 14px; padding: 1px 4px; margin-left: 3px;
+        background: #e94560; color: white; border-radius: 8px; font-size: 9px; font-weight: 700;
       }
-      .modal-content {
-        background: #16213e;
-        border-radius: 8px;
-        padding: 30px;
-        width: 90%;
-        max-width: 500px;
-        color: #eee;
+      .hud-pane {
+        display: none; height: 180px; overflow-y: auto;
+        background: #101a33; border: 1px solid #2a2a5e; border-radius: 0 0 6px 6px; padding: 6px;
       }
-      .modal-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 20px;
+      .hud-pane.active { display: block; }
+      .hud-pane::-webkit-scrollbar { width: 6px; }
+      .hud-pane::-webkit-scrollbar-track { background: #101a33; }
+      .hud-pane::-webkit-scrollbar-thumb { background: #0f3460; border-radius: 3px; }
+      .hud-empty { color: #444; font-size: 12px; text-align: center; padding: 30px 0; font-style: italic; }
+      .clip-item {
+        background: #0f3460; padding: 6px 8px; margin: 3px 0; border-radius: 5px;
+        font-size: 11px; word-break: break-all; display: flex; justify-content: space-between; gap: 6px;
       }
-      .modal-header h2 {
-        margin: 0;
-        color: #e94560;
-      }
-      .modal-close {
-        background: none;
-        border: none;
-        color: #e94560;
-        font-size: 28px;
-        cursor: pointer;
-        padding: 0;
-        width: auto;
-        margin: 0;
-      }
-      .modal-close:hover { color: #ff6b7a; }
-      .modal-body {
-        margin-bottom: 20px;
-      }
-      .modal-footer {
-        display: flex;
-        gap: 10px;
-      }
-      .modal-footer button {
-        flex: 1;
-      }
-      .storage-path {
-        background: #0f3460;
-        padding: 12px;
-        border-radius: 6px;
-        margin: 10px 0;
-        font-size: 13px;
-        word-break: break-all;
-        border: 1px solid #e94560;
-      }
-      .btn-danger {
-        background: #8b3a3a;
-      }
-      .btn-danger:hover {
-        background: #a74545;
-      }
+      .clip-item .clip-time { color: #556; font-size: 10px; flex-shrink: 0; white-space: nowrap; }
+      .clip-item.error { color: #ff4444; }
+      .clip-item.success { color: #44ff88; }
+      .clip-item.broadcast { color: #e9a820; }
+      .clip-item.info { color: #999; }
 
-      /* First-launch modal extras */
-      .welcome-icon {
-        font-size: 48px;
-        text-align: center;
-        margin-bottom: 10px;
+      /* ===== Modals ===== */
+      .modal {
+        display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;
       }
-      .welcome-title {
-        text-align: center;
-        color: #e94560;
-        font-size: 22px;
-        font-weight: bold;
-        margin-bottom: 6px;
-      }
-      .welcome-subtitle {
-        text-align: center;
-        color: #aaa;
-        font-size: 13px;
-        margin-bottom: 24px;
-      }
-      .info-row {
-        background: #0f3460;
-        border-radius: 6px;
-        padding: 12px;
-        margin-bottom: 10px;
-        font-size: 13px;
-      }
-      .info-row-label {
-        color: #aaa;
-        font-size: 11px;
-        margin-bottom: 4px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-      }
-      .info-row-value {
-        color: #eee;
-        word-break: break-all;
-        font-family: monospace;
-        font-size: 12px;
-      }
-      .info-row-value.muted { color: #666; font-style: italic; }
+      .modal.show { display: flex; }
+      .modal-content { background: #16213e; border-radius: 8px; padding: 24px; width: 90%; max-width: 460px; color: #eee; }
+      .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+      .modal-header h2 { margin: 0; color: #e94560; font-size: 18px; }
+      .modal-close { background: none; border: none; color: #e94560; font-size: 24px; cursor: pointer; padding: 0; width: auto; margin: 0; }
+      .modal-close:hover { color: #ff6b7a; }
+      .storage-path { background: #0f3460; padding: 10px; border-radius: 6px; margin: 8px 0; font-size: 12px; word-break: break-all; border: 1px solid #2a2a5e; font-family: 'Consolas', monospace; }
+      .welcome-icon { font-size: 40px; text-align: center; margin-bottom: 8px; }
+      .welcome-title { text-align: center; color: #e94560; font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+      .welcome-subtitle { text-align: center; color: #999; font-size: 13px; margin-bottom: 20px; }
+      .info-row { background: #0f3460; border-radius: 6px; padding: 10px; margin-bottom: 8px; font-size: 12px; }
+      .info-row-label { color: #999; font-size: 10px; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 1px; }
+      .info-row-value { color: #eee; word-break: break-all; font-family: 'Consolas', monospace; font-size: 11px; }
+
+      /* Hide by default */
+      #sessionPanel-connected { display: none; }
+      input#hotkeyCapture { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
     </style>
   </head>
   <body>
     <div class="header">
       <h1>🙈 Peak-Abu</h1>
-      <button class="btn-settings" onclick="openSettings()">⚙️ Settings</button>
+      <button class="btn-settings" onclick="openSettings()">⚙ Settings</button>
     </div>
 
     <!-- SETTINGS MODAL -->
@@ -436,15 +283,12 @@
           <h2>Settings</h2>
           <button class="modal-close" onclick="closeSettings()">×</button>
         </div>
-        <div class="modal-body">
+        <div>
           <label>Video Storage Location</label>
           <div class="storage-path" id="storagePathDisplay">Loading...</div>
-          <button class="btn-secondary" style="width: 100%; margin-bottom: 20px;" onclick="pickStorageDirectory()">📁 Change Storage Directory</button>
-
-          <hr style="border: 1px solid #444; margin: 20px 0;">
-
-          <h3 style="color: #e94560; margin-top: 0;">Application</h3>
-          <button class="btn-secondary" style="width: 100%;" onclick="openUninstallGuide()">🗑️ Uninstall Peak-Abu</button>
+          <button class="btn-secondary" style="width:100%;margin-bottom:16px;" onclick="pickStorageDirectory()">📁 Change Storage Directory</button>
+          <hr style="border:1px solid #333;margin:16px 0;">
+          <button class="btn-secondary" style="width:100%;" onclick="openUninstallGuide()">🗑 Uninstall Peak-Abu</button>
         </div>
       </div>
     </div>
@@ -455,33 +299,21 @@
         <div class="welcome-icon">🙈</div>
         <div class="welcome-title">Welcome to Peak-Abu</div>
         <div class="welcome-subtitle">Let's get you set up before your first session.</div>
-
         <div class="info-row">
-          <div class="info-row-label">📂 App Installed At</div>
+          <div class="info-row-label">📂 App Location</div>
           <div class="info-row-value" id="installPathDisplay">Loading...</div>
         </div>
-
         <div class="info-row">
-          <div class="info-row-label">🎬 Video Storage Location</div>
+          <div class="info-row-label">🎬 Video Storage</div>
           <div class="info-row-value" id="firstLaunchStorageDisplay">Default — click below to change</div>
         </div>
-
-        <button class="btn-secondary" style="width:100%; margin: 10px 0;" onclick="pickStorageFirstLaunch()">
-          📁 Choose Video Storage Folder
-        </button>
-
-        <p style="font-size: 11px; color: #555; text-align: center; margin: 8px 0 16px;">
-          Videos save here after each highlight. You can change this anytime in ⚙️ Settings.
-        </p>
-
-        <button onclick="completeFirstLaunch()" style="width:100%;">
-          🚀 Get Started
-        </button>
+        <button class="btn-secondary" style="width:100%;margin:8px 0;" onclick="pickStorageFirstLaunch()">📁 Choose Video Storage Folder</button>
+        <p style="font-size:11px;color:#444;text-align:center;margin:6px 0 12px;">You can change this anytime in Settings.</p>
+        <button onclick="completeFirstLaunch()" style="width:100%;">🚀 Get Started</button>
       </div>
     </div>
 
-
-    <!-- AUTH PANEL -->
+    <!-- AUTH (login/register form — hidden after login) -->
     <div class="section" id="authPanel">
       <h3>Account</h3>
       <div id="authLoggedOut">
@@ -489,86 +321,125 @@
         <input type="text" id="authUsernameInput" placeholder="Enter username" />
         <label>Password</label>
         <input type="password" id="authPasswordInput" placeholder="Enter password" />
-        <div id="authError" style="color:#ff4444;font-size:12px;margin-top:-6px;margin-bottom:6px;display:none;"></div>
+        <div id="authConfirmWrap" style="display:none;">
+          <label>Confirm Password</label>
+          <input type="password" id="authConfirmInput" placeholder="Re-enter password" />
+        </div>
+        <div id="authError" style="color:#ff4444;font-size:12px;margin-top:-4px;margin-bottom:6px;display:none;"></div>
         <div class="row">
           <button onclick="loginUser()">Log In</button>
           <button class="btn-secondary" onclick="registerUser()">Register</button>
         </div>
-      </div>
-      <div id="authLoggedIn" style="display:none;">
-        <div style="font-size:14px;margin-bottom:10px;">Logged in as <strong id="authDisplayName"></strong></div>
-        <button class="btn-secondary" onclick="logoutUser()">Log Out</button>
+        <p style="font-size:11px;color:#444;text-align:center;margin-top:6px;">New? Click Register to create an account.</p>
       </div>
     </div>
 
+    <!-- AUTH BAR (shown after login — compact) -->
+    <div class="auth-bar" id="authBar" style="display:none;">
+      <span class="user-label">Logged in as <strong id="authBarName"></strong></span>
+      <button onclick="logoutUser()">Log Out</button>
+    </div>
 
     <!-- SESSION PANEL -->
-      <div class="section" id="sessionPanel" style="display:none;">
+    <div class="section" id="sessionPanel" style="display:none;">
       <h3>Squad Session</h3>
-
       <div id="sessionPanel-disconnected">
-        <label>Your Name</label>
-        <input type="text" id="usernameInput" placeholder="Enter your username" />
-        <div id="usernameError" style="color:#ff4444;font-size:12px;margin-top:-6px;margin-bottom:6px;display:none;">Enter a username first</div>
-
         <button onclick="createSession()">Create New Session</button>
-
         <div class="divider">— or join a friend —</div>
-
         <label>Session Code</label>
         <input type="text" id="joinCodeInput" placeholder="e.g. ABCD12" maxlength="6"
-               style="text-transform: uppercase; letter-spacing: 3px; text-align: center;" />
+               style="text-transform:uppercase;letter-spacing:3px;text-align:center;" />
         <button class="btn-secondary" onclick="joinSession()">Join Session</button>
       </div>
-
       <div id="sessionPanel-connected">
-        <label>Session Code (share this with your squad)</label>
-        <div class="session-code" id="sessionCodeDisplay">------</div>
+        <label>Session Code (click to copy)</label>
+        <div class="session-code" id="sessionCodeDisplay" onclick="copySessionCode()">------</div>
+        <div class="hint" id="sessionCodeHint">Click the code to copy to clipboard</div>
+        <a class="player-link" id="playerLink" href="#" target="_blank">🌐 Open in Web Player</a>
+
+        
+
         <div class="member-list" id="memberList"></div>
         <button class="btn-secondary" onclick="leaveSession()">Leave Session</button>
       </div>
     </div>
 
-    <!-- RECORDING SETUP -->
+    <!-- RECORDING SETUP + MIC (combined) -->
     <div class="section">
-      <h3>Recording Setup</h3>
+      <h3>Recording</h3>
       <label>Monitor</label>
       <select id="monitorSelect">
         <option>Loading monitors...</option>
       </select>
+      <div class="monitor-active" id="monitorActive" style="display:none;">Recording: <span id="monitorActiveName">—</span></div>
 
-      <label>Framerate</label>
-      <select id="fpsSelect" onchange="updateSettings()">
-        <option value="30" selected>30 FPS</option>
-        <option value="60">60 FPS</option>
-      </select>
+      <div class="row" style="margin-bottom:6px;">
+        <div>
+          <label>Framerate</label>
+          <select id="fpsSelect" onchange="updateSettings()">
+            <option value="30" selected>30 FPS</option>
+            <option value="60">60 FPS</option>
+          </select>
+        </div>
+        <div>
+          <label>Quality</label>
+          <select id="resolutionSelect" onchange="updateSettings()">
+            <option value="native" selected>Native</option>
+            <option value="720">720p</option>
+            <option value="480">480p</option>
+          </select>
+        </div>
+      </div>
 
-      <label>Recording Quality</label>
-      <select id="resolutionSelect" onchange="updateSettings()">
-        <option value="native" selected>Native (1080p)</option>
-        <option value="720">720p (better performance)</option>
-        <option value="480">480p (low-end PCs)</option>
-      </select>
-
-      <input type="text" id="hotkeyCapture" readonly
-        style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;" />
+      <input type="text" id="hotkeyCapture" readonly />
       <label>Save Highlight Hotkey</label>
       <div class="hotkey-row">
         <div class="hotkey-display" id="hotkeyDisplay">F9</div>
-        <button class="btn-capture" id="hotkeyBtn" onclick="toggleHotkeyCapture()">Change</button>
+        <button class="btn-sm btn-secondary" id="hotkeyBtn" onclick="toggleHotkeyCapture()">Change</button>
       </div>
-      <div class="hotkey-hint" id="hotkeyHint">Press any F-key, or hold Ctrl / Alt / Shift + a letter or F-key</div>
+      <div class="hotkey-hint" id="hotkeyHint">Press any F-key, or Ctrl/Alt/Shift + key</div>
 
-      <button id="startBtn" onclick="startRecording()">▶ Start Recording</button>
-      <button id="stopBtn" onclick="stopRecording()" disabled>⏹ Stop Recording</button>
+      <div class="row">
+        <button id="startBtn" onclick="startRecording()">▶ Start Highlight Session</button>
+        <button id="stopBtn" class="btn-secondary" onclick="stopRecording()" disabled>⏹ End Session</button>
+      </div>
+
+      <!-- MIC (compact, inside recording section) -->
+      <div class="mic-group">
+        <h4>🎤 Microphone</h4>
+        <div class="mic-row">
+          <label>Device</label>
+          <select id="micSelect" onchange="onMicDeviceChange()">
+            <option value="">None</option>
+          </select>
+        </div>
+        <div class="mic-row">
+          <label>Vol</label>
+          <input type="range" id="micVolume" min="0" max="100" value="80" oninput="onMicVolumeChange()" />
+          <button class="mic-mute-btn" id="micMuteBtn" onclick="toggleMicMute()">Mute</button>
+        </div>
+        
+      </div>
     </div>
 
+    <!-- STATUS + SAVE (prominent) -->
     <div class="section">
-      <div class="status idle" id="statusText">● Idle</div>
-      <button id="saveBtn" onclick="saveHighlight()" disabled>💾 Save Highlight (or press <span id="saveBtnHotkey">F9</span>)</button>
-    </div>
-
-    <div class="section">
+      <div class="status-bar idle" id="statusText">● Idle</div>
+      <div class="status-help" id="statusHelp">Start recording to begin buffering gameplay</div>
+      <!-- Clip duration: host picker / member display -->
+        <div class="clip-duration-row" id="clipDurationHost" style="display:none;">
+          <label>⏱ Clip</label>
+          <select id="clipDurationSelect" onchange="onClipDurationChange()">
+            <option value="15000">15 sec</option>
+            <option value="30000" selected>30 sec</option>
+            <option value="60000">1 min</option>
+            <option value="180000">3 min</option>
+          </select>
+        </div>
+        <div class="clip-duration-display" id="clipDurationMember" style="display:none;">
+          ⏱ Clip length: <strong id="clipDurationValue">30s</strong>
+        </div>
+      <button id="saveBtn" onclick="saveHighlight()" disabled style="margin-top:8px;">💾 Save Highlight (or press <span id="saveBtnHotkey">F9</span>)</button>
       <div class="upload-progress-wrap" id="uploadProgressWrap">
         <div class="upload-progress-label">
           <span>Uploading clip...</span>
@@ -580,30 +451,25 @@
       </div>
     </div>
 
-    <!-- SESSION HUD (tabbed) -->
+    <!-- SESSION HUD -->
     <div class="section">
-      <h3>Session HUD</h3>
       <div class="hud-tabs">
         <button class="hud-tab active" id="hudTab-activity" onclick="switchHudTab('activity')">⚡ Activity<span class="tab-badge" id="hudBadge-activity" style="display:none;">0</span></button>
         <button class="hud-tab" id="hudTab-squad" onclick="switchHudTab('squad')">👥 Squad<span class="tab-badge" id="hudBadge-squad" style="display:none;">0</span></button>
         <button class="hud-tab" id="hudTab-system" onclick="switchHudTab('system')">🛠 System<span class="tab-badge" id="hudBadge-system" style="display:none;">0</span></button>
+        <button class="hud-tab" id="hudTab-history" onclick="switchHudTab('history')">📋 History<span class="tab-badge" id="hudBadge-history" style="display:none;">0</span></button>
       </div>
-      <div class="hud-pane active" id="hudPane-activity">
-        <div class="hud-empty">Highlight saves and uploads will show here</div>
-      </div>
-      <div class="hud-pane" id="hudPane-squad">
-        <div class="hud-empty">Squad joins and leaves will show here</div>
-      </div>
-      <div class="hud-pane" id="hudPane-system">
-        <div class="hud-empty">App messages will show here</div>
-      </div>
+      <div class="hud-pane active" id="hudPane-activity"><div class="hud-empty">Highlight saves and uploads appear here</div></div>
+      <div class="hud-pane" id="hudPane-squad"><div class="hud-empty">Squad joins and leaves appear here</div></div>
+      <div class="hud-pane" id="hudPane-system"><div class="hud-empty">App messages appear here</div></div>
+      <div class="hud-pane" id="hudPane-history"><div class="hud-empty">Session history appears here</div></div>
     </div>
 
     <script>
       const { ipcRenderer } = require('electron');
       const io = require('socket.io-client');
 
-      // Global state
+      // State
       window.mediaRecorder = null;
       window.socket = null;
       window.currentSessionCode = null;
@@ -613,750 +479,678 @@
       window.highlightCooldownTimer = null;
       window.isRecordingActive = false;
       window.bufferReady = false;
+      window.isSessionHost = false;
+      window.sessionClipDuration = 30000;
+      window.authToken = localStorage.getItem('peak_abu_token') || null;
+      window.authUsername = localStorage.getItem('peak_abu_username') || null;
+
+      // Mic state
+      window.micDeviceId = null;
+      window.micEnabled = false;
+      window.micVolume = 80;
+      window.micMuted = false;
+      window.micRecorder = null;
 
       // =====================
-      // TABBED HUD
+      // HUD
       // =====================
       const HUD_MAX_ITEMS = 50;
       window.activeHudTab = 'activity';
 
       window.switchHudTab = function(tab) {
-        window.activeHudTab = tab;
-        ['activity', 'squad', 'system'].forEach(t => {
-          document.getElementById('hudTab-' + t).classList.toggle('active', t === tab);
-          document.getElementById('hudPane-' + t).classList.toggle('active', t === tab);
-        });
-        // Clear unread badge for the tab being opened
-        const badge = document.getElementById('hudBadge-' + tab);
-        badge.style.display = 'none';
-        badge.textContent = '0';
-      };
+       window.activeHudTab = tab;
+       ['activity','squad','system','history'].forEach(t => {
+         document.getElementById('hudTab-'+t).classList.toggle('active', t===tab);
+         document.getElementById('hudPane-'+t).classList.toggle('active', t===tab);
+       });
+       var badge = document.getElementById('hudBadge-'+tab);
+       badge.style.display = 'none';
+       badge.textContent = '0';
+     };
 
-      // tab: 'activity' | 'squad' | 'system'
-      // type: 'success' | 'error' | 'broadcast' | 'info'
-      function hudLog(tab, text, type = 'info') {
-        const pane = document.getElementById('hudPane-' + tab);
+      // =====================
+     // SESSION HISTORY
+    // =====================
+    const SESSION_HISTORY_MAX = 20;
 
-        // Remove the empty-state placeholder if present
-        const empty = pane.querySelector('.hud-empty');
-        if (empty) empty.remove();
+    function loadSessionHistory() {
+      try {
+        var raw = localStorage.getItem('peak_abu_session_history');
+        return raw ? JSON.parse(raw) : [];
+      } catch(e) { return []; }
+    }
 
-        const item = document.createElement('div');
-        item.className = 'clip-item ' + type;
+    function saveSessionHistory(history) {
+      localStorage.setItem('peak_abu_session_history', JSON.stringify(history));
+    }
 
-        const msg = document.createElement('span');
-        msg.textContent = text;
+    function addSessionToHistory(code, role) {
+      var history = loadSessionHistory();
+      // Remove duplicate if exists
+      history = history.filter(function(h) { return h.code !== code; });
+      history.unshift({
+        code: code,
+        role: role,
+        username: window.authUsername,
+        timestamp: new Date().toISOString()
+      });
+      // Cap at max
+      while (history.length > SESSION_HISTORY_MAX) history.pop();
+      saveSessionHistory(history);
+      renderSessionHistory();
+    }
 
-        const time = document.createElement('span');
+    function renderSessionHistory() {
+      var pane = document.getElementById('hudPane-history');
+      var history = loadSessionHistory();
+      if (history.length === 0) {
+        pane.innerHTML = '<div class="hud-empty">Session history appears here</div>';
+        return;
+      }
+      pane.innerHTML = '';
+      history.forEach(function(h) {
+        var item = document.createElement('div');
+        item.className = 'clip-item';
+        item.style.cursor = 'pointer';
+
+        var info = document.createElement('span');
+        var roleIcon = h.role === 'host' ? '👑' : '👤';
+        info.textContent = roleIcon + ' ' + h.code;
+
+        var time = document.createElement('span');
         time.className = 'clip-time';
-        time.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        var d = new Date(h.timestamp);
+        time.textContent = d.toLocaleDateString([], {month:'short', day:'numeric'}) + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
 
+        item.appendChild(info);
+        item.appendChild(time);
+
+        item.addEventListener('click', function() {
+          document.getElementById('joinCodeInput').value = h.code;
+          navigator.clipboard.writeText(h.code).then(function() {
+            hudLog('system', '📋 Code ' + h.code + ' copied & filled', 'success');
+          });
+        });
+
+        pane.appendChild(item);
+      });
+    }
+
+      function hudLog(tab, text, type) {
+        type = type || 'info';
+        var pane = document.getElementById('hudPane-'+tab);
+        var empty = pane.querySelector('.hud-empty');
+        if (empty) empty.remove();
+        var item = document.createElement('div');
+        item.className = 'clip-item ' + type;
+        var msg = document.createElement('span');
+        msg.textContent = text;
+        var time = document.createElement('span');
+        time.className = 'clip-time';
+        time.textContent = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
         item.appendChild(msg);
         item.appendChild(time);
         pane.prepend(item);
-
-        // Cap entries so the HUD never grows unbounded
-        while (pane.children.length > HUD_MAX_ITEMS) {
-          pane.removeChild(pane.lastChild);
-        }
-
-        // Unread badge if this tab isn't the active one
+        while (pane.children.length > HUD_MAX_ITEMS) pane.removeChild(pane.lastChild);
         if (window.activeHudTab !== tab) {
-          const badge = document.getElementById('hudBadge-' + tab);
-          const count = parseInt(badge.textContent || '0') + 1;
+          var badge = document.getElementById('hudBadge-'+tab);
+          var count = parseInt(badge.textContent||'0') + 1;
           badge.textContent = count > 99 ? '99+' : count;
           badge.style.display = 'inline-block';
         }
       }
 
-      // Back-compat shim: old addClipItem calls route to Activity by default
-      function addClipItem(text, type = 'success') {
-        hudLog('activity', text, type);
-      }
-
       // =====================
-      // SETTINGS MODAL
+      // COPY SESSION CODE
       // =====================
-
-      window.openSettings = function() {
-        document.getElementById('settingsModal').classList.add('show');
-        loadStoragePath();
-      };
-
-      window.closeSettings = function() {
-        document.getElementById('settingsModal').classList.remove('show');
-      };
-
-      function loadStoragePath() {
-        ipcRenderer.invoke('get-storage-directory').then(dirPath => {
-          document.getElementById('storagePathDisplay').textContent = dirPath;
-        });
-      }
-
-      window.pickStorageDirectory = function() {
-        ipcRenderer.invoke('pick-storage-directory').then(result => {
-          if (result.success) {
-            loadStoragePath();
-            hudLog('system', '✅ Storage directory updated', 'success');
-          }
+      window.copySessionCode = function() {
+        var code = document.getElementById('sessionCodeDisplay').textContent.trim();
+        if (!code || code === '------') return;
+        navigator.clipboard.writeText(code).then(function() {
+          var el = document.getElementById('sessionCodeDisplay');
+          var hint = document.getElementById('sessionCodeHint');
+          el.classList.add('copied');
+          hint.textContent = '✅ Copied!';
+          setTimeout(function() { el.classList.remove('copied'); hint.textContent = 'Click the code to copy to clipboard'; }, 2000);
         });
       };
 
-      window.openUninstallGuide = function() {
-        alert('To uninstall Peak-Abu:\n\n1. Press Win+R\n2. Type "appwiz.cpl" and press Enter\n3. Find "Peak-Abu" in the list\n4. Click it and select "Uninstall"\n5. Follow the prompts\n\nAll your local video files will remain in your chosen storage directory.');
+      // =====================
+      // CLIP DURATION
+      // =====================
+      function formatDuration(ms) {
+        if (ms < 60000) return (ms/1000) + 's';
+        return (ms/60000) + ' min';
+      }
+
+      window.onClipDurationChange = function() {
+        var duration = parseInt(document.getElementById('clipDurationSelect').value);
+        if (!window.socket || !window.currentSessionCode) return;
+        window.socket.emit('set-clip-duration', { duration: duration });
       };
 
-      // Click outside modal to close
-      document.getElementById('settingsModal').addEventListener('click', (e) => {
-        if (e.target.id === 'settingsModal') {
-          closeSettings();
+      function updateClipDurationUI(duration, isHost) {
+        window.sessionClipDuration = duration;
+        if (isHost) {
+          document.getElementById('clipDurationHost').style.display = 'flex';
+          document.getElementById('clipDurationMember').style.display = 'none';
+          document.getElementById('clipDurationSelect').value = String(duration);
+        } else {
+          document.getElementById('clipDurationHost').style.display = 'none';
+          document.getElementById('clipDurationMember').style.display = 'block';
+          document.getElementById('clipDurationValue').textContent = formatDuration(duration);
         }
-      });
+      }
 
       // =====================
-      // FIRST LAUNCH MODAL
+      // SETTINGS
       // =====================
+      window.openSettings = function() { document.getElementById('settingsModal').classList.add('show'); loadStoragePath(); };
+      window.closeSettings = function() { document.getElementById('settingsModal').classList.remove('show'); };
+      function loadStoragePath() { ipcRenderer.invoke('get-storage-directory').then(function(p) { document.getElementById('storagePathDisplay').textContent = p; }); }
+      window.pickStorageDirectory = function() {
+        ipcRenderer.invoke('pick-storage-directory').then(function(r) {
+          if (r.success) { loadStoragePath(); hudLog('system','✅ Storage directory updated','success'); }
+        });
+      };
+      window.openUninstallGuide = function() {
+        alert('To uninstall Peak-Abu:\n\n1. Press Win+R\n2. Type "appwiz.cpl" and press Enter\n3. Find "Peak-Abu" in the list\n4. Click Uninstall\n\nYour video files stay in your storage directory.');
+      };
+      document.getElementById('settingsModal').addEventListener('click', function(e) { if (e.target.id==='settingsModal') closeSettings(); });
 
+      // =====================
+      // FIRST LAUNCH
+      // =====================
       async function checkFirstLaunch() {
-        const isFirst = await ipcRenderer.invoke('is-first-launch');
+        var isFirst = await ipcRenderer.invoke('is-first-launch');
         if (isFirst) {
-          const installPath = await ipcRenderer.invoke('get-install-path');
-          const storagePath = await ipcRenderer.invoke('get-storage-directory');
-
-          document.getElementById('installPathDisplay').textContent = installPath || 'Unknown';
-          document.getElementById('firstLaunchStorageDisplay').textContent = storagePath;
-
+          document.getElementById('installPathDisplay').textContent = await ipcRenderer.invoke('get-install-path') || 'Unknown';
+          document.getElementById('firstLaunchStorageDisplay').textContent = await ipcRenderer.invoke('get-storage-directory');
           document.getElementById('firstLaunchModal').classList.add('show');
         }
       }
-
       window.pickStorageFirstLaunch = async function() {
-        const result = await ipcRenderer.invoke('pick-storage-directory');
-        if (result.success) {
-          document.getElementById('firstLaunchStorageDisplay').textContent = result.path;
-        }
+        var r = await ipcRenderer.invoke('pick-storage-directory');
+        if (r.success) document.getElementById('firstLaunchStorageDisplay').textContent = r.path;
       };
-
       window.completeFirstLaunch = async function() {
         await ipcRenderer.invoke('mark-first-launch-done');
         document.getElementById('firstLaunchModal').classList.remove('show');
-        hudLog('system', 'Setup complete - you are ready to record!', 'success');
+        hudLog('system','Setup complete — ready to record!','success');
       };
-
-      // Run on load
       checkFirstLaunch();
+      renderSessionHistory();
 
       // =====================
-      // HOTKEY CAPTURE LOGIC
+      // HOTKEY
       // =====================
-
-      ipcRenderer.invoke('get-current-hotkey').then(hotkey => {
-        if (hotkey) {
-          window.currentHotkey = hotkey;
-          updateHotkeyDisplay(hotkey);
-        }
-      });
+      ipcRenderer.invoke('get-current-hotkey').then(function(hk) { if (hk) { window.currentHotkey = hk; updateHotkeyDisplay(hk); } });
 
       window.toggleHotkeyCapture = function() {
         if (window.capturingHotkey) {
           window.capturingHotkey = false;
           document.getElementById('hotkeyCapture').blur();
           document.getElementById('hotkeyDisplay').classList.remove('listening');
-          document.getElementById('hotkeyBtn').classList.remove('listening');
           document.getElementById('hotkeyBtn').textContent = 'Change';
           document.getElementById('hotkeyDisplay').textContent = window.currentHotkey;
-          document.getElementById('hotkeyHint').textContent = 'Press any F-key, or hold Ctrl / Alt / Shift + a letter or F-key';
+          document.getElementById('hotkeyHint').textContent = 'Press any F-key, or Ctrl/Alt/Shift + key';
         } else {
           window.capturingHotkey = true;
           document.getElementById('hotkeyCapture').focus();
           document.getElementById('hotkeyDisplay').classList.add('listening');
           document.getElementById('hotkeyDisplay').textContent = '...';
-          document.getElementById('hotkeyBtn').classList.add('listening');
           document.getElementById('hotkeyBtn').textContent = 'Cancel';
-          document.getElementById('hotkeyHint').textContent = 'Listening — press your key combination now';
+          document.getElementById('hotkeyHint').textContent = 'Listening — press your key combo now';
         }
       };
 
-      function updateHotkeyDisplay(hotkey) {
-        document.getElementById('hotkeyDisplay').textContent = hotkey;
-        const span = document.getElementById('saveBtnHotkey');
-        if (span) span.textContent = hotkey;
+      function updateHotkeyDisplay(hk) {
+        document.getElementById('hotkeyDisplay').textContent = hk;
+        var span = document.getElementById('saveBtnHotkey');
+        if (span) span.textContent = hk;
       }
 
-      document.getElementById('hotkeyCapture').addEventListener('keydown', (e) => {
+      document.getElementById('hotkeyCapture').addEventListener('keydown', function(e) {
         if (!window.capturingHotkey) return;
-        e.preventDefault();
-        e.stopPropagation();
-
-        if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
-
-        const parts = [];
+        e.preventDefault(); e.stopPropagation();
+        if (['Control','Alt','Shift','Meta'].includes(e.key)) return;
+        var parts = [];
         if (e.ctrlKey) parts.push('Ctrl');
         if (e.altKey) parts.push('Alt');
         if (e.shiftKey) parts.push('Shift');
-
-        const keyMap = {
-          ' ': 'Space',
-          'ArrowUp': 'Up',
-          'ArrowDown': 'Down',
-          'ArrowLeft': 'Left',
-          'ArrowRight': 'Right',
-          'Backspace': 'Backspace',
-          'Delete': 'Delete',
-          'Enter': 'Enter',
-          'Tab': 'Tab'
-        };
-
-        let keyName;
-
-        if (e.key === 'Escape') {
-          toggleHotkeyCapture();
-          return;
-        } else if (keyMap[e.key]) {
-          keyName = keyMap[e.key];
-        } else if (/^F([1-9]|1[0-2])$/.test(e.key)) {
-          keyName = e.key;
-        } else if (e.key.length === 1) {
-          if (parts.length === 0) {
-            document.getElementById('hotkeyHint').textContent = 'Add Ctrl, Alt, or Shift with that key';
-            return;
-          }
+        var keyMap = {' ':'Space','ArrowUp':'Up','ArrowDown':'Down','ArrowLeft':'Left','ArrowRight':'Right','Backspace':'Backspace','Delete':'Delete','Enter':'Enter','Tab':'Tab'};
+        var keyName;
+        if (e.key==='Escape') { toggleHotkeyCapture(); return; }
+        else if (keyMap[e.key]) keyName = keyMap[e.key];
+        else if (/^F([1-9]|1[0-2])$/.test(e.key)) keyName = e.key;
+        else if (e.key.length===1) {
+          if (parts.length===0) { document.getElementById('hotkeyHint').textContent = 'Add Ctrl, Alt, or Shift with that key'; return; }
           keyName = e.key.toUpperCase();
-        } else {
-          document.getElementById('hotkeyHint').textContent = 'That key is not supported. Try an F-key or Ctrl/Alt/Shift + letter.';
-          return;
-        }
-
+        } else { document.getElementById('hotkeyHint').textContent = 'Key not supported — try F-key or modifier + letter'; return; }
         parts.push(keyName);
-        const hotkey = parts.join('+');
-
+        var hotkey = parts.join('+');
         window.capturingHotkey = false;
         window.currentHotkey = hotkey;
         document.getElementById('hotkeyCapture').blur();
         updateHotkeyDisplay(hotkey);
         document.getElementById('hotkeyDisplay').classList.remove('listening');
-        document.getElementById('hotkeyBtn').classList.remove('listening');
         document.getElementById('hotkeyBtn').textContent = 'Change';
-        document.getElementById('hotkeyHint').textContent = 'Hotkey saved — takes effect immediately';
-
-        ipcRenderer.send('update-settings', { hotkey });
+        document.getElementById('hotkeyHint').textContent = 'Hotkey saved';
+        ipcRenderer.send('update-settings', { hotkey: hotkey });
       });
 
-      ipcRenderer.on('hotkey-error', (event, message) => {
-        document.getElementById('hotkeyHint').textContent = '⚠️ ' + message;
-        document.getElementById('hotkeyDisplay').textContent = window.currentHotkey;
+      ipcRenderer.on('hotkey-error', function(ev, msg) {
+        document.getElementById('hotkeyHint').textContent = '⚠ ' + msg;
         updateHotkeyDisplay(window.currentHotkey);
       });
 
       // =====================
-      // SESSION LOGIC
+      // MIC
       // =====================
+      async function loadMicDevices() {
+       try {
+         var devices = await navigator.mediaDevices.enumerateDevices();
+         var mics = devices.filter(function(d){return d.kind==='audioinput';});
+         var sel = document.getElementById('micSelect');
+         sel.innerHTML = '<option value="">None</option>';
+         mics.forEach(function(m) {
+           var opt = document.createElement('option');
+           opt.value = m.deviceId;
+           opt.textContent = m.label || ('Mic ' + sel.children.length);
+           sel.appendChild(opt);
+         });
 
-      window.createSession = function() {
-        const username = document.getElementById('usernameInput').value.trim();
-        if (!username) {
-          var err = document.getElementById('usernameError');
-          err.style.display = 'block';
-          document.getElementById('usernameInput').focus();
-          setTimeout(function() { err.style.display = 'none'; }, 3000);
-          return;
+        // Auto-select default mic on first load if user hasn't explicitly chosen None
+         if (!window.micHasBeenTouched && mics.length > 0) {
+           var defaultMic = mics.find(function(m) { return m.deviceId === 'default'; }) || mics[0];
+           sel.value = defaultMic.deviceId;
+           window.micDeviceId = defaultMic.deviceId;
+           window.micEnabled = true;
+           sel.classList.remove('mic-pulse');
+         } else if (!window.micDeviceId) {
+           // No mic selected and user hasn't touched it — pulse
+           sel.classList.add('mic-pulse');
+         }
+       } catch(e) {}
+     }
+
+      window.onMicDeviceChange = function() {
+       window.micHasBeenTouched = true;
+       var sel = document.getElementById('micSelect');
+       sel.classList.remove('mic-pulse');
+       window.micDeviceId = sel.value || null;
+       window.micEnabled = !!window.micDeviceId;
+     };
+      window.onMicVolumeChange = function() {
+        window.micVolume = parseInt(document.getElementById('micVolume').value);
+        ipcRenderer.send('update-mic-settings', { volume: window.micVolume });
+      };
+      window.toggleMicMute = function() {
+        window.micMuted = !window.micMuted;
+        var btn = document.getElementById('micMuteBtn');
+        btn.textContent = window.micMuted ? 'Unmute' : 'Mute';
+        btn.classList.toggle('muted', window.micMuted);
+        ipcRenderer.send('update-mic-settings', { muted: window.micMuted });
+      };
+      async function startMicCapture() {
+        if (!window.micDeviceId || !window.micEnabled) return;
+        try {
+          var stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: window.micDeviceId } } });
+          window.micRecorder = new MediaRecorder(stream, { mimeType:'audio/webm;codecs=opus', audioBitsPerSecond:128000 });
+          window.micRecorder.ondataavailable = async function(ev) {
+            if (ev.data && ev.data.size > 0) { ipcRenderer.send('save-mic-chunk', await ev.data.arrayBuffer()); }
+          };
+          window.micRecorder.onerror = function(e) { console.log('Mic error:', e); };
+          window.micRecorder.start(10000);
+          ipcRenderer.send('mic-recording-started', Date.now()+20);
+          
+          hudLog('system','🎤 Mic capture started','success');
+        } catch(err) {
+        
+          hudLog('system','🎤 Mic failed: '+err.message,'error');
         }
+      }
+      function stopMicCapture() {
+        if (window.micRecorder && window.micRecorder.state !== 'inactive') { window.micRecorder.stop(); window.micRecorder = null; }
+      }
+      loadMicDevices();
+      navigator.mediaDevices.addEventListener('devicechange', loadMicDevices);
 
+      // =====================
+      // SESSION
+      // =====================
+      window.createSession = function() {
         fetch('https://peakabu.app/sessions', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + window.authToken
-          },
+          headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+window.authToken },
           body: JSON.stringify({})
         })
-        .then(res => res.json())
-        .then(data => {
-          if (data.error) {
-            alert('Error: ' + data.error);
-            return;
-          }
-          connectToSession(data.sessionCode, username);
+        .then(function(res){return res.json();})
+        .then(function(data) {
+          if (data.error) { alert('Error: '+data.error); return; }
+          window.isSessionHost = true;
+          connectToSession(data.sessionCode, window.authUsername);
         })
-        .catch(err => {
-          alert('Could not reach server. Is it running?');
-          console.log('Create session error:', err);
-        });
+        .catch(function() { alert('Could not reach server'); });
       };
 
       window.joinSession = function() {
-        const username = document.getElementById('usernameInput').value.trim();
-        const code = document.getElementById('joinCodeInput').value.trim().toUpperCase();
-
-        if (!username) {
-          var err = document.getElementById('usernameError');
-          err.style.display = 'block';
-          document.getElementById('usernameInput').focus();
-          setTimeout(function() { err.style.display = 'none'; }, 3000);
-          return;
-        }
-        if (!code || code.length < 4) {
-          alert('Enter a valid session code!');
-          return;
-        }
-
-        connectToSession(code, username);
+        var code = document.getElementById('joinCodeInput').value.trim().toUpperCase();
+        if (!code || code.length < 4) { alert('Enter a valid session code'); return; }
+        window.isSessionHost = false;
+        connectToSession(code, window.authUsername);
       };
 
       function connectToSession(code, username) {
-        window.socket = io('https://peakabu.app', {
-        auth: { token: window.authToken }
-      });
-      window.socket.on('connect_error', (err) => {
-        if (err.message === 'auth_required' || err.message === 'auth_invalid') {
-          alert('Session expired. Please log in again.');
-          logoutUser();
-        }
-      });
+        window.socket = io('https://peakabu.app', { auth: { token: window.authToken } });
 
-        window.socket.on('connect', () => {
-          console.log('WebSocket connected, joining session', code);
+        window.socket.on('connect_error', function(err) {
+          if (err.message==='auth_required'||err.message==='auth_invalid') { alert('Session expired. Please log in again.'); logoutUser(); }
+        });
+
+        window.socket.on('connect', function() {
           window.socket.emit('join-session', { code: code, username: username });
         });
 
-        window.socket.on('session-joined', (data) => {
-          console.log('Joined session:', data);
+        window.socket.on('session-joined', function(data) {
           window.currentSessionCode = data.code;
-
+          window.isSessionHost = (data.createdBy === window.authUsername);
           document.getElementById('sessionPanel-disconnected').style.display = 'none';
           document.getElementById('sessionPanel-connected').style.display = 'block';
           document.getElementById('sessionCodeDisplay').textContent = data.code;
-
+          document.getElementById('playerLink').href = 'https://peakabu.app/player?code=' + data.code;
+          updateClipDurationUI(data.clipDuration || 30000, window.isSessionHost);
           updateMemberList(data.members);
-
-          hudLog('squad', 'Joined session ' + data.code, 'success');
-          ipcRenderer.send('session-connected', { code: data.code, username: document.getElementById('usernameInput').value.trim() });
+          hudLog('squad','Joined session ' + data.code,'success');
+          ipcRenderer.send('session-connected', { code: data.code, username: username });
+          addSessionToHistory(data.code, window.isSessionHost ? 'host' : 'member');
         });
 
-        window.socket.on('member-joined', (data) => {
-          console.log('Member joined:', data.username);
-          addMember(data.username, false);
-          hudLog('squad', data.username + ' joined the session', 'success');
+        window.socket.on('member-joined', function(d) { addMember(d.username, false); hudLog('squad',d.username+' joined','success'); });
+        window.socket.on('member-left', function(d) { removeMember(d.username); hudLog('squad',d.username+' left','info'); });
+        window.socket.on('member-recording-update', function(d) { updateMemberRecording(d.username, d.isRecording); });
+
+        window.socket.on('clip-duration-changed', function(d) {
+          window.sessionClipDuration = d.duration;
+          updateClipDurationUI(d.duration, window.isSessionHost);
+          hudLog('squad', d.setBy + ' set clip to ' + formatDuration(d.duration), 'info');
         });
 
-        window.socket.on('member-left', (data) => {
-          console.log('Member left:', data.username);
-          removeMember(data.username);
-          hudLog('squad', data.username + ' left the session', 'info');
+        window.socket.on('coordinated-save-highlight', function(d) {
+         hudLog('activity','⚡ '+d.username+' triggered highlight — syncing all POVs...','broadcast');
+         ipcRenderer.send('broadcast-save-highlight', { coordinated_timestamp: d.coordinated_timestamp, clipDuration: d.clipDuration });
+
+         // Disable immediately as a fallback — don't wait on a separate cooldown event
+         if (!window.highlightCooldownActive) {
+           const estimatedLock = Math.ceil(d.clipDuration * 0.1) + 15000;
+           startSaveCooldown(Math.ceil(estimatedLock / 1000));
+         }
+       });
+
+        window.socket.on('highlight-unlocked', function() {
+          if (window.highlightCooldownTimer) { clearInterval(window.highlightCooldownTimer); window.highlightCooldownTimer = null; }
+          window.highlightCooldownActive = false;
+          var btn = document.getElementById('saveBtn');
+          btn.innerHTML = '💾 Save Highlight (or press <span id="saveBtnHotkey">'+window.currentHotkey+'</span>)';
+          btn.disabled = !(window.isRecordingActive && window.bufferReady);
         });
 
-        window.socket.on('member-recording-update', (data) => {
-          console.log('Recording update:', data.username, data.isRecording);
-          updateMemberRecording(data.username, data.isRecording);
+        window.socket.on('upload-received', function(d) { hudLog('activity','☁️ '+d.username+' uploaded their clip','success'); });
+
+        window.socket.on('error-message', function(d) {
+          if (d.message && d.message.includes('cooldown')) { hudLog('activity','⏳ '+d.message,'info'); return; }
+          alert('Session error: '+d.message);
+          if (window.socket) { window.socket.disconnect(); window.socket = null; }
         });
 
-        window.socket.on('coordinated-save-highlight', (data) => {
-          const { username: triggeredBy, coordinated_timestamp } = data;
-          console.log(`Broadcast save-highlight from ${triggeredBy} (timestamp: ${coordinated_timestamp})`);
-
-          hudLog('activity', `⚡ ${triggeredBy} saved a highlight — syncing all POVs...`, 'broadcast');
-
-          ipcRenderer.send('broadcast-save-highlight', { coordinated_timestamp });
-        });
-
-        window.socket.on('upload-received', (data) => {
-          hudLog('activity', `☁️ ${data.username} uploaded their clip`, 'success');
-        });
-
-        window.socket.on('error-message', (data) => {
-          alert('Session error: ' + data.message);
-          if (window.socket) {
-            window.socket.disconnect();
-            window.socket = null;
-          }
-        });
-
-        window.socket.on('disconnect', () => {
-          console.log('WebSocket disconnected');
-        });
+        window.socket.on('disconnect', function() { console.log('WebSocket disconnected'); });
       }
 
       window.leaveSession = function() {
-        if (window.socket) {
-          window.socket.disconnect();
-          window.socket = null;
-        }
+        if (window.socket) { window.socket.disconnect(); window.socket = null; }
         window.currentSessionCode = null;
-
+        window.isSessionHost = false;
         document.getElementById('sessionPanel-disconnected').style.display = 'block';
         document.getElementById('sessionPanel-connected').style.display = 'none';
         document.getElementById('memberList').innerHTML = '';
+        document.getElementById('clipDurationHost').style.display = 'none';
+        document.getElementById('clipDurationMember').style.display = 'none';
         ipcRenderer.send('session-disconnected');
       };
 
       function updateMemberList(members) {
-        const list = document.getElementById('memberList');
-        list.innerHTML = '';
-        members.forEach(m => addMember(m.username, m.isRecording));
+        document.getElementById('memberList').innerHTML = '';
+        members.forEach(function(m) { addMember(m.username, m.isRecording); });
       }
-
-      function addMember(username, isRecording) {
-        const list = document.getElementById('memberList');
-        const safeId = 'member-' + CSS.escape(username);
+      function addMember(username, isRec) {
+        var list = document.getElementById('memberList');
+        var safeId = 'member-' + CSS.escape(username);
         if (document.getElementById(safeId)) return;
-
-        const item = document.createElement('div');
-        item.className = 'member-item';
-        item.id = safeId;
-
-        const nameSpan = document.createElement('span');
-        nameSpan.className = 'member-name';
-        nameSpan.textContent = username;
-
-        const statusSpan = document.createElement('span');
-        statusSpan.className = 'member-status ' + (isRecording ? 'rec' : 'idle');
-        statusSpan.textContent = isRecording ? 'REC' : 'Idle';
-
-        item.appendChild(nameSpan);
-        item.appendChild(statusSpan);
-        list.appendChild(item);
+        var item = document.createElement('div'); item.className = 'member-item'; item.id = safeId;
+        var name = document.createElement('span'); name.className = 'member-name'; name.textContent = username;
+        var status = document.createElement('span'); status.className = 'member-status '+(isRec?'rec':'idle'); status.textContent = isRec?'REC':'Idle';
+        item.appendChild(name); item.appendChild(status); list.appendChild(item);
       }
-
-      function removeMember(username) {
-        const el = document.getElementById('member-' + CSS.escape(username));
-        if (el) el.remove();
-      }
-
-      function updateMemberRecording(username, isRecording) {
-        const el = document.getElementById('member-' + CSS.escape(username));
-        if (!el) return;
-        const badge = el.querySelector('.member-status');
-        badge.className = 'member-status ' + (isRecording ? 'rec' : 'idle');
-        badge.textContent = isRecording ? 'REC' : 'Idle';
+      function removeMember(username) { var el = document.getElementById('member-'+CSS.escape(username)); if (el) el.remove(); }
+      function updateMemberRecording(username, isRec) {
+        var el = document.getElementById('member-'+CSS.escape(username)); if (!el) return;
+        var b = el.querySelector('.member-status'); b.className = 'member-status '+(isRec?'rec':'idle'); b.textContent = isRec?'REC':'Idle';
       }
 
       // =====================
-      // RECORDING LOGIC
+      // RECORDING
       // =====================
-
       ipcRenderer.send('get-monitors');
-
-      ipcRenderer.on('monitors-list', (event, monitors) => {
-        const select = document.getElementById('monitorSelect');
-        select.innerHTML = '';
-        monitors.forEach((m, i) => {
-          const option = document.createElement('option');
-          option.value = m.index;
-          option.textContent = `Monitor ${i + 1} — ${m.width}x${m.height}${m.primary ? ' (Primary)' : ''}`;
-          select.appendChild(option);
+      ipcRenderer.on('monitors-list', function(ev, monitors) {
+        var sel = document.getElementById('monitorSelect');
+        sel.innerHTML = '';
+        monitors.forEach(function(m, i) {
+          var opt = document.createElement('option');
+          opt.value = m.index;
+          opt.textContent = 'Monitor '+(i+1)+' — '+m.width+'x'+m.height+(m.primary?' (Primary)':'');
+          sel.appendChild(opt);
         });
       });
 
       async function startAudioCapture() {
         try {
-          console.log('=== Starting audio capture ===');
-          const sources = await ipcRenderer.invoke('get-desktop-sources');
-          console.log('Sources:', sources.map(s => s.name));
-
-          const screen = sources[0];
-          console.log('Using source:', screen.name, 'ID:', screen.id);
-
-          const stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              mandatory: {
-                chromeMediaSource: 'desktop',
-                chromeMediaSourceId: screen.id,
-                minSampleRate: 44100,
-                echoCancellation: false,
-                noiseSuppression: false,
-                autoGainControl: false
-              }
-            },
-            video: {
-              mandatory: {
-                chromeMediaSource: 'desktop',
-                chromeMediaSourceId: screen.id,
-                maxWidth: 1,
-                maxHeight: 1
-              }
-            }
+          var sources = await ipcRenderer.invoke('get-desktop-sources');
+          var screen = sources[0];
+          var stream = await navigator.mediaDevices.getUserMedia({
+            audio: { mandatory: { chromeMediaSource:'desktop', chromeMediaSourceId:screen.id, minSampleRate:44100, echoCancellation:false, noiseSuppression:false, autoGainControl:false } },
+            video: { mandatory: { chromeMediaSource:'desktop', chromeMediaSourceId:screen.id, maxWidth:1, maxHeight:1 } }
           });
-
-          console.log('Stream tracks - audio:', stream.getAudioTracks().length, 'video:', stream.getVideoTracks().length);
-
-          stream.getVideoTracks().forEach(t => t.stop());
-
-          const audioTrack = stream.getAudioTracks()[0];
-          if (!audioTrack) {
-            console.log('ERROR: No audio track');
-            return;
-          }
-
-          const settings = audioTrack.getSettings();
-          console.log('Audio track label:', audioTrack.label);
-          console.log('Audio track settings:', settings);
-
-          // Guard: reject low-quality streams that indicate comms-mode fallback.
-          // Real desktop loopback is always >= 44100 Hz stereo. If we get 8 kHz
-          // mono, Chromium quietly swapped in the wrong device.
-          if (settings.sampleRate && settings.sampleRate < 44100) {
-            console.log(`REJECTING low-quality audio: ${settings.sampleRate}Hz. Recording will proceed with video only.`);
-            stream.getTracks().forEach(t => t.stop());
-            return;
-          }
-
-          const audioOnlyStream = new MediaStream([audioTrack]);
-
-          window.mediaRecorder = new MediaRecorder(audioOnlyStream, {
-            mimeType: 'audio/webm;codecs=opus',
-            audioBitsPerSecond: 192000
-          });
-
-          window.mediaRecorder.ondataavailable = async (event) => {
-            console.log(`Audio chunk received: ${event.data.size} bytes`);
-            if (event.data && event.data.size > 0) {
-              const buffer = await event.data.arrayBuffer();
-              ipcRenderer.send('save-audio-chunk', buffer);
-            }
+          stream.getVideoTracks().forEach(function(t){t.stop();});
+          var audioTrack = stream.getAudioTracks()[0];
+          if (!audioTrack) return;
+          var settings = audioTrack.getSettings();
+          if (settings.sampleRate && settings.sampleRate < 44100) { stream.getTracks().forEach(function(t){t.stop();}); return; }
+          var audioOnlyStream = new MediaStream([audioTrack]);
+          window.mediaRecorder = new MediaRecorder(audioOnlyStream, { mimeType:'audio/webm;codecs=opus', audioBitsPerSecond:192000 });
+          window.mediaRecorder.ondataavailable = async function(ev) {
+            if (ev.data && ev.data.size > 0) ipcRenderer.send('save-audio-chunk', await ev.data.arrayBuffer());
           };
-
-          window.mediaRecorder.onerror = (e) => console.log('MediaRecorder error:', e);
-
-          // Capture the exact wall-clock time audio recording starts.
-          // This is what main.js needs to align audio to video in the merge.
-          // Sample the wall clock at the exact moment start() is invoked.
-          // Opus encoder adds ~20ms of latency before real audio hits the
-          // stream — bake that into the reported start time.
+          window.mediaRecorder.onerror = function(e) { console.log('MediaRecorder error:', e); };
           window.mediaRecorder.start(10000);
-          const audioStartWallTime = Date.now() + 20;
-          ipcRenderer.send('audio-recording-started', audioStartWallTime);
-
-        } catch (err) {
-          console.log('Audio capture failed:', err.name, err.message);
-        }
+          ipcRenderer.send('audio-recording-started', Date.now()+20);
+        } catch(err) { console.log('Audio capture failed:', err.name, err.message); }
       }
 
       window.startRecording = async function() {
-        const monitorIndex = parseInt(document.getElementById('monitorSelect').value);
-        ipcRenderer.send('start-recording', { monitorIndex });
+        var monitorIndex = parseInt(document.getElementById('monitorSelect').value);
+        var monitorText = document.getElementById('monitorSelect').options[document.getElementById('monitorSelect').selectedIndex].textContent;
+        ipcRenderer.send('start-recording', { monitorIndex: monitorIndex });
         window.isRecordingActive = true;
         window.bufferReady = false;
 
         document.getElementById('startBtn').textContent = '↺ Switch Monitor';
         document.getElementById('stopBtn').disabled = false;
-        document.getElementById('statusText').textContent = '● Buffering...';
-        document.getElementById('statusText').className = 'status buffering';
-        // Save stays disabled until the buffer has its first complete chunk —
-        // main.js sends 'buffer-ready' when there's actually footage to save.
+        document.getElementById('monitorActive').style.display = 'block';
+        document.getElementById('monitorActiveName').textContent = monitorText;
+        document.getElementById('statusText').textContent = '● Buffering gameplay...';
+        document.getElementById('statusText').className = 'status-bar buffering';
+        document.getElementById('statusHelp').textContent = 'Building up a clip buffer — highlights will be available in ~15 seconds';
         document.getElementById('saveBtn').disabled = true;
 
         await startAudioCapture();
+        await startMicCapture();
 
-        if (window.socket) {
-          window.socket.emit('recording-status', { isRecording: true });
-        }
+        if (window.socket) window.socket.emit('recording-status', { isRecording: true });
       };
 
-      // Buffer has its first complete chunk — highlights can now be saved
-      ipcRenderer.on('buffer-ready', () => {
+      ipcRenderer.on('buffer-ready', function() {
         if (!window.isRecordingActive) return;
         window.bufferReady = true;
-        document.getElementById('statusText').textContent = '● Ready to highlight';
-        document.getElementById('statusText').className = 'status ready';
-        if (!window.highlightCooldownActive) {
-          document.getElementById('saveBtn').disabled = false;
-        }
-        hudLog('system', '🎬 Buffer ready — highlights can be saved', 'success');
+        document.getElementById('statusText').textContent = '● Ready — save a highlight anytime';
+        document.getElementById('statusText').className = 'status-bar ready';
+        document.getElementById('statusHelp').textContent = 'Click Save or press ' + window.currentHotkey + ' to capture the last ' + formatDuration(window.sessionClipDuration) + ' of gameplay';
+        if (!window.highlightCooldownActive) document.getElementById('saveBtn').disabled = false;
+        hudLog('system','🎬 Buffer ready — highlights can be saved','success');
       });
 
       window.stopRecording = function() {
-        ipcRenderer.send('stop-recording');
-        window.isRecordingActive = false;
-        window.bufferReady = false;
+      ipcRenderer.send('stop-recording');
+      window.isRecordingActive = false;
+      window.bufferReady = false;
+      if (window.mediaRecorder && window.mediaRecorder.state !== 'inactive') { window.mediaRecorder.stop(); window.mediaRecorder = null; }
+      stopMicCapture();
+      document.getElementById('startBtn').textContent = '▶ Start Highlight Session';
+      document.getElementById('stopBtn').disabled = true;
+      document.getElementById('saveBtn').disabled = true;
+      document.getElementById('monitorActive').style.display = 'none';
+      document.getElementById('statusText').textContent = '● Idle';
+      document.getElementById('statusText').className = 'status-bar idle';
+      document.getElementById('statusHelp').textContent = 'Start recording to begin buffering gameplay';
+      if (window.socket) window.socket.emit('recording-status', { isRecording: false });
+    };
 
-        if (window.mediaRecorder && window.mediaRecorder.state !== 'inactive') {
-          window.mediaRecorder.stop();
-          window.mediaRecorder = null;
-        }
-
-        document.getElementById('startBtn').textContent = '▶ Start Recording';
-        document.getElementById('startBtn').disabled = false;
-        document.getElementById('stopBtn').disabled = true;
-        document.getElementById('saveBtn').disabled = true;
-        document.getElementById('statusText').textContent = '● Stopped';
-        document.getElementById('statusText').className = 'status idle';
-
-        if (window.socket) {
-          window.socket.emit('recording-status', { isRecording: false });
-        }
-      };
-
-      // ONE save path for everything. The UI button calls this directly, and
-      // the global hotkey in main.js routes here via 'hotkey-save-pressed' —
-      // so cooldown, session broadcast, and upload behave identically for both.
+      // =====================
+      // SAVE HIGHLIGHT
+      // =====================
       window.saveHighlight = function() {
         if (window.highlightCooldownActive) return;
         if (!window.isRecordingActive) return;
-        if (!window.bufferReady) {
-          hudLog('system', '⏳ Buffer not ready yet — wait for "Ready to highlight"', 'error');
-          return;
-        }
-
+        if (!window.bufferReady) { hudLog('system','⏳ Buffer not ready yet','error'); return; }
         if (window.socket && window.currentSessionCode) {
           window.socket.emit('broadcast-save-highlight');
         } else {
           ipcRenderer.send('save-highlight');
+          startSaveCooldown(15);
         }
-
-        startSaveCooldown();
       };
 
-      function startSaveCooldown() {
+      function startSaveCooldown(seconds) {
         window.highlightCooldownActive = true;
-        var remaining = 15;
-        var saveBtn = document.getElementById('saveBtn');
-        saveBtn.innerHTML = '⏳ ' + remaining + 's before next save';
-        saveBtn.disabled = true;
-
+        var remaining = seconds || 15;
+        var btn = document.getElementById('saveBtn');
+        btn.innerHTML = '⏳ '+remaining+'s before next save';
+        btn.disabled = true;
         window.highlightCooldownTimer = setInterval(function() {
           remaining--;
           if (remaining <= 0) {
             clearInterval(window.highlightCooldownTimer);
+            window.highlightCooldownTimer = null;
             window.highlightCooldownActive = false;
-            saveBtn.innerHTML = '💾 Save Highlight (or press <span id="saveBtnHotkey">' + window.currentHotkey + '</span>)';
-            saveBtn.disabled = !(window.isRecordingActive && window.bufferReady);
+            btn.innerHTML = '💾 Save Highlight (or press <span id="saveBtnHotkey">'+window.currentHotkey+'</span>)';
+            btn.disabled = !(window.isRecordingActive && window.bufferReady);
           } else {
-            saveBtn.innerHTML = '⏳ ' + remaining + 's before next save';
+            btn.innerHTML = '⏳ '+remaining+'s before next save';
           }
         }, 1000);
       }
 
-      // Global hotkey pressed (routed from main.js) — same path as the button
-      ipcRenderer.on('hotkey-save-pressed', () => {
-        window.saveHighlight();
+      ipcRenderer.on('hotkey-save-pressed', function() { window.saveHighlight(); });
+      ipcRenderer.on('post-capture-started', function(ev, d) { hudLog('activity','📹 Capturing post-highlight footage ('+((d.postDelay)/1000).toFixed(1)+'s)...','info'); });
+      ipcRenderer.on('encoder-fallback', function(ev, enc) { hudLog('system','⚙ GPU unavailable — switched to '+enc+' encoding','info'); });
+      ipcRenderer.on('highlight-saved', function(ev, fp) { hudLog('activity','✅ Saved: '+fp,'success'); });
+      ipcRenderer.on('highlight-error', function(ev, msg) { hudLog('activity','❌ '+msg,'error'); });
+
+      ipcRenderer.on('upload-progress', function(ev, pct) {
+        var wrap = document.getElementById('uploadProgressWrap');
+        var fill = document.getElementById('uploadProgressFill');
+        var label = document.getElementById('uploadPct');
+        if (pct===0) { wrap.style.display='block'; fill.className='upload-progress-fill'; fill.style.width='0%'; label.textContent='0%'; }
+        else if (pct===100) { fill.style.width='100%'; fill.classList.add('success'); label.textContent='100%'; setTimeout(function(){wrap.style.display='none';},2000); }
+        else if (pct===-1) { fill.classList.add('error'); label.textContent='Failed'; setTimeout(function(){wrap.style.display='none';},3000); }
+        else { fill.style.width=pct+'%'; label.textContent=pct+'%'; }
       });
 
-      ipcRenderer.on('recording-started', (event, index) => {
-        hudLog('system', `Recording started on Monitor ${index + 1}`, 'success');
-      });
-
-      ipcRenderer.on('encoder-fallback', (event, encoder) => {
-        hudLog('system', '⚙️ GPU encoder unavailable — switched to ' + encoder + ' encoding', 'info');
-      });
-
-      ipcRenderer.on('highlight-saved', (event, filePath) => {
-        hudLog('activity', '✅ Saved: ' + filePath, 'success');
-      });
-
-      ipcRenderer.on('highlight-error', (event, message) => {
-        hudLog('activity', '❌ ' + message, 'error');
-      });
-
-      ipcRenderer.on('upload-progress', (event, pct) => {
-        const wrap = document.getElementById('uploadProgressWrap');
-        const fill = document.getElementById('uploadProgressFill');
-        const label = document.getElementById('uploadPct');
-
-        if (pct === 0) {
-          wrap.style.display = 'block';
-          fill.className = 'upload-progress-fill';
-          fill.style.width = '0%';
-          label.textContent = '0%';
-        } else if (pct === 100) {
-          fill.style.width = '100%';
-          fill.classList.add('success');
-          label.textContent = '100%';
-          setTimeout(() => { wrap.style.display = 'none'; }, 2000);
-        } else if (pct === -1) {
-          fill.classList.add('error');
-          label.textContent = 'Failed';
-          setTimeout(() => { wrap.style.display = 'none'; }, 3000);
-        } else {
-          fill.style.width = pct + '%';
-          label.textContent = pct + '%';
-        }
-      });
-
-      ipcRenderer.on('upload-complete', (event, uploadId) => {
-        hudLog('activity', '☁️ Upload complete: ' + uploadId, 'success');
-      });
-
-      ipcRenderer.on('upload-error', (event, message) => {
-        hudLog('activity', '⚠️ Upload failed: ' + message, 'error');
-        // If the server says the token is bad, force a clean re-login instead
-        // of silently failing every future upload for the rest of the session.
-        if (typeof message === 'string' &&
-            /invalid or expired token|authentication required/i.test(message)) {
-          hudLog('system', '🔒 Your login expired — please log in again to keep uploading.', 'error');
+      ipcRenderer.on('upload-complete', function(ev, id) { hudLog('activity','☁️ Upload complete: '+id,'success'); });
+      ipcRenderer.on('upload-error', function(ev, msg) {
+        hudLog('activity','⚠ Upload failed: '+msg,'error');
+        if (typeof msg === 'string' && /invalid or expired token|authentication required/i.test(msg)) {
+          hudLog('system','🔒 Login expired — please log in again','error');
           logoutUser();
-          document.getElementById('authUsernameInput').focus();
         }
       });
 
       window.updateSettings = function() {
-        const settings = {
+        ipcRenderer.send('update-settings', {
           bufferSeconds: '180',
           fps: parseInt(document.getElementById('fpsSelect').value),
           resolution: document.getElementById('resolutionSelect').value
-        };
-        ipcRenderer.send('update-settings', settings);
+        });
       };
+      window.addEventListener('DOMContentLoaded', function() { window.updateSettings(); });
 
-      window.addEventListener('DOMContentLoaded', () => {
-        window.updateSettings();
-      });
       // =====================
       // AUTH
       // =====================
-      window.authToken = localStorage.getItem('peak_abu_token') || null;
-      window.authUsername = localStorage.getItem('peak_abu_username') || null;
+
+      // Show confirm field when user focuses password (register intent)
+      
 
       async function checkAuthOnLoad() {
         if (!window.authToken) { showAuthLoggedOut(); return; }
         try {
-          const res = await fetch('https://peakabu.app/auth/me', {
-            headers: { 'Authorization': 'Bearer ' + window.authToken }
-          });
-          if (res.ok) {
-            const data = await res.json();
-            showAuthLoggedIn(data.username);
-          } else {
-            clearAuthState();
-            showAuthLoggedOut();
-          }
-        } catch (e) {
+          if (res.ok) { var d = await res.json(); showAuthLoggedIn(d.username); }
+          else if (res.status === 401) { clearAuthState(); showAuthLoggedOut(); }
+          else { if (window.authUsername) showAuthLoggedIn(window.authUsername); else showAuthLoggedOut(); }
+        } catch(e) {
           if (window.authUsername) showAuthLoggedIn(window.authUsername);
           else showAuthLoggedOut();
         }
       }
 
       window.registerUser = async function() {
-        const username = document.getElementById('authUsernameInput').value.trim();
-        const password = document.getElementById('authPasswordInput').value;
-        if (!username || !password) { showAuthError('Fill in both fields'); return; }
+      var confirmWrap = document.getElementById('authConfirmWrap');
+      if (confirmWrap.style.display === 'none' || confirmWrap.style.display === '') {
+        confirmWrap.style.display = 'block';
+        document.getElementById('authConfirmInput').focus();
+        showAuthError('Re-enter your password to confirm, then click Register again');
+        return;
+      }
+      var username = document.getElementById('authUsernameInput').value.trim();
+      var password = document.getElementById('authPasswordInput').value;
+      var confirm = document.getElementById('authConfirmInput').value;
+      if (!username || !password) { showAuthError('Fill in all fields'); return; }
+      if (password !== confirm) { showAuthError('Passwords do not match'); return; }
         try {
-          const res = await fetch('https://peakabu.app/auth/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
+          var res = await fetch('https://peakabu.app/auth/register', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ username:username, password:password })
           });
-          const data = await res.json();
-          if (!res.ok) { showAuthError(data.error || 'Registration failed'); return; }
+          var data = await res.json();
+          if (!res.ok) { showAuthError(data.error||'Registration failed'); return; }
           storeAuthState(data.token, data.username);
           showAuthLoggedIn(data.username);
-        } catch (e) { showAuthError('Could not reach server'); }
+        } catch(e) { showAuthError('Could not reach server'); }
       };
 
       window.loginUser = async function() {
-        const username = document.getElementById('authUsernameInput').value.trim();
-        const password = document.getElementById('authPasswordInput').value;
+        var username = document.getElementById('authUsernameInput').value.trim();
+        var password = document.getElementById('authPasswordInput').value;
         if (!username || !password) { showAuthError('Fill in both fields'); return; }
         try {
-          const res = await fetch('https://peakabu.app/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
+          var res = await fetch('https://peakabu.app/auth/login', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ username:username, password:password })
           });
-          const data = await res.json();
-          if (!res.ok) { showAuthError(data.error || 'Login failed'); return; }
+          var data = await res.json();
+          if (!res.ok) { showAuthError(data.error||'Login failed'); return; }
           storeAuthState(data.token, data.username);
           showAuthLoggedIn(data.username);
-        } catch (e) { showAuthError('Could not reach server'); }
+        } catch(e) { showAuthError('Could not reach server'); }
       };
 
       window.logoutUser = function() {
@@ -1369,44 +1163,37 @@
         document.getElementById('memberList').innerHTML = '';
         ipcRenderer.send('auth-token-updated', null);
         ipcRenderer.send('session-disconnected');
+        document.getElementById('authConfirmWrap').style.display = 'none';
       };
 
       function storeAuthState(token, username) {
-        window.authToken = token;
-        window.authUsername = username;
+        window.authToken = token; window.authUsername = username;
         localStorage.setItem('peak_abu_token', token);
         localStorage.setItem('peak_abu_username', username);
         ipcRenderer.send('auth-token-updated', token);
       }
-
       function clearAuthState() {
-        window.authToken = null;
-        window.authUsername = null;
+        window.authToken = null; window.authUsername = null;
         localStorage.removeItem('peak_abu_token');
         localStorage.removeItem('peak_abu_username');
         ipcRenderer.send('auth-token-updated', null);
       }
-
       function showAuthLoggedIn(username) {
         window.authUsername = username;
-        document.getElementById('authLoggedOut').style.display = 'none';
-        document.getElementById('authLoggedIn').style.display = 'block';
-        document.getElementById('authDisplayName').textContent = username;
-        document.getElementById('usernameInput').value = username;
+        document.getElementById('authPanel').style.display = 'none';
+        document.getElementById('authBar').style.display = 'flex';
+        document.getElementById('authBarName').textContent = username;
         document.getElementById('sessionPanel').style.display = 'block';
       }
-
       function showAuthLoggedOut() {
-        document.getElementById('authLoggedOut').style.display = 'block';
-        document.getElementById('authLoggedIn').style.display = 'none';
+        document.getElementById('authPanel').style.display = 'block';
+        document.getElementById('authBar').style.display = 'none';
         document.getElementById('sessionPanel').style.display = 'none';
       }
-
       function showAuthError(msg) {
-        const el = document.getElementById('authError');
-        el.textContent = msg;
-        el.style.display = 'block';
-        setTimeout(() => { el.style.display = 'none'; }, 4000);
+        var el = document.getElementById('authError');
+        el.textContent = msg; el.style.display = 'block';
+        setTimeout(function(){ el.style.display = 'none'; }, 4000);
       }
 
       checkAuthOnLoad();

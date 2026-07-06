@@ -60,6 +60,19 @@
     .btn-secondary { background: #0f3460; border: 1px solid #e94560; }
     .btn-secondary:hover { background: #1a4a8a; }
 
+    .btn-paste {
+      padding: 6px 10px;
+      background: #0f3460;
+      color: #e94560;
+      border: 1px solid #e94560;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn-paste:hover { background: #1a4a8a; }
+    .btn-paste.pasted { background: #44ff88; border-color: #44ff88; color: #000; }
+
     .main-layout { display: flex; flex: 1; min-height: 0; }
 
     .video-area {
@@ -193,6 +206,24 @@
     .pov-missing .missing-name { color: #e94560; font-weight: bold; font-size: 12px; }
     .pov-missing .missing-text { font-size: 11px; color: #444; }
 
+    .pov-processing {
+      width: 100%;
+      height: 100%;
+      min-height: 120px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #0a0a1a;
+      color: #e9a820;
+      font-size: 13px;
+      gap: 8px;
+    }
+    .pov-processing .spinner { font-size: 28px; animation: spin 2s linear infinite; }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    .pov-processing .proc-name { color: #e94560; font-weight: bold; font-size: 12px; }
+    .pov-processing .proc-text { font-size: 11px; color: #888; }
+
     /* ========================
        SESSION TIMELINE
     ======================== */
@@ -261,6 +292,20 @@
       transform: translateX(-1px);
     }
 
+    .timeline-track:hover .timeline-needle {
+      width: 4px;
+      transform: translateX(-2px);
+      background: #e94560;
+      transition: width 0.15s, background 0.15s;
+    }
+
+    .timeline-track:hover {
+      height: 44px;
+      margin-top: -4px;
+      margin-bottom: -4px;
+      transition: height 0.15s;
+    }
+
     /* ========================
        RIGHT PANEL
     ======================== */
@@ -293,7 +338,6 @@
     .audio-section::-webkit-scrollbar-track { background: #111; }
     .audio-section::-webkit-scrollbar-thumb { background: #e94560; border-radius: 3px; }
 
-    /* Shared dropdown row style for both Players and Audio */
     .panel-row { padding: 2px 8px; }
 
     .panel-row-header {
@@ -318,6 +362,7 @@
     .member-dot { width: 8px; height: 8px; border-radius: 50%; background: #44ff88; flex-shrink: 0; }
     .member-dot.unloaded { background: #555; }
     .member-dot.missing { background: #ff4444; }
+    .member-dot.processing { background: #e9a820; }
 
     .panel-row-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -327,7 +372,6 @@
     .panel-row-dropdown { display: none; padding: 4px 0 6px 16px; }
     .panel-row-dropdown.open { display: block; }
 
-    /* Player dropdown items (highlight list) */
     .player-hl-item {
       display: flex;
       align-items: center;
@@ -348,7 +392,6 @@
       flex-shrink: 0;
     }
 
-    /* Audio dropdown content */
     .audio-control-row {
       display: flex;
       align-items: center;
@@ -472,6 +515,7 @@
       gap: 10px;
     }
     .empty-state .monkey { font-size: 48px; }
+    .empty-state .expired-msg { color: #e9a820; font-size: 14px; }
 
     .share-bar {
       display: flex;
@@ -520,6 +564,7 @@
       </div>
       <div class="join-bar">
         <input type="text" id="sessionInput" placeholder="Session code" maxlength="6" />
+        <button class="btn-paste" id="pasteBtn" onclick="pasteAndLoad()" title="Paste session code from clipboard">&#x1F4CB; Paste</button>
         <button class="btn" onclick="loadSession()">Load Session</button>
       </div>
     </div>
@@ -541,8 +586,8 @@
           <button class="btn btn-small" id="playPauseBtn" onclick="togglePlayPause()">&#9654;</button>
           <button class="btn btn-small btn-secondary" onclick="stepHighlight(1)" title="Next highlight">&#8250;</button>
           <div class="timeline-track-wrap">
-            <div class="timeline-track" id="timelineTrack" onclick="handleTimelineClick(event)">
-              <div class="timeline-needle" id="timelineNeedle" style="left:0%"></div>
+            <div class="timeline-track" id="timelineTrack">
+             <div class="timeline-needle" id="timelineNeedle" style="left:0%"></div>
             </div>
           </div>
           <div class="time-display" id="timeDisplay">0:00 / 0:00</div>
@@ -591,6 +636,39 @@
       }
     });
 
+    // Allow Enter key to load session
+    document.addEventListener('DOMContentLoaded', function() {
+      document.getElementById('sessionInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') loadSession();
+      });
+    });
+
+    // ========================
+    // PASTE & LOAD
+    // ========================
+
+    async function pasteAndLoad() {
+      const btn = document.getElementById('pasteBtn');
+      try {
+        const text = await navigator.clipboard.readText();
+        const cleaned = text.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 6);
+        if (cleaned.length < 4) {
+          btn.textContent = '\u274C Invalid';
+          setTimeout(() => { btn.textContent = '\u{1F4CB} Paste'; }, 1500);
+          return;
+        }
+        document.getElementById('sessionInput').value = cleaned;
+        btn.textContent = '\u2705 Pasted!';
+        btn.classList.add('pasted');
+        setTimeout(() => { btn.textContent = '\u{1F4CB} Paste'; btn.classList.remove('pasted'); }, 1500);
+        loadSession();
+      } catch (e) {
+        // Clipboard access denied — user can paste manually
+        btn.textContent = '\u274C Denied';
+        setTimeout(() => { btn.textContent = '\u{1F4CB} Paste'; }, 1500);
+      }
+    }
+
     // ========================
     // STATE
     // ========================
@@ -610,7 +688,6 @@
     let compositePollInterval = null;
     let refreshInterval = null;
 
-    // Session-level timing for timeline
     let sessionStart = 0;
     let sessionTotalDuration = 0;
 
@@ -691,7 +768,6 @@
 
       const timing = computeSessionTiming();
 
-      // First pass: compute raw positions, then resolve overlaps left-to-right
       let prevEnd = 0;
 
       highlights.forEach((hl, i) => {
@@ -715,7 +791,6 @@
           left = Math.max(0, Math.min(left, 94));
           width = Math.max(4, Math.min(width, 100 - left));
         } else {
-          // Equal spacing fallback
           const total = highlights.length;
           const gap = total === 1 ? 0 : 5;
           const blockW = total === 1 ? 90 : (90 - gap * (total - 1)) / total;
@@ -723,8 +798,6 @@
           width = blockW;
         }
 
-        // Collision resolution: never let a pill start before the previous
-        // one ends. Shift right with a 0.5% gap; shrink if near the edge.
         const GAP = 0.5;
         const MIN_W = 3;
         if (left < prevEnd + GAP) {
@@ -764,29 +837,88 @@
       needle.style.left = (blockLeft + fraction * blockWidth).toFixed(2) + '%';
     }
 
-    function handleTimelineClick(event) {
-      if (event.target.classList.contains('highlight-block')) return;
+    
 
-      const track = document.getElementById('timelineTrack');
-      const rect = track.getBoundingClientRect();
-      const clickFraction = (event.clientX - rect.left) / rect.width;
+    let isScrubbing = false;
+let wasPlayingBeforeScrub = false;
 
-      const activeBlock = track.querySelector('.highlight-block.active');
-      if (!activeBlock) return;
+function scrubNeedleToEvent(event) {
+  if (masterDuration <= 0) return;
 
-      const blockLeft = parseFloat(activeBlock.style.left) / 100;
-      const blockWidth = parseFloat(activeBlock.style.width) / 100;
+  const track = document.getElementById('timelineTrack');
+  const rect = track.getBoundingClientRect();
+  let clickFraction = (event.clientX - rect.left) / rect.width;
+  clickFraction = Math.max(0, Math.min(1, clickFraction));
 
-      if (clickFraction >= blockLeft && clickFraction <= blockLeft + blockWidth) {
-        const withinFraction = (clickFraction - blockLeft) / blockWidth;
-        seekToFraction(withinFraction);
-      }
+  const activeBlock = track.querySelector('.highlight-block.active');
+  if (!activeBlock) return;
+
+  const blockLeft = parseFloat(activeBlock.style.left) / 100;
+  const blockWidth = parseFloat(activeBlock.style.width) / 100;
+  const withinFraction = Math.max(0, Math.min(1, (clickFraction - blockLeft) / blockWidth));
+
+  // Move needle visually — instant, no decode cost
+  const needle = document.getElementById('timelineNeedle');
+  needle.style.left = (parseFloat(activeBlock.style.left) + withinFraction * parseFloat(activeBlock.style.width)).toFixed(2) + '%';
+  document.getElementById('timeDisplay').textContent =
+    formatTime(withinFraction * masterDuration) + ' / ' + formatTime(masterDuration);
+
+  // Seek ONLY the primary video during drag — one decoder, real-time feedback
+  const primary = focusedIndex >= 0
+    ? videos[focusedIndex]
+    : videos.find(v => !v.missing && !v.processing && v.loaded);
+  if (primary && primary.element) {
+    const targetTime = withinFraction * masterDuration;
+    const adjusted = targetTime - primary.offset;
+    if (adjusted >= 0 && adjusted <= primary.element.duration) {
+      primary.element.currentTime = adjusted;
     }
+  }
+
+  // Stash for the full-sync seek on release
+  track._pendingSeek = withinFraction;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  const track = document.getElementById('timelineTrack');
+
+  track.addEventListener('pointerdown', function(e) {
+    if (e.target.classList.contains('highlight-block') && !e.target.classList.contains('active')) return;
+    if (masterDuration <= 0) return;
+    isScrubbing = true;
+    wasPlayingBeforeScrub = isPlaying;
+    if (isPlaying) pauseAll();
+    track.setPointerCapture(e.pointerId);
+    scrubNeedleToEvent(e);
+  });
+
+  track.addEventListener('pointermove', function(e) {
+    if (isScrubbing) scrubNeedleToEvent(e);
+  });
+
+  track.addEventListener('pointerup', function(e) {
+    if (!isScrubbing) return;
+    isScrubbing = false;
+    try { track.releasePointerCapture(e.pointerId); } catch (err) {}
+
+    // Sync all other POVs to the primary's position
+    if (track._pendingSeek !== undefined) {
+      seekToFraction(track._pendingSeek);
+      delete track._pendingSeek;
+    }
+
+    if (wasPlayingBeforeScrub) playAll();
+  });
+});
+
+
+
+
 
     function seekToFraction(fraction) {
       const targetTime = fraction * masterDuration;
       videos.forEach(v => {
-        if (v.missing || !v.loaded) return;
+        if (v.missing || v.processing || !v.loaded) return;
         const adjustedTime = targetTime - v.offset;
         if (adjustedTime < 0) {
           v.element.currentTime = 0;
@@ -816,15 +948,15 @@
 
       masterDuration = 0;
       videos.forEach(v => {
-        if (!v.missing && v.loaded && v.element) {
+        if (!v.missing && !v.processing && v.loaded && v.element) {
           const dur = (v.element.duration || 0) + (v.offset || 0);
           if (dur > masterDuration) masterDuration = dur;
         }
       });
 
-      const hasLoaded = videos.some(v => !v.missing && v.loaded);
+      const hasLoaded = videos.some(v => !v.missing && !v.processing && v.loaded);
       if (!hasLoaded) {
-        const first = videos.find(v => !v.missing);
+        const first = videos.find(v => !v.missing && !v.processing);
         if (first) {
           const idx = videos.indexOf(first);
           loadPOV(idx, true);
@@ -838,7 +970,6 @@
       updateCompositeButton();
       renderSessionTimeline();
 
-      document.getElementById('timelineProgress') && (document.getElementById('timelineProgress').style.width = '0%');
       document.getElementById('timeDisplay').textContent = '0:00 / ' + formatTime(masterDuration);
     }
 
@@ -858,13 +989,17 @@
 
       try {
         const sessionRes = await fetch('/sessions/' + code);
-        if (!sessionRes.ok) { alert('Session not found'); return; }
+        if (sessionRes.status === 404) {
+          showExpiredState('Session not found — it may have expired or the code is incorrect.');
+          return;
+        }
+        if (!sessionRes.ok) { alert('Error loading session'); return; }
         const session = await sessionRes.json();
 
         const uploadsRes = await fetch('/sessions/' + code + '/uploads');
         const uploadsData = await uploadsRes.json();
         if (!uploadsData.uploads || uploadsData.uploads.length === 0) {
-          alert('No uploads in this session yet');
+          showExpiredState('No uploads in this session yet. Clips will appear once squad members save highlights.');
           return;
         }
 
@@ -874,15 +1009,21 @@
         currentHighlightIndex = 0;
         expectedClips = session.members ? session.members.length : 0;
 
+        let hasProcessing = false;
+
         for (const upload of uploadsData.uploads) {
           let metadata = null;
-          if (upload.metadataFile) {
+          const metaUrl = upload.metadataUrl || (upload.metadataFile ? '/media/' + code + '/' + upload.metadataFile : null);
+          if (metaUrl) {
             try {
-              const metaUrl = upload.metadataUrl || '/media/' + code + '/' + upload.metadataFile;
               const metaRes = await fetch(metaUrl);
               if (metaRes.ok) metadata = await metaRes.json();
             } catch (e) {}
           }
+
+          // Check if this upload is still processing (no CDN URL yet)
+          const isProcessing = !upload.videoUrl;
+          if (isProcessing) hasProcessing = true;
 
           const video = document.createElement('video');
           video.preload = 'none';
@@ -892,9 +1033,10 @@
           allUploads.push({
             element: video, metadata, username: upload.username,
             uploadId: upload.id, videoFile: upload.videoFile,
-            videoSrc: upload.videoUrl || '/media/' + code + '/' + upload.videoFile,
+            videoSrc: upload.videoUrl || null,
             thumbnailSrc: upload.thumbnailUrl || (upload.thumbnailFile ? '/media/' + code + '/' + upload.thumbnailFile : null),
-            offset: 0, volume: 80, isMuted: true, loaded: false, missing: false
+            offset: 0, volume: 80, isMuted: true, loaded: false,
+            missing: false, processing: isProcessing
           });
         }
 
@@ -902,14 +1044,14 @@
         highlights = clusterHighlights();
         videos = buildVideosForHighlight(0);
 
-        const firstLoadable = videos.find(v => !v.missing);
+        const firstLoadable = videos.find(v => !v.missing && !v.processing);
         if (firstLoadable) await loadPOV(videos.indexOf(firstLoadable), true);
 
         calculateOffsets();
 
         masterDuration = 0;
         videos.forEach(v => {
-          if (!v.missing && v.loaded && v.element) {
+          if (!v.missing && !v.processing && v.loaded && v.element) {
             const dur = (v.element.duration || 0) + (v.offset || 0);
             if (dur > masterDuration) masterDuration = dur;
           }
@@ -928,13 +1070,28 @@
         document.getElementById('exportBar').style.display = 'flex';
 
         if (refreshInterval) clearInterval(refreshInterval);
-        refreshInterval = setInterval(refreshUploads, 45000);
+        // Refresh faster if uploads are still processing
+        refreshInterval = setInterval(refreshUploads, hasProcessing ? 10000 : 45000);
 
-        console.log('Loaded ' + code + ' — ' + allUploads.length + ' uploads, ' + highlights.length + ' highlight(s), ' + allUsers.length + ' user(s)');
+        console.log('Loaded ' + code + ' — ' + allUploads.length + ' uploads, ' + highlights.length + ' highlight(s), ' + allUsers.length + ' user(s)' + (hasProcessing ? ' (some still processing)' : ''));
       } catch (err) {
         alert('Error loading session: ' + err.message);
         console.error(err);
       }
+    }
+
+    function showExpiredState(message) {
+      const grid = document.getElementById('videoGrid');
+      grid.innerHTML = '';
+      const state = document.createElement('div');
+      state.className = 'empty-state';
+      state.innerHTML = '<div class="monkey">&#x1F648;</div><div class="expired-msg">' + message + '</div>';
+      grid.appendChild(state);
+
+      document.getElementById('sessionTimeline').style.display = 'none';
+      document.getElementById('rightPanel').style.display = 'none';
+      document.getElementById('exportBar').style.display = 'none';
+      document.getElementById('shareBar').style.display = 'none';
     }
 
     // ========================
@@ -945,19 +1102,40 @@
       if (!currentSessionCode) return;
       try {
         const uploadsRes = await fetch('/sessions/' + currentSessionCode + '/uploads');
+
+        // Session was purged — stop polling and notify
+        if (uploadsRes.status === 404) {
+          if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
+          showExpiredState('This session has expired. Videos are no longer available.');
+          return;
+        }
+
         if (!uploadsRes.ok) return;
         const uploadsData = await uploadsRes.json();
         if (!uploadsData.uploads) return;
 
         const existingIds = new Set(allUploads.map(u => u.uploadId));
         const newRaw = uploadsData.uploads.filter(u => !existingIds.has(u.id));
+        let hadProcessing = false;
+        let stillProcessing = false;
 
-        // Update existing entries that now have Spaces CDN URLs
+        // Update existing entries: CDN URLs arriving, or processing → ready
         for (const upload of uploadsData.uploads) {
           if (!existingIds.has(upload.id)) continue;
-          if (!upload.videoUrl) continue;
           const existing = allUploads.find(u => u.uploadId === upload.id);
-          if (existing && existing.videoSrc && !existing.videoSrc.startsWith('https://peakbu-media')) {
+          if (!existing) continue;
+
+          // Track if anything was processing
+          if (existing.processing) hadProcessing = true;
+
+          // Upload now has a CDN URL — mark as ready
+          if (upload.videoUrl && existing.processing) {
+            existing.processing = false;
+            existing.videoSrc = upload.videoUrl;
+            if (upload.thumbnailUrl) existing.thumbnailSrc = upload.thumbnailUrl;
+            console.log('Upload ready:', upload.username, upload.id);
+          } else if (upload.videoUrl && existing.videoSrc && !existing.videoSrc.startsWith('https://peakbu-media')) {
+            // Existing entry upgraded to CDN URL
             existing.videoSrc = upload.videoUrl;
             if (upload.thumbnailUrl) existing.thumbnailSrc = upload.thumbnailUrl;
             if (existing.element && existing.element.src && !existing.element.src.startsWith('https://peakbu-media')) {
@@ -966,47 +1144,64 @@
             }
             console.log('Updated to CDN URL:', upload.id);
           }
+
+          // Still waiting?
+          if (!upload.videoUrl) stillProcessing = true;
         }
 
-        if (newRaw.length === 0) return;
+        if (newRaw.length > 0) {
+          for (const upload of newRaw) {
+            let metadata = null;
+            const metaUrl = upload.metadataUrl || (upload.metadataFile ? '/media/' + currentSessionCode + '/' + upload.metadataFile : null);
+            if (metaUrl) {
+              try {
+                const metaRes = await fetch(metaUrl);
+                if (metaRes.ok) metadata = await metaRes.json();
+              } catch (e) {}
+            }
 
-        for (const upload of newRaw) {
-          let metadata = null;
-          const metaUrl = upload.metadataUrl || (upload.metadataFile ? '/media/' + currentSessionCode + '/' + upload.metadataFile : null);
-          if (metaUrl) {
-            try {
-              const metaRes = await fetch(metaUrl);
-              if (metaRes.ok) metadata = await metaRes.json();
-            } catch (e) {}
+            const isProcessing = !upload.videoUrl;
+            if (isProcessing) stillProcessing = true;
+
+            const video = document.createElement('video');
+            video.preload = 'none';
+            video.muted = true;
+            video.playsInline = true;
+            allUploads.push({
+              element: video, metadata, username: upload.username,
+              uploadId: upload.id, videoFile: upload.videoFile,
+              videoSrc: upload.videoUrl || null,
+              thumbnailSrc: upload.thumbnailUrl || (upload.thumbnailFile ? '/media/' + currentSessionCode + '/' + upload.thumbnailFile : null),
+              offset: 0, volume: 80, isMuted: true, loaded: false,
+              missing: false, processing: isProcessing
+            });
           }
-          const video = document.createElement('video');
-          video.preload = 'none';
-          video.muted = true;
-          video.playsInline = true;
-          const videoSrc = upload.videoUrl || '/media/' + currentSessionCode + '/' + upload.videoFile;
-          const thumbnailSrc = upload.thumbnailUrl || (upload.thumbnailFile ? '/media/' + currentSessionCode + '/' + upload.thumbnailFile : null);
-          allUploads.push({
-            element: video, metadata, username: upload.username,
-            uploadId: upload.id, videoFile: upload.videoFile,
-            videoSrc: videoSrc,
-            thumbnailSrc: thumbnailSrc,
-            offset: 0, volume: 80, isMuted: true, loaded: false, missing: false
-          });
         }
 
-        allUsers = deriveAllUsers();
-        highlights = clusterHighlights();
-        videos = buildVideosForHighlight(currentHighlightIndex);
-        calculateOffsets();
+        // Adjust refresh speed based on whether anything is still processing
+        if (stillProcessing && refreshInterval) {
+          clearInterval(refreshInterval);
+          refreshInterval = setInterval(refreshUploads, 10000);
+        } else if (!stillProcessing && hadProcessing && refreshInterval) {
+          clearInterval(refreshInterval);
+          refreshInterval = setInterval(refreshUploads, 45000);
+        }
 
-        renderVideoGrid();
-        renderMemberList();
-        renderAudioControls();
-        renderExportTimeline();
-        updateCompositeButton();
-        renderSessionTimeline();
+        if (newRaw.length > 0 || hadProcessing) {
+          allUsers = deriveAllUsers();
+          highlights = clusterHighlights();
+          videos = buildVideosForHighlight(currentHighlightIndex);
+          calculateOffsets();
 
-        console.log('Refresh: added ' + newRaw.length + ' upload(s)');
+          renderVideoGrid();
+          renderMemberList();
+          renderAudioControls();
+          renderExportTimeline();
+          updateCompositeButton();
+          renderSessionTimeline();
+        }
+
+        if (newRaw.length > 0) console.log('Refresh: added ' + newRaw.length + ' upload(s)');
       } catch (err) {
         console.log('Refresh error:', err);
       }
@@ -1018,7 +1213,7 @@
 
     async function loadPOV(index, isFirst = false) {
       const v = videos[index];
-      if (!v || v.missing || v.loaded) return;
+      if (!v || v.missing || v.processing || v.loaded) return;
       v.loaded = true;
 
       const container = document.getElementById('pov-container-' + index);
@@ -1056,7 +1251,7 @@
     }
 
     function getCurrentMasterTime() {
-      const primary = videos.find(v => !v.missing && v.loaded);
+      const primary = videos.find(v => !v.missing && !v.processing && v.loaded);
       if (!primary) return 0;
       return (primary.element.currentTime || 0) + (primary.offset || 0);
     }
@@ -1065,14 +1260,14 @@
       let earliestStart = Infinity;
       let hasMetadata = false;
       videos.forEach(v => {
-        if (!v.missing && v.metadata && v.metadata.startTimeUTC) {
+        if (!v.missing && !v.processing && v.metadata && v.metadata.startTimeUTC) {
           earliestStart = Math.min(earliestStart, v.metadata.startTimeUTC);
           hasMetadata = true;
         }
       });
       if (!hasMetadata) return;
       videos.forEach(v => {
-        if (!v.missing && v.metadata && v.metadata.startTimeUTC) {
+        if (!v.missing && !v.processing && v.metadata && v.metadata.startTimeUTC) {
           v.offset = (v.metadata.startTimeUTC - earliestStart) / 1000;
         }
       });
@@ -1100,7 +1295,7 @@
           videos.forEach((v, i) => {
             if (i === focusedIndex) return;
             const container = buildPOVContainer(i, false);
-            if (!v.missing) container.addEventListener('click', () => focusOnVideo(i));
+            if (!v.missing && !v.processing) container.addEventListener('click', () => focusOnVideo(i));
             sidebar.appendChild(container);
           });
           grid.appendChild(sidebar);
@@ -1113,7 +1308,7 @@
 
         videos.forEach((v, i) => {
           const container = buildPOVContainer(i, false);
-          if (!v.missing) container.addEventListener('click', () => focusOnVideo(i));
+          if (!v.missing && !v.processing) container.addEventListener('click', () => focusOnVideo(i));
           grid.appendChild(container);
         });
       }
@@ -1135,6 +1330,12 @@
         md.className = 'pov-missing';
         md.innerHTML = '<div class="monkey">&#x1F648;</div><div class="missing-name">' + v.username + '</div><div class="missing-text">No clip in this highlight</div>';
         container.appendChild(md);
+      } else if (v.processing) {
+        // Upload exists but CDN URL not ready yet
+        const pd = document.createElement('div');
+        pd.className = 'pov-processing';
+        pd.innerHTML = '<div class="spinner">&#x23F3;</div><div class="proc-name">' + v.username + '</div><div class="proc-text">Upload processing\u2026</div>';
+        container.appendChild(pd);
       } else if (v.loaded) {
         container.appendChild(v.element);
       } else {
@@ -1143,13 +1344,15 @@
           placeholder.className = 'pov-placeholder';
           const img = document.createElement('img');
           img.src = v.thumbnailSrc; img.alt = v.username;
+          img.style.cssText = 'width:100%;height:100%;object-fit:contain;position:absolute;top:0;left:0;';
           const overlay = document.createElement('div');
-          overlay.className = 'thumb-overlay';
+          overlay.style.cssText = 'position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:4px;';
           const icon = document.createElement('div');
           icon.className = 'play-icon'; icon.textContent = '\u25B6';
           const hint = document.createElement('div');
           hint.className = 'load-hint'; hint.textContent = 'Click to load';
           overlay.appendChild(icon); overlay.appendChild(hint);
+          placeholder.style.position = 'relative';
           placeholder.appendChild(img); placeholder.appendChild(overlay);
         } else {
           placeholder.className = 'pov-placeholder no-thumb';
@@ -1172,14 +1375,14 @@
       const newContainer = buildPOVContainer(index, index === focusedIndex);
       if (index === focusedIndex) {
         newContainer.addEventListener('click', () => { focusedIndex = -1; renderVideoGrid(); highlightActiveMember(); });
-      } else if (!videos[index].missing) {
+      } else if (!videos[index].missing && !videos[index].processing) {
         newContainer.addEventListener('click', () => focusOnVideo(index));
       }
       existing.replaceWith(newContainer);
     }
 
     async function focusOnVideo(index) {
-      if (videos[index].missing) return;
+      if (videos[index].missing || videos[index].processing) return;
       if (!videos[index].loaded) await loadPOV(index);
       focusedIndex = index;
       renderVideoGrid();
@@ -1187,7 +1390,7 @@
     }
 
     // ========================
-    // MEMBER LIST (per-user dropdowns)
+    // MEMBER LIST
     // ========================
 
     function renderMemberList() {
@@ -1198,6 +1401,7 @@
         const videoIdx = videos.findIndex(v => v.username === username);
         const v = videoIdx >= 0 ? videos[videoIdx] : null;
         const isMissing = !v || v.missing;
+        const isProcessing = v && v.processing;
         const isFocused = videoIdx === focusedIndex;
 
         const row = document.createElement('div');
@@ -1210,11 +1414,11 @@
         left.className = 'panel-row-header-left';
 
         const dot = document.createElement('div');
-        dot.className = 'member-dot' + (isMissing ? ' missing' : (v && v.loaded ? '' : ' unloaded'));
+        dot.className = 'member-dot' + (isMissing ? ' missing' : isProcessing ? ' processing' : (v && v.loaded ? '' : ' unloaded'));
 
         const name = document.createElement('div');
         name.className = 'panel-row-name';
-        name.textContent = username;
+        name.textContent = username + (isProcessing ? ' (processing)' : '');
 
         left.appendChild(dot);
         left.appendChild(name);
@@ -1249,14 +1453,14 @@
               e.stopPropagation();
               switchHighlight(hlIdx);
               const newIdx = videos.findIndex(vv => vv.username === username);
-              if (newIdx >= 0 && !videos[newIdx].missing) focusOnVideo(newIdx);
+              if (newIdx >= 0 && !videos[newIdx].missing && !videos[newIdx].processing) focusOnVideo(newIdx);
             });
           }
 
           dropdown.appendChild(item);
         });
 
-        if (!isMissing) {
+        if (!isMissing && !isProcessing) {
           left.style.cursor = 'pointer';
           left.addEventListener('click', e => {
             e.stopPropagation();
@@ -1283,7 +1487,7 @@
     }
 
     // ========================
-    // AUDIO CONTROLS (per-user dropdowns)
+    // AUDIO CONTROLS
     // ========================
 
     function renderAudioControls() {
@@ -1291,7 +1495,7 @@
       container.innerHTML = '';
 
       videos.forEach((v, i) => {
-        if (v.missing) return;
+        if (v.missing || v.processing) return;
 
         const row = document.createElement('div');
         row.className = 'panel-row';
@@ -1371,7 +1575,7 @@
           soloBtn.addEventListener('click', (function(targetIdx) {
             return function() {
               videos.forEach((other, j) => {
-                if (other.missing) return;
+                if (other.missing || other.processing) return;
                 if (j === targetIdx) { other.isMuted = false; if (other.loaded) other.element.muted = false; }
                 else { other.isMuted = true; if (other.loaded) other.element.muted = true; }
               });
@@ -1404,7 +1608,7 @@
       selectedExportClips.clear();
 
       videos.forEach((v, i) => {
-        if (v.missing) return;
+        if (v.missing || v.processing) return;
 
         const clip = document.createElement('div');
         clip.className = 'export-clip';
@@ -1435,7 +1639,7 @@
 
     function selectAllClips() {
       videos.forEach((v, i) => {
-        if (v.missing) return;
+        if (v.missing || v.processing) return;
         selectedExportClips.add(i);
         const el = document.getElementById('export-clip-' + i);
         if (el) el.classList.add('selected');
@@ -1451,7 +1655,7 @@
       if (selectedExportClips.size === 0) { alert('Select at least one clip to download'); return; }
       for (const idx of selectedExportClips) {
         const v = videos[idx];
-        if (v.missing) continue;
+        if (v.missing || v.processing) continue;
         if (!v.loaded) await loadPOV(idx);
         const link = document.createElement('a');
         link.href = v.videoSrc;
@@ -1469,14 +1673,14 @@
     }
 
     function playAll() {
-      videos.forEach(v => { if (!v.missing && v.loaded) v.element.play().catch(() => {}); });
+      videos.forEach(v => { if (!v.missing && !v.processing && v.loaded) v.element.play().catch(() => {}); });
       isPlaying = true;
       document.getElementById('playPauseBtn').textContent = '\u23F8';
       startProgressUpdate();
     }
 
     function pauseAll() {
-      videos.forEach(v => { if (!v.missing && v.loaded) v.element.pause(); });
+      videos.forEach(v => { if (!v.missing && !v.processing && v.loaded) v.element.pause(); });
       isPlaying = false;
       document.getElementById('playPauseBtn').textContent = '\u25B6';
       if (animFrameId) cancelAnimationFrame(animFrameId);
@@ -1485,14 +1689,14 @@
     function startProgressUpdate() {
       function update() {
         if (!isPlaying) return;
-        const primary = videos.find(v => !v.missing && v.loaded);
+        const primary = videos.find(v => !v.missing && !v.processing && v.loaded);
         if (!primary) return;
 
         const masterTime = (primary.element.currentTime || 0) + (primary.offset || 0);
         document.getElementById('timeDisplay').textContent = formatTime(masterTime) + ' / ' + formatTime(masterDuration);
         updateNeedle();
 
-        const allEnded = videos.filter(v => !v.missing && v.loaded).every(v => v.element.ended || v.element.paused);
+        const allEnded = videos.filter(v => !v.missing && !v.processing && v.loaded).every(v => v.element.ended || v.element.paused);
         if (allEnded && isPlaying) { pauseAll(); return; }
 
         animFrameId = requestAnimationFrame(update);
@@ -1526,7 +1730,7 @@
 
     function updateCompositeButton() {
       const btn = document.getElementById('compositeBtn');
-      const count = videos.filter(v => !v.missing).length;
+      const count = videos.filter(v => !v.missing && !v.processing).length;
       btn.disabled = count < 1;
       btn.textContent = count < 1
         ? '\u{1F3AC} Export Combined (0/' + expectedClips + ' clips ready)'

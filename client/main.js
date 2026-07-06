@@ -44,6 +44,14 @@ let bufferReadyWatcher = null; // interval that detects the first complete chunk
 let recordingStartTime = null; // when this recording session began — for min buffer time
 let lastHighlightBoundary = 0; // mtime of newest chunk in the last save — prevents overlap
 
+// ================================
+// MIC AUDIO BUFFERS (prep — capture wired in renderer)
+// ================================
+let micBuffers = [];
+let micFirstChunkTime = null;
+let micVolume = 80;   // 0-100
+let micMuted = false;
+
 function ensureFolders() {
   if (!fs.existsSync(BUFFER_DIR)) fs.mkdirSync(BUFFER_DIR, { recursive: true });
   if (!fs.existsSync(CLIPS_DIR)) fs.mkdirSync(CLIPS_DIR, { recursive: true });
@@ -103,28 +111,18 @@ function isValidHotkey(hotkey) {
 
 // ================================
 // HOTKEY -> RENDERER ROUTING
-// The global hotkey no longer calls saveHighlight() directly. It notifies the
-// renderer, which runs the exact same window.saveHighlight() the UI button
-// uses. That gives hotkey saves the cooldown timer, buffer-ready guard, and
-// session broadcast — identical behavior to clicking the button.
 // ================================
 function onHotkeyPressed() {
   console.log(`${customHotkey} pressed — routing to renderer save path`);
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('hotkey-save-pressed');
   } else {
-    // Renderer unavailable (shouldn't happen in practice) — fall back to a
-    // direct local save so the press is never silently lost.
     saveHighlight();
   }
 }
 
 // ================================
 // BUFFER-READY WATCHER
-// Polls the buffer dir after recording starts. As soon as one complete chunk
-// exists (a second chunk has started, meaning the first is fully written, OR a
-// single chunk has substantial size), tells the renderer highlights are
-// saveable. Renderer shows "Ready to highlight" and enables the Save button.
 // ================================
 function startBufferReadyWatcher() {
   stopBufferReadyWatcher();
@@ -134,10 +132,6 @@ function startBufferReadyWatcher() {
         .filter(f => f.endsWith('.mp4') && !f.startsWith('temp_'))
         .map(f => ({ name: f, size: fs.statSync(path.join(BUFFER_DIR, f)).size }));
 
-      // Two chunks present => the older one is complete (FFmpeg moved on).
-      // One chunk over ~1MB also means real footage exists even mid-write.
-      // Also require a minimum 15s of recording so the first highlight has
-      // real content behind it.
       const elapsedMs = recordingStartTime ? (Date.now() - recordingStartTime) : 0;
       const ready = elapsedMs >= 15000 &&
         (chunks.length >= 2 || chunks.some(c => c.size > 1000000));
@@ -209,7 +203,14 @@ function startRecording(monitor) {
   const screen = require('electron').screen;
   const displays = screen.getAllDisplays();
   const target = monitor !== undefined ? displays[monitor] : displays[0];
-  const { x, y, width, height } = target.bounds;
+  const scale = target.scaleFactor || 1;
+  const x = Math.round(target.bounds.x * scale);
+  const y = Math.round(target.bounds.y * scale);
+  let width = Math.round(target.bounds.width * scale);
+  let height = Math.round(target.bounds.height * scale);
+  // h264 requires even dimensions
+  width -= width % 2;
+  height -= height % 2;
 
   console.log(`Recording monitor ${monitor}: ${width}x${height} at (${x},${y})`);
   console.log(`Settings: ${recordFps}fps, resolution: ${recordResolution ? recordResolution.width + 'x' + recordResolution.height : 'native'}, buffer: ${maxChunks * CHUNK_SECONDS}s`);
@@ -226,8 +227,9 @@ function startRecording(monitor) {
   ];
 
   if (recordResolution) {
-    ffmpegArgs.push('-vf', `scale=${recordResolution.width}:${recordResolution.height}`);
+  ffmpegArgs.push('-vf', `scale=-2:${recordResolution.height}`);
   }
+  
 
   if (useCpuEncoder) {
     ffmpegArgs.push(
@@ -272,11 +274,11 @@ function startRecording(monitor) {
   const spawnStartTime = Date.now();
   videoStartTime = spawnStartTime;
   recordingStartTime = spawnStartTime;
-  lastHighlightBoundary = 0; // fresh recording — no prior save to exclude
-  audioFirstChunkTime = null; // reset on each recording start
+  lastHighlightBoundary = 0;
+  audioFirstChunkTime = null;
+  micFirstChunkTime = null;
   let stderrTail = '';
 
-  // Watch for the first complete chunk so the UI can flip to "Ready to highlight"
   startBufferReadyWatcher();
 
   ffmpegProcess.on('error', (err) => {
@@ -313,7 +315,31 @@ function startRecording(monitor) {
   });
 }
 
-function saveHighlight(coordinatedTimestamp = null) {
+// ================================
+// SAVE HIGHLIGHT — with clip duration + 90/10 post-capture
+// ================================
+
+function saveHighlight(coordinatedTimestamp = null, clipDurationMs = null) {
+  const duration = clipDurationMs || 30000;  // default 30s
+  const postDelay = Math.ceil(duration * 0.1);  // 10% after button press
+  const clipChunks = Math.ceil(duration / (CHUNK_SECONDS * 1000));  // how many 10s chunks to grab
+
+  const saveTimeUTC = coordinatedTimestamp || getPreciseUTC();
+
+  if (postDelay > 500) {
+    console.log(`Post-capture: waiting ${postDelay}ms for remaining footage (${(duration / 1000)}s clip, ${clipChunks} chunks)...`);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('post-capture-started', { postDelay });
+    }
+    setTimeout(() => {
+      doSaveHighlight(saveTimeUTC, clipChunks, duration);
+    }, postDelay);
+  } else {
+    doSaveHighlight(saveTimeUTC, clipChunks, duration);
+  }
+}
+
+function doSaveHighlight(saveTimeUTC, clipChunks, durationMs) {
   const allVideoFiles = fs.readdirSync(BUFFER_DIR)
     .filter(f => f.endsWith('.mp4') && !f.startsWith('temp_'))
     .map(f => ({
@@ -325,29 +351,28 @@ function saveHighlight(coordinatedTimestamp = null) {
     .filter(f => f.size > 100000)
     .sort((a, b) => a.time - b.time);
 
-  // Drop the newest (still being written by FFmpeg), then keep only the most
-  // recent maxChunks. Older chunks may be stale from previous sessions or
-  // failed prunes and can't be trusted in concat.
+  // Drop the newest (still being written by FFmpeg)
   const withoutInProgress = allVideoFiles.slice(0, -1);
-  // Only chunks newer than the last save — back-to-back highlights must not
-  // re-include the previous highlight's footage (caused inflated durations
-  // and doubled/corrupted audio).
+  // Only chunks newer than the last save — prevents overlap
   const newSinceLastSave = withoutInProgress.filter(f => f.time > lastHighlightBoundary);
-  const videoFiles = newSinceLastSave.slice(-maxChunks);
+  // Grab only as many chunks as this clip duration needs (not the whole buffer)
+  const videoFiles = newSinceLastSave.slice(-clipChunks);
 
   if (videoFiles.length === 0) {
     console.log('No completed chunks yet');
-    mainWindow.webContents.send('highlight-error', 'Buffer not ready yet, wait a few more seconds');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('highlight-error', 'Buffer not ready yet, wait a few more seconds');
+    }
     return;
   }
 
-  // Mark boundary: the next save starts after the newest chunk in this one
+  // Mark boundary for next save
   lastHighlightBoundary = videoFiles[videoFiles.length - 1].time;
 
   const hasAudio = audioBuffers.length > 0;
-  console.log(`Saving highlight: ${videoFiles.length} video chunks, ${audioBuffers.length} audio chunks in memory`);
+  const hasMic = micBuffers.length > 0 && !micMuted;
+  console.log(`Saving highlight: ${videoFiles.length}/${clipChunks} chunks, ${audioBuffers.length} audio chunks, ${micBuffers.length} mic chunks (clip: ${durationMs / 1000}s)`);
 
-  const saveTimeUTC = coordinatedTimestamp || getPreciseUTC();
   const timestamp = new Date(saveTimeUTC).toISOString().replace(/[:.]/g, '-');
   const outputPath = path.join(CLIPS_DIR, `highlight-${timestamp}.mp4`);
   const metadataPath = path.join(CLIPS_DIR, `highlight-${timestamp}.json`);
@@ -362,11 +387,12 @@ function saveHighlight(coordinatedTimestamp = null) {
     startTimeUTC,
     endTimeUTC: saveTimeUTC,
     durationMs: chunkAgeMs,
+    clipDurationMs: durationMs,
     frameRate: recordFps,
     clockOffsetMs: clockOffset,
     userId: null,
     sessionId: currentSession ? currentSession.code : null,
-    coordinated_timestamp: coordinatedTimestamp || null
+    coordinated_timestamp: null
   };
 
   const videoListPath = path.join(BUFFER_DIR, 'filelist_' + Date.now() + '.txt');
@@ -376,18 +402,10 @@ function saveHighlight(coordinatedTimestamp = null) {
   fs.writeFileSync(videoListPath, videoContent);
 
   if (hasAudio) {
-    // Video buffer covers approximately: oldestChunkTime → saveTimeUTC
-    // Each audio chunk's `time` is when the IPC message arrived at main, which
-    // is roughly the END of that chunk's 10-second capture window. So a chunk
-    // stamped at time T contains audio captured from T-10000 to T.
     const CHUNK_MS = CHUNK_SECONDS * 1000;
     const videoStartMs = oldestChunkTime;
     const videoEndMs = saveTimeUTC;
 
-    // Use the FULL audio stream every time. Chunks after the first aren't
-    // self-contained (no WebM header), so slicing breaks decoding. The merge
-    // step seeks (-ss) into the stream to grab just this clip's window —
-    // WebM cluster timestamps are absolute, so the seek lands correctly.
     const audioToUse = audioBuffers;
     const combinedAudio = Buffer.concat(audioToUse.map(c => c.data));
     const tempId = Date.now();
@@ -395,6 +413,17 @@ function saveHighlight(coordinatedTimestamp = null) {
     const tempAudioPath = path.join(BUFFER_DIR, 'temp_audio_' + tempId + '.webm');
     fs.writeFileSync(rawAudioPath, combinedAudio);
     console.log(`Combined audio: ${audioToUse.length}/${audioBuffers.length} chunks in window -> ${(combinedAudio.length / 1024).toFixed(0)}KB (video window: ${((videoEndMs - videoStartMs) / 1000).toFixed(1)}s)`);
+
+    // Mic audio — write to temp file if present
+    let rawMicPath = null;
+    let tempMicPath = null;
+    if (hasMic) {
+      const combinedMic = Buffer.concat(micBuffers.map(c => c.data));
+      rawMicPath = path.join(BUFFER_DIR, 'temp_mic_raw_' + tempId + '.webm');
+      tempMicPath = path.join(BUFFER_DIR, 'temp_mic_' + tempId + '.webm');
+      fs.writeFileSync(rawMicPath, combinedMic);
+      console.log(`Combined mic: ${micBuffers.length} chunks -> ${(combinedMic.length / 1024).toFixed(0)}KB`);
+    }
 
     const tempVideoPath = path.join(BUFFER_DIR, 'temp_video_' + tempId + '.mp4');
     const concatVideo = spawn(getFFmpegPath(), [
@@ -408,13 +437,13 @@ function saveHighlight(coordinatedTimestamp = null) {
 
     concatVideo.on('close', (videoCode) => {
       if (videoCode !== 0) {
-        mainWindow.webContents.send('highlight-error', 'Failed to concat video');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('highlight-error', 'Failed to concat video');
+        }
         return;
       }
 
-      // Repair the raw webm: re-mux it so opus timestamps are rebuilt and the
-      // stream is cleanly terminated. Fixes "File ended prematurely" truncation
-      // and the audio drift it causes during merge.
+      // Repair desktop audio
       const repairAudio = spawn(getFFmpegPath(), [
         '-fflags', '+genpts',
         '-i', rawAudioPath,
@@ -428,82 +457,132 @@ function saveHighlight(coordinatedTimestamp = null) {
           console.log('Audio repair failed, using raw audio');
           try { fs.copyFileSync(rawAudioPath, tempAudioPath); } catch (e) {}
         }
-        runMerge();
-      });
 
-      function runMerge() {
-      // Calculate audio-start delay: audio track begins later than video track
-      // because startAudioCapture() runs after recording starts. Delay the audio
-      // input by this much so it lines up with the video timeline.
-      // Calculate offset relative to THIS clip's video window, not the
-      // recording session start. audioFirstChunkTime is when audio capture
-      // began; oldestChunkTime is when this clip's first video chunk was
-      // written. The difference is how much later audio started relative
-      // to the video content in this specific save.
-      // Chunk mtime marks the END of its 10s write window, so this clip's
-      // video actually starts CHUNK_SECONDS earlier than the oldest mtime.
-
-
-      // Derive exact clip start from chunk sequence number (chunk_NNN.mp4),
-      // avoiding mtime estimation errors. Add ~0.5s for FFmpeg init ramp.
-      const firstChunkNum = parseInt((videoFiles[0].name.match(/chunk_(\d+)\.mp4/) || [])[1] || '0', 10);
-      const clipVideoStartMs = videoStartTime + (firstChunkNum * CHUNK_SECONDS * 1000) + 250;
-      const deltaSec = audioFirstChunkTime
-        ? (clipVideoStartMs - audioFirstChunkTime) / 1000
-        : 0;
-      const audioSkipSec = Math.max(0, deltaSec);
-      const audioDelaySec = Math.max(0, -deltaSec);
-      console.log(`Audio sync: skip=${audioSkipSec.toFixed(3)}s delay=${audioDelaySec.toFixed(3)}s`);
-
-      const mergeArgs = [
-        '-i', tempVideoPath,
-        '-ss', String(audioSkipSec.toFixed(3)),
-        '-itsoffset', String(audioDelaySec.toFixed(3)),
-        '-i', tempAudioPath,
-        '-map', '0:v:0',
-        '-map', '1:a:0',
-        '-c:v', 'copy',
-        '-c:a', 'aac',
-        '-b:a', '192k',
-        '-af', 'aresample=async=1000',
-        '-shortest',
-        '-y',
-        outputPath
-      ];
-      const merge = spawn(getFFmpegPath(), mergeArgs);
-
-      merge.stderr.on('data', d => console.log('Merge:', d.toString()));
-
-      merge.on('close', (code) => {
-        if (code === 0) {
-          fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
-          console.log('Highlight saved to', outputPath);
-          console.log('Metadata saved to', metadataPath);
-          mainWindow.webContents.send('highlight-saved', outputPath);
-          uploadHighlight(outputPath, metadataPath);
-        } else {
-          console.log('Audio merge failed, saving video only');
-          const concatOnly = spawn(getFFmpegPath(), [
-            '-f', 'concat', '-safe', '0',
-            '-i', videoListPath,
-            '-c', 'copy', '-y',
-            outputPath
+        // Repair mic audio if present
+        if (hasMic && rawMicPath) {
+          const repairMic = spawn(getFFmpegPath(), [
+            '-fflags', '+genpts',
+            '-i', rawMicPath,
+            '-c:a', 'copy',
+            '-y',
+            tempMicPath
           ]);
-          concatOnly.stderr.on('data', d => console.log('ConcatOnly:', d.toString()));
-          concatOnly.on('close', (c) => {
-            if (c === 0) {
-              fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
-              mainWindow.webContents.send('highlight-saved', outputPath);
-              uploadHighlight(outputPath, metadataPath);
+          repairMic.stderr.on('data', d => console.log('RepairMic:', d.toString()));
+          repairMic.on('close', (micRepairCode) => {
+            if (micRepairCode !== 0 || !fs.existsSync(tempMicPath)) {
+              console.log('Mic repair failed, merging without mic');
+              runMerge(false);
             } else {
-              mainWindow.webContents.send('highlight-error', 'Failed to save highlight');
+              runMerge(true);
             }
           });
+        } else {
+          runMerge(false);
         }
       });
+
+      function runMerge(includeMic) {
+        const firstChunkNum = parseInt((videoFiles[0].name.match(/chunk_(\d+)\.mp4/) || [])[1] || '0', 10);
+        const clipVideoStartMs = videoStartTime + (firstChunkNum * CHUNK_SECONDS * 1000) + 250;
+        const deltaSec = audioFirstChunkTime
+          ? (clipVideoStartMs - audioFirstChunkTime) / 1000
+          : 0;
+        const audioSkipSec = Math.max(0, deltaSec);
+        const audioDelaySec = Math.max(0, -deltaSec);
+        console.log(`Audio sync: skip=${audioSkipSec.toFixed(3)}s delay=${audioDelaySec.toFixed(3)}s`);
+
+        const mergeArgs = ['-i', tempVideoPath];
+
+        // Desktop audio input
+        mergeArgs.push(
+          '-ss', String(audioSkipSec.toFixed(3)),
+          '-itsoffset', String(audioDelaySec.toFixed(3)),
+          '-i', tempAudioPath
+        );
+
+        if (includeMic && tempMicPath) {
+          // Mic audio input — use same skip/offset strategy
+          const micDeltaSec = micFirstChunkTime
+            ? (clipVideoStartMs - micFirstChunkTime) / 1000
+            : 0;
+          const micSkipSec = Math.max(0, micDeltaSec);
+          const micDelaySec = Math.max(0, -micDeltaSec);
+
+          mergeArgs.push(
+            '-ss', String(micSkipSec.toFixed(3)),
+            '-itsoffset', String(micDelaySec.toFixed(3)),
+            '-i', tempMicPath
+          );
+
+          // Mix desktop + mic with filter_complex
+          const vol = (micVolume / 100).toFixed(2);
+          mergeArgs.push(
+            '-map', '0:v:0',
+            '-filter_complex',
+            `[1:a]aresample=async=1000,volume=1.0[desk];[2:a]aresample=async=1000,volume=${vol}[mic];[desk][mic]amix=inputs=2:normalize=0[aout]`,
+            '-map', '[aout]'
+          );
+        } else {
+          // Desktop audio only
+          mergeArgs.push(
+            '-map', '0:v:0',
+            '-map', '1:a:0',
+            '-af', 'aresample=async=1000'
+          );
+        }
+
+        mergeArgs.push(
+          '-c:v', 'copy',
+          '-c:a', 'aac',
+          '-b:a', '192k',
+          '-shortest',
+          '-y',
+          outputPath
+        );
+
+        const merge = spawn(getFFmpegPath(), mergeArgs);
+        merge.stderr.on('data', d => console.log('Merge:', d.toString()));
+
+        merge.on('close', (code) => {
+          // Clean up temp files
+          [rawAudioPath, tempAudioPath, tempVideoPath, videoListPath, rawMicPath, tempMicPath].forEach(p => {
+            if (p) try { fs.unlinkSync(p); } catch (e) {}
+          });
+
+          if (code === 0) {
+            fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
+            console.log('Highlight saved to', outputPath);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('highlight-saved', outputPath);
+            }
+            uploadHighlight(outputPath, metadataPath);
+          } else {
+            console.log('Audio merge failed, saving video only');
+            const concatOnly = spawn(getFFmpegPath(), [
+              '-f', 'concat', '-safe', '0',
+              '-i', videoListPath,
+              '-c', 'copy', '-y',
+              outputPath
+            ]);
+            concatOnly.stderr.on('data', d => console.log('ConcatOnly:', d.toString()));
+            concatOnly.on('close', (c) => {
+              if (c === 0) {
+                fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                  mainWindow.webContents.send('highlight-saved', outputPath);
+                }
+                uploadHighlight(outputPath, metadataPath);
+              } else {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                  mainWindow.webContents.send('highlight-error', 'Failed to save highlight');
+                }
+              }
+            });
+          }
+        });
       }
     });
-  } 
+  }
   else {
     const concat = spawn(getFFmpegPath(), [
       '-f', 'concat', '-safe', '0',
@@ -515,13 +594,18 @@ function saveHighlight(coordinatedTimestamp = null) {
     concat.stderr.on('data', d => console.log('Concat:', d.toString()));
 
     concat.on('close', (code) => {
+      try { fs.unlinkSync(videoListPath); } catch (e) {}
       if (code === 0) {
         fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
         console.log('Highlight saved to', outputPath);
-        mainWindow.webContents.send('highlight-saved', outputPath);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('highlight-saved', outputPath);
+        }
         uploadHighlight(outputPath, metadataPath);
       } else {
-        mainWindow.webContents.send('highlight-error', 'Failed to save highlight');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('highlight-error', 'Failed to save highlight');
+        }
       }
     });
   }
@@ -529,7 +613,6 @@ function saveHighlight(coordinatedTimestamp = null) {
 
 // ================================
 // UPLOAD HIGHLIGHT
-// Uses form.submit() to handle Content-Length, streaming, and headers correctly.
 // ================================
 function uploadHighlight(videoPath, metadataPath) {
   if (!currentSession) {
@@ -537,7 +620,6 @@ function uploadHighlight(videoPath, metadataPath) {
     return;
   }
 
-  // Diagnostic: confirm file exists and has real content before we try to send
   console.log('=== UPLOAD START ===');
   console.log('videoPath:', videoPath);
   console.log('exists:', fs.existsSync(videoPath));
@@ -570,8 +652,6 @@ function uploadHighlight(videoPath, metadataPath) {
     });
   }
 
-  // form.submit() handles Content-Length calculation, headers, streaming,
-  // and request lifecycle in one call. Much more reliable than manual pipe.
   form.submit({
     protocol: 'https:',
     host: 'peakabu.app',
@@ -614,7 +694,6 @@ function uploadHighlight(videoPath, metadataPath) {
         mainWindow.webContents.send('upload-progress', -1);
         mainWindow.webContents.send('upload-error', 'Server returned invalid response');
       }
-      // Resume the response stream to make sure it's consumed
       res.resume();
     });
   });
@@ -699,10 +778,10 @@ function createWindow() {
   // IPC: Save highlight (renderer save path — solo, no session)
   ipcMain.on('save-highlight', () => saveHighlight());
 
-  // IPC: Broadcast save highlight
-  ipcMain.on('broadcast-save-highlight', (event, { coordinated_timestamp }) => {
-    console.log(`Received broadcast save-highlight with timestamp: ${coordinated_timestamp}`);
-    saveHighlight(coordinated_timestamp);
+  // IPC: Broadcast save highlight — now includes clipDuration
+  ipcMain.on('broadcast-save-highlight', (event, { coordinated_timestamp, clipDuration }) => {
+    console.log(`Received broadcast save-highlight with timestamp: ${coordinated_timestamp}, clipDuration: ${clipDuration}ms`);
+    saveHighlight(coordinated_timestamp, clipDuration);
   });
 
   // IPC: Set socket.io connection
@@ -731,7 +810,8 @@ function createWindow() {
       ffmpegProcess = null;
     }
     audioBuffers = [];
-    // Wipe stale chunks from prior sessions so we don't concat old data
+    micBuffers = [];
+    // Wipe stale chunks from prior sessions
     try {
       const stale = fs.readdirSync(BUFFER_DIR).filter(f => f.endsWith('.mp4'));
       for (const f of stale) {
@@ -805,11 +885,31 @@ function createWindow() {
     audioBuffers.push({ data: Buffer.from(buffer), time: timestamp });
     console.log(`Audio chunk buffered: ${buffer.byteLength} bytes (${audioBuffers.length} chunks in memory)`);
 
-    // Evict oldest but ALWAYS keep chunk 0 — it holds the WebM stream header
-    // that every later chunk needs to be decodable.
     while (audioBuffers.length > 20) {
       audioBuffers.splice(1, 1);
     }
+  });
+
+  // ================================
+  // MIC AUDIO IPC
+  // ================================
+  ipcMain.on('mic-recording-started', (event, wallTime) => {
+    micFirstChunkTime = wallTime;
+    console.log(`Mic recording started at ${wallTime}`);
+  });
+
+  ipcMain.on('save-mic-chunk', (event, buffer) => {
+    micBuffers.push({ data: Buffer.from(buffer), time: Date.now() });
+    // Keep chunk 0 (WebM header) + recent chunks
+    while (micBuffers.length > 20) {
+      micBuffers.splice(1, 1);
+    }
+  });
+
+  ipcMain.on('update-mic-settings', (event, settings) => {
+    if (settings.volume !== undefined) micVolume = settings.volume;
+    if (settings.muted !== undefined) micMuted = settings.muted;
+    console.log(`Mic settings: volume=${micVolume}, muted=${micMuted}`);
   });
 
   ipcMain.on('get-monitors', (event) => {
@@ -817,8 +917,8 @@ function createWindow() {
     const displays = screen.getAllDisplays();
     const monitorList = displays.map((d, i) => ({
       index: i,
-      width: d.bounds.width,
-      height: d.bounds.height,
+      width: Math.round(d.bounds.width * (d.scaleFactor || 1)),
+      height: Math.round(d.bounds.height * (d.scaleFactor || 1)),
       x: d.bounds.x,
       y: d.bounds.y,
       primary: d.bounds.x === 0 && d.bounds.y === 0
@@ -835,7 +935,7 @@ app.whenReady().then(async () => {
   loadUserPreferences();
   ensureFolders();
   createWindow();
-  syncClock(); // runs in background, doesn't block window open
+  syncClock();
 
   const registered = globalShortcut.register(customHotkey, onHotkeyPressed);
 
