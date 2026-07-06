@@ -21,6 +21,26 @@ if (!JWT_SECRET) {
 
 const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 
+const https = require('https');
+
+function downloadToFile(url, destPath) {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(destPath);
+    https.get(url, (response) => {
+      if (response.statusCode !== 200) {
+        file.close();
+        fs.unlink(destPath, () => {});
+        return reject(new Error('CDN download failed: ' + response.statusCode));
+      }
+      response.pipe(file);
+      file.on('finish', () => file.close(resolve));
+    }).on('error', (err) => {
+      fs.unlink(destPath, () => {});
+      reject(err);
+    });
+  });
+}
+
 // ================================
 // DIGITALOCEAN SPACES (S3-compatible object storage)
 // ================================
@@ -154,22 +174,25 @@ async function processThumbnailQueue() {
   thumbnailRunning = true;
   const job = thumbnailQueue.shift();
   try {
-    const ok = await generateThumbnail(job.videoPath, job.thumbnailPath);
-    if (ok && typeof job.onDone === 'function') job.onDone();
+    await generateThumbnail(job.videoPath, job.thumbnailPath);
+    // ALWAYS run onDone — the video upload must not depend on thumbnail success
+    if (typeof job.onDone === 'function') job.onDone();
   } catch (e) {
     log('warn', 'thumbnail_queue_error', { error: e.message });
   } finally {
     thumbnailRunning = false;
     processThumbnailQueue();
   }
-}function generateThumbnail(videoPath, thumbnailPath) {
+}
+
+function generateThumbnail(videoPath, thumbnailPath) {
   return new Promise((resolve) => {
     const ffmpeg = spawn('ffmpeg', [
       '-i', videoPath,
-      '-ss', '00:00:01',      // grab frame at 1 second
-      '-vframes', '1',         // one frame only
-      '-vf', 'scale=480:-1',  // 480px wide, maintain aspect ratio
-      '-q:v', '3',             // JPEG quality (2=best, 5=good enough)
+      '-ss', '00:00:01',
+      '-vframes', '1',
+      '-vf', 'scale=480:-1',
+      '-q:v', '3',
       '-y',
       thumbnailPath
     ]);
@@ -196,7 +219,6 @@ async function processThumbnailQueue() {
 // ================================
 function reencodeVideo(inputPath, outputPath) {
   return new Promise((resolve) => {
-    // SVT-AV1: preset 6 (speed/quality balance), crf 35 (good quality, ~40% smaller than h264)
     const ffmpeg = spawn('ffmpeg', [
       '-i', inputPath,
       '-c:v', 'libsvtav1',
@@ -231,8 +253,6 @@ function reencodeVideo(inputPath, outputPath) {
 // SECURITY: Content-type verification
 // ================================
 
-// MP4 magic bytes: ftyp box appears at byte 4-7
-// Common MP4 signatures
 const MP4_SIGNATURES = [
   Buffer.from([0x66, 0x74, 0x79, 0x70]), // ftyp
   Buffer.from([0x6D, 0x6F, 0x6F, 0x76]), // moov
@@ -246,7 +266,6 @@ function verifyMP4(filePath) {
     const buf = Buffer.alloc(12);
     require('fs').readSync(fd, buf, 0, 12, 0);
     require('fs').closeSync(fd);
-    // MP4: bytes 4-7 contain a known box type
     const boxType = buf.slice(4, 8);
     return MP4_SIGNATURES.some(sig => sig.equals(boxType));
   } catch(e) {
@@ -258,14 +277,12 @@ function verifyJSON(filePath) {
   try {
     const content = require('fs').readFileSync(filePath, 'utf8');
     const parsed = JSON.parse(content);
-    // Validate expected metadata structure
     if (typeof parsed !== 'object' || parsed === null) return false;
     if (parsed.version === undefined) return false;
     if (typeof parsed.saveTimeUTC !== 'number') return false;
     if (typeof parsed.startTimeUTC !== 'number') return false;
-    // Sanity check timestamps (must be plausible Unix ms — after 2020, before 2100)
-    const MIN_TS = 1577836800000; // 2020-01-01
-    const MAX_TS = 4102444800000; // 2100-01-01
+    const MIN_TS = 1577836800000;
+    const MAX_TS = 4102444800000;
     if (parsed.saveTimeUTC < MIN_TS || parsed.saveTimeUTC > MAX_TS) return false;
     if (parsed.startTimeUTC < MIN_TS || parsed.startTimeUTC > MAX_TS) return false;
     return true;
@@ -277,8 +294,6 @@ function verifyJSON(filePath) {
 // ================================
 // SECURITY: Generic error responses
 // ================================
-
-// Never leak internal paths, stack traces, or implementation details
 function safeError(res, status, message) {
   res.status(status).json({ error: message });
 }
@@ -290,7 +305,6 @@ const compositeJobs = new Map();
 const COMPOSITE_DIR = path.join(os.tmpdir(), 'peak-abu-composites');
 if (!fs.existsSync(COMPOSITE_DIR)) fs.mkdirSync(COMPOSITE_DIR, { recursive: true });
 
-// Clean up stale composite jobs every hour
 setInterval(() => {
   const now = Date.now();
   for (const [jobId, job] of compositeJobs) {
@@ -314,20 +328,38 @@ async function runComposite(session, code, outputPath, jobId) {
   const uploads = session.uploads;
   const sessionDir = path.join(UPLOADS_DIR, code);
 
-  // Load metadata for sync offsets
   const clipData = [];
+  const tempDownloads = []; // track for cleanup
   let earliestStart = Infinity;
 
   for (const upload of uploads) {
-    const videoPath = path.join(sessionDir, upload.videoFile);
-    if (!fs.existsSync(videoPath)) continue;
+    let videoPath = path.join(sessionDir, upload.videoFile);
+
+    if (!fs.existsSync(videoPath)) {
+      if (!upload.videoUrl) continue; // truly gone, nothing to composite
+      const tempPath = path.join(COMPOSITE_DIR, `src_${jobId}_${upload.videoFile}`);
+      try {
+        await downloadToFile(upload.videoUrl, tempPath);
+        videoPath = tempPath;
+        tempDownloads.push(tempPath);
+      } catch (e) {
+        log('warn', 'composite_download_failed', { jobId, file: upload.videoFile, error: e.message });
+        continue;
+      }
+    }
 
     let startTimeUTC = null;
     if (upload.metadataFile) {
       try {
-        const meta = JSON.parse(fs.readFileSync(path.join(sessionDir, upload.metadataFile), 'utf8'));
-        startTimeUTC = meta.startTimeUTC || null;
-        if (startTimeUTC) earliestStart = Math.min(earliestStart, startTimeUTC);
+        const metaPath = path.join(sessionDir, upload.metadataFile);
+        const metaRaw = fs.existsSync(metaPath)
+          ? fs.readFileSync(metaPath, 'utf8')
+          : null;
+        if (metaRaw) {
+          const meta = JSON.parse(metaRaw);
+          startTimeUTC = meta.startTimeUTC || null;
+          if (startTimeUTC) earliestStart = Math.min(earliestStart, startTimeUTC);
+        }
       } catch(e) {}
     }
 
@@ -336,10 +368,10 @@ async function runComposite(session, code, outputPath, jobId) {
 
   if (clipData.length === 0) {
     compositeJobs.get(jobId).status = 'failed';
+    tempDownloads.forEach(p => { try { fs.unlinkSync(p); } catch (e) {} });
     return;
   }
 
-  // Calculate per-clip offsets in seconds
   clipData.forEach(c => {
     c.offsetSec = (earliestStart !== Infinity && c.startTimeUTC)
       ? (c.startTimeUTC - earliestStart) / 1000
@@ -351,19 +383,15 @@ async function runComposite(session, code, outputPath, jobId) {
   const cellW = 640;
   const cellH = 360;
 
-  // Build FFmpeg args
   const ffmpegArgs = [];
 
-  // Inputs with time offsets
   clipData.forEach(c => {
     if (c.offsetSec > 0) ffmpegArgs.push('-itsoffset', String(c.offsetSec.toFixed(3)));
     ffmpegArgs.push('-i', c.videoPath);
   });
 
-  // filter_complex: scale each input, xstack into grid, mix audio
   let filterComplex = '';
 
-  // Scale all inputs to uniform cell size
   clipData.forEach((_, i) => {
     filterComplex += `[${i}:v]scale=${cellW}:${cellH}:force_original_aspect_ratio=decrease,pad=${cellW}:${cellH}:(ow-iw)/2:(oh-ih)/2[v${i}];`;
   });
@@ -371,7 +399,6 @@ async function runComposite(session, code, outputPath, jobId) {
   if (count === 1) {
     filterComplex += `[v0]copy[out]`;
   } else {
-    // Build pixel-position layout string
     const layoutPositions = [];
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
@@ -383,7 +410,6 @@ async function runComposite(session, code, outputPath, jobId) {
     filterComplex += `${scaledRefs}xstack=inputs=${count}:layout=${layoutPositions.join('|')}[out]`;
   }
 
-  // Mix audio from all clips
   const audioRefs = clipData.map((_, i) => `[${i}:a]`).join('');
   filterComplex += `;${audioRefs}amix=inputs=${count}:duration=longest:normalize=0[aout]`;
 
@@ -408,6 +434,7 @@ async function runComposite(session, code, outputPath, jobId) {
     });
 
     ffmpeg.on('close', (exitCode) => {
+      tempDownloads.forEach(p => { try { fs.unlinkSync(p); } catch (e) {} });
       const job = compositeJobs.get(jobId);
       if (!job) return resolve();
       if (exitCode === 0 && fs.existsSync(outputPath)) {
@@ -540,6 +567,11 @@ function sanitizeCode(input) {
 const MAX_SESSIONS = 100;
 const MAX_MEMBERS_PER_SESSION = 30;
 
+// ================================
+// CLIP DURATION: Allowed values (ms)
+// ================================
+const ALLOWED_CLIP_DURATIONS = [15000, 30000, 60000, 180000];
+
 const sessions = new Map();
 // ================================
 // USERS STORE + PERSISTENCE
@@ -600,6 +632,7 @@ function loadSessionsFromDisk() {
       const age = now - new Date(session.createdAt).getTime();
       if (age > SESSION_TTL) { expired++; continue; }
       session.members = []; // clear live socket state — members rejoin
+      session.highlightLockedUntil = 0; // clear stale lock
       sessions.set(session.code, session);
       loaded++;
     }
@@ -609,9 +642,56 @@ function loadSessionsFromDisk() {
   }
 }
 
+function retryPendingSpacesUploads() {
+  if (!spacesClient) return;
+  let retried = 0;
+  for (const [code, session] of sessions) {
+    const sessionDir = path.join(UPLOADS_DIR, code);
+    for (const rec of session.uploads) {
+      if (rec.videoKey) continue; // already on CDN
+      const localPath = path.join(sessionDir, rec.videoFile);
+      if (!fs.existsSync(localPath)) continue; // file gone, nothing to do
+
+      const thumbName = `thumb_${path.basename(rec.videoFile, '.mp4')}.jpg`;
+      const thumbPath = path.join(sessionDir, thumbName);
+      const videoKey = `${code}/${rec.videoFile}`;
+      const thumbKey = `${code}/${thumbName}`;
+      const metaKey = rec.metadataFile ? `${code}/${rec.metadataFile}` : null;
+
+      retried++;
+      enqueueThumbnail(localPath, thumbPath, async () => {
+        try {
+          rec.videoUrl = await uploadToSpaces(localPath, videoKey, 'video/mp4');
+          rec.videoKey = videoKey;
+          if (fs.existsSync(thumbPath)) {
+            rec.thumbnailUrl = await uploadToSpaces(thumbPath, thumbKey, 'image/jpeg');
+            rec.thumbnailKey = thumbKey;
+          }
+          if (rec.metadataFile) {
+            const metaPath = path.join(sessionDir, rec.metadataFile);
+            if (fs.existsSync(metaPath)) {
+              rec.metadataUrl = await uploadToSpaces(metaPath, metaKey, 'application/json');
+              rec.metadataKey = metaKey;
+            }
+          }
+          saveSessionsToDisk();
+          log('info', 'spaces_retry_complete', { session: code, key: videoKey });
+        } catch (e) {
+          log('error', 'spaces_retry_failed', { session: code, error: e.message });
+        }
+      });
+    }
+  }
+  if (retried > 0) log('info', 'spaces_retry_queued', { count: retried });
+}
+
 function saveSessionsToDisk() {
   try {
-    const data = Array.from(sessions.values());
+    const data = Array.from(sessions.values()).map(s => {
+      // Don't persist transient lock state
+      const { highlightLockedUntil, ...rest } = s;
+      return rest;
+    });
     fs.writeFileSync(SESSIONS_FILE, JSON.stringify(data, null, 2));
   } catch (err) {
     log('warn', 'sessions_save_failed', { error: err.message });
@@ -624,7 +704,6 @@ setInterval(async () => {
   let purged = 0;
   for (const [code, session] of sessions) {
     if (now - new Date(session.createdAt).getTime() > SESSION_TTL) {
-      // Delete all Spaces objects for this session before dropping it
       for (const up of session.uploads) {
         if (up.videoKey) await deleteFromSpaces(up.videoKey);
         if (up.thumbnailKey) await deleteFromSpaces(up.thumbnailKey);
@@ -681,7 +760,6 @@ app.post('/auth/login', async (req, res) => {
     return safeError(res, 400, 'Username and password required');
   }
   const user = users.get(clean.toLowerCase());
-  // Always hash to prevent timing attacks even on miss
   const hashToCheck = user ? user.passwordHash : '$2b$12$invalidhashfortimingprotection000000000000000000000000';
   const valid = await bcrypt.compare(password, hashToCheck);
   if (!user || !valid) {
@@ -717,12 +795,13 @@ app.post('/sessions', requireAuth, (req, res) => {
     code,
     createdBy: username,
     createdAt: new Date().toISOString(),
+    clipDuration: 30000,        // default 30s — host can change
+    highlightLockedUntil: 0,    // timestamp when session-wide lock expires
     members: [],
     uploads: []
   };
 
   sessions.set(code, session);
-  log("info", "session_created", { code, createdBy: username });
   log("info", "session_created", { code, createdBy: username });
 
   res.status(201).json({ sessionCode: code, sessionId: session.id });
@@ -739,6 +818,7 @@ app.get('/sessions/:code', (req, res) => {
     code: session.code,
     createdBy: session.createdBy,
     createdAt: session.createdAt,
+    clipDuration: session.clipDuration,
     members: session.members.map(m => ({
       username: m.username,
       isRecording: m.isRecording,
@@ -799,14 +879,12 @@ app.get('/sessions/:code', (req, res) => {
       return safeError(res, 400, 'Invalid upload');
     }
 
-    // SECURITY: Verify actual file bytes match declared type
     if (!verifyMP4(videoFile.path)) {
       fs.unlinkSync(videoFile.path);
       log('warn', 'upload_rejected', { reason: 'invalid_mp4_bytes', session: code, username: uploaderName });
       return safeError(res, 400, 'Invalid file content. File must be a valid MP4.');
     }
 
-    // SECURITY: Verify metadata JSON structure if provided
     if (req.files.metadata) {
       const metaFile = req.files.metadata[0];
       if (!verifyJSON(metaFile.path)) {
@@ -817,23 +895,17 @@ app.get('/sessions/:code', (req, res) => {
       }
     }
 
-    // Generate thumbnail locally first (needed before we push to Spaces), then
-    // upload video + thumbnail + metadata to Spaces and remove local copies.
     const thumbName = `thumb_${path.basename(videoFile.filename, '.mp4')}.jpg`;
     const thumbPath = path.join(path.dirname(videoFile.path), thumbName);
     const metaFileObj = req.files.metadata ? req.files.metadata[0] : null;
 
-    // Object keys in Spaces: organize by session for easy purge later
     const videoKey = `${code}/${videoFile.filename}`;
     const thumbKey = `${code}/${thumbName}`;
     const metaKey = metaFileObj ? `${code}/${metaFileObj.filename}` : null;
 
-    // Find the upload record we just pushed so we can fill in URLs as they resolve
     const findRecord = () => session.uploads.find(u => u.videoFile === videoFile.filename);
 
     if (spacesClient) {
-      // Thumbnail must be generated before upload. Queue it (one ffmpeg at a
-      // time), and once done, push everything to Spaces.
       enqueueThumbnail(videoFile.path, thumbPath, async () => {
         try {
           const videoUrl = await uploadToSpaces(videoFile.path, videoKey, 'video/mp4');
@@ -859,35 +931,11 @@ app.get('/sessions/:code', (req, res) => {
         }
       });
     } else {
-      // Fallback: Spaces not configured, keep old local behavior
       enqueueThumbnail(videoFile.path, thumbPath, () => {
         const rec = findRecord();
         if (rec) rec.thumbnailFile = thumbName;
       });
     }
-
-
-// DISABLED_AV1: 
-// DISABLED_AV1:     reencodeVideo(videoFile.path, reencPath).then(reencOk => {
-// DISABLED_AV1:       if (reencOk) {
-// DISABLED_AV1:         const record = session.uploads.find(u => u.videoFile === videoFile.filename);
-// DISABLED_AV1:         if (record) {
-// DISABLED_AV1:           const origSize = videoFile.size;
-// DISABLED_AV1:           const newSize = require('fs').statSync(reencPath).size;
-// DISABLED_AV1:           const saving = (((origSize - newSize) / origSize) * 100).toFixed(1);
-// DISABLED_AV1:           log("info", "reencode_savings", { origMB: (origSize/1024/1024).toFixed(1), newMB: (newSize/1024/1024).toFixed(1), savedPct: saving });
-// DISABLED_AV1: 
-// DISABLED_AV1:           // Swap: replace original with re-encoded, delete original
-// DISABLED_AV1:           require('fs').unlinkSync(videoFile.path);
-// DISABLED_AV1:           require('fs').renameSync(reencPath, videoFile.path);
-// DISABLED_AV1:           record.reencoded = true;
-// DISABLED_AV1:           record.fileSize = newSize;
-// DISABLED_AV1:         }
-// DISABLED_AV1:       } else {
-// DISABLED_AV1:         // Clean up failed re-encode attempt
-// DISABLED_AV1:         if (require('fs').existsSync(reencPath)) require('fs').unlinkSync(reencPath);
-// DISABLED_AV1:       }
-// DISABLED_AV1:     });
 
     const uploadRecord = {
       id: uuidv4(),
@@ -895,10 +943,10 @@ app.get('/sessions/:code', (req, res) => {
       videoFile: videoFile.filename,
       metadataFile: req.files.metadata ? req.files.metadata[0].filename : null,
       thumbnailFile: null,
-      videoUrl: null,       // Spaces CDN URL, filled in async
-      thumbnailUrl: null,   // Spaces CDN URL, filled in async
-      metadataUrl: null,    // Spaces CDN URL, filled in async
-      videoKey: null,       // Spaces object key, for purge
+      videoUrl: null,
+      thumbnailUrl: null,
+      metadataUrl: null,
+      videoKey: null,
       thumbnailKey: null,
       metadataKey: null,
       uploadedAt: new Date().toISOString(),
@@ -937,7 +985,6 @@ app.get('/sessions/:code/uploads', (req, res) => {
 // COMPOSITE ENDPOINTS
 // ================================
 
-// Start a composite job
 app.post('/sessions/:code/composite', (req, res) => {
   const code = sanitizeCode(req.params.code);
   if (!code) return res.status(400).json({ error: 'Invalid session code' });
@@ -957,11 +1004,9 @@ app.post('/sessions/:code/composite', (req, res) => {
 
   res.status(202).json({ jobId });
 
-  // Run async — don't await
   runComposite(session, code, outputPath, jobId);
 });
 
-// Poll composite job status
 app.get('/sessions/:code/composite/:jobId', (req, res) => {
   const job = compositeJobs.get(req.params.jobId);
   if (!job) return res.status(404).json({ error: 'Job not found' });
@@ -973,14 +1018,12 @@ app.get('/sessions/:code/composite/:jobId', (req, res) => {
   });
 });
 
-// Download composite file
 app.get('/composite/:jobId/download', (req, res) => {
   const job = compositeJobs.get(req.params.jobId);
   if (!job || job.status !== 'done') return res.status(404).json({ error: 'Not ready' });
 
   res.download(job.outputPath, 'peak-abu-composite.mp4', (err) => {
     if (!err) {
-      // Clean up 60s after download
       setTimeout(() => {
         if (fs.existsSync(job.outputPath)) fs.unlinkSync(job.outputPath);
         compositeJobs.delete(req.params.jobId);
@@ -990,7 +1033,6 @@ app.get('/composite/:jobId/download', (req, res) => {
 });
 
 // --- WebSocket ---
-// Require valid JWT on every Socket.IO connection
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) return next(new Error('auth_required'));
@@ -1040,6 +1082,8 @@ io.on('connection', (socket) => {
 
     socket.emit('session-joined', {
       code: sessionCode,
+      createdBy: session.createdBy,
+      clipDuration: session.clipDuration,
       members: session.members.map(m => ({
         username: m.username,
         isRecording: m.isRecording
@@ -1047,6 +1091,40 @@ io.on('connection', (socket) => {
     });
 
     socket.to(sessionCode).emit('member-joined', { username: cleanUsername });
+  });
+
+  // ================================
+  // CLIP DURATION — host only
+  // ================================
+  socket.on('set-clip-duration', ({ duration }) => {
+    if (!checkSocketRate(socket.id)) return;
+    const sessionCode = socket.sessionCode;
+    if (!sessionCode) return;
+
+    const session = sessions.get(sessionCode);
+    if (!session) return;
+
+    // Only the session creator can change clip duration
+    if (session.createdBy !== socket.username) {
+      socket.emit('error-message', { message: 'Only the session host can change clip duration' });
+      return;
+    }
+
+    if (!ALLOWED_CLIP_DURATIONS.includes(duration)) {
+      socket.emit('error-message', { message: 'Invalid clip duration' });
+      return;
+    }
+
+    session.clipDuration = duration;
+    saveSessionsToDisk();
+
+    log("info", "clip_duration_changed", { session: sessionCode, duration, setBy: socket.username });
+
+    // Tell everyone in the session (including the host)
+    io.to(sessionCode).emit('clip-duration-changed', {
+      duration,
+      setBy: socket.username
+    });
   });
 
   socket.on('recording-status', ({ isRecording }) => {
@@ -1068,6 +1146,9 @@ io.on('connection', (socket) => {
     log("info", "recording_status", { session: sessionCode, username: socket.username, isRecording });
   });
 
+  // ================================
+  // HIGHLIGHT SAVE — session-wide lock
+  // ================================
   socket.on('broadcast-save-highlight', () => {
     if (!checkSocketRate(socket.id)) return;
     const sessionCode = socket.sessionCode;
@@ -1075,13 +1156,43 @@ io.on('connection', (socket) => {
     const session = sessions.get(sessionCode);
     if (!session) return;
 
-    const coordinated_timestamp = Date.now();
-    log("info", "highlight_triggered", { session: sessionCode, username: socket.username, ts: coordinated_timestamp });
+    // Check session-wide lock — reject if a save is already in progress
+    const now = Date.now();
+    if (session.highlightLockedUntil && now < session.highlightLockedUntil) {
+      socket.emit('error-message', { message: 'Highlight save in progress — wait for cooldown' });
+      return;
+    }
 
+    const clipDuration = session.clipDuration || 30000;
+    const postCapture = Math.ceil(clipDuration * 0.1);
+    // Lock for: post-capture window + 15s buffer refill cooldown
+    const lockDuration = postCapture + 15000;
+
+    session.highlightLockedUntil = now + lockDuration;
+
+    const coordinated_timestamp = now;
+    log("info", "highlight_triggered", { session: sessionCode, username: socket.username, ts: coordinated_timestamp, clipDuration, lockMs: lockDuration });
+
+    // Tell every client to save their POV
     io.to(sessionCode).emit('coordinated-save-highlight', {
       username: socket.username,
-      coordinated_timestamp
+      coordinated_timestamp,
+      clipDuration
     });
+
+    // Tell every client to lock their save button
+    io.to(sessionCode).emit('highlight-cooldown', {
+      lockDuration,
+      clipDuration
+    });
+
+    // Auto-unlock after lock expires
+    setTimeout(() => {
+      const current = sessions.get(sessionCode);
+      if (current && current.highlightLockedUntil <= Date.now()) {
+        io.to(sessionCode).emit('highlight-unlocked');
+      }
+    }, lockDuration);
   });
 
   socket.on('disconnect', () => {
@@ -1103,6 +1214,7 @@ io.on('connection', (socket) => {
         if (current && current.members.length === 0) {
           if (current.uploads && current.uploads.length > 0) {
             log("info", "session_archived", { session: sessionCode, uploads: current.uploads.length });
+            saveSessionsToDisk();
           } else {
             sessions.delete(sessionCode);
             saveSessionsToDisk();
@@ -1116,6 +1228,7 @@ io.on('connection', (socket) => {
 
 loadUsersFromDisk();
 loadSessionsFromDisk();
+retryPendingSpacesUploads();
 
 server.listen(PORT, () => {
   log("info", "server_start", { port: PORT });
