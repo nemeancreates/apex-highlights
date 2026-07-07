@@ -1276,6 +1276,3 @@ server.listen(PORT, () => {
   log("info", "server_start", { port: PORT });
 });
 
-server.listen(PORT, () => {
-  log("info", "server_start", { port: PORT });
-});
