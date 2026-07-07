@@ -721,6 +721,23 @@ function createWindow() {
     callback(permission === 'media');
   });
 
+  ipcMain.handle('get-auth-state', () => {
+    const prefs = loadUserPreferences();
+    return { token: prefs.authToken || null, username: prefs.authUsername || null };
+  });
+
+  ipcMain.handle('set-auth-state', (event, { token, username }) => {
+    const prefs = loadUserPreferences();
+    if (token) {
+      prefs.authToken = token;
+      prefs.authUsername = username;
+    } else {
+      delete prefs.authToken;
+      delete prefs.authUsername;
+    }
+    saveUserPreferences(prefs);
+  });
+
   ipcMain.handle('get-desktop-sources', async () => {
     const { desktopCapturer } = require('electron');
     const sources = await desktopCapturer.getSources({ types: ['screen'] });

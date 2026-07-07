@@ -481,8 +481,8 @@
       window.bufferReady = false;
       window.isSessionHost = false;
       window.sessionClipDuration = 30000;
-      window.authToken = localStorage.getItem('peak_abu_token') || null;
-      window.authUsername = localStorage.getItem('peak_abu_username') || null;
+      window.authToken = null;
+      window.authUsername = null;
 
       // Mic state
       window.micDeviceId = null;
@@ -1040,23 +1040,37 @@
       };
 
       function startSaveCooldown(seconds) {
-        window.highlightCooldownActive = true;
-        var remaining = seconds || 15;
-        var btn = document.getElementById('saveBtn');
-        btn.innerHTML = '⏳ '+remaining+'s before next save';
-        btn.disabled = true;
-        window.highlightCooldownTimer = setInterval(function() {
-          remaining--;
-          if (remaining <= 0) {
-            clearInterval(window.highlightCooldownTimer);
-            window.highlightCooldownTimer = null;
-            window.highlightCooldownActive = false;
-            btn.innerHTML = '💾 Save Highlight (or press <span id="saveBtnHotkey">'+window.currentHotkey+'</span>)';
-            btn.disabled = !(window.isRecordingActive && window.bufferReady);
-          } else {
-            btn.innerHTML = '⏳ '+remaining+'s before next save';
-          }
-        }, 1000);
+       window.highlightCooldownActive = true;
+       var remaining = seconds || 15;
+       var btn = document.getElementById('saveBtn');
+       btn.innerHTML = '⏳ '+remaining+'s before next save';
+       btn.disabled = true;
+        
+       // Update status bar to reflect cooldown
+       document.getElementById('statusText').textContent = '● Cooldown — buffer refilling...';
+       document.getElementById('statusText').className = 'status-bar buffering';
+       document.getElementById('statusHelp').textContent = 'Next highlight available in ' + remaining + ' seconds';
+
+       window.highlightCooldownTimer = setInterval(function() {
+         remaining--;
+         if (remaining <= 0) {
+           clearInterval(window.highlightCooldownTimer);
+           window.highlightCooldownTimer = null;
+           window.highlightCooldownActive = false;
+           btn.innerHTML = '💾 Save Highlight (or press <span id="saveBtnHotkey">'+window.currentHotkey+'</span>)';
+           btn.disabled = !(window.isRecordingActive && window.bufferReady);
+
+           // Restore ready status
+           if (window.isRecordingActive && window.bufferReady) {
+             document.getElementById('statusText').textContent = '● Ready — save a highlight anytime';
+             document.getElementById('statusText').className = 'status-bar ready';
+             document.getElementById('statusHelp').textContent = 'Click Save or press ' + window.currentHotkey + ' to capture the last ' + formatDuration(window.sessionClipDuration) + ' of gameplay';
+           }
+         } else {
+           btn.innerHTML = '⏳ '+remaining+'s before next save';
+           document.getElementById('statusHelp').textContent = 'Next highlight available in ' + remaining + ' seconds';
+         }
+       }, 1000);
       }
 
       ipcRenderer.on('hotkey-save-pressed', function() { window.saveHighlight(); });
@@ -1101,15 +1115,19 @@
       
 
       async function checkAuthOnLoad() {
-        if (!window.authToken) { showAuthLoggedOut(); return; }
-        try {
-          if (res.ok) { var d = await res.json(); showAuthLoggedIn(d.username); }
-          else if (res.status === 401) { clearAuthState(); showAuthLoggedOut(); }
-          else { if (window.authUsername) showAuthLoggedIn(window.authUsername); else showAuthLoggedOut(); }
-        } catch(e) {
-          if (window.authUsername) showAuthLoggedIn(window.authUsername);
-          else showAuthLoggedOut();
-        }
+       var stored = await ipcRenderer.invoke('get-auth-state');
+       window.authToken = stored.token;
+       window.authUsername = stored.username;
+       if (!window.authToken) { showAuthLoggedOut(); return; }
+       try {
+         var res = await fetch('https://peakabu.app/auth/me', { headers: { 'Authorization':'Bearer '+window.authToken } });
+         if (res.ok) { var d = await res.json(); showAuthLoggedIn(d.username); }
+         else if (res.status === 401) { clearAuthState(); showAuthLoggedOut(); }
+         else { if (window.authUsername) showAuthLoggedIn(window.authUsername); else showAuthLoggedOut(); }
+       } catch(e) {
+         if (window.authUsername) showAuthLoggedIn(window.authUsername);
+         else showAuthLoggedOut();
+       }
       }
 
       window.registerUser = async function() {
@@ -1166,11 +1184,11 @@
         document.getElementById('authConfirmWrap').style.display = 'none';
       };
 
-      function storeAuthState(token, username) {
-        window.authToken = token; window.authUsername = username;
-        localStorage.setItem('peak_abu_token', token);
-        localStorage.setItem('peak_abu_username', username);
-        ipcRenderer.send('auth-token-updated', token);
+      function clearAuthState() {
+       window.authToken = null;
+       window.authUsername = null;
+       ipcRenderer.send('auth-token-updated', null);
+       ipcRenderer.invoke('set-auth-state', { token: null, username: null });
       }
       function clearAuthState() {
         window.authToken = null; window.authUsername = null;
