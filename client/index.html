@@ -409,7 +409,7 @@
       <input type="text" id="hotkeyCapture" readonly />
       <label>Save Highlight Hotkey</label>
       <div class="hotkey-row">
-        <div class="hotkey-display" id="hotkeyDisplay">F9</div>
+        <div class="hotkey-display" id="hotkeyDisplay"></div>
         <button class="btn-sm btn-secondary" id="hotkeyBtn" onclick="toggleHotkeyCapture()">Change</button>
       </div>
       <div class="hotkey-hint" id="hotkeyHint">Press any F-key, or Ctrl/Alt/Shift + key</div>
@@ -420,6 +420,26 @@
       </div>
 
       <!-- MIC (compact, inside recording section) -->
+      <div class="mic-group" style="margin-bottom:8px;">
+          <h4>🔊 Audio Output (Desktop Capture)</h4>
+         <div class="mic-row">
+           <label>Device</label>
+           <select id="audioOutputSelect" onchange="onAudioOutputChange()">
+              <option value="default">Default</option>
+            </select>
+          </div>
+          <div class="mic-group" style="margin-bottom:8px;">
+           <h4>🔊 Desktop Audio Source</h4>
+           <div class="mic-row">
+             <label>Device</label>
+             <select id="audioOutputSelect" onchange="onAudioOutputChange()">
+               <option value="default">Default</option>
+             </select>
+          </div>
+          <div class="mic-status">Select the playback device your game outputs to</div>
+        </div>
+         <div class="mic-status" style="font-size:11px;color:#556;margin-top:2px;">Capture audio from this playback device</div>
+      </div>
       <div class="mic-group">
         <h4>🎤 Microphone</h4>
         <div class="mic-row">
@@ -789,6 +809,27 @@
        } catch(e) {}
      }
 
+     async function loadAudioOutputDevices() {
+      try {
+        var devices = await navigator.mediaDevices.enumerateDevices();
+        var outputs = devices.filter(function(d) { return d.kind === 'audiooutput'; });
+        var sel = document.getElementById('audioOutputSelect');
+        sel.innerHTML = '<option value="default">Default</option>';
+        outputs.forEach(function(d) {
+          var opt = document.createElement('option');
+          opt.value = d.deviceId;
+          opt.textContent = d.label || ('Output ' + sel.children.length);
+          sel.appendChild(opt);
+        });
+      } catch(e) { console.log('Audio output enum failed:', e); }
+    }
+
+    window.onAudioOutputChange = function() {
+      var deviceId = document.getElementById('audioOutputSelect').value;
+      ipcRenderer.send('update-audio-output', { deviceId: deviceId });
+      hudLog('system', '🔊 Audio capture source changed', 'info');
+     };
+
       window.onMicDeviceChange = function() {
        window.micHasBeenTouched = true;
        var sel = document.getElementById('micSelect');
@@ -828,8 +869,37 @@
       function stopMicCapture() {
         if (window.micRecorder && window.micRecorder.state !== 'inactive') { window.micRecorder.stop(); window.micRecorder = null; }
       }
-      loadMicDevices();
-      navigator.mediaDevices.addEventListener('devicechange', loadMicDevices);
+
+      async function loadAudioOutputDevices() {
+       try {
+         var devices = await navigator.mediaDevices.enumerateDevices();
+         var outputs = devices.filter(function(d) { return d.kind === 'audiooutput'; });
+         var sel = document.getElementById('audioOutputSelect');
+         sel.innerHTML = '<option value="default">Default</option>';
+         outputs.forEach(function(d) {
+           var opt = document.createElement('option');
+           opt.value = d.deviceId;
+           opt.textContent = d.label || ('Output ' + sel.children.length);
+           sel.appendChild(opt);
+         });
+       } catch(e) { console.log('Audio output enum failed:', e); }
+      }
+
+      window.onAudioOutputChange = function() {
+        var deviceId = document.getElementById('audioOutputSelect').value;
+        ipcRenderer.send('update-audio-output', { deviceId: deviceId });
+        hudLog('system', '🔊 Desktop audio source changed', 'info');
+     };
+
+     loadMicDevices();
+     loadAudioOutputDevices();
+     navigator.mediaDevices.addEventListener('devicechange', function() {
+       loadMicDevices();
+       loadAudioOutputDevices();
+     });
+        loadMicDevices();
+        loadAudioOutputDevices();
+      });
 
       // =====================
       // SESSION

@@ -455,7 +455,7 @@
       min-width: 120px;
       height: 70px;
       background: #0f3460;
-      border: 1px solid #2a2a5e;
+      border: 2px solid #2a2a5e;
       border-radius: 6px;
       display: flex;
       flex-direction: column;
@@ -464,14 +464,35 @@
       font-size: 11px;
       cursor: pointer;
       flex-shrink: 0;
-      transition: border-color 0.15s;
+      transition: border-color 0.15s, background 0.15s;
       padding: 4px 8px;
       text-align: center;
+      user-select: none;
+      position: relative;
+    }
+    .export-clip::after {
+      content: '';
+      position: absolute;
+      top: 6px; right: 6px;
+      width: 14px; height: 14px;
+      border: 2px solid #2a2a5e;
+      border-radius: 3px;
+      background: transparent;
+      transition: all 0.15s;
     }
     .export-clip:hover { border-color: #e94560; }
+    .export-clip:hover::after { border-color: #e94560; }
     .export-clip.selected { border-color: #e94560; background: #1a3a6e; }
-    .export-clip-name { color: #e94560; font-weight: bold; margin-bottom: 2px; }
-    .export-clip-duration { color: #888; font-size: 10px; }
+    .export-clip.selected::after {
+      background: #e94560;
+      border-color: #e94560;
+      content: '✓';
+      color: white;
+      font-size: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
 
     .composite-section {
       padding: 8px 16px;

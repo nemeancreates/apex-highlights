@@ -875,6 +875,12 @@ function createWindow() {
     if (settings.muted !== undefined) micMuted = settings.muted;
   });
 
+  let audioOutputDeviceId = 'default';
+  ipcMain.on('update-audio-output', (event, { deviceId }) => {
+    audioOutputDeviceId = deviceId || 'default';
+    console.log(`Audio output capture device set to: ${audioOutputDeviceId}`);
+  });
+
   ipcMain.on('get-monitors', (event) => {
     const screen = require('electron').screen;
     const displays = screen.getAllDisplays();
