@@ -21,7 +21,7 @@ if (!JWT_SECRET) {
 }
 
 const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
-
+const { initAiReel } = require('./aireel');
 const https = require('https');
 
 
@@ -1252,6 +1252,16 @@ io.on('connection', (socket) => {
 loadUsersFromDisk();
 loadSessionsFromDisk();
 retryPendingSpacesUploads();
+initAiReel({
+  app,
+  sessions,
+  sanitizeCode,
+  safeError,
+  log,
+  UPLOADS_DIR,
+  downloadToFile
+});
+
 initAiReel({
   app,
   sessions,

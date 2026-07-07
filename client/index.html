@@ -388,6 +388,13 @@
             <option value="720">720p</option>
             <option value="480">480p</option>
           </select>
+         <div>
+          <label>Color</label>
+          <select id="hdrSelect" onchange="updateSettings()">
+            <option value="sdr" selected>Standard (SDR)</option>
+            <option value="hdr">HDR monitor fix</option>
+           </select>
+         </div>
         </div>
       </div>
       <div>
@@ -1117,7 +1124,16 @@
          hdr: document.getElementById('hdrSelect').value === 'hdr'
        });
       };
-      window.addEventListener('DOMContentLoaded', function() { window.updateSettings(); });
+      window.addEventListener('DOMContentLoaded', function() {
+       window.updateSettings();
+       ipcRenderer.invoke('get-current-hdr').then(function(isHdr) {
+         document.getElementById('hdrSelect').value = isHdr ? 'hdr' : 'sdr';
+       });
+      });
+
+    ipcRenderer.on('capture-engine', function(ev, label) {
+      hudLog('system', '🎥 Capture: ' + label, 'info');
+    });
       ipcRenderer.invoke('get-current-hdr').then(function(isHdr) {
        document.getElementById('hdrSelect').value = isHdr ? 'hdr' : 'sdr';
       });
