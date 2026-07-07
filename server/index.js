@@ -21,7 +21,6 @@ if (!JWT_SECRET) {
 }
 
 const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
-const { initAiReel } = require('./aireel');
 const https = require('https');
 
 
@@ -1262,14 +1261,6 @@ initAiReel({
   downloadToFile
 });
 
-initAiReel({
-  app,
-  sessions,
-  sanitizeCode,
-  safeError,
-  log,
-  UPLOADS_DIR,
-  downloadToFile
 });
 
 server.listen(PORT, () => {
