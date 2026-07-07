@@ -11,6 +11,7 @@ const os = require('os');
 const helmet = require('helmet');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const { initAiReel } = require('./aireel');
 const BCRYPT_ROUNDS = 12;
 const JWT_EXPIRY = '7d';
 const JWT_SECRET = process.env.JWT_SECRET || null;
@@ -22,6 +23,28 @@ if (!JWT_SECRET) {
 const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 
 const https = require('https');
+
+
+// ================================
+// Server Logs
+// ================================
+
+
+// Create logs directory if it doesn't exist
+const logsDir = path.join(__dirname, '..', 'logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
+}
+
+// Log to both console and file
+const logFile = path.join(logsDir, 'server.log');
+const originalLog = console.log;
+console.log = function(...args) {
+  originalLog.apply(console, args);
+  fs.appendFileSync(logFile, args.join(' ') + '\n');
+};
+
+
 
 function downloadToFile(url, destPath) {
   return new Promise((resolve, reject) => {
@@ -1229,6 +1252,19 @@ io.on('connection', (socket) => {
 loadUsersFromDisk();
 loadSessionsFromDisk();
 retryPendingSpacesUploads();
+initAiReel({
+  app,
+  sessions,
+  sanitizeCode,
+  safeError,
+  log,
+  UPLOADS_DIR,
+  downloadToFile
+});
+
+server.listen(PORT, () => {
+  log("info", "server_start", { port: PORT });
+});
 
 server.listen(PORT, () => {
   log("info", "server_start", { port: PORT });

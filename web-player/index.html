@@ -419,7 +419,7 @@
        EXPORT BAR
     ======================== */
     .export-bar {
-      height: 140px;
+      min-height: 140px;
       flex-shrink: 0;
       background: #16213e;
       border-top: 2px solid #e94560;
@@ -624,6 +624,30 @@
         <div class="progress-fill" id="compositeFill"></div>
       </div>
     </div>
+    <div class="composite-section" id="aireelSection" style="display:flex;flex-wrap:wrap;gap:8px;">
+    <div style="width:100%;font-size:13px;color:#e94560;font-weight:600;">🎞 AI Highlight Reel <span style="color:#888;font-weight:normal;">(T3/T4 preview — free during beta)</span></div>
+   <div>
+     <label style="font-size:11px;color:#999;">Length</label>
+     <select id="aireelLength" style="background:#0f3460;color:#eee;border:1px solid #2a2a5e;border-radius:4px;padding:4px 8px;">
+       <option value="30">30s</option>
+       <option value="60" selected>60s</option>
+       <option value="90">90s</option>
+       <option value="120">2 min</option>
+     </select>
+   </div>
+
+    <div>
+      <label style="font-size:11px;color:#999;">Game</label>
+      <input type="text" id="aireelGame" placeholder="e.g. Apex Legends" style="background:#0f3460;color:#eee;border:1px solid #2a2a5e;border-radius:4px;padding:4px 8px;width:160px;" />
+   </div>
+  <div style="flex:1;min-width:220px;">
+    <label style="font-size:11px;color:#999;">Style notes for the AI editor (saved per game)</label>
+    <input type="text" id="aireelStyle" placeholder="e.g. keep clutches long, cut fast on kills" style="background:#0f3460;color:#eee;border:1px solid #2a2a5e;border-radius:4px;padding:4px 8px;width:100%;" />
+  </div>
+  <button class="btn btn-small" id="aireelBtn" onclick="startAiReel()">🤖 Generate AI Reel</button>
+  <div id="aireelStatus" style="width:100%;font-size:12px;color:#888;"></div>
+  <div id="aireelReport" style="width:100%;font-size:12px;color:#aaa;background:#0a0a1a;border-left:2px solid #e94560;padding:8px 12px;display:none;white-space:pre-wrap;"></div>
+</div>
   </div>
 
   <script>
@@ -1796,6 +1820,82 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (e) { console.log('Poll error:', e); }
       }, 3000);
     }
+
+    let aireelJobId = null;
+    let aireelPollInterval = null;
+
+    async function startAiReel() {
+      if (!currentSessionCode) return;
+      if (selectedExportClips.size === 0) {
+        alert('Select at least one clip in the Export Studio first');
+        return;
+      }
+      const targetSec = parseInt(document.getElementById('aireelLength').value);
+      const game = document.getElementById('aireelGame').value.trim();
+      const styleNotes = document.getElementById('aireelStyle').value.trim();
+
+      const uploadIds = Array.from(selectedExportClips)
+        .map(i => videos[i])
+        .filter(v => v && !v.missing && !v.processing && v.uploadId)
+        .map(v => v.uploadId);
+      if (uploadIds.length === 0) { alert('Selected clips are not ready yet'); return; }
+
+      const btn = document.getElementById('aireelBtn');
+      const status = document.getElementById('aireelStatus');
+      const report = document.getElementById('aireelReport');
+      btn.disabled = true; btn.textContent = 'Starting...';
+      status.textContent = 'Queuing job...';
+      report.style.display = 'none';
+
+      try {
+        const res = await fetch('/sessions/' + currentSessionCode + '/aireel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uploadIds, targetSec, game, styleNotes })
+        });
+        if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed to start'); }
+        const { jobId } = await res.json();
+        aireelJobId = jobId;
+        status.textContent = 'Job queued — analyzing your clips...';
+        pollAiReel(jobId);
+      } catch (err) {
+        status.textContent = '❌ ' + err.message;
+        btn.disabled = false;
+        btn.textContent = '🤖 Generate AI Reel';
+      }
+    }
+
+    function pollAiReel(jobId) {
+      if (aireelPollInterval) clearInterval(aireelPollInterval);
+      aireelPollInterval = setInterval(async () => {
+        try {
+          const res = await fetch('/sessions/' + currentSessionCode + '/aireel/' + jobId);
+          const data = await res.json();
+          const status = document.getElementById('aireelStatus');
+          const report = document.getElementById('aireelReport');
+          const btn = document.getElementById('aireelBtn');
+          status.textContent = data.progress || data.status;
+          if (data.status === 'done') {
+            clearInterval(aireelPollInterval); aireelPollInterval = null;
+            const sizeMB = data.fileSize ? (data.fileSize / 1024 / 1024).toFixed(1) + 'MB' : '';
+            status.textContent = '✅ Reel ready' + (sizeMB ? ' (' + sizeMB + ')' : '') + ' — downloading...';
+            if (data.report) {
+              report.textContent = '📝 Editor: ' + data.editorEngine + '\n\n' + data.report;
+              report.style.display = 'block';
+            }
+            btn.disabled = false; btn.textContent = '🤖 Generate AI Reel';
+            const link = document.createElement('a');
+            link.href = data.downloadUrl; link.download = 'peak-abu-ai-reel.mp4';
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+          } else if (data.status === 'failed') {
+            clearInterval(aireelPollInterval); aireelPollInterval = null;
+            status.textContent = '❌ ' + (data.progress || 'Failed');
+            btn.disabled = false; btn.textContent = '🤖 Generate AI Reel';
+          }
+        } catch (e) { /* transient, keep polling */ }
+      }, 3000);
+    }
+
 
     function formatTime(seconds) {
       const m = Math.floor(seconds / 60);

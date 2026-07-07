@@ -25,31 +25,96 @@ let BUFFER_DIR = DEFAULT_BUFFER_DIR;
 let CLIPS_DIR = DEFAULT_CLIPS_DIR;
 
 // Settings (adjustable from UI)
-let maxChunks = 18;          // default 3 minutes (18 × 10sec)
-let recordFps = 30;          // default 30fps
+let maxChunks = 18;
+let recordFps = 30;
 let recordResolution = null; // null = native, or { width, height }
-let customHotkey = 'F9';     // default, can be overridden from preferences
+let customHotkey = 'F9';
+let captureHdr = false;      // HDR monitor fix — tonemaps HDR desktop to correct SDR colors
 
 let clockOffset = 0;
 let ffmpegProcess = null;
 let mainWindow = null;
 let currentSession = null;
-let audioBuffers = []; // in-memory rolling buffer of audio chunks
+let audioBuffers = [];
 let authToken = null;
-let useCpuEncoder = false; // set true if NVENC fails; persists for the session
-let currentMonitor = null; // remembered so we can respawn on NVENC fallback
-let videoStartTime = null; // timestamp of FFmpeg spawn — for audio sync offset
-let audioFirstChunkTime = null; // timestamp of first audio chunk arrival
-let bufferReadyWatcher = null; // interval that detects the first complete chunk
-let recordingStartTime = null; // when this recording session began — for min buffer time
-let lastHighlightBoundary = 0; // mtime of newest chunk in the last save — prevents overlap
+let useCpuEncoder = false;
+let currentMonitor = null;
+let videoStartTime = null;
+let audioFirstChunkTime = null;
+let bufferReadyWatcher = null;
+let recordingStartTime = null;
+let lastHighlightBoundary = 0;
 
 // ================================
-// MIC AUDIO BUFFERS (prep — capture wired in renderer)
+// CAPTURE ENGINE LADDER
+// ================================
+// Ordered list of capture+encode strategies. On early FFmpeg failure we
+// automatically advance to the next engine, so users always end up with
+// a working recording even on unusual GPU/driver/monitor setups.
+//
+//   dda-nvenc      ddagrab -> h264_nvenc, frames never leave the GPU (fastest, lowest game impact)
+//   dda-nvenc-vf   ddagrab -> hwdownload -> scale -> nvenc (used when downscaling to 720/480)
+//   dda-hdr-nvenc  ddagrab 10-bit -> HDR->SDR tonemap -> nvenc (fixes washed-out HDR monitors)
+//   dda-hdr-x264   same tonemap chain, CPU encode
+//   dda-x264       ddagrab -> hwdownload -> libx264 (DDA capture is still much lighter than gdigrab)
+//   gdi-nvenc      legacy gdigrab -> nvenc (previous default — safety net)
+//   gdi-x264       legacy gdigrab -> libx264 (final safety net, works everywhere)
+//
+// Requires an FFmpeg build that includes the ddagrab and zscale filters
+// (gyan.dev "full" build). If the bundled build lacks them, the ladder
+// simply falls through to the gdigrab engines.
+let engineLadder = [];
+let engineIndex = 0;
+let stoppingIntentionally = false;
+
+const ENGINE_LABELS = {
+  'dda-nvenc':     'GPU capture + GPU encode (zero-copy)',
+  'dda-nvenc-vf':  'GPU capture + GPU encode (scaled)',
+  'dda-hdr-nvenc': 'GPU capture + HDR tonemap + GPU encode',
+  'dda-hdr-x264':  'GPU capture + HDR tonemap + CPU encode',
+  'dda-x264':      'GPU capture + CPU encode',
+  'gdi-nvenc':     'Legacy capture + GPU encode',
+  'gdi-x264':      'Legacy capture + CPU encode'
+};
+
+function buildEngineLadder() {
+  const l = [];
+  if (captureHdr) {
+    if (!useCpuEncoder) l.push('dda-hdr-nvenc');
+    l.push('dda-hdr-x264');
+    if (!useCpuEncoder) l.push('gdi-nvenc');
+    l.push('gdi-x264');
+  } else {
+    if (!useCpuEncoder) {
+      if (!recordResolution) l.push('dda-nvenc'); // zero-copy path is native-res only
+      l.push('dda-nvenc-vf');
+      l.push('gdi-nvenc');
+    }
+    l.push('dda-x264');
+    l.push('gdi-x264');
+  }
+  return l;
+}
+
+// Nudge FFmpeg below normal priority so a capture spike never steals frame
+// time from the game. (wmic is deprecated on Win11 — use PowerShell instead.)
+function setBelowNormalPriority(pid) {
+  try {
+    spawn('powershell.exe', [
+      '-NoProfile', '-Command',
+      `(Get-Process -Id ${pid}).PriorityClass='BelowNormal'`
+    ], { windowsHide: true });
+  } catch (e) {
+    console.log('Priority adjust skipped:', e.message);
+  }
+}
+
+// ================================
+// MIC AUDIO BUFFERS
 // ================================
 let micBuffers = [];
 let micFirstChunkTime = null;
-let micVolume = 80;   // 0-100
+let micVolume = 80;
 let micMuted = false;
 
 function ensureFolders() {
@@ -57,7 +122,6 @@ function ensureFolders() {
   if (!fs.existsSync(CLIPS_DIR)) fs.mkdirSync(CLIPS_DIR, { recursive: true });
 }
 
-// --- User Preferences Management ---
 function loadUserPreferences() {
   try {
     if (fs.existsSync(USER_PREFS_PATH)) {
@@ -72,6 +136,11 @@ function loadUserPreferences() {
       if (prefs.hotkey && isValidHotkey(prefs.hotkey)) {
         customHotkey = prefs.hotkey;
         console.log(`Loaded user hotkey preference: ${customHotkey}`);
+      }
+
+      if (typeof prefs.captureHdr === 'boolean') {
+        captureHdr = prefs.captureHdr;
+        console.log(`Loaded HDR capture preference: ${captureHdr}`);
       }
 
       console.log(`Loaded preferences: storageDir=${CLIPS_DIR}`);
@@ -92,7 +161,6 @@ function saveUserPreferences(prefs) {
   }
 }
 
-// Validate hotkey format (Electron accelerator format)
 function isValidHotkey(hotkey) {
   if (typeof hotkey !== 'string') return false;
   const parts = hotkey.split('+');
@@ -109,9 +177,6 @@ function isValidHotkey(hotkey) {
   return true;
 }
 
-// ================================
-// HOTKEY -> RENDERER ROUTING
-// ================================
 function onHotkeyPressed() {
   console.log(`${customHotkey} pressed — routing to renderer save path`);
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -121,9 +186,6 @@ function onHotkeyPressed() {
   }
 }
 
-// ================================
-// BUFFER-READY WATCHER
-// ================================
 function startBufferReadyWatcher() {
   stopBufferReadyWatcher();
   bufferReadyWatcher = setInterval(() => {
@@ -143,9 +205,7 @@ function startBufferReadyWatcher() {
           mainWindow.webContents.send('buffer-ready');
         }
       }
-    } catch (e) {
-      // Buffer dir momentarily unreadable — try again next tick
-    }
+    } catch (e) { /* buffer dir momentarily unreadable */ }
   }, 1000);
 }
 
@@ -169,30 +229,101 @@ async function syncClock() {
   }
 }
 
-function getPreciseUTC() {
-  return Date.now() + clockOffset;
-}
+function getPreciseUTC() { return Date.now() + clockOffset; }
 
 function pruneOldChunks() {
   const files = fs.readdirSync(BUFFER_DIR)
     .filter(f => f.endsWith('.mp4'))
-    .map(f => ({
-      name: f,
-      time: fs.statSync(path.join(BUFFER_DIR, f)).mtimeMs
-    }))
+    .map(f => ({ name: f, time: fs.statSync(path.join(BUFFER_DIR, f)).mtimeMs }))
     .sort((a, b) => a.time - b.time);
 
   while (files.length > maxChunks) {
     const oldest = files.shift();
-    try {
-      fs.unlinkSync(path.join(BUFFER_DIR, oldest.name));
-    } catch (err) {
-      if (err.code === 'EBUSY' || err.code === 'EPERM') {
-        console.log('Skipping locked chunk:', oldest.name);
-      } else {
-        console.log('Prune error:', err.message);
-      }
+    try { fs.unlinkSync(path.join(BUFFER_DIR, oldest.name)); }
+    catch (err) {
+      if (err.code === 'EBUSY' || err.code === 'EPERM') console.log('Skipping locked chunk:', oldest.name);
+      else console.log('Prune error:', err.message);
     }
+  }
+}
+
+// ================================
+// FFMPEG ARG BUILDER — per capture engine
+// ================================
+function buildCaptureArgs(engine, monitor) {
+  const chunkPattern = path.join(BUFFER_DIR, 'chunk_%03d.mp4');
+  const fpsStr = String(recordFps);
+
+  // gdigrab geometry (legacy engines only)
+  const screen = require('electron').screen;
+  const displays = screen.getAllDisplays();
+  const target = monitor !== undefined && displays[monitor] ? displays[monitor] : displays[0];
+  const scale = target.scaleFactor || 1;
+  const gx = Math.round(target.bounds.x * scale);
+  const gy = Math.round(target.bounds.y * scale);
+  let gw = Math.round(target.bounds.width * scale);
+  let gh = Math.round(target.bounds.height * scale);
+  gw -= gw % 2; gh -= gh % 2;
+
+  const bitrate = recordResolution
+    ? (recordResolution.height <= 480 ? '3M' : '5M')
+    : '8M';
+
+  const nvencArgs = ['-c:v', 'h264_nvenc', '-preset', 'p4', '-tune', 'hq', '-b:v', bitrate];
+  const x264Args  = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23'];
+
+  const segmentArgs = [
+    '-g', fpsStr, '-keyint_min', fpsStr,
+    '-force_key_frames', `expr:gte(t,n_forced*${CHUNK_SECONDS})`,
+    '-an',
+    '-f', 'segment', '-segment_time', String(CHUNK_SECONDS),
+    '-reset_timestamps', '1', '-y', chunkPattern
+  ];
+
+  const scaleTail = recordResolution ? `,scale=-2:${recordResolution.height}` : '';
+
+  // Desktop Duplication input — GPU capture, no BitBlt, no DWM slow path
+  const ddaInput = (tenBit) => [
+    '-f', 'lavfi',
+    '-i', `ddagrab=output_idx=${monitor || 0}:framerate=${recordFps}${tenBit ? ':output_fmt=10bit' : ''}`
+  ];
+
+  const ddaCpuVf = `hwdownload,format=bgra${scaleTail},format=yuv420p`;
+
+  // HDR -> SDR tonemap chain. HDR desktop hands us PQ / BT.2020 pixels;
+  // encoding as-is => washed out & gamma-lifted (Cabbam's bug).
+  // Tag colors -> linearize -> Hable tonemap -> BT.709 SDR.
+  const hdrVf =
+    'hwdownload,format=x2bgr10le,' +
+    'setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,' +
+    'zscale=t=linear:npl=200,format=gbrpf32le,zscale=p=bt709,' +
+    'tonemap=hable:desat=0,' +
+    'zscale=t=bt709:m=bt709:r=tv' +
+    scaleTail + ',format=yuv420p';
+
+  const gdiInput = [
+    '-f', 'gdigrab', '-framerate', fpsStr,
+    '-offset_x', String(gx), '-offset_y', String(gy),
+    '-video_size', `${gw}x${gh}`, '-i', 'desktop'
+  ];
+  const gdiScale = recordResolution ? ['-vf', `scale=-2:${recordResolution.height}`] : [];
+
+  switch (engine) {
+    case 'dda-nvenc':
+      return [...ddaInput(false), ...nvencArgs, ...segmentArgs];
+    case 'dda-nvenc-vf':
+      return [...ddaInput(false), '-vf', ddaCpuVf, ...nvencArgs, ...segmentArgs];
+    case 'dda-hdr-nvenc':
+      return [...ddaInput(true), '-vf', hdrVf, ...nvencArgs, ...segmentArgs];
+    case 'dda-hdr-x264':
+      return [...ddaInput(true), '-vf', hdrVf, ...x264Args, ...segmentArgs];
+    case 'dda-x264':
+      return [...ddaInput(false), '-vf', ddaCpuVf, ...x264Args, ...segmentArgs];
+    case 'gdi-nvenc':
+      return [...gdiInput, ...gdiScale, ...nvencArgs, ...segmentArgs];
+    case 'gdi-x264':
+    default:
+      return [...gdiInput, ...gdiScale, ...x264Args, '-pix_fmt', 'yuv420p', ...segmentArgs];
   }
 }
 
@@ -200,76 +331,42 @@ function startRecording(monitor) {
   ensureFolders();
   currentMonitor = monitor;
 
-  const screen = require('electron').screen;
-  const displays = screen.getAllDisplays();
-  const target = monitor !== undefined ? displays[monitor] : displays[0];
-  const scale = target.scaleFactor || 1;
-  const x = Math.round(target.bounds.x * scale);
-  const y = Math.round(target.bounds.y * scale);
-  let width = Math.round(target.bounds.width * scale);
-  let height = Math.round(target.bounds.height * scale);
-  // h264 requires even dimensions
-  width -= width % 2;
-  height -= height % 2;
-
-  console.log(`Recording monitor ${monitor}: ${width}x${height} at (${x},${y})`);
-  console.log(`Settings: ${recordFps}fps, resolution: ${recordResolution ? recordResolution.width + 'x' + recordResolution.height : 'native'}, buffer: ${maxChunks * CHUNK_SECONDS}s`);
-
-  const chunkPattern = path.join(BUFFER_DIR, 'chunk_%03d.mp4');
-
-  const ffmpegArgs = [
-    '-f', 'gdigrab',
-    '-framerate', String(recordFps),
-    '-offset_x', String(x),
-    '-offset_y', String(y),
-    '-video_size', `${width}x${height}`,
-    '-i', 'desktop'
-  ];
-
-  if (recordResolution) {
-  ffmpegArgs.push('-vf', `scale=-2:${recordResolution.height}`);
-  }
-  
-
-  if (useCpuEncoder) {
-    ffmpegArgs.push(
-      '-c:v', 'libx264',
-      '-preset', 'veryfast',
-      '-crf', '23',
-      '-pix_fmt', 'yuv420p',
-      '-g', String(recordFps),
-      '-keyint_min', String(recordFps),
-      '-force_key_frames', `expr:gte(t,n_forced*${CHUNK_SECONDS})`,
-      '-an',
-      '-f', 'segment',
-      '-segment_time', String(CHUNK_SECONDS),
-      '-reset_timestamps', '1',
-      '-y',
-      chunkPattern
-    );
-    console.log('Using CPU encoder (libx264)');
-  } else {
-    ffmpegArgs.push(
-      '-c:v', 'h264_nvenc',
-      '-preset', 'p4',
-      '-tune', 'hq',
-      '-b:v', recordResolution ? (recordResolution.height <= 480 ? '3M' : '5M') : '8M',
-      '-g', String(recordFps),
-      '-keyint_min', String(recordFps),
-      '-force_key_frames', `expr:gte(t,n_forced*${CHUNK_SECONDS})`,
-      '-an',
-      '-f', 'segment',
-      '-segment_time', String(CHUNK_SECONDS),
-      '-reset_timestamps', '1',
-      '-y',
-      chunkPattern
-    );
-    console.log('Using GPU encoder (h264_nvenc)');
+  // Skip NVENC engines if the encoder already proved broken this session
+  while (
+    engineIndex < engineLadder.length &&
+    useCpuEncoder &&
+    engineLadder[engineIndex].includes('nvenc')
+  ) {
+    engineIndex++;
   }
 
-  ffmpegProcess = spawn(getFFmpegPath(), ffmpegArgs, {
-    windowsHide: true
-  });
+  if (engineIndex >= engineLadder.length) {
+    console.log('All capture engines exhausted — cannot record');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('highlight-error',
+        'All capture methods failed. Check GPU drivers and make sure the bundled FFmpeg is a full build (ddagrab/zscale).');
+    }
+    return;
+  }
+
+  const engine = engineLadder[engineIndex];
+  const ffmpegArgs = buildCaptureArgs(engine, monitor);
+
+  console.log(`Recording monitor ${monitor} with engine [${engine}] — ${ENGINE_LABELS[engine]}`);
+  console.log(`Settings: ${recordFps}fps, resolution: ${recordResolution ? recordResolution.width + 'x' + recordResolution.height : 'native'}, buffer: ${maxChunks * CHUNK_SECONDS}s, HDR fix: ${captureHdr}`);
+  console.log('FFmpeg args:', ffmpegArgs.join(' '));
+
+  ffmpegProcess = spawn(getFFmpegPath(), ffmpegArgs, { windowsHide: true });
+
+  if (ffmpegProcess.pid) setBelowNormalPriority(ffmpegProcess.pid);
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('capture-engine', ENGINE_LABELS[engine]);
+    if (captureHdr && engine.startsWith('gdi')) {
+      mainWindow.webContents.send('capture-engine',
+        '⚠ HDR tonemap unavailable in this FFmpeg build — colors may look washed out. Bundle the gyan.dev FULL build.');
+    }
+  }
 
   const spawnStartTime = Date.now();
   videoStartTime = spawnStartTime;
@@ -292,38 +389,42 @@ function startRecording(monitor) {
     console.log('FFmpeg:', text);
     const logPath = path.join(os.tmpdir(), 'peakabu-ffmpeg.log');
     fs.appendFileSync(logPath, text);
-    stderrTail = (stderrTail + text).slice(-2000);
+    stderrTail = (stderrTail + text).slice(-3000);
     pruneOldChunks();
   });
 
   ffmpegProcess.on('close', (code) => {
-    console.log('FFmpeg stopped with code', code);
-    const ranForMs = Date.now() - spawnStartTime;
-    const looksLikeNvencFailure = !useCpuEncoder && code !== 0 && ranForMs < 5000 &&
-      /nvenc|nvcuda|Cannot load|does not support the required nvenc/i.test(stderrTail);
+    console.log(`FFmpeg [${engine}] stopped with code`, code);
+    if (stoppingIntentionally) return;
 
-    if (looksLikeNvencFailure) {
-      console.log('NVENC failed early — falling back to CPU encoder (libx264)');
+    const ranForMs = Date.now() - spawnStartTime;
+    const earlyFailure = code !== 0 && ranForMs < 6000;
+
+    if (earlyFailure) {
       const logPath = path.join(os.tmpdir(), 'peakabu-ffmpeg.log');
-      fs.appendFileSync(logPath, '\n=== NVENC FAILED, FALLING BACK TO libx264 ===\n');
-      useCpuEncoder = true;
-      if (mainWindow) {
-        mainWindow.webContents.send('encoder-fallback', 'CPU');
+      fs.appendFileSync(logPath, `\n=== ENGINE [${engine}] FAILED (code ${code}, ${ranForMs}ms) — trying next engine ===\n`);
+      console.log(`Engine [${engine}] failed early — advancing ladder. Tail:`, stderrTail.slice(-400));
+
+      if (engine.includes('nvenc') && /nvenc|nvcuda|cuda|Cannot load|does not support the required nvenc/i.test(stderrTail)) {
+        useCpuEncoder = true;
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('encoder-fallback', 'CPU');
+        }
       }
+
+      engineIndex++;
       startRecording(currentMonitor);
     }
   });
 }
 
 // ================================
-// SAVE HIGHLIGHT — with clip duration + 90/10 post-capture
+// SAVE HIGHLIGHT
 // ================================
-
 function saveHighlight(coordinatedTimestamp = null, clipDurationMs = null) {
-  const duration = clipDurationMs || 30000;  // default 30s
-  const postDelay = Math.ceil(duration * 0.1);  // 10% after button press
-  const clipChunks = Math.ceil(duration / (CHUNK_SECONDS * 1000));  // how many 10s chunks to grab
-
+  const duration = clipDurationMs || 30000;
+  const postDelay = Math.ceil(duration * 0.1);
+  const clipChunks = Math.ceil(duration / (CHUNK_SECONDS * 1000));
   const saveTimeUTC = coordinatedTimestamp || getPreciseUTC();
 
   if (postDelay > 500) {
@@ -331,9 +432,7 @@ function saveHighlight(coordinatedTimestamp = null, clipDurationMs = null) {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('post-capture-started', { postDelay });
     }
-    setTimeout(() => {
-      doSaveHighlight(saveTimeUTC, clipChunks, duration);
-    }, postDelay);
+    setTimeout(() => doSaveHighlight(saveTimeUTC, clipChunks, duration), postDelay);
   } else {
     doSaveHighlight(saveTimeUTC, clipChunks, duration);
   }
@@ -343,19 +442,15 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs) {
   const allVideoFiles = fs.readdirSync(BUFFER_DIR)
     .filter(f => f.endsWith('.mp4') && !f.startsWith('temp_'))
     .map(f => ({
-      name: f,
-      path: path.join(BUFFER_DIR, f),
+      name: f, path: path.join(BUFFER_DIR, f),
       time: fs.statSync(path.join(BUFFER_DIR, f)).mtimeMs,
       size: fs.statSync(path.join(BUFFER_DIR, f)).size
     }))
     .filter(f => f.size > 100000)
     .sort((a, b) => a.time - b.time);
 
-  // Drop the newest (still being written by FFmpeg)
   const withoutInProgress = allVideoFiles.slice(0, -1);
-  // Only chunks newer than the last save — prevents overlap
   const newSinceLastSave = withoutInProgress.filter(f => f.time > lastHighlightBoundary);
-  // Grab only as many chunks as this clip duration needs (not the whole buffer)
   const videoFiles = newSinceLastSave.slice(-clipChunks);
 
   if (videoFiles.length === 0) {
@@ -366,12 +461,11 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs) {
     return;
   }
 
-  // Mark boundary for next save
   lastHighlightBoundary = videoFiles[videoFiles.length - 1].time;
 
   const hasAudio = audioBuffers.length > 0;
   const hasMic = micBuffers.length > 0 && !micMuted;
-  console.log(`Saving highlight: ${videoFiles.length}/${clipChunks} chunks, ${audioBuffers.length} audio chunks, ${micBuffers.length} mic chunks (clip: ${durationMs / 1000}s)`);
+  console.log(`Saving highlight: ${videoFiles.length}/${clipChunks} chunks, ${audioBuffers.length} audio, ${micBuffers.length} mic (clip: ${durationMs / 1000}s)`);
 
   const timestamp = new Date(saveTimeUTC).toISOString().replace(/[:.]/g, '-');
   const outputPath = path.join(CLIPS_DIR, `highlight-${timestamp}.mp4`);
@@ -383,56 +477,38 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs) {
 
   const metadata = {
     version: 1,
-    saveTimeUTC,
-    startTimeUTC,
-    endTimeUTC: saveTimeUTC,
-    durationMs: chunkAgeMs,
-    clipDurationMs: durationMs,
-    frameRate: recordFps,
-    clockOffsetMs: clockOffset,
+    saveTimeUTC, startTimeUTC, endTimeUTC: saveTimeUTC,
+    durationMs: chunkAgeMs, clipDurationMs: durationMs,
+    frameRate: recordFps, clockOffsetMs: clockOffset,
     userId: null,
     sessionId: currentSession ? currentSession.code : null,
     coordinated_timestamp: null
   };
 
   const videoListPath = path.join(BUFFER_DIR, 'filelist_' + Date.now() + '.txt');
-  const videoContent = videoFiles
-    .map(f => `file '${f.path.replace(/\\/g, '/')}'`)
-    .join('\n');
+  const videoContent = videoFiles.map(f => `file '${f.path.replace(/\\/g, '/')}'`).join('\n');
   fs.writeFileSync(videoListPath, videoContent);
 
   if (hasAudio) {
-    const CHUNK_MS = CHUNK_SECONDS * 1000;
-    const videoStartMs = oldestChunkTime;
-    const videoEndMs = saveTimeUTC;
-
-    const audioToUse = audioBuffers;
-    const combinedAudio = Buffer.concat(audioToUse.map(c => c.data));
+    const combinedAudio = Buffer.concat(audioBuffers.map(c => c.data));
     const tempId = Date.now();
     const rawAudioPath = path.join(BUFFER_DIR, 'temp_audio_raw_' + tempId + '.webm');
     const tempAudioPath = path.join(BUFFER_DIR, 'temp_audio_' + tempId + '.webm');
     fs.writeFileSync(rawAudioPath, combinedAudio);
-    console.log(`Combined audio: ${audioToUse.length}/${audioBuffers.length} chunks in window -> ${(combinedAudio.length / 1024).toFixed(0)}KB (video window: ${((videoEndMs - videoStartMs) / 1000).toFixed(1)}s)`);
 
-    // Mic audio — write to temp file if present
-    let rawMicPath = null;
-    let tempMicPath = null;
+    let rawMicPath = null, tempMicPath = null;
     if (hasMic) {
       const combinedMic = Buffer.concat(micBuffers.map(c => c.data));
       rawMicPath = path.join(BUFFER_DIR, 'temp_mic_raw_' + tempId + '.webm');
       tempMicPath = path.join(BUFFER_DIR, 'temp_mic_' + tempId + '.webm');
       fs.writeFileSync(rawMicPath, combinedMic);
-      console.log(`Combined mic: ${micBuffers.length} chunks -> ${(combinedMic.length / 1024).toFixed(0)}KB`);
     }
 
     const tempVideoPath = path.join(BUFFER_DIR, 'temp_video_' + tempId + '.mp4');
     const concatVideo = spawn(getFFmpegPath(), [
-      '-f', 'concat', '-safe', '0',
-      '-i', videoListPath,
-      '-c', 'copy', '-y',
-      tempVideoPath
+      '-f', 'concat', '-safe', '0', '-i', videoListPath,
+      '-c', 'copy', '-y', tempVideoPath
     ]);
-
     concatVideo.stderr.on('data', d => console.log('ConcatVideo:', d.toString()));
 
     concatVideo.on('close', (videoCode) => {
@@ -443,38 +519,25 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs) {
         return;
       }
 
-      // Repair desktop audio
       const repairAudio = spawn(getFFmpegPath(), [
-        '-fflags', '+genpts',
-        '-i', rawAudioPath,
-        '-c:a', 'copy',
-        '-y',
-        tempAudioPath
+        '-fflags', '+genpts', '-i', rawAudioPath,
+        '-c:a', 'copy', '-y', tempAudioPath
       ]);
       repairAudio.stderr.on('data', d => console.log('RepairAudio:', d.toString()));
       repairAudio.on('close', (repairCode) => {
         if (repairCode !== 0 || !fs.existsSync(tempAudioPath)) {
-          console.log('Audio repair failed, using raw audio');
           try { fs.copyFileSync(rawAudioPath, tempAudioPath); } catch (e) {}
         }
 
-        // Repair mic audio if present
         if (hasMic && rawMicPath) {
           const repairMic = spawn(getFFmpegPath(), [
-            '-fflags', '+genpts',
-            '-i', rawMicPath,
-            '-c:a', 'copy',
-            '-y',
-            tempMicPath
+            '-fflags', '+genpts', '-i', rawMicPath,
+            '-c:a', 'copy', '-y', tempMicPath
           ]);
           repairMic.stderr.on('data', d => console.log('RepairMic:', d.toString()));
           repairMic.on('close', (micRepairCode) => {
-            if (micRepairCode !== 0 || !fs.existsSync(tempMicPath)) {
-              console.log('Mic repair failed, merging without mic');
-              runMerge(false);
-            } else {
-              runMerge(true);
-            }
+            if (micRepairCode !== 0 || !fs.existsSync(tempMicPath)) runMerge(false);
+            else runMerge(true);
           });
         } else {
           runMerge(false);
@@ -484,37 +547,19 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs) {
       function runMerge(includeMic) {
         const firstChunkNum = parseInt((videoFiles[0].name.match(/chunk_(\d+)\.mp4/) || [])[1] || '0', 10);
         const clipVideoStartMs = videoStartTime + (firstChunkNum * CHUNK_SECONDS * 1000) + 250;
-        const deltaSec = audioFirstChunkTime
-          ? (clipVideoStartMs - audioFirstChunkTime) / 1000
-          : 0;
+        const deltaSec = audioFirstChunkTime ? (clipVideoStartMs - audioFirstChunkTime) / 1000 : 0;
         const audioSkipSec = Math.max(0, deltaSec);
         const audioDelaySec = Math.max(0, -deltaSec);
         console.log(`Audio sync: skip=${audioSkipSec.toFixed(3)}s delay=${audioDelaySec.toFixed(3)}s`);
 
         const mergeArgs = ['-i', tempVideoPath];
-
-        // Desktop audio input
-        mergeArgs.push(
-          '-ss', String(audioSkipSec.toFixed(3)),
-          '-itsoffset', String(audioDelaySec.toFixed(3)),
-          '-i', tempAudioPath
-        );
+        mergeArgs.push('-ss', String(audioSkipSec.toFixed(3)), '-itsoffset', String(audioDelaySec.toFixed(3)), '-i', tempAudioPath);
 
         if (includeMic && tempMicPath) {
-          // Mic audio input — use same skip/offset strategy
-          const micDeltaSec = micFirstChunkTime
-            ? (clipVideoStartMs - micFirstChunkTime) / 1000
-            : 0;
+          const micDeltaSec = micFirstChunkTime ? (clipVideoStartMs - micFirstChunkTime) / 1000 : 0;
           const micSkipSec = Math.max(0, micDeltaSec);
           const micDelaySec = Math.max(0, -micDeltaSec);
-
-          mergeArgs.push(
-            '-ss', String(micSkipSec.toFixed(3)),
-            '-itsoffset', String(micDelaySec.toFixed(3)),
-            '-i', tempMicPath
-          );
-
-          // Mix desktop + mic with filter_complex
+          mergeArgs.push('-ss', String(micSkipSec.toFixed(3)), '-itsoffset', String(micDelaySec.toFixed(3)), '-i', tempMicPath);
           const vol = (micVolume / 100).toFixed(2);
           mergeArgs.push(
             '-map', '0:v:0',
@@ -523,28 +568,15 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs) {
             '-map', '[aout]'
           );
         } else {
-          // Desktop audio only
-          mergeArgs.push(
-            '-map', '0:v:0',
-            '-map', '1:a:0',
-            '-af', 'aresample=async=1000'
-          );
+          mergeArgs.push('-map', '0:v:0', '-map', '1:a:0', '-af', 'aresample=async=1000');
         }
 
-        mergeArgs.push(
-          '-c:v', 'copy',
-          '-c:a', 'aac',
-          '-b:a', '192k',
-          '-shortest',
-          '-y',
-          outputPath
-        );
+        mergeArgs.push('-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', '-y', outputPath);
 
         const merge = spawn(getFFmpegPath(), mergeArgs);
         merge.stderr.on('data', d => console.log('Merge:', d.toString()));
 
         merge.on('close', (code) => {
-          // Clean up temp files
           [rawAudioPath, tempAudioPath, tempVideoPath, videoListPath, rawMicPath, tempMicPath].forEach(p => {
             if (p) try { fs.unlinkSync(p); } catch (e) {}
           });
@@ -559,10 +591,8 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs) {
           } else {
             console.log('Audio merge failed, saving video only');
             const concatOnly = spawn(getFFmpegPath(), [
-              '-f', 'concat', '-safe', '0',
-              '-i', videoListPath,
-              '-c', 'copy', '-y',
-              outputPath
+              '-f', 'concat', '-safe', '0', '-i', videoListPath,
+              '-c', 'copy', '-y', outputPath
             ]);
             concatOnly.stderr.on('data', d => console.log('ConcatOnly:', d.toString()));
             concatOnly.on('close', (c) => {
@@ -582,17 +612,12 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs) {
         });
       }
     });
-  }
-  else {
+  } else {
     const concat = spawn(getFFmpegPath(), [
-      '-f', 'concat', '-safe', '0',
-      '-i', videoListPath,
-      '-c', 'copy', '-y',
-      outputPath
+      '-f', 'concat', '-safe', '0', '-i', videoListPath,
+      '-c', 'copy', '-y', outputPath
     ]);
-
     concat.stderr.on('data', d => console.log('Concat:', d.toString()));
-
     concat.on('close', (code) => {
       try { fs.unlinkSync(videoListPath); } catch (e) {}
       if (code === 0) {
@@ -615,24 +640,15 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs) {
 // UPLOAD HIGHLIGHT
 // ================================
 function uploadHighlight(videoPath, metadataPath) {
-  if (!currentSession) {
-    console.log('No active session, skipping upload');
-    return;
-  }
+  if (!currentSession) { console.log('No active session, skipping upload'); return; }
 
-  console.log('=== UPLOAD START ===');
-  console.log('videoPath:', videoPath);
-  console.log('exists:', fs.existsSync(videoPath));
+  console.log('=== UPLOAD START ===', videoPath);
   if (!fs.existsSync(videoPath)) {
-    console.log('ABORT: video file does not exist on disk');
     mainWindow.webContents.send('upload-error', 'Video file missing on disk');
     return;
   }
   const videoStats = fs.statSync(videoPath);
-  console.log('size:', videoStats.size);
-  console.log('basename:', path.basename(videoPath));
   if (videoStats.size === 0) {
-    console.log('ABORT: video file is empty');
     mainWindow.webContents.send('upload-error', 'Video file is empty');
     return;
   }
@@ -642,25 +658,18 @@ function uploadHighlight(videoPath, metadataPath) {
 
   const form = new FormData();
   form.append('video', fs.createReadStream(videoPath), {
-    filename: path.basename(videoPath),
-    contentType: 'video/mp4'
+    filename: path.basename(videoPath), contentType: 'video/mp4'
   });
   if (metadataPath && fs.existsSync(metadataPath)) {
     form.append('metadata', fs.createReadStream(metadataPath), {
-      filename: path.basename(metadataPath),
-      contentType: 'application/json'
+      filename: path.basename(metadataPath), contentType: 'application/json'
     });
   }
 
   form.submit({
-    protocol: 'https:',
-    host: 'peakabu.app',
-    port: 443,
-    path: `/sessions/${currentSession.code}/upload`,
-    method: 'POST',
-    headers: {
-      'Authorization': 'Bearer ' + authToken
-    }
+    protocol: 'https:', host: 'peakabu.app', port: 443,
+    path: `/sessions/${currentSession.code}/upload`, method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + authToken }
   }, (err, res) => {
     if (err) {
       console.log('Upload connection error:', err.message);
@@ -668,15 +677,11 @@ function uploadHighlight(videoPath, metadataPath) {
       mainWindow.webContents.send('upload-error', 'Could not reach server');
       return;
     }
-
-    console.log('=== UPLOAD RESPONSE ===');
-    console.log('statusCode:', res.statusCode);
-    console.log('headers:', JSON.stringify(res.headers));
+    console.log('=== UPLOAD RESPONSE ===', res.statusCode);
 
     let body = '';
     res.on('data', chunk => body += chunk);
     res.on('end', () => {
-      console.log('body:', body);
       try {
         const result = JSON.parse(body);
         if (res.statusCode === 201) {
@@ -684,13 +689,10 @@ function uploadHighlight(videoPath, metadataPath) {
           mainWindow.webContents.send('upload-progress', 100);
           mainWindow.webContents.send('upload-complete', result.uploadId);
         } else {
-          console.log('Upload failed:', result.error);
           mainWindow.webContents.send('upload-progress', -1);
           mainWindow.webContents.send('upload-error', result.error);
         }
       } catch (parseErr) {
-        console.log('Upload response parse error:', parseErr.message);
-        console.log('Raw body was:', body);
         mainWindow.webContents.send('upload-progress', -1);
         mainWindow.webContents.send('upload-error', 'Server returned invalid response');
       }
@@ -703,19 +705,14 @@ app.commandLine.appendSwitch('enable-features', 'WebRtcAllowInputVolumeAdjustmen
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 900,
-    height: 700,
+    width: 900, height: 700,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-      experimentalFeatures: true
+      nodeIntegration: true, contextIsolation: false, experimentalFeatures: true
     }
   });
 
   mainWindow.loadFile('index.html');
-  if (!app.isPackaged) {
-    mainWindow.webContents.openDevTools();
-  }
+  if (!app.isPackaged) mainWindow.webContents.openDevTools();
 
   mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
     callback(permission === 'media');
@@ -728,13 +725,8 @@ function createWindow() {
 
   ipcMain.handle('set-auth-state', (event, { token, username }) => {
     const prefs = loadUserPreferences();
-    if (token) {
-      prefs.authToken = token;
-      prefs.authUsername = username;
-    } else {
-      delete prefs.authToken;
-      delete prefs.authUsername;
-    }
+    if (token) { prefs.authToken = token; prefs.authUsername = username; }
+    else { delete prefs.authToken; delete prefs.authUsername; }
     saveUserPreferences(prefs);
   });
 
@@ -744,106 +736,77 @@ function createWindow() {
     return sources.map(s => ({ id: s.id, name: s.name }));
   });
 
-  // IPC: Pick storage directory
   ipcMain.handle('pick-storage-directory', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       title: 'Choose Video Storage Directory',
       defaultPath: app.getPath('videos'),
       properties: ['openDirectory', 'createDirectory']
     });
-
     if (!result.canceled && result.filePaths.length > 0) {
       const dirPath = result.filePaths[0];
       CLIPS_DIR = path.join(dirPath, 'PeakAbu');
       BUFFER_DIR = path.join(dirPath, '.apex-highlights-buffer');
-
       const prefs = loadUserPreferences();
       prefs.storageDirectory = dirPath;
       saveUserPreferences(prefs);
-
       ensureFolders();
-      console.log(`Storage directory set to: ${CLIPS_DIR}`);
       return { success: true, path: CLIPS_DIR };
     }
-
     return { success: false };
   });
 
-  // IPC: Get current storage directory
-  ipcMain.handle('get-storage-directory', () => {
-    return CLIPS_DIR;
-  });
-
-  // IPC: First launch check
-  ipcMain.handle('is-first-launch', () => {
-    const prefs = loadUserPreferences();
-    return !prefs.hasLaunched;
-  });
-
+  ipcMain.handle('get-storage-directory', () => CLIPS_DIR);
+  ipcMain.handle('is-first-launch', () => !loadUserPreferences().hasLaunched);
   ipcMain.handle('mark-first-launch-done', () => {
     const prefs = loadUserPreferences();
     prefs.hasLaunched = true;
     saveUserPreferences(prefs);
   });
+  ipcMain.handle('get-install-path', () =>
+    app.isPackaged ? path.dirname(process.execPath) : path.join(__dirname));
 
-  ipcMain.handle('get-install-path', () => {
-    return app.isPackaged
-      ? path.dirname(process.execPath)
-      : path.join(__dirname);
-  });
+  // Current HDR capture setting (for UI restore on launch)
+  ipcMain.handle('get-current-hdr', () => captureHdr);
 
-  // IPC: Save highlight (renderer save path — solo, no session)
   ipcMain.on('save-highlight', () => saveHighlight());
-
-  // IPC: Broadcast save highlight — now includes clipDuration
   ipcMain.on('broadcast-save-highlight', (event, { coordinated_timestamp, clipDuration }) => {
-    console.log(`Received broadcast save-highlight with timestamp: ${coordinated_timestamp}, clipDuration: ${clipDuration}ms`);
+    console.log(`Received broadcast save-highlight: ts=${coordinated_timestamp}, clipDuration=${clipDuration}ms`);
     saveHighlight(coordinated_timestamp, clipDuration);
   });
+  ipcMain.on('set-socket-io', () => console.log('Socket.IO connection noted in main process'));
 
-  // IPC: Set socket.io connection
-  ipcMain.on('set-socket-io', (event, socketId) => {
-    console.log('Socket.IO connection noted in main process');
-  });
-
-  ipcMain.on('auth-token-updated', (event, token) => {
-    authToken = token;
-    console.log('Auth token updated in main process');
-  });
-
+  ipcMain.on('auth-token-updated', (event, token) => { authToken = token; });
   ipcMain.on('session-connected', (event, { code, username }) => {
     currentSession = { code, username };
     console.log(`Session tracked in main: ${code} as ${username}`);
   });
-
-  ipcMain.on('session-disconnected', () => {
-    currentSession = null;
-    console.log('Session cleared in main');
-  });
+  ipcMain.on('session-disconnected', () => { currentSession = null; });
 
   ipcMain.on('start-recording', (event, { monitorIndex }) => {
     if (ffmpegProcess) {
+      stoppingIntentionally = true;
       ffmpegProcess.kill();
       ffmpegProcess = null;
     }
     audioBuffers = [];
     micBuffers = [];
-    // Wipe stale chunks from prior sessions
     try {
       const stale = fs.readdirSync(BUFFER_DIR).filter(f => f.endsWith('.mp4'));
-      for (const f of stale) {
-        try { fs.unlinkSync(path.join(BUFFER_DIR, f)); } catch (e) {}
-      }
+      for (const f of stale) { try { fs.unlinkSync(path.join(BUFFER_DIR, f)); } catch (e) {} }
       console.log(`Buffer cleaned: removed ${stale.length} stale chunks`);
-    } catch (e) {
-      console.log('Buffer clean skipped:', e.message);
-    }
+    } catch (e) { console.log('Buffer clean skipped:', e.message); }
+
+    // Fresh engine ladder for this recording session
+    stoppingIntentionally = false;
+    engineLadder = buildEngineLadder();
+    engineIndex = 0;
     startRecording(monitorIndex);
   });
 
   ipcMain.on('stop-recording', () => {
     stopBufferReadyWatcher();
     if (ffmpegProcess) {
+      stoppingIntentionally = true;
       ffmpegProcess.kill();
       ffmpegProcess = null;
       console.log('Recording stopped');
@@ -855,13 +818,8 @@ function createWindow() {
     const bufferMap = { '30': 3, '60': 6, '180': 18, '300': 30, '600': 60 };
     if (settings.bufferSeconds && bufferMap[settings.bufferSeconds]) {
       maxChunks = bufferMap[settings.bufferSeconds];
-      console.log(`Buffer length set to ${settings.bufferSeconds}s (${maxChunks} chunks)`);
     }
-
-    if (settings.fps && [30, 60].includes(settings.fps)) {
-      recordFps = settings.fps;
-      console.log(`Framerate set to ${recordFps}fps`);
-    }
+    if (settings.fps && [30, 60].includes(settings.fps)) recordFps = settings.fps;
 
     const resMap = {
       'native': null,
@@ -870,22 +828,25 @@ function createWindow() {
     };
     if (settings.resolution && settings.resolution in resMap) {
       recordResolution = resMap[settings.resolution];
-      console.log(`Resolution set to ${settings.resolution}`);
+    }
+
+    if (typeof settings.hdr === 'boolean' && settings.hdr !== captureHdr) {
+      captureHdr = settings.hdr;
+      const prefs = loadUserPreferences();
+      prefs.captureHdr = captureHdr;
+      saveUserPreferences(prefs);
+      console.log(`HDR capture fix ${captureHdr ? 'ENABLED' : 'disabled'}`);
     }
 
     if (settings.hotkey && isValidHotkey(settings.hotkey)) {
-      if (customHotkey) {
-        globalShortcut.unregister(customHotkey);
-      }
+      if (customHotkey) globalShortcut.unregister(customHotkey);
       customHotkey = settings.hotkey;
       const registered = globalShortcut.register(customHotkey, onHotkeyPressed);
       if (registered) {
-        console.log(`Hotkey changed to: ${customHotkey}`);
         const prefs = loadUserPreferences();
         prefs.hotkey = customHotkey;
         saveUserPreferences(prefs);
       } else {
-        console.log(`WARNING: Could not register hotkey ${customHotkey}`);
         mainWindow.webContents.send('hotkey-error', `Failed to register ${customHotkey}. Another app may be using it.`);
       }
     }
@@ -893,40 +854,25 @@ function createWindow() {
 
   ipcMain.on('audio-recording-started', (event, wallTime) => {
     audioFirstChunkTime = wallTime;
-    const delta = videoStartTime ? (wallTime - videoStartTime) : 0;
-    console.log(`Audio recording started at ${wallTime} (video started at ${videoStartTime}, delta=${delta}ms)`);
   });
 
   ipcMain.on('save-audio-chunk', (event, buffer) => {
-    const timestamp = Date.now();
-    audioBuffers.push({ data: Buffer.from(buffer), time: timestamp });
-    console.log(`Audio chunk buffered: ${buffer.byteLength} bytes (${audioBuffers.length} chunks in memory)`);
-
-    while (audioBuffers.length > 20) {
-      audioBuffers.splice(1, 1);
-    }
+    audioBuffers.push({ data: Buffer.from(buffer), time: Date.now() });
+    while (audioBuffers.length > 20) audioBuffers.splice(1, 1);
   });
 
-  // ================================
-  // MIC AUDIO IPC
-  // ================================
   ipcMain.on('mic-recording-started', (event, wallTime) => {
     micFirstChunkTime = wallTime;
-    console.log(`Mic recording started at ${wallTime}`);
   });
 
   ipcMain.on('save-mic-chunk', (event, buffer) => {
     micBuffers.push({ data: Buffer.from(buffer), time: Date.now() });
-    // Keep chunk 0 (WebM header) + recent chunks
-    while (micBuffers.length > 20) {
-      micBuffers.splice(1, 1);
-    }
+    while (micBuffers.length > 20) micBuffers.splice(1, 1);
   });
 
   ipcMain.on('update-mic-settings', (event, settings) => {
     if (settings.volume !== undefined) micVolume = settings.volume;
     if (settings.muted !== undefined) micMuted = settings.muted;
-    console.log(`Mic settings: volume=${micVolume}, muted=${micMuted}`);
   });
 
   ipcMain.on('get-monitors', (event) => {
@@ -936,16 +882,13 @@ function createWindow() {
       index: i,
       width: Math.round(d.bounds.width * (d.scaleFactor || 1)),
       height: Math.round(d.bounds.height * (d.scaleFactor || 1)),
-      x: d.bounds.x,
-      y: d.bounds.y,
+      x: d.bounds.x, y: d.bounds.y,
       primary: d.bounds.x === 0 && d.bounds.y === 0
     }));
     event.reply('monitors-list', monitorList);
   });
 
-  ipcMain.handle('get-current-hotkey', () => {
-    return customHotkey;
-  });
+  ipcMain.handle('get-current-hotkey', () => customHotkey);
 }
 
 app.whenReady().then(async () => {
@@ -953,19 +896,17 @@ app.whenReady().then(async () => {
   ensureFolders();
   createWindow();
   syncClock();
-
   const registered = globalShortcut.register(customHotkey, onHotkeyPressed);
-
-  if (registered) {
-    console.log(`${customHotkey} hotkey registered successfully`);
-  } else {
-    console.log(`WARNING: ${customHotkey} hotkey registration FAILED - another app may be using it`);
-  }
+  if (registered) console.log(`${customHotkey} hotkey registered successfully`);
+  else console.log(`WARNING: ${customHotkey} hotkey registration FAILED - another app may be using it`);
 });
 
 app.on('window-all-closed', () => {
   stopBufferReadyWatcher();
-  if (ffmpegProcess) ffmpegProcess.kill();
+  if (ffmpegProcess) {
+    stoppingIntentionally = true;
+    ffmpegProcess.kill();
+  }
   globalShortcut.unregisterAll();
   if (process.platform !== 'darwin') app.quit();
 });

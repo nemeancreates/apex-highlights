@@ -390,6 +390,14 @@
           </select>
         </div>
       </div>
+      <div>
+       <label>Color</label>
+       <select id="hdrSelect" onchange="updateSettings()">
+         <option value="sdr" selected>Standard (SDR)</option>
+         <option value="hdr">HDR monitor fix</option>
+       </select>
+      </div>
+
 
       <input type="text" id="hotkeyCapture" readonly />
       <label>Save Highlight Hotkey</label>
@@ -1076,6 +1084,9 @@
       ipcRenderer.on('hotkey-save-pressed', function() { window.saveHighlight(); });
       ipcRenderer.on('post-capture-started', function(ev, d) { hudLog('activity','📹 Capturing post-highlight footage ('+((d.postDelay)/1000).toFixed(1)+'s)...','info'); });
       ipcRenderer.on('encoder-fallback', function(ev, enc) { hudLog('system','⚙ GPU unavailable — switched to '+enc+' encoding','info'); });
+      ipcRenderer.on('capture-engine', function(ev, label) {
+       hudLog('system', '🎥 Capture: ' + label, 'info');
+      });
       ipcRenderer.on('highlight-saved', function(ev, fp) { hudLog('activity','✅ Saved: '+fp,'success'); });
       ipcRenderer.on('highlight-error', function(ev, msg) { hudLog('activity','❌ '+msg,'error'); });
 
@@ -1099,13 +1110,17 @@
       });
 
       window.updateSettings = function() {
-        ipcRenderer.send('update-settings', {
-          bufferSeconds: '180',
-          fps: parseInt(document.getElementById('fpsSelect').value),
-          resolution: document.getElementById('resolutionSelect').value
-        });
+       ipcRenderer.send('update-settings', {
+         bufferSeconds: '180',
+         fps: parseInt(document.getElementById('fpsSelect').value),
+         resolution: document.getElementById('resolutionSelect').value,
+         hdr: document.getElementById('hdrSelect').value === 'hdr'
+       });
       };
       window.addEventListener('DOMContentLoaded', function() { window.updateSettings(); });
+      ipcRenderer.invoke('get-current-hdr').then(function(isHdr) {
+       document.getElementById('hdrSelect').value = isHdr ? 'hdr' : 'sdr';
+      });
 
       // =====================
       // AUTH
@@ -1119,6 +1134,10 @@
        window.authToken = stored.token;
        window.authUsername = stored.username;
        if (!window.authToken) { showAuthLoggedOut(); return; }
+        
+       // Push restored token to main process so uploads are authenticated
+       ipcRenderer.send('auth-token-updated', window.authToken);
+        
        try {
          var res = await fetch('https://peakabu.app/auth/me', { headers: { 'Authorization':'Bearer '+window.authToken } });
          if (res.ok) { var d = await res.json(); showAuthLoggedIn(d.username); }
@@ -1184,17 +1203,17 @@
         document.getElementById('authConfirmWrap').style.display = 'none';
       };
 
-      function clearAuthState() {
-       window.authToken = null;
-       window.authUsername = null;
-       ipcRenderer.send('auth-token-updated', null);
-       ipcRenderer.invoke('set-auth-state', { token: null, username: null });
+      function storeAuthState(token, username) {
+        window.authToken = token;
+        window.authUsername = username;
+        ipcRenderer.send('auth-token-updated', token);
+        ipcRenderer.invoke('set-auth-state', { token: token, username: username });
       }
       function clearAuthState() {
-        window.authToken = null; window.authUsername = null;
-        localStorage.removeItem('peak_abu_token');
-        localStorage.removeItem('peak_abu_username');
+        window.authToken = null;
+        window.authUsername = null;
         ipcRenderer.send('auth-token-updated', null);
+        ipcRenderer.invoke('set-auth-state', { token: null, username: null });
       }
       function showAuthLoggedIn(username) {
         window.authUsername = username;
