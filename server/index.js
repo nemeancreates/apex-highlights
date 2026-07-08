@@ -37,6 +37,12 @@ if (!fs.existsSync(logsDir)) {
 
 // Log to both console and file
 const logFile = path.join(logsDir, 'server.log');
+const usageLogFile = path.join(logsDir, 'usage.log');
+
+function logUsage(event, data = {}) {
+  const entry = { ts: new Date().toISOString(), event, ...data };
+  fs.appendFileSync(usageLogFile, JSON.stringify(entry) + '\n');
+}
 const originalLog = console.log;
 console.log = function(...args) {
   originalLog.apply(console, args);
@@ -799,6 +805,15 @@ app.get('/', (req, res) => {
   res.json({ status: 'Peak-Abu server running', activeSessions: sessions.size });
 });
 
+app.get('/', (req, res) => {
+  res.json({ status: 'Peak-Abu server running', activeSessions: sessions.size });
+});
+
+app.get('/api/version', (req, res) => {
+  res.json(LATEST_CLIENT_VERSION);
+});
+
+
 app.post('/sessions', requireAuth, (req, res) => {
   const username = sanitizeUsername(req.user.username);
   if (!username) {
@@ -979,6 +994,14 @@ app.get('/sessions/:code', (req, res) => {
     saveSessionsToDisk();
 
     log("info", "upload_received", { session: code, username: uploaderName, sizeMB: (videoFile.size / 1024 / 1024).toFixed(1) });
+    logUsage('upload', {
+     session: code,
+     username: uploaderName,
+     uploadId: uploadRecord.id,
+     sizeMB: parseFloat((videoFile.size / 1024 / 1024).toFixed(2)),
+     memberCount: session.members.length,
+     createdBy: session.createdBy
+    });
 
     io.to(code).emit('upload-received', {
       username: uploaderName,

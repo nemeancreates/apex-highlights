@@ -6,6 +6,7 @@ const os = require('os');
 const NTPClient = require('ntp-time').Client;
 const FormData = require('form-data');
 const https = require('https');
+const { checkForUpdates } = require('./updater');
 
 function getFFmpegPath() {
   if (app.isPackaged) {
@@ -19,6 +20,18 @@ const DEFAULT_BUFFER_DIR = path.join(os.tmpdir(), 'apex-highlights-buffer');
 const DEFAULT_CLIPS_DIR = path.join(app.getPath('videos'), 'PeakAbu');
 const USER_PREFS_PATH = path.join(app.getPath('userData'), 'user-preferences.json');
 const CHUNK_SECONDS = 10;
+
+
+// ================================
+// CLIENT VERSION CONFIG
+// ================================
+// Update this whenever a new client build is uploaded to the CDN.
+const LATEST_CLIENT_VERSION = {
+  version: '0.1.10',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.10.exe',
+  releaseNotes: 'Auto-updater added. The app now checks for updates on launch.'
+};
+
 
 // User-configurable paths (loaded from preferences)
 let BUFFER_DIR = DEFAULT_BUFFER_DIR;
@@ -901,6 +914,18 @@ app.whenReady().then(async () => {
   loadUserPreferences();
   ensureFolders();
   createWindow();
+  app.whenReady().then(async () => {
+  loadUserPreferences();
+  ensureFolders();
+  createWindow();
+  syncClock();
+  const registered = globalShortcut.register(customHotkey, onHotkeyPressed);
+  if (registered) console.log(`${customHotkey} hotkey registered successfully`);
+  else console.log(`WARNING: ${customHotkey} hotkey registration FAILED - another app may be using it`);
+
+  // Auto-updater: silent check on launch, prompts only if update exists
+  setTimeout(() => checkForUpdates(mainWindow), 3000);
+});
   syncClock();
   const registered = globalShortcut.register(customHotkey, onHotkeyPressed);
   if (registered) console.log(`${customHotkey} hotkey registered successfully`);
