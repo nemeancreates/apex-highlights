@@ -1241,8 +1241,8 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    const sessionCode = socket.sessionCode;
     socketRateLimits.delete(socket.id);
+    const sessionCode = socket.sessionCode;
     if (!sessionCode) return;
 
     const session = sessions.get(sessionCode);

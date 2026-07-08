@@ -3,6 +3,8 @@
   <head>
     <title>Peak-Abu</title>
     <style>
+
+        
       * { box-sizing: border-box; }
       body {
         background: #1a1a2e;
@@ -35,6 +37,51 @@
         background: #16213e;
         border-radius: 8px;
         padding: 16px 20px;
+        margin: 6px 0;
+      }
+
+
+      /* ===== Full Session toggle ===== */
+      .fs-toggle-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin: 10px 0 4px;
+        position: relative;
+      }
+      .fs-toggle-label { display: flex; align-items: center; gap: 6px; }
+      .fs-toggle-label .info { color: #e94560; cursor: help; font-size: 13px; }
+      .switch { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+      .switch input { opacity: 0; width: 0; height: 0; }
+      .slider {
+        position: absolute; inset: 0; cursor: pointer;
+        background: #2a2a5e; border-radius: 24px; transition: .2s;
+      }
+      .slider:before {
+        content: ""; position: absolute; height: 18px; width: 18px;
+        left: 3px; bottom: 3px; background: #eee; border-radius: 50%; transition: .2s;
+      }
+      .switch input:checked + .slider { background: #e94560; }
+      .switch input:checked + .slider:before { transform: translateX(20px); }
+
+      .fs-tooltip {
+        display: none; position: absolute; top: 100%; left: 0; right: 0;
+        background: #0f3460; border: 1px solid #e94560; border-radius: 6px;
+        padding: 8px 10px; font-size: 12px; color: #ccc; z-index: 10;
+        margin-top: 4px; line-height: 1.4;
+      }
+      .fs-toggle-label .info:hover + .fs-tooltip,
+      .fs-tooltip:hover { display: block; }
+
+      .fs-detail {
+        font-size: 11px; color: #888; margin: 2px 0 6px;
+      }
+      .fs-detail b { color: #aaa; font-weight: 600; }
+      .fs-loc-row { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
+      .fs-loc-row .btn-sm { flex-shrink: 0; }
+      .disk-banner {
+        display: none; background: #3a1520; border: 1px solid #e94560;
+        border-radius: 6px; padding: 8px 10px; font-size: 12px; color: #ffb3c0;
         margin: 6px 0;
       }
 
@@ -373,6 +420,35 @@
       </select>
       <div class="monitor-active" id="monitorActive" style="display:none;">Recording: <span id="monitorActiveName">—</span></div>
 
+      <div class="fs-toggle-row">
+        <div class="fs-toggle-label">
+          <span>Full Session Mode</span>
+          <span class="info" id="fsInfo">&#9432;</span>
+          <div class="fs-tooltip" id="fsTooltip">
+            Saves your entire recording locally when you end the session — not just highlights.
+            Highlights still upload to your squad as normal. <b>Uses significant disk space</b>
+            for long sessions (roughly 0.5&ndash;1&nbsp;GB per 10&nbsp;min at 1080p).
+            <span id="fsFreeSpace"></span>
+          </div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="fullSessionToggle" onchange="toggleFullSession()" />
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div id="fsOptions" style="display:none;">
+        <div class="fs-detail">
+          Archive location: <b id="fsLocPath">default (next to highlights)</b>
+        </div>
+        <div class="fs-loc-row">
+          <button class="btn-sm btn-secondary" onclick="pickFullSessionDir()">Choose Location</button>
+          <button class="btn-sm btn-secondary" onclick="resetFullSessionDir()">Reset</button>
+        </div>
+      </div>
+
+      <div class="disk-banner" id="diskBanner"></div>
+
       <div class="row" style="margin-bottom:6px;">
         <div>
           <label>Framerate</label>
@@ -484,7 +560,86 @@
     </div>
 
     <script>
+
       const { ipcRenderer } = require('electron');
+
+       // ===== Full Session Mode =====
+      window.toggleFullSession = function() {
+        var on = document.getElementById('fullSessionToggle').checked;
+        ipcRenderer.send('set-full-session-mode', on);
+        document.getElementById('fsOptions').style.display = on ? 'block' : 'none';
+      };
+
+      window.pickFullSessionDir = async function() {
+        var res = await ipcRenderer.invoke('pick-fullsession-directory');
+        if (res && res.success) {
+          document.getElementById('fsLocPath').textContent = res.path;
+        }
+      };
+
+      window.resetFullSessionDir = async function() {
+        var res = await ipcRenderer.invoke('clear-fullsession-directory');
+        document.getElementById('fsLocPath').textContent = 'default (next to highlights)';
+      };
+
+      // Restore toggle state + free space on launch
+      (async function initFullSession() {
+        try {
+          var on = await ipcRenderer.invoke('get-full-session-mode');
+          document.getElementById('fullSessionToggle').checked = !!on;
+          document.getElementById('fsOptions').style.display = on ? 'block' : 'none';
+          if (on) {
+            var loc = await ipcRenderer.invoke('get-fullsession-directory');
+            if (loc) document.getElementById('fsLocPath').textContent = loc;
+          }
+        } catch (e) {}
+      })();
+
+      // Populate free-space line when hovering the info icon
+      document.getElementById('fsInfo').addEventListener('mouseenter', async function() {
+        try {
+          var gb = await ipcRenderer.invoke('get-free-space-gb');
+          var el = document.getElementById('fsFreeSpace');
+          if (gb === null) { el.textContent = ''; return; }
+          var warn = gb <= 20 ? ' \u26A0' : '';
+          el.innerHTML = '<br><b>Free space: ' + gb + ' GB' + warn + '</b>';
+        } catch (e) {}
+      });
+
+      // Disk warning / critical banners from main process
+      ipcRenderer.on('disk-warning', function(ev, d) {
+        var b = document.getElementById('diskBanner');
+        b.style.display = 'block';
+        b.textContent = '\u26A0 Low disk space: ' + d.freeGB + ' GB left. Recording will auto-stop at 10 GB to protect your system.';
+      });
+
+      ipcRenderer.on('disk-critical', function(ev, d) {
+        var b = document.getElementById('diskBanner');
+        b.style.display = 'block';
+        b.textContent = '\u26D4 Disk critical: ' + d.freeGB + ' GB left. Recording was stopped automatically and your session is being archived.';
+      });
+
+      ipcRenderer.on('archive-started', function(ev, d) {
+        var b = document.getElementById('diskBanner');
+        b.style.display = 'block';
+        b.style.color = '#9fd0ff';
+        b.textContent = '\uD83D\uDCBE Saving full session (' + d.chunks + ' segments)...';
+      });
+
+      ipcRenderer.on('archive-complete', function(ev, d) {
+        var b = document.getElementById('diskBanner');
+        b.style.display = 'block';
+        b.style.color = '#8fe08f';
+        b.textContent = '\u2713 Full session saved (' + d.sizeMB + ' MB): ' + d.path;
+      });
+
+      ipcRenderer.on('archive-failed', function(ev, d) {
+        var b = document.getElementById('diskBanner');
+        b.style.display = 'block';
+        b.style.color = '#ffb3c0';
+        b.textContent = '\u26A0 Archive failed, but raw segments are safe in: ' + d.path;
+      });
+
       const io = require('socket.io-client');
 
       // State
@@ -765,32 +920,55 @@
       // =====================
       // MIC
       // =====================
-      async function loadMicDevices() {
-       try {
-         var devices = await navigator.mediaDevices.enumerateDevices();
-         var mics = devices.filter(function(d){return d.kind==='audioinput';});
-         var sel = document.getElementById('micSelect');
-         sel.innerHTML = '<option value="">None</option>';
-         mics.forEach(function(m) {
-           var opt = document.createElement('option');
-           opt.value = m.deviceId;
-           opt.textContent = m.label || ('Mic ' + sel.children.length);
-           sel.appendChild(opt);
-         });
 
-        // Auto-select default mic on first load if user hasn't explicitly chosen None
-         if (!window.micHasBeenTouched && mics.length > 0) {
-           var defaultMic = mics.find(function(m) { return m.deviceId === 'default'; }) || mics[0];
-           sel.value = defaultMic.deviceId;
-           window.micDeviceId = defaultMic.deviceId;
-           window.micEnabled = true;
-           sel.classList.remove('mic-pulse');
-         } else if (!window.micDeviceId) {
-           // No mic selected and user hasn't touched it — pulse
-           sel.classList.add('mic-pulse');
-         }
-       } catch(e) {}
-     }
+      async function loadMicDevices() {
+        try {
+         var devices = await navigator.mediaDevices.enumerateDevices();
+         var mics = devices.filter(function(d) { return d.kind === 'audioinput'; });
+
+         // Only dedup when labels are actually populated. If labels are empty
+         // (permission not yet granted), show everything — don't collapse them.
+         var labelsReady = mics.some(function(m) { return m.label && m.label.trim() !== ''; });
+
+         var filtered = mics;
+         if (labelsReady) {
+          var seen = {};
+          filtered = [];
+          mics.forEach(function(m) {
+           var label = m.label || '';
+            // Skip the Windows role aliases outright
+           if (/^Default\s*-/i.test(label) || /^Communications\s*-/i.test(label)) return;
+            // Dedup by the actual device label
+           if (seen[label]) return;
+           seen[label] = true;
+           filtered.push(m);
+         });
+         if (filtered.length === 0) filtered = mics; // safety fallback
+        }
+
+        var sel = document.getElementById('micSelect');
+        var prevValue = sel.value;  // preserve current selection across re-enumeration
+        sel.innerHTML = '<option value="">None</option>';
+        filtered.forEach(function(m) {
+          var opt = document.createElement('option');
+          opt.value = m.deviceId;
+          opt.textContent = m.label || ('Microphone ' + (sel.children.length));
+          sel.appendChild(opt);
+        });
+
+        // Restore prior selection if it still exists
+        if (prevValue && Array.prototype.some.call(sel.options, function(o){ return o.value === prevValue; })) {
+          sel.value = prevValue;
+        } else if (!window.micHasBeenTouched && filtered.length > 0) {
+          sel.value = filtered[0].deviceId;
+          window.micDeviceId = filtered[0].deviceId;
+          window.micEnabled = true;
+          sel.classList.remove('mic-pulse');
+        } else if (!window.micDeviceId) {
+          sel.classList.add('mic-pulse');
+        }
+      } catch(e) {}
+    }
 
       window.onMicDeviceChange = function() {
        window.micHasBeenTouched = true;
@@ -986,16 +1164,62 @@
       // =====================
       // RECORDING
       // =====================
-      ipcRenderer.send('get-monitors');
-      ipcRenderer.on('monitors-list', function(ev, monitors) {
+      // =====================
+      // RECORDING
+      // =====================
+      window.availableWindows = [];
+      window.currentMonitors = [];
+
+      function populateCaptureDropdown(monitors) {
         var sel = document.getElementById('monitorSelect');
         sel.innerHTML = '';
+
         monitors.forEach(function(m, i) {
           var opt = document.createElement('option');
-          opt.value = m.index;
-          opt.textContent = 'Monitor '+(i+1)+' — '+m.width+'x'+m.height+(m.primary?' (Primary)':'');
+          opt.value = 'monitor:' + m.index;
+          opt.textContent = 'Monitor ' + (i+1) + ' — ' + m.width + 'x' + m.height + (m.primary ? ' (Primary)' : '');
           sel.appendChild(opt);
         });
+
+        if (window.availableWindows.length > 0) {
+          var sep = document.createElement('option');
+          sep.disabled = true;
+          sep.textContent = '─── Game / Window Capture ───';
+          sel.appendChild(sep);
+
+          window.availableWindows.forEach(function(w) {
+            var opt = document.createElement('option');
+            opt.value = 'window:' + w.title;
+            opt.textContent = '🎮 ' + w.title;
+            sel.appendChild(opt);
+          });
+        }
+
+        var refresh = document.createElement('option');
+        refresh.value = 'refresh';
+        refresh.textContent = '🔄 Refresh window list...';
+        sel.appendChild(refresh);
+      }
+
+      ipcRenderer.send('get-monitors');
+      ipcRenderer.on('monitors-list', function(ev, monitors) {
+        window.currentMonitors = monitors;
+        populateCaptureDropdown(monitors);
+      });
+
+      document.getElementById('monitorSelect').addEventListener('change', async function() {
+        if (this.value === 'refresh') {
+          this.disabled = true;
+          window.availableWindows = await ipcRenderer.invoke('get-windows');
+          populateCaptureDropdown(window.currentMonitors);
+          this.disabled = false;
+          if (window.availableWindows.length > 0) {
+            this.value = 'window:' + window.availableWindows[0].title;
+          } else {
+            this.value = 'monitor:' + (window.currentMonitors[0] ? window.currentMonitors[0].index : 0);
+            hudLog('system', 'No capturable windows found — open your game first', 'info');
+          }
+        }
       });
 
       async function startAudioCapture() {
@@ -1023,16 +1247,30 @@
       }
 
       window.startRecording = async function() {
-        var monitorIndex = parseInt(document.getElementById('monitorSelect').value);
-        var monitorText = document.getElementById('monitorSelect').options[document.getElementById('monitorSelect').selectedIndex].textContent;
-        ipcRenderer.send('start-recording', { monitorIndex: monitorIndex });
+        var selVal = document.getElementById('monitorSelect').value;
+        var selText = document.getElementById('monitorSelect').options[document.getElementById('monitorSelect').selectedIndex].textContent;
+
+        if (selVal === 'refresh' || selVal === '') {
+          hudLog('system', 'Pick a monitor or window first', 'error');
+          return;
+        }
+
+        var startPayload = {};
+        if (selVal.indexOf('window:') === 0) {
+          startPayload.windowTitle = selVal.substring(7);
+          startPayload.monitorIndex = 0; // fallback, unused in window mode
+        } else {
+          startPayload.monitorIndex = parseInt(selVal.substring(8)); // after "monitor:"
+        }
+
+        ipcRenderer.send('start-recording', startPayload);
         window.isRecordingActive = true;
         window.bufferReady = false;
 
-        document.getElementById('startBtn').textContent = '↺ Switch Monitor';
+        document.getElementById('startBtn').textContent = '↺ Switch Source';
         document.getElementById('stopBtn').disabled = false;
         document.getElementById('monitorActive').style.display = 'block';
-        document.getElementById('monitorActiveName').textContent = monitorText;
+        document.getElementById('monitorActiveName').textContent = selText;
         document.getElementById('statusText').textContent = '● Buffering gameplay...';
         document.getElementById('statusText').className = 'status-bar buffering';
         document.getElementById('statusHelp').textContent = 'Building up a clip buffer — highlights will be available in ~15 seconds';

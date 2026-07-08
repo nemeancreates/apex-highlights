@@ -43,7 +43,7 @@ let recordFps = 30;
 let recordResolution = null; // null = native, or { width, height }
 let customHotkey = 'F9';
 let captureHdr = false;      // HDR monitor fix — tonemaps HDR desktop to correct SDR colors
-
+let captureWindowTitle = null; 
 let clockOffset = 0;
 let ffmpegProcess = null;
 let mainWindow = null;
@@ -57,6 +57,22 @@ let audioFirstChunkTime = null;
 let bufferReadyWatcher = null;
 let recordingStartTime = null;
 let lastHighlightBoundary = 0;
+
+// ================================
+// FULL SESSION MODE
+// ================================
+let fullSessionMode = false;           // when true: never prune, archive whole session on stop
+let fullSessionDir = null;             // optional override location for archives; null = use CLIPS_DIR
+let sessionArchiveActive = false;      // guards concat-on-stop
+let diskWatchTimer = null;             // interval that watches free space during recording
+let fullSessionAudioChunks = [];   // paths of audio webm files written to disk
+let fullSessionMicChunks = [];     // paths of mic webm files written to disk
+let fullSessionAudioIndex = 0;     // counter for filenames
+
+const DISK_WARN_BYTES = 20 * 1024 * 1024 * 1024;  // 20GB — warn
+const DISK_STOP_BYTES = 10 * 1024 * 1024 * 1024;  // 10GB — hard stop
+
+
 
 // ================================
 // CAPTURE ENGINE LADDER
@@ -87,7 +103,8 @@ const ENGINE_LABELS = {
   'dda-hdr-x264':  'GPU capture + HDR tonemap + CPU encode',
   'dda-x264':      'GPU capture + CPU encode',
   'gdi-nvenc':     'Legacy capture + GPU encode',
-  'gdi-x264':      'Legacy capture + CPU encode'
+  'gdi-x264':      'Legacy capture + CPU encode',
+  'gdi-window':    'Window capture (game)',
 };
 
 function buildEngineLadder() {
@@ -130,6 +147,21 @@ let micFirstChunkTime = null;
 let micVolume = 80;
 let micMuted = false;
 
+
+// Where full-session archives are written. Falls back to the clips dir.
+function getArchiveBaseDir() {
+  const base = (fullSessionDir && fs.existsSync(fullSessionDir))
+    ? fullSessionDir
+    : CLIPS_DIR;
+  return path.join(base, 'archives');
+}
+
+// Which directory to check for free space (the one we're writing chunks + archive into)
+function getActiveStorageRoot() {
+  if (fullSessionMode && fullSessionDir && fs.existsSync(fullSessionDir)) return fullSessionDir;
+  return CLIPS_DIR;
+}
+
 function ensureFolders() {
   if (!fs.existsSync(BUFFER_DIR)) fs.mkdirSync(BUFFER_DIR, { recursive: true });
   if (!fs.existsSync(CLIPS_DIR)) fs.mkdirSync(CLIPS_DIR, { recursive: true });
@@ -154,6 +186,15 @@ function loadUserPreferences() {
       if (typeof prefs.captureHdr === 'boolean') {
         captureHdr = prefs.captureHdr;
         console.log(`Loaded HDR capture preference: ${captureHdr}`);
+      }
+
+      if (typeof prefs.fullSessionMode === 'boolean') {
+        fullSessionMode = prefs.fullSessionMode;
+        console.log(`Loaded full session mode preference: ${fullSessionMode}`);
+      }
+      if (prefs.fullSessionDir && fs.existsSync(prefs.fullSessionDir)) {
+        fullSessionDir = prefs.fullSessionDir;
+        console.log(`Loaded full session archive dir: ${fullSessionDir}`);
       }
 
       console.log(`Loaded preferences: storageDir=${CLIPS_DIR}`);
@@ -245,6 +286,9 @@ async function syncClock() {
 function getPreciseUTC() { return Date.now() + clockOffset; }
 
 function pruneOldChunks() {
+  // In full session mode we keep every chunk for the whole session — no pruning.
+  if (fullSessionMode) return;
+
   const files = fs.readdirSync(BUFFER_DIR)
     .filter(f => f.endsWith('.mp4'))
     .map(f => ({ name: f, time: fs.statSync(path.join(BUFFER_DIR, f)).mtimeMs }))
@@ -266,6 +310,8 @@ function pruneOldChunks() {
 function buildCaptureArgs(engine, monitor) {
   const chunkPattern = path.join(BUFFER_DIR, 'chunk_%03d.mp4');
   const fpsStr = String(recordFps);
+
+
 
   // gdigrab geometry (legacy engines only)
   const screen = require('electron').screen;
@@ -321,6 +367,21 @@ function buildCaptureArgs(engine, monitor) {
   ];
   const gdiScale = recordResolution ? ['-vf', `scale=-2:${recordResolution.height}`] : [];
 
+  // Window capture mode — use gdigrab targeting a specific window title.
+  // Overrides monitor/ddagrab engines entirely.
+  if (captureWindowTitle) {
+    const winInput = [
+      '-f', 'gdigrab', '-framerate', fpsStr,
+      '-i', `title=${captureWindowTitle}`
+    ];
+    const winScale = recordResolution ? ['-vf', `scale=-2:${recordResolution.height}`] : [];
+    // Window capture always uses gdigrab; pick encoder based on availability
+    if (!useCpuEncoder) {
+      return [...winInput, ...winScale, ...nvencArgs, ...segmentArgs];
+    }
+    return [...winInput, ...winScale, ...x264Args, '-pix_fmt', 'yuv420p', ...segmentArgs];
+  }
+
   switch (engine) {
     case 'dda-nvenc':
       return [...ddaInput(false), ...nvencArgs, ...segmentArgs];
@@ -339,6 +400,51 @@ function buildCaptureArgs(engine, monitor) {
       return [...gdiInput, ...gdiScale, ...x264Args, '-pix_fmt', 'yuv420p', ...segmentArgs];
   }
 }
+
+// Returns free bytes on the volume containing `dir`, or null if it can't be read.
+function getFreeBytes(dir) {
+  try {
+    const stats = fs.statfsSync(dir); // Node 18.15+ / 20+
+    return stats.bavail * stats.bsize;
+  } catch (e) {
+    return null; // statfsSync unavailable or path bad — fail open
+  }
+}
+
+function startDiskWatcher() {
+  stopDiskWatcher();
+  let warned = false;
+  diskWatchTimer = setInterval(() => {
+    const root = getActiveStorageRoot();
+    const free = getFreeBytes(root);
+    if (free === null) return;
+
+    if (free <= DISK_STOP_BYTES) {
+      console.log(`Disk critical: ${(free / 1e9).toFixed(1)}GB free — auto-stopping recording`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('disk-critical', {
+          freeGB: (free / 1e9).toFixed(1),
+          path: root
+        });
+      }
+      stopRecordingInternal();     // triggers archive concat + halt
+    } else if (free <= DISK_WARN_BYTES && !warned) {
+      warned = true;
+      console.log(`Disk low: ${(free / 1e9).toFixed(1)}GB free — warning user`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('disk-warning', {
+          freeGB: (free / 1e9).toFixed(1),
+          path: root
+        });
+      }
+    }
+  }, 30000); // check every 30s
+}
+
+function stopDiskWatcher() {
+  if (diskWatchTimer) { clearInterval(diskWatchTimer); diskWatchTimer = null; }
+}
+
 
 function startRecording(monitor) {
   ensureFolders();
@@ -390,6 +496,7 @@ function startRecording(monitor) {
   let stderrTail = '';
 
   startBufferReadyWatcher();
+  if (fullSessionMode) startDiskWatcher();
 
   ffmpegProcess.on('error', (err) => {
     const logPath = path.join(os.tmpdir(), 'peakabu-ffmpeg.log');
@@ -768,6 +875,35 @@ function createWindow() {
     return { success: false };
   });
 
+  // Enumerate open windows with visible titles (on-demand, no polling)
+  ipcMain.handle('get-windows', async () => {
+    return new Promise((resolve) => {
+      const ps = spawn('powershell.exe', [
+        '-NoProfile', '-Command',
+        "Get-Process | Where-Object {$_.MainWindowTitle -ne ''} | Select-Object ProcessName,MainWindowTitle | ConvertTo-Json -Compress"
+      ], { windowsHide: true });
+
+      let out = '';
+      ps.stdout.on('data', d => out += d.toString());
+      ps.on('close', () => {
+        try {
+          let parsed = JSON.parse(out);
+          if (!Array.isArray(parsed)) parsed = [parsed]; // single result isn't array
+          // Filter out our own window and empties
+          const windows = parsed
+            .filter(w => w.MainWindowTitle && w.MainWindowTitle.trim() !== '')
+            .filter(w => w.MainWindowTitle !== 'Peak-Abu')
+            .map(w => ({ processName: w.ProcessName, title: w.MainWindowTitle }));
+          resolve(windows);
+        } catch (e) {
+          console.log('Window enum parse failed:', e.message);
+          resolve([]);
+        }
+      });
+      ps.on('error', () => resolve([]));
+    });
+  });
+
   ipcMain.handle('get-storage-directory', () => CLIPS_DIR);
   ipcMain.handle('is-first-launch', () => !loadUserPreferences().hasLaunched);
   ipcMain.handle('mark-first-launch-done', () => {
@@ -795,7 +931,7 @@ function createWindow() {
   });
   ipcMain.on('session-disconnected', () => { currentSession = null; });
 
-  ipcMain.on('start-recording', (event, { monitorIndex }) => {
+  ipcMain.on('start-recording', (event, { monitorIndex, windowTitle }) => {
     if (ffmpegProcess) {
       stoppingIntentionally = true;
       ffmpegProcess.kill();
@@ -803,29 +939,31 @@ function createWindow() {
     }
     audioBuffers = [];
     micBuffers = [];
+
+    // Set or clear window capture target
+    captureWindowTitle = windowTitle || null;
+
+    // Reset full session audio accumulators
+    fullSessionAudioChunks = [];
+    fullSessionMicChunks = [];
+    fullSessionAudioIndex = 0;
+
     try {
       const stale = fs.readdirSync(BUFFER_DIR).filter(f => f.endsWith('.mp4'));
       for (const f of stale) { try { fs.unlinkSync(path.join(BUFFER_DIR, f)); } catch (e) {} }
       console.log(`Buffer cleaned: removed ${stale.length} stale chunks`);
     } catch (e) { console.log('Buffer clean skipped:', e.message); }
 
-    // Fresh engine ladder for this recording session
     stoppingIntentionally = false;
-    engineLadder = buildEngineLadder();
+    engineLadder = captureWindowTitle ? ['gdi-window'] : buildEngineLadder();
     engineIndex = 0;
     startRecording(monitorIndex);
   });
 
   ipcMain.on('stop-recording', () => {
-    stopBufferReadyWatcher();
-    if (ffmpegProcess) {
-      stoppingIntentionally = true;
-      ffmpegProcess.kill();
-      ffmpegProcess = null;
-      console.log('Recording stopped');
-      mainWindow.webContents.send('recording-stopped');
-    }
+    stopRecordingInternal();
   });
+   
 
   ipcMain.on('update-settings', (event, settings) => {
     const bufferMap = { '30': 3, '60': 6, '180': 18, '300': 30, '600': 60 };
@@ -872,7 +1010,18 @@ function createWindow() {
   ipcMain.on('save-audio-chunk', (event, buffer) => {
     audioBuffers.push({ data: Buffer.from(buffer), time: Date.now() });
     while (audioBuffers.length > 20) audioBuffers.splice(1, 1);
+
+    if (fullSessionMode) {
+      // Append into ONE continuous file — headerless fragments only work
+      // as a single stream, not as separate concat inputs.
+      const audioPath = path.join(BUFFER_DIR, 'fs_audio_full.webm');
+      try {
+        fs.appendFileSync(audioPath, Buffer.from(buffer));
+        if (fullSessionAudioChunks.length === 0) fullSessionAudioChunks.push(audioPath);
+      } catch(e) { console.log('Full session audio append failed:', e.message); }
+    }
   });
+
 
   ipcMain.on('mic-recording-started', (event, wallTime) => {
     micFirstChunkTime = wallTime;
@@ -881,6 +1030,14 @@ function createWindow() {
   ipcMain.on('save-mic-chunk', (event, buffer) => {
     micBuffers.push({ data: Buffer.from(buffer), time: Date.now() });
     while (micBuffers.length > 20) micBuffers.splice(1, 1);
+
+    if (fullSessionMode) {
+      const micPath = path.join(BUFFER_DIR, 'fs_mic_full.webm');
+      try {
+        fs.appendFileSync(micPath, Buffer.from(buffer));
+        if (fullSessionMicChunks.length === 0) fullSessionMicChunks.push(micPath);
+      } catch(e) { console.log('Full session mic append failed:', e.message); }
+    }
   });
 
   ipcMain.on('update-mic-settings', (event, settings) => {
@@ -907,6 +1064,50 @@ function createWindow() {
     event.reply('monitors-list', monitorList);
   });
 
+  // Full Session Mode toggle
+  ipcMain.on('set-full-session-mode', (event, enabled) => {
+    fullSessionMode = !!enabled;
+    const prefs = loadUserPreferences();
+    prefs.fullSessionMode = fullSessionMode;
+    saveUserPreferences(prefs);
+    console.log(`Full Session Mode ${fullSessionMode ? 'ENABLED' : 'disabled'}`);
+  });
+
+  ipcMain.handle('get-full-session-mode', () => fullSessionMode);
+
+  // Free space (GB) at the active storage root — for the hover warning
+  ipcMain.handle('get-free-space-gb', () => {
+    const free = getFreeBytes(getActiveStorageRoot());
+    return free === null ? null : +(free / 1e9).toFixed(1);
+  });
+
+  // Optional separate archive location for full sessions
+  ipcMain.handle('pick-fullsession-directory', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose Full Session Archive Location',
+      defaultPath: fullSessionDir || CLIPS_DIR,
+      properties: ['openDirectory', 'createDirectory']
+    });
+    if (!result.canceled && result.filePaths.length > 0) {
+      fullSessionDir = result.filePaths[0];
+      const prefs = loadUserPreferences();
+      prefs.fullSessionDir = fullSessionDir;
+      saveUserPreferences(prefs);
+      return { success: true, path: fullSessionDir };
+    }
+    return { success: false };
+  });
+
+  ipcMain.handle('get-fullsession-directory', () => fullSessionDir || getArchiveBaseDir());
+
+  ipcMain.handle('clear-fullsession-directory', () => {
+    fullSessionDir = null;
+    const prefs = loadUserPreferences();
+    delete prefs.fullSessionDir;
+    saveUserPreferences(prefs);
+    return { path: getArchiveBaseDir() };
+  });
+
   ipcMain.handle('get-current-hotkey', () => customHotkey);
 }
 
@@ -914,26 +1115,16 @@ app.whenReady().then(async () => {
   loadUserPreferences();
   ensureFolders();
   createWindow();
-  app.whenReady().then(async () => {
-  loadUserPreferences();
-  ensureFolders();
-  createWindow();
   syncClock();
   const registered = globalShortcut.register(customHotkey, onHotkeyPressed);
   if (registered) console.log(`${customHotkey} hotkey registered successfully`);
   else console.log(`WARNING: ${customHotkey} hotkey registration FAILED - another app may be using it`);
-
-  // Auto-updater: silent check on launch, prompts only if update exists
   setTimeout(() => checkForUpdates(mainWindow), 3000);
-});
-  syncClock();
-  const registered = globalShortcut.register(customHotkey, onHotkeyPressed);
-  if (registered) console.log(`${customHotkey} hotkey registered successfully`);
-  else console.log(`WARNING: ${customHotkey} hotkey registration FAILED - another app may be using it`);
 });
 
 app.on('window-all-closed', () => {
   stopBufferReadyWatcher();
+  stopDiskWatcher();
   if (ffmpegProcess) {
     stoppingIntentionally = true;
     ffmpegProcess.kill();
@@ -941,3 +1132,242 @@ app.on('window-all-closed', () => {
   globalShortcut.unregisterAll();
   if (process.platform !== 'darwin') app.quit();
 });
+
+
+// Concat every buffered chunk into one full-session file, then clear the buffer.
+function archiveFullSession() {
+  if (!fullSessionMode) return;
+  if (sessionArchiveActive) return;
+  sessionArchiveActive = true;
+
+  let chunks;
+  try {
+    chunks = fs.readdirSync(BUFFER_DIR)
+      .filter(f => /^chunk_\d+\.mp4$/.test(f))
+      .map(f => ({ name: f, path: path.join(BUFFER_DIR, f), time: fs.statSync(path.join(BUFFER_DIR, f)).mtimeMs }))
+      .sort((a, b) => a.time - b.time);
+  } catch (e) {
+    console.log('Archive: could not read buffer dir:', e.message);
+    sessionArchiveActive = false;
+    return;
+  }
+
+  if (chunks.length === 0) {
+    console.log('Archive: no chunks to archive');
+    sessionArchiveActive = false;
+    return;
+  }
+
+  // The final chunk is usually incomplete (FFmpeg killed mid-write, no moov atom).
+  // Drop it if we have more than one chunk to avoid concat corruption.
+  if (chunks.length > 1) {
+    const dropped = chunks.pop();
+    console.log(`Archive: dropping likely-incomplete final chunk ${dropped.name}`);
+    try { fs.unlinkSync(dropped.path); } catch(e) {}
+  }
+
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0, 10);
+  const codePart = currentSession ? currentSession.code : 'solo';
+  const stamp = now.toISOString().replace(/[:.]/g, '-');
+  const archiveDir = path.join(getArchiveBaseDir(), `${dateStr}_${codePart}`);
+
+  try { fs.mkdirSync(archiveDir, { recursive: true }); }
+  catch (e) { console.log('Archive: mkdir failed:', e.message); sessionArchiveActive = false; return; }
+
+  const tempVideoPath = path.join(BUFFER_DIR, `fs_temp_video_${Date.now()}.mp4`);
+  const outputPath = path.join(archiveDir, `full_session_${stamp}.mp4`);
+  const videoListPath = path.join(BUFFER_DIR, `archive_list_${Date.now()}.txt`);
+  const listContent = chunks.map(c => `file '${c.path.replace(/\\/g, '/')}'`).join('\n');
+
+  try { fs.writeFileSync(videoListPath, listContent); }
+  catch (e) { console.log('Archive: list write failed:', e.message); sessionArchiveActive = false; return; }
+
+  console.log(`Archiving ${chunks.length} video chunks + ${fullSessionAudioChunks.length} audio chunks`);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('archive-started', { chunks: chunks.length });
+  }
+
+  const hasAudio = fullSessionAudioChunks.length > 0;
+  const hasMic = fullSessionMicChunks.length > 0;
+
+  // Step 1: concat video chunks
+  const concatVideo = spawn(getFFmpegPath(), [
+    '-f', 'concat', '-safe', '0', '-i', videoListPath,
+    '-c', 'copy', '-y', hasAudio ? tempVideoPath : outputPath,
+    ...(hasAudio ? [] : ['-movflags', '+faststart'])
+  ], { windowsHide: true });
+
+  concatVideo.stderr.on('data', d => {
+    const line = d.toString();
+    if (line.includes('error') || line.includes('Error')) console.log('Archive video concat:', line);
+  });
+
+  concatVideo.on('close', (videoCode) => {
+    try { fs.unlinkSync(videoListPath); } catch(e) {}
+
+    if (videoCode !== 0) {
+      console.log('Archive: video concat failed');
+      cleanup(chunks, false);
+      return;
+    }
+
+    if (!hasAudio) {
+      // No audio captured — video-only archive
+      finalize(outputPath, chunks, null, null);
+      return;
+    }
+
+    // Audio is already one continuous appended webm — just re-encode it to m4a
+    // (decode fixes the appended-fragment stream), no concat needed.
+    const audioSrc = fullSessionAudioChunks[0];
+    const tempAudioReenc = path.join(BUFFER_DIR, `fs_temp_audio_${Date.now()}.m4a`);
+    const concatAudio = spawn(getFFmpegPath(), [
+      '-fflags', '+genpts+igndts',
+      '-err_detect', 'ignore_err',
+      '-i', audioSrc,
+      '-af', 'aresample=async=1000:first_pts=0',
+      '-c:a', 'aac', '-b:a', '192k', '-y', tempAudioReenc
+    ], { windowsHide: true });
+
+    let audioErr = '';
+    concatAudio.stderr.on('data', d => { audioErr += d.toString(); });
+
+    concatAudio.on('close', (audioCode) => {
+      console.log(`=== AUDIO RE-ENCODE exit code: ${audioCode} ===`);
+      console.log(audioErr.slice(-2000));  // last 2000 chars of FFmpeg output
+      if (audioCode !== 0 || !fs.existsSync(tempAudioReenc)) {
+        console.log('Archive: audio concat failed — saving video only');
+        try { fs.renameSync(tempVideoPath, outputPath); } catch(e) {}
+        finalize(outputPath, chunks, null, null);
+        return;
+      }
+
+      const mergeArgs = ['-i', tempVideoPath, '-i', tempAudioReenc];
+      let tempMicPath = null;
+
+      if (hasMic) {
+        tempMicPath = path.join(BUFFER_DIR, `fs_temp_mic_${Date.now()}.m4a`);
+        const { spawnSync } = require('child_process');
+        const micResult = spawnSync(getFFmpegPath(), [
+          '-fflags', '+genpts+igndts',
+          '-err_detect', 'ignore_err',
+          '-i', fullSessionMicChunks[0],
+          '-af', 'aresample=async=1000:first_pts=0',
+          '-c:a', 'aac', '-b:a', '192k', '-y', tempMicPath
+        ], { windowsHide: true });
+        if (micResult.status !== 0 || !fs.existsSync(tempMicPath)) {
+          tempMicPath = null;
+        }
+      }
+
+      if (tempMicPath) {
+        const vol = (micVolume / 100).toFixed(2);
+        mergeArgs.push('-i', tempMicPath);
+        mergeArgs.push(
+          '-map', '0:v:0',
+          '-filter_complex',
+          `[1:a]aresample=async=1000,volume=1.0[desk];[2:a]aresample=async=1000,volume=${vol}[mic];[desk][mic]amix=inputs=2:normalize=0[aout]`,
+          '-map', '[aout]'
+        );
+      } else {
+        mergeArgs.push('-map', '0:v:0', '-map', '1:a:0', '-af', 'aresample=async=1000');
+      }
+
+      mergeArgs.push('-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
+        '-movflags', '+faststart', '-y', outputPath);
+
+      const merge = spawn(getFFmpegPath(), mergeArgs, { windowsHide: true });
+
+      let mergeErr = '';
+      merge.stderr.on('data', d => { mergeErr += d.toString(); });
+
+      merge.on('close', (mergeCode) => {
+        console.log(`=== ARCHIVE MERGE exit code: ${mergeCode} ===`);
+        console.log('MERGE ARGS:', mergeArgs.join(' '));
+        console.log(mergeErr.slice(-2500));
+
+        [tempVideoPath, tempAudioReenc, tempMicPath].forEach(p => {
+          if (p) try { fs.unlinkSync(p); } catch(e) {}
+        });
+        if (mergeCode === 0 && fs.existsSync(outputPath)) {
+          finalize(outputPath, chunks, fullSessionAudioChunks, fullSessionMicChunks);
+        } else {
+          console.log('Archive: merge failed — leaving temp files for recovery');
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('archive-failed', { path: BUFFER_DIR });
+          }
+          sessionArchiveActive = false;
+        }
+      });
+    });
+  });
+
+  function finalize(outPath, videoChunks, audioFiles, micFiles) {
+    const sizeMB = fs.existsSync(outPath)
+      ? (fs.statSync(outPath).size / 1048576).toFixed(0) : '?';
+    console.log(`Full session archived (${sizeMB}MB): ${outPath}`);
+
+    const sidecar = {
+      version: 1,
+      archivedAt: now.toISOString(),
+      sessionCode: currentSession ? currentSession.code : null,
+      sessionStartUTC: recordingStartTime ? (recordingStartTime + clockOffset) : null,
+      chunkSeconds: CHUNK_SECONDS,
+      chunkCount: videoChunks.length,
+      frameRate: recordFps,
+      hasAudio: !!audioFiles && audioFiles.length > 0,
+      hasMic: !!micFiles && micFiles.length > 0
+    };
+    try {
+      fs.writeFileSync(outPath.replace(/\.mp4$/, '.json'), JSON.stringify(sidecar, null, 2));
+    } catch(e) {}
+
+    // Clean up video chunks
+    for (const c of videoChunks) { try { fs.unlinkSync(c.path); } catch(e) {} }
+    // Clean up audio disk chunks
+    if (audioFiles) audioFiles.forEach(p => { try { fs.unlinkSync(p); } catch(e) {} });
+    if (micFiles) micFiles.forEach(p => { try { fs.unlinkSync(p); } catch(e) {} });
+
+    fullSessionAudioChunks = [];
+    fullSessionMicChunks = [];
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('archive-complete', { path: outPath, sizeMB });
+    }
+    sessionArchiveActive = false;
+  }
+
+  function cleanup(videoChunks, deleteChunks) {
+    if (deleteChunks) for (const c of videoChunks) { try { fs.unlinkSync(c.path); } catch(e) {} }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('archive-failed', { path: BUFFER_DIR });
+    }
+    sessionArchiveActive = false;
+  }
+}
+
+  
+
+function stopRecordingInternal() {
+  stopBufferReadyWatcher();
+  stopDiskWatcher();
+
+  const wasRecording = !!ffmpegProcess;
+
+  if (ffmpegProcess) {
+    stoppingIntentionally = true;
+    ffmpegProcess.kill();
+    ffmpegProcess = null;
+    console.log('Recording stopped');
+  }
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('recording-stopped');
+  }
+
+  // Give FFmpeg a beat to finalize the last chunk before we concat it
+  if (wasRecording && fullSessionMode) {
+    setTimeout(() => archiveFullSession(), 1200);
+  }
+}
