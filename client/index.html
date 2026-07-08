@@ -1,1979 +1,1279 @@
 ﻿<!DOCTYPE html>
 <html>
-<head>
-  <title>Peak-Abu – Multi-POV Player</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+  <head>
+    <title>Peak-Abu</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        background: #1a1a2e;
+        color: #e0e0e0;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 30px 20px;
+        margin: 0;
+      }
+      h1 { color: #e94560; margin: 0; font-size: 22px; }
+      h3 { margin-top: 0; color: #e94560; font-size: 15px; font-weight: 600; }
+      label { font-size: 12px; color: #999; display: block; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
 
-    body {
-      background: #0a0a1a;
-      color: #eee;
-      font-family: 'Segoe UI', Arial, sans-serif;
-      height: 100vh;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
+      /* ===== Layout ===== */
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        max-width: 560px;
+        margin-bottom: 16px;
+      }
+      .section {
+        width: 100%;
+        max-width: 560px;
+        background: #16213e;
+        border-radius: 8px;
+        padding: 16px 20px;
+        margin: 6px 0;
+      }
+
+      /* ===== Inputs ===== */
+      select, input[type="text"], input[type="password"] {
+        width: 100%;
+        padding: 9px 12px;
+        background: #0f3460;
+        color: #eee;
+        border: 1px solid #2a2a5e;
+        border-radius: 6px;
+        font-size: 14px;
+        font-family: inherit;
+        margin-bottom: 8px;
+      }
+      input::placeholder { color: #556; }
+      select:focus, input:focus { border-color: #e94560; outline: none; }
+
+      /* ===== Buttons ===== */
+      button {
+        margin: 4px 0;
+        padding: 10px 20px;
+        background: #e94560;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 14px;
+        font-family: inherit;
+        cursor: pointer;
+        width: 100%;
+        transition: background 0.15s;
+      }
+      button:hover { background: #c73652; }
+      button:disabled { background: #444; cursor: not-allowed; color: #888; }
+      .btn-secondary { background: #0f3460; border: 1px solid #2a2a5e; color: #ccc; }
+      .btn-secondary:hover { background: #1a4a8a; border-color: #e94560; }
+      .btn-sm { padding: 6px 14px; font-size: 13px; width: auto; margin: 0; }
+      .btn-icon { background: none; border: none; color: #e94560; padding: 4px 8px; width: auto; margin: 0; font-size: 16px; }
+      .btn-icon:hover { color: #ff6b8a; background: none; }
+      .btn-settings { background: #0f3460; border: 1px solid #2a2a5e; color: #999; padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; width: auto; }
+      .btn-settings:hover { border-color: #e94560; color: #e94560; }
+
+      /* ===== Auth bar (collapsed after login) ===== */
+      .auth-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        max-width: 560px;
+        padding: 8px 16px;
+        background: #12122a;
+        border-radius: 6px;
+        margin-bottom: 6px;
+        font-size: 13px;
+      }
+      .auth-bar .user-label { color: #999; }
+      .auth-bar .user-label strong { color: #e94560; }
+      .auth-bar button { width: auto; padding: 5px 12px; font-size: 12px; margin: 0; background: #0f3460; border: 1px solid #2a2a5e; }
+      .auth-bar button:hover { border-color: #e94560; }
+
+      /* ===== Row helpers ===== */
+      .row { display: flex; gap: 8px; }
+      .row > * { flex: 1; }
+      .row-tight { display: flex; gap: 8px; align-items: center; }
+      .divider { text-align: center; color: #444; margin: 8px 0; font-size: 12px; }
+
+      /* ===== Session code ===== */
+      .session-code {
+        font-size: 30px;
+        font-weight: 700;
+        color: #e94560;
+        text-align: center;
+        letter-spacing: 6px;
+        padding: 12px;
+        background: #0f3460;
+        border-radius: 6px;
+        margin: 8px 0;
+        cursor: pointer;
+        user-select: all;
+        transition: background 0.15s;
+        font-family: 'Consolas', 'Courier New', monospace;
+      }
+      .session-code:hover { background: #1a4a8a; }
+      .session-code.copied { background: #2a6a3a; }
+      .hint { font-size: 11px; color: #556; text-align: center; margin-top: -4px; margin-bottom: 6px; }
+
+      /* ===== Clip duration ===== */
+      .clip-duration-row {
+        display: flex; align-items: center; gap: 8px;
+        margin: 8px 0; padding: 8px 12px;
+        background: #0f3460; border-radius: 6px; border: 1px solid #2a2a5e;
+      }
+      .clip-duration-row label { margin: 0; white-space: nowrap; flex-shrink: 0; }
+      .clip-duration-row select { margin: 0; flex: 1; }
+      .clip-duration-display {
+        font-size: 13px; color: #999; text-align: center;
+        padding: 8px; background: #0f3460; border-radius: 6px; margin: 6px 0;
+      }
+      .clip-duration-display strong { color: #e94560; }
+
+      /* ===== Player link ===== */
+      .player-link {
+        display: block; text-align: center; margin: 6px 0;
+        font-size: 12px; color: #e94560; text-decoration: none;
+      }
+      .player-link:hover { text-decoration: underline; color: #ff6b8a; }
+
+      /* ===== Members ===== */
+      .member-list { margin: 8px 0; }
+      .member-item {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 7px 12px; background: #0f3460; border-radius: 6px; margin: 3px 0; font-size: 13px;
+      }
+      .member-name { color: #eee; }
+      .member-status { font-size: 11px; padding: 2px 8px; border-radius: 4px; }
+      .member-status.rec { background: #ff4444; color: white; }
+      .member-status.idle { background: #333; color: #666; }
+
+      /* ===== Recording status ===== */
+      .status-bar {
+        padding: 12px 16px; border-radius: 6px; font-size: 14px;
+        text-align: center; font-weight: 600;
+      }
+      .status-bar.idle { color: #666; }
+      .status-bar.buffering { color: #e9a820; }
+      .status-bar.ready { color: #44ff88; }
+      .status-bar.recording { color: #ff4444; }
+      .status-help { font-size: 11px; color: #556; text-align: center; margin-top: 2px; font-weight: normal; }
+
+      /* ===== Monitor indicator ===== */
+      .monitor-active {
+        font-size: 12px; color: #44ff88; text-align: center;
+        margin: 4px 0; padding: 4px; background: #0f3460; border-radius: 4px;
+      }
+
+      /* ===== Hotkey ===== */
+      .hotkey-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+      .hotkey-display {
+        flex: 1; padding: 8px 12px; background: #0f3460; border: 1px solid #2a2a5e;
+        border-radius: 6px; font-size: 14px; font-weight: 600; color: #eee;
+        letter-spacing: 2px; text-align: center; font-family: 'Consolas', monospace;
+      }
+      .hotkey-display.listening { border-color: #e9a820; color: #e9a820; animation: pulse 1s infinite; }
+      @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+      .hotkey-hint { font-size: 11px; color: #556; margin-bottom: 8px; margin-top: -2px; }
+
+      /* ===== Mic (compact, inside recording section) ===== */
+      .mic-group { margin-top: 12px; padding-top: 12px; border-top: 1px solid #2a2a4e; }
+      .mic-group h4 { color: #e94560; font-size: 13px; margin: 0 0 6px 0; }
+      .mic-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+      .mic-row label { margin: 0; flex-shrink: 0; min-width: 50px; }
+      .mic-row select { margin: 0; flex: 1; }
+      .mic-row input[type="range"] { flex: 1; accent-color: #e94560; height: 4px; }
+      .mic-mute-btn {
+        background: #0f3460; border: 1px solid #2a2a5e; color: #999;
+        padding: 5px 10px; border-radius: 6px; cursor: pointer;
+        font-size: 12px; width: auto; margin: 0; flex-shrink: 0;
+      }
+      .mic-mute-btn:hover { border-color: #e94560; color: #e94560; }
+      .mic-mute-btn.muted { background: #e94560; color: white; border-color: #e94560; }
+      .mic-pulse {
+      animation: micPulse 2s ease-in-out infinite;
+      border-color: #e9a820;
     }
-
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 10px 20px;
-      background: #1a1a2e;
-      border-bottom: 2px solid #e94560;
-      flex-shrink: 0;
-      height: 50px;
+    @keyframes micPulse {
+      0%, 100% { border-color: #2a2a5e; }
+      50% { border-color: #e9a820; }
     }
-
-    .header h1 { color: #e94560; font-size: 20px; }
-
-    .join-bar { display: flex; gap: 8px; align-items: center; }
-
-    .join-bar input {
-      padding: 6px 12px;
-      background: #0f3460;
-      color: #eee;
-      border: 1px solid #e94560;
-      border-radius: 6px;
-      font-size: 14px;
-      text-transform: uppercase;
-      letter-spacing: 3px;
-      width: 130px;
-      text-align: center;
-    }
-
-    .join-bar input::placeholder { color: #556; text-transform: none; letter-spacing: normal; }
-
-    .btn {
-      padding: 6px 16px;
-      background: #e94560;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      font-size: 13px;
-      cursor: pointer;
-    }
-    .btn:hover { background: #c73652; }
-    .btn:disabled { background: #555; cursor: not-allowed; }
-    .btn-small { padding: 4px 10px; font-size: 12px; }
-    .btn-secondary { background: #0f3460; border: 1px solid #e94560; }
-    .btn-secondary:hover { background: #1a4a8a; }
-
-    .btn-paste {
-      padding: 6px 10px;
-      background: #0f3460;
-      color: #e94560;
-      border: 1px solid #e94560;
-      border-radius: 6px;
-      font-size: 13px;
-      cursor: pointer;
-      white-space: nowrap;
-    }
-    .btn-paste:hover { background: #1a4a8a; }
-    .btn-paste.pasted { background: #44ff88; border-color: #44ff88; color: #000; }
-
-    .main-layout { display: flex; flex: 1; min-height: 0; }
-
-    .video-area {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      min-width: 0;
-      border-right: 2px solid #1a1a2e;
-    }
-
-    .video-grid {
-      flex: 1;
-      display: grid;
-      gap: 3px;
-      padding: 3px;
-      overflow-y: auto;
-      min-height: 0;
-    }
-
-    .video-grid::-webkit-scrollbar { width: 6px; }
-    .video-grid::-webkit-scrollbar-track { background: #111; }
-    .video-grid::-webkit-scrollbar-thumb { background: #e94560; border-radius: 3px; }
-
-    .grid-1 { grid-template-columns: 1fr; }
-    .grid-2 { grid-template-columns: 1fr 1fr; }
-    .grid-3, .grid-4 { grid-template-columns: 1fr 1fr; }
-    .grid-5, .grid-6 { grid-template-columns: 1fr 1fr 1fr; }
-    .grid-7, .grid-8, .grid-9 { grid-template-columns: 1fr 1fr 1fr; }
-    .grid-10plus { grid-template-columns: 1fr 1fr 1fr 1fr; }
-
-    .video-grid.focused-mode { display: flex; flex-direction: column; gap: 0; padding: 0; }
-
-    .focused-main { flex: 1; min-height: 60%; position: relative; background: #000; }
-    .focused-main video { width: 100%; height: 100%; object-fit: contain; }
-
-    .focused-sidebar {
-      height: 25%;
-      display: flex;
-      overflow-x: auto;
-      overflow-y: hidden;
-      gap: 3px;
-      padding: 3px;
-      background: #111;
-      flex-shrink: 0;
-    }
-
-    .focused-sidebar::-webkit-scrollbar { height: 6px; }
-    .focused-sidebar::-webkit-scrollbar-track { background: #111; }
-    .focused-sidebar::-webkit-scrollbar-thumb { background: #e94560; border-radius: 3px; }
-
-    .focused-sidebar .pov-container { min-width: 180px; height: 100%; cursor: pointer; }
-
-    .pov-container {
-      position: relative;
-      background: #111;
-      border-radius: 4px;
-      overflow: hidden;
-      cursor: pointer;
-      border: 2px solid transparent;
-      transition: border-color 0.2s;
-    }
-    .pov-container:hover { border-color: #e94560; }
-    .pov-container.active { border-color: #e94560; }
-
-    .pov-container video {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      background: #000;
-      display: block;
-    }
-
-    .pov-label {
-      position: absolute;
-      top: 6px;
-      left: 6px;
-      background: rgba(233, 69, 96, 0.85);
-      color: white;
-      padding: 3px 8px;
-      border-radius: 4px;
-      font-size: 11px;
-      font-weight: bold;
-      z-index: 2;
-      pointer-events: none;
-    }
-
-    .pov-placeholder {
-      width: 100%;
-      height: 100%;
-      min-height: 120px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      background: #0a0a1a;
-      color: #555;
-      font-size: 13px;
-      gap: 8px;
-      cursor: pointer;
-    }
-
-    .pov-placeholder .play-icon { font-size: 32px; color: #e94560; opacity: 0.6; }
-    .pov-placeholder .load-hint { font-size: 11px; color: #444; }
-
-    .pov-loading {
-      width: 100%;
-      height: 100%;
-      min-height: 120px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #0a0a1a;
-      color: #e94560;
-      font-size: 13px;
-    }
-
-    .pov-missing {
-      width: 100%;
-      height: 100%;
-      min-height: 120px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      background: #0a0a1a;
-      color: #555;
-      font-size: 13px;
-      gap: 8px;
-    }
-    .pov-missing .monkey { font-size: 32px; }
-    .pov-missing .missing-name { color: #e94560; font-weight: bold; font-size: 12px; }
-    .pov-missing .missing-text { font-size: 11px; color: #444; }
-
-    .pov-processing {
-      width: 100%;
-      height: 100%;
-      min-height: 120px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      background: #0a0a1a;
-      color: #e9a820;
-      font-size: 13px;
-      gap: 8px;
-    }
-    .pov-processing .spinner { font-size: 28px; animation: spin 2s linear infinite; }
-    @keyframes spin { 100% { transform: rotate(360deg); } }
-    .pov-processing .proc-name { color: #e94560; font-weight: bold; font-size: 12px; }
-    .pov-processing .proc-text { font-size: 11px; color: #888; }
-
-    /* ========================
-       SESSION TIMELINE
-    ======================== */
-    .session-timeline {
-      flex-shrink: 0;
-      background: #1a1a2e;
-      border-top: 1px solid #2a2a4e;
-      padding: 8px 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .timeline-top-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .time-display { font-size: 12px; color: #aaa; min-width: 90px; text-align: center; }
-
-    .timeline-track-wrap { flex: 1; }
-
-    .timeline-track {
-      position: relative;
-      height: 36px;
-      background: #0a0a1a;
-      border-radius: 6px;
-      border: 1px solid #2a2a4e;
-      cursor: pointer;
-      overflow: hidden;
-      user-select: none;
-    }
-
-    .highlight-block {
-      position: absolute;
-      top: 4px;
-      height: calc(100% - 8px);
-      background: #0f3460;
-      border: 1px solid #e94560;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 10px;
-      font-weight: bold;
-      color: #e94560;
-      cursor: pointer;
-      transition: background 0.15s;
-      min-width: 28px;
-      overflow: hidden;
-      white-space: nowrap;
-    }
-
-    .highlight-block:hover { background: #1a4a8a; }
-    .highlight-block.active { background: #e94560; color: white; border-color: #ff7090; }
-
-    .timeline-needle {
-      position: absolute;
-      top: 0;
-      width: 2px;
-      height: 100%;
-      background: rgba(255,255,255,0.9);
-      pointer-events: none;
-      z-index: 10;
-      transform: translateX(-1px);
-    }
-
-    .timeline-track:hover .timeline-needle {
-      width: 4px;
-      transform: translateX(-2px);
-      background: #e94560;
-      transition: width 0.15s, background 0.15s;
-    }
-
-    .timeline-track:hover {
-      height: 44px;
-      margin-top: -4px;
-      margin-bottom: -4px;
-      transition: height 0.15s;
-    }
-
-    /* ========================
-       RIGHT PANEL
-    ======================== */
-    .right-panel {
-      width: 240px;
-      flex-shrink: 0;
-      display: flex;
-      flex-direction: column;
-      background: #12122a;
-      border-left: 2px solid #1a1a2e;
-    }
-
-    .panel-section { padding: 10px; }
-
-    .panel-section h3 {
-      color: #e94560;
-      font-size: 13px;
-      margin-bottom: 8px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-
-    .members-section { flex: 1; overflow-y: auto; border-bottom: 1px solid #2a2a4e; }
-    .members-section::-webkit-scrollbar { width: 5px; }
-    .members-section::-webkit-scrollbar-track { background: #111; }
-    .members-section::-webkit-scrollbar-thumb { background: #e94560; border-radius: 3px; }
-
-    .audio-section { max-height: 220px; overflow-y: auto; border-top: 1px solid #2a2a4e; }
-    .audio-section::-webkit-scrollbar { width: 5px; }
-    .audio-section::-webkit-scrollbar-track { background: #111; }
-    .audio-section::-webkit-scrollbar-thumb { background: #e94560; border-radius: 3px; }
-
-    .panel-row { padding: 2px 8px; }
-
-    .panel-row-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      cursor: pointer;
-      padding: 6px 0;
-      font-size: 13px;
-    }
-    .panel-row-header:hover { color: #e94560; }
-    .panel-row-header.focused { color: #e94560; }
-
-    .panel-row-header-left {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex: 1;
-      min-width: 0;
-    }
-
-    .member-dot { width: 8px; height: 8px; border-radius: 50%; background: #44ff88; flex-shrink: 0; }
-    .member-dot.unloaded { background: #555; }
-    .member-dot.missing { background: #ff4444; }
-    .member-dot.processing { background: #e9a820; }
-
-    .panel-row-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-    .audio-arrow { font-size: 10px; transition: transform 0.2s; color: #888; flex-shrink: 0; }
-    .audio-arrow.open { transform: rotate(90deg); }
-
-    .panel-row-dropdown { display: none; padding: 4px 0 6px 16px; }
-    .panel-row-dropdown.open { display: block; }
-
-    .player-hl-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 0;
-      font-size: 11px;
-      color: #aaa;
-      cursor: default;
-    }
-    .player-hl-item.has-clip { cursor: pointer; }
-    .player-hl-item.has-clip:hover { color: #e94560; }
-    .player-hl-item.current-hl { color: #e94560; font-weight: bold; }
-
-    .hl-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-
-    .audio-control-row {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 11px;
-      color: #aaa;
-      margin-bottom: 4px;
-    }
-    .audio-control-row label { width: 50px; flex-shrink: 0; }
-    .audio-control-row input[type="range"] { flex: 1; accent-color: #e94560; height: 4px; }
-
-    .mute-btn {
-      background: none;
-      border: 1px solid #555;
-      color: #aaa;
-      padding: 2px 6px;
-      border-radius: 3px;
-      font-size: 11px;
-      cursor: pointer;
-    }
-    .mute-btn:hover { border-color: #e94560; color: #e94560; }
-    .mute-btn.muted { background: #e94560; color: white; border-color: #e94560; }
-
-    /* ========================
-       EXPORT BAR
-    ======================== */
-    .export-bar {
-      min-height: 140px;
-      flex-shrink: 0;
-      background: #16213e;
-      border-top: 2px solid #e94560;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .export-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 16px;
-      border-bottom: 1px solid #2a2a4e;
-    }
-
-    .export-header h3 { color: #e94560; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
-    .export-actions { display: flex; gap: 8px; }
-
-    .export-timeline {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      padding: 8px 16px;
-      overflow-x: auto;
-      gap: 6px;
-    }
-
-    .export-timeline::-webkit-scrollbar { height: 6px; }
-    .export-timeline::-webkit-scrollbar-track { background: #111; }
-    .export-timeline::-webkit-scrollbar-thumb { background: #e94560; border-radius: 3px; }
-
-    .export-clip {
-      min-width: 120px;
-      height: 70px;
-      background: #0f3460;
-      border: 2px solid #2a2a5e;
-      border-radius: 6px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      font-size: 11px;
-      cursor: pointer;
-      flex-shrink: 0;
-      transition: border-color 0.15s, background 0.15s;
-      padding: 4px 8px;
-      text-align: center;
-      user-select: none;
-      position: relative;
-    }
-    .export-clip::after {
-      content: '';
-      position: absolute;
-      top: 6px; right: 6px;
-      width: 14px; height: 14px;
-      border: 2px solid #2a2a5e;
-      border-radius: 3px;
-      background: transparent;
-      transition: all 0.15s;
-    }
-    .export-clip:hover { border-color: #e94560; }
-    .export-clip:hover::after { border-color: #e94560; }
-    .export-clip.selected { border-color: #e94560; background: #1a3a6e; }
-    .export-clip.selected::after {
-      background: #e94560;
-      border-color: #e94560;
-      content: '✓';
-      color: white;
-      font-size: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .composite-section {
-      padding: 8px 16px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      border-top: 1px solid #2a2a4e;
-      flex-shrink: 0;
-    }
-
-    .composite-status { font-size: 12px; color: #888; flex: 1; }
-    .composite-status.ready { color: #44ff88; }
-    .composite-status.processing { color: #e9a820; }
-    .composite-status.failed { color: #ff4444; }
-
-    .progress-bar { width: 140px; height: 6px; background: #333; border-radius: 3px; overflow: hidden; flex-shrink: 0; }
-
-    .progress-fill {
-      height: 100%;
-      background: #e9a820;
-      border-radius: 3px;
-      width: 0%;
-      transition: width 0.3s;
-      animation: indeterminate 1.5s infinite;
-    }
-
-    @keyframes indeterminate {
-      0% { width: 20%; margin-left: 0%; }
-      50% { width: 40%; margin-left: 40%; }
-      100% { width: 20%; margin-left: 80%; }
-    }
-
-    .empty-state {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      color: #444;
-      font-size: 16px;
-      gap: 10px;
-    }
-    .empty-state .monkey { font-size: 48px; }
-    .empty-state .expired-msg { color: #e9a820; font-size: 14px; }
-
-    .share-bar {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 16px;
-      background: #0f3460;
-      border-radius: 6px;
-      margin-left: 12px;
-      max-width: 320px;
-    }
-
-    .share-url {
-      flex: 1;
-      font-size: 12px;
-      color: #aaa;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-family: monospace;
-    }
-
-    /* Export select checkbox on POV tiles */
-    .pov-export-check {
-      position: absolute;
-      top: 6px;
-      right: 6px;
-      width: 26px;
-      height: 26px;
-      background: rgba(15, 52, 96, 0.85);
-      border: 2px solid #556;
-      border-radius: 6px;
-      color: #888;
-      font-size: 16px;
-      font-weight: 700;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      z-index: 10;
-      transition: all 0.15s;
-      line-height: 1;
-    }
-    .pov-export-check:hover { border-color: #e94560; color: #e94560; background: rgba(15, 52, 96, 0.95); }
-    .pov-export-check.selected { background: #e94560; border-color: #e94560; color: white; }
-
-    .btn-copy {
-      background: none;
-      border: 1px solid #e94560;
-      color: #e94560;
-      padding: 4px 10px;
-      border-radius: 4px;
-      font-size: 12px;
-      cursor: pointer;
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-    .btn-copy:hover { background: #e94560; color: white; }
-    .btn-copy.copied { background: #44ff88; border-color: #44ff88; color: #000; }
-  </style>
-</head>
-<body>
-
-  <div class="header">
-    <h1>&#x1F648; Peak-Abu Player</h1>
-    <div style="display:flex;align-items:center;gap:8px;flex:1;justify-content:flex-end;">
-      <div class="share-bar" id="shareBar" style="display:none;">
-        <span class="share-url" id="shareUrl"></span>
-        <button class="btn-copy" id="copyBtn" onclick="copyShareLink()">&#x1F4CB; Copy Link</button>
-      </div>
-      <div class="join-bar">
-        <input type="text" id="sessionInput" placeholder="Session code" maxlength="6" />
-        <button class="btn-paste" id="pasteBtn" onclick="pasteAndLoad()" title="Paste session code from clipboard">&#x1F4CB; Paste</button>
-        <button class="btn" onclick="loadSession()">Load Session</button>
+      .mic-status { font-size: 11px; color: #556; }
+
+      /* ===== Upload progress ===== */
+      .upload-progress-wrap { margin: 8px 0; display: none; }
+      .upload-progress-label { font-size: 12px; color: #999; margin-bottom: 3px; display: flex; justify-content: space-between; }
+      .upload-progress-label span { color: #e94560; }
+      .upload-progress-track { width: 100%; height: 6px; background: #0f3460; border-radius: 3px; overflow: hidden; }
+      .upload-progress-fill { height: 100%; width: 0%; background: #e94560; border-radius: 3px; transition: width 0.3s ease; }
+      .upload-progress-fill.success { background: #44ff88; }
+      .upload-progress-fill.error { background: #ff4444; }
+
+      /* ===== HUD ===== */
+      .hud-tabs { display: flex; gap: 3px; margin-bottom: 0; }
+      .hud-tab {
+        flex: 1; margin: 0; padding: 7px 4px; font-size: 12px;
+        background: #0f3460; border: 1px solid #0f3460; color: #888;
+        border-radius: 6px 6px 0 0; width: auto;
+      }
+      .hud-tab:hover { background: #1a4a8a; }
+      .hud-tab.active { background: #16213e; border: 1px solid #2a2a5e; border-bottom: 2px solid #16213e; color: #e94560; font-weight: 600; }
+      .hud-tab .tab-badge {
+        display: inline-block; min-width: 14px; padding: 1px 4px; margin-left: 3px;
+        background: #e94560; color: white; border-radius: 8px; font-size: 9px; font-weight: 700;
+      }
+      .hud-pane {
+        display: none; height: 180px; overflow-y: auto;
+        background: #101a33; border: 1px solid #2a2a5e; border-radius: 0 0 6px 6px; padding: 6px;
+      }
+      .hud-pane.active { display: block; }
+      .hud-pane::-webkit-scrollbar { width: 6px; }
+      .hud-pane::-webkit-scrollbar-track { background: #101a33; }
+      .hud-pane::-webkit-scrollbar-thumb { background: #0f3460; border-radius: 3px; }
+      .hud-empty { color: #444; font-size: 12px; text-align: center; padding: 30px 0; font-style: italic; }
+      .clip-item {
+        background: #0f3460; padding: 6px 8px; margin: 3px 0; border-radius: 5px;
+        font-size: 11px; word-break: break-all; display: flex; justify-content: space-between; gap: 6px;
+      }
+      .clip-item .clip-time { color: #556; font-size: 10px; flex-shrink: 0; white-space: nowrap; }
+      .clip-item.error { color: #ff4444; }
+      .clip-item.success { color: #44ff88; }
+      .clip-item.broadcast { color: #e9a820; }
+      .clip-item.info { color: #999; }
+
+      /* ===== Modals ===== */
+      .modal {
+        display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;
+      }
+      .modal.show { display: flex; }
+      .modal-content { background: #16213e; border-radius: 8px; padding: 24px; width: 90%; max-width: 460px; color: #eee; }
+      .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+      .modal-header h2 { margin: 0; color: #e94560; font-size: 18px; }
+      .modal-close { background: none; border: none; color: #e94560; font-size: 24px; cursor: pointer; padding: 0; width: auto; margin: 0; }
+      .modal-close:hover { color: #ff6b7a; }
+      .storage-path { background: #0f3460; padding: 10px; border-radius: 6px; margin: 8px 0; font-size: 12px; word-break: break-all; border: 1px solid #2a2a5e; font-family: 'Consolas', monospace; }
+      .welcome-icon { font-size: 40px; text-align: center; margin-bottom: 8px; }
+      .welcome-title { text-align: center; color: #e94560; font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+      .welcome-subtitle { text-align: center; color: #999; font-size: 13px; margin-bottom: 20px; }
+      .info-row { background: #0f3460; border-radius: 6px; padding: 10px; margin-bottom: 8px; font-size: 12px; }
+      .info-row-label { color: #999; font-size: 10px; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 1px; }
+      .info-row-value { color: #eee; word-break: break-all; font-family: 'Consolas', monospace; font-size: 11px; }
+
+      /* Hide by default */
+      #sessionPanel-connected { display: none; }
+      input#hotkeyCapture { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <h1>🙈 Peak-Abu</h1>
+      <button class="btn-settings" onclick="openSettings()">⚙ Settings</button>
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settingsModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Settings</h2>
+          <button class="modal-close" onclick="closeSettings()">×</button>
+        </div>
+        <div>
+          <label>Video Storage Location</label>
+          <div class="storage-path" id="storagePathDisplay">Loading...</div>
+          <button class="btn-secondary" style="width:100%;margin-bottom:16px;" onclick="pickStorageDirectory()">📁 Change Storage Directory</button>
+          <hr style="border:1px solid #333;margin:16px 0;">
+          <button class="btn-secondary" style="width:100%;" onclick="openUninstallGuide()">🗑 Uninstall Peak-Abu</button>
+        </div>
       </div>
     </div>
-  </div>
 
-  <div class="main-layout">
-    <div class="video-area">
-      <div class="video-grid" id="videoGrid">
-        <div class="empty-state">
-          <div class="monkey">&#x1F648;</div>
-          <div>Enter a session code to watch multi-POV highlights</div>
+    <!-- FIRST LAUNCH MODAL -->
+    <div id="firstLaunchModal" class="modal">
+      <div class="modal-content">
+        <div class="welcome-icon">🙈</div>
+        <div class="welcome-title">Welcome to Peak-Abu</div>
+        <div class="welcome-subtitle">Let's get you set up before your first session.</div>
+        <div class="info-row">
+          <div class="info-row-label">📂 App Location</div>
+          <div class="info-row-value" id="installPathDisplay">Loading...</div>
+        </div>
+        <div class="info-row">
+          <div class="info-row-label">🎬 Video Storage</div>
+          <div class="info-row-value" id="firstLaunchStorageDisplay">Default — click below to change</div>
+        </div>
+        <button class="btn-secondary" style="width:100%;margin:8px 0;" onclick="pickStorageFirstLaunch()">📁 Choose Video Storage Folder</button>
+        <p style="font-size:11px;color:#444;text-align:center;margin:6px 0 12px;">You can change this anytime in Settings.</p>
+        <button onclick="completeFirstLaunch()" style="width:100%;">🚀 Get Started</button>
+      </div>
+    </div>
+
+    <!-- AUTH (login/register form — hidden after login) -->
+    <div class="section" id="authPanel">
+      <h3>Account</h3>
+      <div id="authLoggedOut">
+        <label>Username</label>
+        <input type="text" id="authUsernameInput" placeholder="Enter username" />
+        <label>Password</label>
+        <input type="password" id="authPasswordInput" placeholder="Enter password" />
+        <div id="authConfirmWrap" style="display:none;">
+          <label>Confirm Password</label>
+          <input type="password" id="authConfirmInput" placeholder="Re-enter password" />
+        </div>
+        <div id="authError" style="color:#ff4444;font-size:12px;margin-top:-4px;margin-bottom:6px;display:none;"></div>
+        <div class="row">
+          <button onclick="loginUser()">Log In</button>
+          <button class="btn-secondary" onclick="registerUser()">Register</button>
+        </div>
+        <p style="font-size:11px;color:#444;text-align:center;margin-top:6px;">New? Click Register to create an account.</p>
+      </div>
+    </div>
+
+    <!-- AUTH BAR (shown after login — compact) -->
+    <div class="auth-bar" id="authBar" style="display:none;">
+      <span class="user-label">Logged in as <strong id="authBarName"></strong></span>
+      <button onclick="logoutUser()">Log Out</button>
+    </div>
+
+    <!-- SESSION PANEL -->
+    <div class="section" id="sessionPanel" style="display:none;">
+      <h3>Squad Session</h3>
+      <div id="sessionPanel-disconnected">
+        <button onclick="createSession()">Create New Session</button>
+        <div class="divider">— or join a friend —</div>
+        <label>Session Code</label>
+        <input type="text" id="joinCodeInput" placeholder="e.g. ABCD12" maxlength="6"
+               style="text-transform:uppercase;letter-spacing:3px;text-align:center;" />
+        <button class="btn-secondary" onclick="joinSession()">Join Session</button>
+      </div>
+      <div id="sessionPanel-connected">
+        <label>Session Code (click to copy)</label>
+        <div class="session-code" id="sessionCodeDisplay" onclick="copySessionCode()">------</div>
+        <div class="hint" id="sessionCodeHint">Click the code to copy to clipboard</div>
+        <a class="player-link" id="playerLink" href="#" target="_blank">🌐 Open in Web Player</a>
+
+        
+
+        <div class="member-list" id="memberList"></div>
+        <button class="btn-secondary" onclick="leaveSession()">Leave Session</button>
+      </div>
+    </div>
+
+    <!-- RECORDING SETUP + MIC (combined) -->
+    <div class="section">
+      <h3>Recording</h3>
+      <label>Monitor</label>
+      <select id="monitorSelect">
+        <option>Loading monitors...</option>
+      </select>
+      <div class="monitor-active" id="monitorActive" style="display:none;">Recording: <span id="monitorActiveName">—</span></div>
+
+      <div class="row" style="margin-bottom:6px;">
+        <div>
+          <label>Framerate</label>
+          <select id="fpsSelect" onchange="updateSettings()">
+            <option value="30" selected>30 FPS</option>
+            <option value="60">60 FPS</option>
+          </select>
+        </div>
+        <div>
+          <label>Quality</label>
+          <select id="resolutionSelect" onchange="updateSettings()">
+            <option value="native" selected>Native</option>
+            <option value="720">720p</option>
+            <option value="480">480p</option>
+          </select>
+        </div>
+        <div>
+          <label>Color</label>
+          <select id="hdrSelect" onchange="updateSettings()">
+            <option value="sdr" selected>Standard (SDR)</option>
+            <option value="hdr">HDR monitor fix</option>
+          </select>
         </div>
       </div>
 
-      <!-- SESSION TIMELINE -->
-      <div class="session-timeline" id="sessionTimeline" style="display:none;">
-        <div class="timeline-top-row">
-          <button class="btn btn-small btn-secondary" onclick="stepHighlight(-1)" title="Previous highlight">&#8249;</button>
-          <button class="btn btn-small" id="playPauseBtn" onclick="togglePlayPause()">&#9654;</button>
-          <button class="btn btn-small btn-secondary" onclick="stepHighlight(1)" title="Next highlight">&#8250;</button>
-          <div class="timeline-track-wrap">
-            <div class="timeline-track" id="timelineTrack">
-             <div class="timeline-needle" id="timelineNeedle" style="left:0%"></div>
-            </div>
+
+      <input type="text" id="hotkeyCapture" readonly />
+      <label>Save Highlight Hotkey</label>
+      <div class="hotkey-row">
+        <div class="hotkey-display" id="hotkeyDisplay"></div>
+        <button class="btn-sm btn-secondary" id="hotkeyBtn" onclick="toggleHotkeyCapture()">Change</button>
+      </div>
+      <div class="hotkey-hint" id="hotkeyHint">Press any F-key, or Ctrl/Alt/Shift + key</div>
+
+      <div class="row">
+        <button id="startBtn" onclick="startRecording()">▶ Start Highlight Session</button>
+        <button id="stopBtn" class="btn-secondary" onclick="stopRecording()" disabled>⏹ End Session</button>
+      </div>
+
+      <!-- MIC (compact, inside recording section) -->
+      <div class="mic-group" style="margin-bottom:8px;">
+          <h4>🔊 Desktop Audio Source</h4>
+         <div class="mic-row">
+           <label>Device</label>
+           <select id="audioOutputSelect" onchange="onAudioOutputChange()">
+              <option value="default">Default</option>
+            </select>
           </div>
-          <div class="time-display" id="timeDisplay">0:00 / 0:00</div>
+          <div class="mic-status">Select the playback device your game outputs to</div>
+      </div>
+      <div class="mic-group">
+        <h4>🎤 Microphone</h4>
+        <div class="mic-row">
+          <label>Device</label>
+          <select id="micSelect" onchange="onMicDeviceChange()">
+            <option value="">None</option>
+          </select>
+        </div>
+        <div class="mic-row">
+          <label>Vol</label>
+          <input type="range" id="micVolume" min="0" max="100" value="80" oninput="onMicVolumeChange()" />
+          <button class="mic-mute-btn" id="micMuteBtn" onclick="toggleMicMute()">Mute</button>
+        </div>
+        
+      </div>
+    </div>
+
+    <!-- STATUS + SAVE (prominent) -->
+    <div class="section">
+      <div class="status-bar idle" id="statusText">● Idle</div>
+      <div class="status-help" id="statusHelp">Start recording to begin buffering gameplay</div>
+      <!-- Clip duration: host picker / member display -->
+        <div class="clip-duration-row" id="clipDurationHost" style="display:none;">
+          <label>⏱ Clip</label>
+          <select id="clipDurationSelect" onchange="onClipDurationChange()">
+            <option value="15000">15 sec</option>
+            <option value="30000" selected>30 sec</option>
+            <option value="60000">1 min</option>
+            <option value="180000">3 min</option>
+          </select>
+        </div>
+        <div class="clip-duration-display" id="clipDurationMember" style="display:none;">
+          ⏱ Clip length: <strong id="clipDurationValue">30s</strong>
+        </div>
+      <button id="saveBtn" onclick="saveHighlight()" disabled style="margin-top:8px;">💾 Save Highlight (or press <span id="saveBtnHotkey">F9</span>)</button>
+      <div class="upload-progress-wrap" id="uploadProgressWrap">
+        <div class="upload-progress-label">
+          <span>Uploading clip...</span>
+          <span id="uploadPct">0%</span>
+        </div>
+        <div class="upload-progress-track">
+          <div class="upload-progress-fill" id="uploadProgressFill"></div>
         </div>
       </div>
     </div>
 
-    <div class="right-panel" id="rightPanel" style="display:none;">
-      <div class="members-section panel-section">
-        <h3>Players</h3>
-        <div id="memberList"></div>
+    <!-- SESSION HUD -->
+    <div class="section">
+      <div class="hud-tabs">
+        <button class="hud-tab active" id="hudTab-activity" onclick="switchHudTab('activity')">⚡ Activity<span class="tab-badge" id="hudBadge-activity" style="display:none;">0</span></button>
+        <button class="hud-tab" id="hudTab-squad" onclick="switchHudTab('squad')">👥 Squad<span class="tab-badge" id="hudBadge-squad" style="display:none;">0</span></button>
+        <button class="hud-tab" id="hudTab-system" onclick="switchHudTab('system')">🛠 System<span class="tab-badge" id="hudBadge-system" style="display:none;">0</span></button>
+        <button class="hud-tab" id="hudTab-history" onclick="switchHudTab('history')">📋 History<span class="tab-badge" id="hudBadge-history" style="display:none;">0</span></button>
       </div>
-      <div class="audio-section panel-section">
-        <h3>Audio</h3>
-        <div id="audioControls"></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="export-bar" id="exportBar" style="display:none;">
-    <div class="export-header">
-      <h3>Export Studio</h3>
-      <div class="export-actions">
-        <button class="btn btn-small btn-secondary" onclick="selectAllClips()">Select All</button>
-        <button class="btn btn-small btn-secondary" onclick="deselectAllClips()">Deselect All</button>
-        <button class="btn btn-small btn-secondary" onclick="downloadSelected()">&#11015; Download Individual</button>
-        <button class="btn btn-small" id="compositeBtn" onclick="startComposite()" disabled>&#127916; Export Combined View</button>
-      </div>
-    </div>
-    <div class="export-timeline" id="exportTimeline"></div>
-    <div class="composite-section" id="compositeSection" style="display:none;">
-      <div class="composite-status" id="compositeStatus"></div>
-      <div class="progress-bar" id="compositeProgressBar" style="display:none;">
-        <div class="progress-fill" id="compositeFill"></div>
-      </div>
-      <div class="composite-section" id="aireelSection" style="display:flex;flex-wrap:wrap;gap:8px;padding:8px 16px;">
-       <div style="width:100%;font-size:13px;color:#e94560;font-weight:600;">🎞 AI Highlight Reel <span style="color:#888;font-weight:normal;">(T3/T4 — free during beta)</span></div>
-       <div>
-         <label style="font-size:11px;color:#999;display:block;">Length</label>
-         <select id="aireelLength" style="background:#0f3460;color:#eee;border:1px solid #2a2a5e;border-radius:4px;padding:4px 8px;">
-           <option value="30">30s</option>
-           <option value="60" selected>60s</option>
-           <option value="90">90s</option>
-           <option value="120">2 min</option>
-         </select>
-       </div>
-       <div>
-         <label style="font-size:11px;color:#999;display:block;">Game</label>
-         <input type="text" id="aireelGame" placeholder="e.g. Apex Legends" style="background:#0f3460;color:#eee;border:1px solid #2a2a5e;border-radius:4px;padding:4px 8px;width:160px;" />
-       </div>
-       <div style="flex:1;min-width:220px;">
-         <label style="font-size:11px;color:#999;display:block;">Style notes for the AI editor (saved per game)</label>
-         <input type="text" id="aireelStyle" placeholder="e.g. keep clutches long, cut fast on kills" style="background:#0f3460;color:#eee;border:1px solid #2a2a5e;border-radius:4px;padding:4px 8px;width:100%;" />
-       </div>
-       <button class="btn btn-small" id="aireelBtn" onclick="startAiReel()">🤖 Generate AI Reel</button>
-       <div id="aireelStatus" style="width:100%;font-size:12px;color:#888;margin-top:4px;"></div>
-       <div id="aireelReport" style="width:100%;font-size:12px;color:#aaa;background:#0a0a1a;border-left:2px solid #e94560;padding:8px 12px;display:none;white-space:pre-wrap;"></div>
-      </div>
+      <div class="hud-pane active" id="hudPane-activity"><div class="hud-empty">Highlight saves and uploads appear here</div></div>
+      <div class="hud-pane" id="hudPane-squad"><div class="hud-empty">Squad joins and leaves appear here</div></div>
+      <div class="hud-pane" id="hudPane-system"><div class="hud-empty">App messages appear here</div></div>
+      <div class="hud-pane" id="hudPane-history"><div class="hud-empty">Session history appears here</div></div>
     </div>
 
-  </div>
+    <script>
+      const { ipcRenderer } = require('electron');
+      const io = require('socket.io-client');
 
-  <script>
-    window.addEventListener('DOMContentLoaded', function() {
-      var params = new URLSearchParams(window.location.search);
-      var code = params.get('code');
-      if (code) {
-        document.getElementById('sessionInput').value = code.toUpperCase();
-        loadSession();
-      }
-    });
+      // State
+      window.mediaRecorder = null;
+      window.socket = null;
+      window.currentSessionCode = null;
+      window.capturingHotkey = false;
+      window.currentHotkey = 'F9';
+      window.highlightCooldownActive = false;
+      window.highlightCooldownTimer = null;
+      window.isRecordingActive = false;
+      window.bufferReady = false;
+      window.isSessionHost = false;
+      window.sessionClipDuration = 30000;
+      window.authToken = null;
+      window.authUsername = null;
 
-    // Allow Enter key to load session
-    document.addEventListener('DOMContentLoaded', function() {
-      document.getElementById('sessionInput').addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') loadSession();
-      });
-    });
+      // Mic state
+      window.micDeviceId = null;
+      window.micEnabled = false;
+      window.micVolume = 80;
+      window.micMuted = false;
+      window.micRecorder = null;
 
-    // ========================
-    // PASTE & LOAD
-    // ========================
+      // =====================
+      // HUD
+      // =====================
+      const HUD_MAX_ITEMS = 50;
+      window.activeHudTab = 'activity';
 
-    async function pasteAndLoad() {
-      const btn = document.getElementById('pasteBtn');
+      window.switchHudTab = function(tab) {
+       window.activeHudTab = tab;
+       ['activity','squad','system','history'].forEach(t => {
+         document.getElementById('hudTab-'+t).classList.toggle('active', t===tab);
+         document.getElementById('hudPane-'+t).classList.toggle('active', t===tab);
+       });
+       var badge = document.getElementById('hudBadge-'+tab);
+       badge.style.display = 'none';
+       badge.textContent = '0';
+     };
+
+      // =====================
+     // SESSION HISTORY
+    // =====================
+    const SESSION_HISTORY_MAX = 20;
+
+    function loadSessionHistory() {
       try {
-        const text = await navigator.clipboard.readText();
-        const cleaned = text.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 6);
-        if (cleaned.length < 4) {
-          btn.textContent = '\u274C Invalid';
-          setTimeout(() => { btn.textContent = '\u{1F4CB} Paste'; }, 1500);
-          return;
-        }
-        document.getElementById('sessionInput').value = cleaned;
-        btn.textContent = '\u2705 Pasted!';
-        btn.classList.add('pasted');
-        setTimeout(() => { btn.textContent = '\u{1F4CB} Paste'; btn.classList.remove('pasted'); }, 1500);
-        loadSession();
-      } catch (e) {
-        // Clipboard access denied — user can paste manually
-        btn.textContent = '\u274C Denied';
-        setTimeout(() => { btn.textContent = '\u{1F4CB} Paste'; }, 1500);
-      }
+        var raw = localStorage.getItem('peak_abu_session_history');
+        return raw ? JSON.parse(raw) : [];
+      } catch(e) { return []; }
     }
 
-    // ========================
-    // STATE
-    // ========================
-    let allUploads = [];
-    let allUsers = [];
-    let highlights = [];
-    let currentHighlightIndex = 0;
-    let videos = [];
-    let isPlaying = false;
-    let masterDuration = 0;
-    let animFrameId = null;
-    let focusedIndex = -1;
-    let selectedExportClips = new Set();
-    let expectedClips = 0;
-    let currentSessionCode = null;
-    let compositeJobId = null;
-    let compositePollInterval = null;
-    let refreshInterval = null;
+    function saveSessionHistory(history) {
+      localStorage.setItem('peak_abu_session_history', JSON.stringify(history));
+    }
 
-    let sessionStart = 0;
-    let sessionTotalDuration = 0;
-
-    // ========================
-    // HIGHLIGHT CLUSTERING
-    // ========================
-
-    function clusterHighlights() {
-      const sorted = allUploads.slice().sort((a, b) => {
-        const tA = (a.metadata && (a.metadata.coordinated_timestamp || a.metadata.saveTimeUTC)) || 0;
-        const tB = (b.metadata && (b.metadata.coordinated_timestamp || b.metadata.saveTimeUTC)) || 0;
-        return tA - tB;
+    function addSessionToHistory(code, role) {
+      var history = loadSessionHistory();
+      // Remove duplicate if exists
+      history = history.filter(function(h) { return h.code !== code; });
+      history.unshift({
+        code: code,
+        role: role,
+        username: window.authUsername,
+        timestamp: new Date().toISOString()
       });
-
-      const clusters = [];
-      let current = null;
-
-      for (const entry of sorted) {
-        const ts = (entry.metadata && (entry.metadata.coordinated_timestamp || entry.metadata.saveTimeUTC)) || 0;
-        if (!current || ts - current.timestamp > 5000) {
-          current = { timestamp: ts, clips: [entry] };
-          clusters.push(current);
-        } else {
-          current.clips.push(entry);
-        }
-      }
-      return clusters;
+      // Cap at max
+      while (history.length > SESSION_HISTORY_MAX) history.pop();
+      saveSessionHistory(history);
+      renderSessionHistory();
     }
 
-    function deriveAllUsers() {
-      const seen = new Set();
-      return allUploads.filter(u => {
-        if (seen.has(u.username)) return false;
-        seen.add(u.username);
-        return true;
-      }).map(u => u.username);
-    }
-
-    function buildVideosForHighlight(index) {
-      const hl = highlights[index];
-      if (!hl) return [];
-      return allUsers.map(username => {
-        const clip = hl.clips.find(c => c.username === username);
-        return clip || {
-          element: null, metadata: null, username,
-          uploadId: null, videoFile: null, videoSrc: null,
-          thumbnailSrc: null, offset: 0, volume: 80,
-          isMuted: true, loaded: false, missing: true
-        };
-      });
-    }
-
-    function computeSessionTiming() {
-      let start = Infinity;
-      let end = -Infinity;
-      let hasData = false;
-
-      allUploads.forEach(u => {
-        if (u.metadata && u.metadata.startTimeUTC) {
-          hasData = true;
-          start = Math.min(start, u.metadata.startTimeUTC);
-          const clipEnd = u.metadata.startTimeUTC + (u.metadata.durationMs || 180000);
-          end = Math.max(end, clipEnd);
-        }
-      });
-
-      if (!hasData) return null;
-      return { start, end, duration: Math.max(end - start, 1) };
-    }
-
-    // ========================
-    // SESSION TIMELINE RENDER
-    // ========================
-
-    function renderSessionTimeline() {
-      const track = document.getElementById('timelineTrack');
-      track.querySelectorAll('.highlight-block').forEach(b => b.remove());
-
-      const timing = computeSessionTiming();
-
-      let prevEnd = 0;
-
-      highlights.forEach((hl, i) => {
-        const block = document.createElement('div');
-        block.className = 'highlight-block' + (i === currentHighlightIndex ? ' active' : '');
-        block.dataset.index = i;
-        block.textContent = 'H' + (i + 1);
-
-        let left, width;
-        if (timing && hl.timestamp > 0) {
-          let hlDuration = 0;
-          hl.clips.forEach(clip => {
-            if (clip.metadata && clip.metadata.durationMs) {
-              hlDuration = Math.max(hlDuration, clip.metadata.durationMs);
-            }
-          });
-          if (hlDuration === 0) hlDuration = 180000;
-
-          left = ((hl.timestamp - timing.start) / timing.duration) * 100;
-          width = (hlDuration / timing.duration) * 100;
-          left = Math.max(0, Math.min(left, 94));
-          width = Math.max(4, Math.min(width, 100 - left));
-        } else {
-          const total = highlights.length;
-          const gap = total === 1 ? 0 : 5;
-          const blockW = total === 1 ? 90 : (90 - gap * (total - 1)) / total;
-          left = total === 1 ? 5 : i * (blockW + gap) + 5;
-          width = blockW;
-        }
-
-        const GAP = 0.5;
-        const MIN_W = 3;
-        if (left < prevEnd + GAP) {
-          left = prevEnd + GAP;
-        }
-        if (left + width > 100) {
-          width = Math.max(MIN_W, 100 - left);
-          if (left + width > 100) left = 100 - width;
-        }
-        prevEnd = left + width;
-
-        block.style.left = left.toFixed(2) + '%';
-        block.style.width = width.toFixed(2) + '%';
-
-        block.addEventListener('click', e => {
-          e.stopPropagation();
-          switchHighlight(i);
-        });
-
-        track.insertBefore(block, document.getElementById('timelineNeedle'));
-      });
-
-      updateNeedle();
-    }
-
-    function updateNeedle() {
-      const needle = document.getElementById('timelineNeedle');
-      const track = document.getElementById('timelineTrack');
-      if (!needle || !track) return;
-
-      const activeBlock = track.querySelector('.highlight-block.active');
-      if (!activeBlock) { needle.style.left = '0%'; return; }
-
-      const blockLeft = parseFloat(activeBlock.style.left);
-      const blockWidth = parseFloat(activeBlock.style.width);
-      const fraction = masterDuration > 0 ? getCurrentMasterTime() / masterDuration : 0;
-      needle.style.left = (blockLeft + fraction * blockWidth).toFixed(2) + '%';
-    }
-
-    
-
-    let isScrubbing = false;
-let wasPlayingBeforeScrub = false;
-
-function scrubNeedleToEvent(event) {
-  if (masterDuration <= 0) return;
-
-  const track = document.getElementById('timelineTrack');
-  const rect = track.getBoundingClientRect();
-  let clickFraction = (event.clientX - rect.left) / rect.width;
-  clickFraction = Math.max(0, Math.min(1, clickFraction));
-
-  const activeBlock = track.querySelector('.highlight-block.active');
-  if (!activeBlock) return;
-
-  const blockLeft = parseFloat(activeBlock.style.left) / 100;
-  const blockWidth = parseFloat(activeBlock.style.width) / 100;
-  const withinFraction = Math.max(0, Math.min(1, (clickFraction - blockLeft) / blockWidth));
-
-  // Move needle visually — instant, no decode cost
-  const needle = document.getElementById('timelineNeedle');
-  needle.style.left = (parseFloat(activeBlock.style.left) + withinFraction * parseFloat(activeBlock.style.width)).toFixed(2) + '%';
-  document.getElementById('timeDisplay').textContent =
-    formatTime(withinFraction * masterDuration) + ' / ' + formatTime(masterDuration);
-
-  // Seek ONLY the primary video during drag — one decoder, real-time feedback
-  const primary = focusedIndex >= 0
-    ? videos[focusedIndex]
-    : videos.find(v => !v.missing && !v.processing && v.loaded);
-  if (primary && primary.element) {
-    const targetTime = withinFraction * masterDuration;
-    const adjusted = targetTime - primary.offset;
-    if (adjusted >= 0 && adjusted <= primary.element.duration) {
-      primary.element.currentTime = adjusted;
-    }
-  }
-
-  // Stash for the full-sync seek on release
-  track._pendingSeek = withinFraction;
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-  const track = document.getElementById('timelineTrack');
-
-  track.addEventListener('pointerdown', function(e) {
-    if (e.target.classList.contains('highlight-block') && !e.target.classList.contains('active')) return;
-    if (masterDuration <= 0) return;
-    isScrubbing = true;
-    wasPlayingBeforeScrub = isPlaying;
-    if (isPlaying) pauseAll();
-    track.setPointerCapture(e.pointerId);
-    scrubNeedleToEvent(e);
-  });
-
-  track.addEventListener('pointermove', function(e) {
-    if (isScrubbing) scrubNeedleToEvent(e);
-  });
-
-  track.addEventListener('pointerup', function(e) {
-    if (!isScrubbing) return;
-    isScrubbing = false;
-    try { track.releasePointerCapture(e.pointerId); } catch (err) {}
-
-    // Sync all other POVs to the primary's position
-    if (track._pendingSeek !== undefined) {
-      seekToFraction(track._pendingSeek);
-      delete track._pendingSeek;
-    }
-
-    if (wasPlayingBeforeScrub) playAll();
-  });
-});
-
-
-
-
-
-    function seekToFraction(fraction) {
-      const targetTime = fraction * masterDuration;
-      videos.forEach(v => {
-        if (v.missing || v.processing || !v.loaded) return;
-        const adjustedTime = targetTime - v.offset;
-        if (adjustedTime < 0) {
-          v.element.currentTime = 0;
-          v.element.pause();
-        } else if (adjustedTime > v.element.duration) {
-          v.element.currentTime = v.element.duration;
-        } else {
-          v.element.currentTime = adjustedTime;
-          if (isPlaying) v.element.play().catch(() => {});
-        }
-      });
-    }
-
-    // ========================
-    // HIGHLIGHT SWITCHING
-    // ========================
-
-    function switchHighlight(index) {
-      if (index < 0 || index >= highlights.length) return;
-      pauseAll();
-
-      currentHighlightIndex = index;
-      videos = buildVideosForHighlight(index);
-      focusedIndex = -1;
-
-      calculateOffsets();
-
-      masterDuration = 0;
-      videos.forEach(v => {
-        if (!v.missing && !v.processing && v.loaded && v.element) {
-          const dur = (v.element.duration || 0) + (v.offset || 0);
-          if (dur > masterDuration) masterDuration = dur;
-        }
-      });
-
-      const hasLoaded = videos.some(v => !v.missing && !v.processing && v.loaded);
-      if (!hasLoaded) {
-        const first = videos.find(v => !v.missing && !v.processing);
-        if (first) {
-          const idx = videos.indexOf(first);
-          loadPOV(idx, true);
-        }
-      }
-
-      renderVideoGrid();
-      renderMemberList();
-      renderAudioControls();
-      renderExportTimeline();
-      updateCompositeButton();
-      renderSessionTimeline();
-
-      document.getElementById('timeDisplay').textContent = '0:00 / ' + formatTime(masterDuration);
-    }
-
-    function stepHighlight(dir) {
-      const next = currentHighlightIndex + dir;
-      if (next < 0 || next >= highlights.length) return;
-      switchHighlight(next);
-    }
-
-    // ========================
-    // SESSION LOADING
-    // ========================
-
-    async function loadSession() {
-      const code = document.getElementById('sessionInput').value.trim().toUpperCase();
-      if (!code || code.length < 4) { alert('Enter a valid session code'); return; }
-
-      try {
-        const sessionRes = await fetch('/sessions/' + code);
-        if (sessionRes.status === 404) {
-          showExpiredState('Session not found — it may have expired or the code is incorrect.');
-          return;
-        }
-        if (!sessionRes.ok) { alert('Error loading session'); return; }
-        const session = await sessionRes.json();
-
-        const uploadsRes = await fetch('/sessions/' + code + '/uploads');
-        const uploadsData = await uploadsRes.json();
-        if (!uploadsData.uploads || uploadsData.uploads.length === 0) {
-          showExpiredState('No uploads in this session yet. Clips will appear once squad members save highlights.');
-          return;
-        }
-
-        allUploads = [];
-        focusedIndex = -1;
-        currentSessionCode = code;
-        currentHighlightIndex = 0;
-        expectedClips = session.members ? session.members.length : 0;
-
-        let hasProcessing = false;
-
-        for (const upload of uploadsData.uploads) {
-          let metadata = null;
-          const metaUrl = upload.metadataUrl || (upload.metadataFile ? '/media/' + code + '/' + upload.metadataFile : null);
-          if (metaUrl) {
-            try {
-              const metaRes = await fetch(metaUrl);
-              if (metaRes.ok) metadata = await metaRes.json();
-            } catch (e) {}
-          }
-
-          // Check if this upload is still processing (no CDN URL yet)
-          const isProcessing = !upload.videoUrl;
-          if (isProcessing) hasProcessing = true;
-
-          const video = document.createElement('video');
-          video.preload = 'none';
-          video.muted = true;
-          video.playsInline = true;
-
-          allUploads.push({
-            element: video, metadata, username: upload.username,
-            uploadId: upload.id, videoFile: upload.videoFile,
-            videoSrc: upload.videoUrl || null,
-            thumbnailSrc: upload.thumbnailUrl || (upload.thumbnailFile ? '/media/' + code + '/' + upload.thumbnailFile : null),
-            offset: 0, volume: 80, isMuted: true, loaded: false,
-            missing: false, processing: isProcessing
-          });
-        }
-
-        allUsers = deriveAllUsers();
-        highlights = clusterHighlights();
-        videos = buildVideosForHighlight(0);
-
-        const firstLoadable = videos.find(v => !v.missing && !v.processing);
-        if (firstLoadable) await loadPOV(videos.indexOf(firstLoadable), true);
-
-        calculateOffsets();
-
-        masterDuration = 0;
-        videos.forEach(v => {
-          if (!v.missing && !v.processing && v.loaded && v.element) {
-            const dur = (v.element.duration || 0) + (v.offset || 0);
-            if (dur > masterDuration) masterDuration = dur;
-          }
-        });
-
-        renderVideoGrid();
-        renderMemberList();
-        renderAudioControls();
-        renderExportTimeline();
-        updateCompositeButton();
-        renderSessionTimeline();
-        showShareLink(code);
-
-        document.getElementById('sessionTimeline').style.display = 'flex';
-        document.getElementById('rightPanel').style.display = 'flex';
-        document.getElementById('exportBar').style.display = 'flex';
-
-        if (refreshInterval) clearInterval(refreshInterval);
-        // Refresh faster if uploads are still processing
-        refreshInterval = setInterval(refreshUploads, hasProcessing ? 10000 : 45000);
-
-        console.log('Loaded ' + code + ' — ' + allUploads.length + ' uploads, ' + highlights.length + ' highlight(s), ' + allUsers.length + ' user(s)' + (hasProcessing ? ' (some still processing)' : ''));
-      } catch (err) {
-        alert('Error loading session: ' + err.message);
-        console.error(err);
-      }
-    }
-
-    function showExpiredState(message) {
-      const grid = document.getElementById('videoGrid');
-      grid.innerHTML = '';
-      const state = document.createElement('div');
-      state.className = 'empty-state';
-      state.innerHTML = '<div class="monkey">&#x1F648;</div><div class="expired-msg">' + message + '</div>';
-      grid.appendChild(state);
-
-      document.getElementById('sessionTimeline').style.display = 'none';
-      document.getElementById('rightPanel').style.display = 'none';
-      document.getElementById('exportBar').style.display = 'none';
-      document.getElementById('shareBar').style.display = 'none';
-    }
-
-    // ========================
-    // AUTO-REFRESH
-    // ========================
-
-    async function refreshUploads() {
-      if (!currentSessionCode) return;
-      try {
-        const uploadsRes = await fetch('/sessions/' + currentSessionCode + '/uploads');
-
-        // Session was purged — stop polling and notify
-        if (uploadsRes.status === 404) {
-          if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
-          showExpiredState('This session has expired. Videos are no longer available.');
-          return;
-        }
-
-        if (!uploadsRes.ok) return;
-        const uploadsData = await uploadsRes.json();
-        if (!uploadsData.uploads) return;
-
-        const existingIds = new Set(allUploads.map(u => u.uploadId));
-        const newRaw = uploadsData.uploads.filter(u => !existingIds.has(u.id));
-        let hadProcessing = false;
-        let stillProcessing = false;
-
-        // Update existing entries: CDN URLs arriving, or processing → ready
-        for (const upload of uploadsData.uploads) {
-          if (!existingIds.has(upload.id)) continue;
-          const existing = allUploads.find(u => u.uploadId === upload.id);
-          if (!existing) continue;
-
-          // Track if anything was processing
-          if (existing.processing) hadProcessing = true;
-
-          // Upload now has a CDN URL — mark as ready
-          if (upload.videoUrl && existing.processing) {
-            existing.processing = false;
-            existing.videoSrc = upload.videoUrl;
-            if (upload.thumbnailUrl) existing.thumbnailSrc = upload.thumbnailUrl;
-            console.log('Upload ready:', upload.username, upload.id);
-          } else if (upload.videoUrl && existing.videoSrc && !existing.videoSrc.startsWith('https://peakbu-media')) {
-            // Existing entry upgraded to CDN URL
-            existing.videoSrc = upload.videoUrl;
-            if (upload.thumbnailUrl) existing.thumbnailSrc = upload.thumbnailUrl;
-            if (existing.element && existing.element.src && !existing.element.src.startsWith('https://peakbu-media')) {
-              existing.element.src = '';
-              existing.loaded = false;
-            }
-            console.log('Updated to CDN URL:', upload.id);
-          }
-
-          // Still waiting?
-          if (!upload.videoUrl) stillProcessing = true;
-        }
-
-        if (newRaw.length > 0) {
-          for (const upload of newRaw) {
-            let metadata = null;
-            const metaUrl = upload.metadataUrl || (upload.metadataFile ? '/media/' + currentSessionCode + '/' + upload.metadataFile : null);
-            if (metaUrl) {
-              try {
-                const metaRes = await fetch(metaUrl);
-                if (metaRes.ok) metadata = await metaRes.json();
-              } catch (e) {}
-            }
-
-            const isProcessing = !upload.videoUrl;
-            if (isProcessing) stillProcessing = true;
-
-            const video = document.createElement('video');
-            video.preload = 'none';
-            video.muted = true;
-            video.playsInline = true;
-            allUploads.push({
-              element: video, metadata, username: upload.username,
-              uploadId: upload.id, videoFile: upload.videoFile,
-              videoSrc: upload.videoUrl || null,
-              thumbnailSrc: upload.thumbnailUrl || (upload.thumbnailFile ? '/media/' + currentSessionCode + '/' + upload.thumbnailFile : null),
-              offset: 0, volume: 80, isMuted: true, loaded: false,
-              missing: false, processing: isProcessing
-            });
-          }
-        }
-
-        // Adjust refresh speed based on whether anything is still processing
-        if (stillProcessing && refreshInterval) {
-          clearInterval(refreshInterval);
-          refreshInterval = setInterval(refreshUploads, 10000);
-        } else if (!stillProcessing && hadProcessing && refreshInterval) {
-          clearInterval(refreshInterval);
-          refreshInterval = setInterval(refreshUploads, 45000);
-        }
-
-        if (newRaw.length > 0 || hadProcessing) {
-          allUsers = deriveAllUsers();
-          highlights = clusterHighlights();
-          videos = buildVideosForHighlight(currentHighlightIndex);
-          calculateOffsets();
-
-          renderVideoGrid();
-          renderMemberList();
-          renderAudioControls();
-          renderExportTimeline();
-          updateCompositeButton();
-          renderSessionTimeline();
-        }
-
-        if (newRaw.length > 0) console.log('Refresh: added ' + newRaw.length + ' upload(s)');
-      } catch (err) {
-        console.log('Refresh error:', err);
-      }
-    }
-
-    // ========================
-    // LAZY LOAD POV
-    // ========================
-
-    async function loadPOV(index, isFirst = false) {
-      const v = videos[index];
-      if (!v || v.missing || v.processing || v.loaded) return;
-      v.loaded = true;
-
-      const container = document.getElementById('pov-container-' + index);
-      if (container) {
-        const placeholder = container.querySelector('.pov-placeholder, .pov-loading');
-        if (placeholder) { placeholder.className = 'pov-loading'; placeholder.textContent = 'Loading...'; }
-      }
-
-      v.element.src = v.videoSrc;
-      v.element.preload = 'auto';
-
-      await new Promise(resolve => {
-        if (v.element.readyState >= 1) { resolve(); return; }
-        v.element.addEventListener('loadedmetadata', resolve, { once: true });
-        v.element.addEventListener('error', resolve, { once: true });
-      });
-
-      if (isFirst) {
-        v.isMuted = false;
-        v.element.muted = false;
-        v.element.volume = v.volume / 100;
-      } else {
-        const masterTime = getCurrentMasterTime();
-        const adjustedTime = masterTime - v.offset;
-        if (adjustedTime > 0 && adjustedTime <= v.element.duration) v.element.currentTime = adjustedTime;
-        if (isPlaying) v.element.play().catch(() => {});
-      }
-
-      const thisDuration = (v.element.duration || 0) + v.offset;
-      if (thisDuration > masterDuration) masterDuration = thisDuration;
-
-      renderPOVContainer(index);
-      renderMemberList();
-      renderAudioControls();
-    }
-
-    function getCurrentMasterTime() {
-      const primary = videos.find(v => !v.missing && !v.processing && v.loaded);
-      if (!primary) return 0;
-      return (primary.element.currentTime || 0) + (primary.offset || 0);
-    }
-
-    function calculateOffsets() {
-      let earliestStart = Infinity;
-      let hasMetadata = false;
-      videos.forEach(v => {
-        if (!v.missing && !v.processing && v.metadata && v.metadata.startTimeUTC) {
-          earliestStart = Math.min(earliestStart, v.metadata.startTimeUTC);
-          hasMetadata = true;
-        }
-      });
-      if (!hasMetadata) return;
-      videos.forEach(v => {
-        if (!v.missing && !v.processing && v.metadata && v.metadata.startTimeUTC) {
-          v.offset = (v.metadata.startTimeUTC - earliestStart) / 1000;
-        }
-      });
-    }
-
-    // ========================
-    // VIDEO GRID
-    // ========================
-
-    function renderVideoGrid() {
-      const grid = document.getElementById('videoGrid');
-      grid.innerHTML = '';
-
-      if (focusedIndex >= 0) {
-        grid.className = 'video-grid focused-mode';
-
-        const mainContainer = buildPOVContainer(focusedIndex, true);
-        mainContainer.className = 'focused-main';
-        mainContainer.addEventListener('click', () => { focusedIndex = -1; renderVideoGrid(); highlightActiveMember(); });
-        grid.appendChild(mainContainer);
-
-        if (videos.length > 1) {
-          const sidebar = document.createElement('div');
-          sidebar.className = 'focused-sidebar';
-          videos.forEach((v, i) => {
-            if (i === focusedIndex) return;
-            const container = buildPOVContainer(i, false);
-            if (!v.missing && !v.processing) container.addEventListener('click', () => focusOnVideo(i));
-            sidebar.appendChild(container);
-          });
-          grid.appendChild(sidebar);
-        }
-      } else {
-        const count = videos.length;
-        let gridClass = 'grid-' + Math.min(count, 9);
-        if (count >= 10) gridClass = 'grid-10plus';
-        grid.className = 'video-grid ' + gridClass;
-
-        videos.forEach((v, i) => {
-          const container = buildPOVContainer(i, false);
-          if (!v.missing && !v.processing) container.addEventListener('click', () => focusOnVideo(i));
-          grid.appendChild(container);
-        });
-      }
-    }
-
-    function buildPOVContainer(index, isFocused) {
-      const v = videos[index];
-      const container = document.createElement('div');
-      container.className = 'pov-container' + (index === focusedIndex ? ' active' : '');
-      container.id = 'pov-container-' + index;
-
-      const label = document.createElement('div');
-      label.className = 'pov-label';
-      label.textContent = v.username;
-      container.appendChild(label);
-
-      if (v.missing) {
-        const md = document.createElement('div');
-        md.className = 'pov-missing';
-        md.innerHTML = '<div class="monkey">&#x1F648;</div><div class="missing-name">' + v.username + '</div><div class="missing-text">No clip in this highlight</div>';
-        container.appendChild(md);
-      } else if (v.processing) {
-        // Upload exists but CDN URL not ready yet
-        const pd = document.createElement('div');
-        pd.className = 'pov-processing';
-        pd.innerHTML = '<div class="spinner">&#x23F3;</div><div class="proc-name">' + v.username + '</div><div class="proc-text">Upload processing\u2026</div>';
-        container.appendChild(pd);
-      } else if (v.loaded) {
-        container.appendChild(v.element);
-      } else {
-        const placeholder = document.createElement('div');
-        if (v.thumbnailSrc) {
-          placeholder.className = 'pov-placeholder';
-          const img = document.createElement('img');
-          img.src = v.thumbnailSrc; img.alt = v.username;
-          img.style.cssText = 'width:100%;height:100%;object-fit:contain;position:absolute;top:0;left:0;';
-          const overlay = document.createElement('div');
-          overlay.style.cssText = 'position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:4px;';
-          const icon = document.createElement('div');
-          icon.className = 'play-icon'; icon.textContent = '\u25B6';
-          const hint = document.createElement('div');
-          hint.className = 'load-hint'; hint.textContent = 'Click to load';
-          overlay.appendChild(icon); overlay.appendChild(hint);
-          placeholder.style.position = 'relative';
-          placeholder.appendChild(img); placeholder.appendChild(overlay);
-        } else {
-          placeholder.className = 'pov-placeholder no-thumb';
-          const icon = document.createElement('div');
-          icon.className = 'play-icon'; icon.textContent = '\u25B6';
-          const nameDiv = document.createElement('div');
-          nameDiv.textContent = v.username;
-          const hint = document.createElement('div');
-          hint.className = 'load-hint'; hint.textContent = 'Click to load';
-          placeholder.appendChild(icon); placeholder.appendChild(nameDiv); placeholder.appendChild(hint);
-        }
-        container.appendChild(placeholder);
-      }
-      // Export select checkbox overlay (visible when export bar is open)
-      if (!v.missing && !v.processing) {
-        const checkbox = document.createElement('div');
-        checkbox.className = 'pov-export-check' + (selectedExportClips.has(index) ? ' selected' : '');
-        checkbox.title = selectedExportClips.has(index) ? 'Remove from export' : 'Add to export';
-        checkbox.textContent = selectedExportClips.has(index) ? '✓' : '+';
-        checkbox.addEventListener('click', (function(idx) {
-          return function(e) {
-            e.stopPropagation();
-            if (selectedExportClips.has(idx)) {
-              selectedExportClips.delete(idx);
-            } else {
-              selectedExportClips.add(idx);
-            }
-            // Sync the export timeline bar
-            const exportClipEl = document.getElementById('export-clip-' + idx);
-            if (exportClipEl) exportClipEl.classList.toggle('selected', selectedExportClips.has(idx));
-            // Update this checkbox
-            this.classList.toggle('selected', selectedExportClips.has(idx));
-            this.textContent = selectedExportClips.has(idx) ? '✓' : '+';
-            this.title = selectedExportClips.has(idx) ? 'Remove from export' : 'Add to export';
-          };
-        })(index));
-        container.appendChild(checkbox);
-      }
-
-      return container;
-    }
-
-    function renderPOVContainer(index) {
-      const existing = document.getElementById('pov-container-' + index);
-      if (!existing) return;
-      const newContainer = buildPOVContainer(index, index === focusedIndex);
-      if (index === focusedIndex) {
-        newContainer.addEventListener('click', () => { focusedIndex = -1; renderVideoGrid(); highlightActiveMember(); });
-      } else if (!videos[index].missing && !videos[index].processing) {
-        newContainer.addEventListener('click', () => focusOnVideo(index));
-      }
-      existing.replaceWith(newContainer);
-    }
-
-    async function focusOnVideo(index) {
-      if (videos[index].missing || videos[index].processing) return;
-      if (!videos[index].loaded) await loadPOV(index);
-      focusedIndex = index;
-      renderVideoGrid();
-      highlightActiveMember();
-    }
-
-    // ========================
-    // MEMBER LIST
-    // ========================
-
-    function renderMemberList() {
-      const list = document.getElementById('memberList');
-      list.innerHTML = '';
-
-      allUsers.forEach(username => {
-        const videoIdx = videos.findIndex(v => v.username === username);
-        const v = videoIdx >= 0 ? videos[videoIdx] : null;
-        const isMissing = !v || v.missing;
-        const isProcessing = v && v.processing;
-        const isFocused = videoIdx === focusedIndex;
-
-        const row = document.createElement('div');
-        row.className = 'panel-row';
-
-        const header = document.createElement('div');
-        header.className = 'panel-row-header' + (isFocused ? ' focused' : '');
-
-        const left = document.createElement('div');
-        left.className = 'panel-row-header-left';
-
-        const dot = document.createElement('div');
-        dot.className = 'member-dot' + (isMissing ? ' missing' : isProcessing ? ' processing' : (v && v.loaded ? '' : ' unloaded'));
-
-        const name = document.createElement('div');
-        name.className = 'panel-row-name';
-        name.textContent = username + (isProcessing ? ' (processing)' : '');
-
-        left.appendChild(dot);
-        left.appendChild(name);
-
-        const arrow = document.createElement('span');
-        arrow.className = 'audio-arrow';
-        arrow.textContent = '\u25B6';
-
-        header.appendChild(left);
-        header.appendChild(arrow);
-
-        const dropdown = document.createElement('div');
-        dropdown.className = 'panel-row-dropdown';
-
-        highlights.forEach((hl, hlIdx) => {
-          const hasClip = hl.clips.some(c => c.username === username);
-          const item = document.createElement('div');
-          item.className = 'player-hl-item' + (hasClip ? ' has-clip' : '') + (hlIdx === currentHighlightIndex ? ' current-hl' : '');
-
-          const hlDot = document.createElement('div');
-          hlDot.className = 'hl-dot';
-          hlDot.style.background = hasClip ? '#44ff88' : '#ff4444';
-
-          const hlLabel = document.createElement('span');
-          hlLabel.textContent = 'Highlight ' + (hlIdx + 1) + (hasClip ? '' : ' \u2014 no clip');
-
-          item.appendChild(hlDot);
-          item.appendChild(hlLabel);
-
-          if (hasClip) {
-            item.addEventListener('click', e => {
-              e.stopPropagation();
-              switchHighlight(hlIdx);
-              const newIdx = videos.findIndex(vv => vv.username === username);
-              if (newIdx >= 0 && !videos[newIdx].missing && !videos[newIdx].processing) focusOnVideo(newIdx);
-            });
-          }
-
-          dropdown.appendChild(item);
-        });
-
-        if (!isMissing && !isProcessing) {
-          left.style.cursor = 'pointer';
-          left.addEventListener('click', e => {
-            e.stopPropagation();
-            if (videoIdx >= 0) focusOnVideo(videoIdx);
-          });
-        }
-
-        header.addEventListener('click', () => {
-          dropdown.classList.toggle('open');
-          arrow.classList.toggle('open');
-        });
-
-        row.appendChild(header);
-        row.appendChild(dropdown);
-        list.appendChild(row);
-      });
-    }
-
-    function highlightActiveMember() {
-      document.querySelectorAll('.panel-row-header').forEach((header, i) => {
-        const videoIdx = videos.findIndex(v => v.username === allUsers[i]);
-        header.classList.toggle('focused', videoIdx === focusedIndex);
-      });
-    }
-
-    // ========================
-    // AUDIO CONTROLS
-    // ========================
-
-    function renderAudioControls() {
-      const container = document.getElementById('audioControls');
-      container.innerHTML = '';
-
-      videos.forEach((v, i) => {
-        if (v.missing || v.processing) return;
-
-        const row = document.createElement('div');
-        row.className = 'panel-row';
-
-        const header = document.createElement('div');
-        header.className = 'panel-row-header';
-
-        const left = document.createElement('div');
-        left.className = 'panel-row-header-left';
-
-        const dot = document.createElement('div');
-        dot.className = 'member-dot' + (v.loaded ? '' : ' unloaded');
-
-        const name = document.createElement('span');
-        name.className = 'panel-row-name';
-        name.textContent = v.username + (v.loaded ? '' : ' (not loaded)');
-
-        left.appendChild(dot);
-        left.appendChild(name);
-
-        const arrow = document.createElement('span');
-        arrow.className = 'audio-arrow';
-        arrow.textContent = '\u25B6';
-
-        header.appendChild(left);
-        header.appendChild(arrow);
-
-        const dropdown = document.createElement('div');
-        dropdown.className = 'panel-row-dropdown';
-
-        if (!v.loaded) {
-          const hint = document.createElement('div');
-          hint.style.cssText = 'font-size:11px;color:#555;padding:4px 0;';
-          hint.textContent = 'Click player to load this POV first';
-          dropdown.appendChild(hint);
-        } else {
-          const volRow = document.createElement('div');
-          volRow.className = 'audio-control-row';
-
-          const volLabel = document.createElement('label');
-          volLabel.textContent = 'Volume';
-
-          const volSlider = document.createElement('input');
-          volSlider.type = 'range';
-          volSlider.min = '0'; volSlider.max = '100'; volSlider.value = v.volume;
-
-          const muteRow = document.createElement('div');
-          muteRow.className = 'audio-control-row';
-
-          const muteBtn = document.createElement('button');
-          muteBtn.className = 'mute-btn' + (v.isMuted ? ' muted' : '');
-          muteBtn.textContent = v.isMuted ? 'Unmute' : 'Mute';
-
-          volSlider.addEventListener('input', (function(vRef, muteBtnRef) {
-            return function() {
-              vRef.volume = parseInt(this.value);
-              vRef.element.volume = vRef.volume / 100;
-              if (vRef.volume > 0 && vRef.isMuted) {
-                vRef.isMuted = false; vRef.element.muted = false;
-                muteBtnRef.classList.remove('muted'); muteBtnRef.textContent = 'Mute';
-              }
-            };
-          })(v, muteBtn));
-
-          muteBtn.addEventListener('click', (function(vRef, muteBtnRef) {
-            return function() {
-              vRef.isMuted = !vRef.isMuted;
-              vRef.element.muted = vRef.isMuted;
-              muteBtnRef.classList.toggle('muted');
-              muteBtnRef.textContent = vRef.isMuted ? 'Unmute' : 'Mute';
-            };
-          })(v, muteBtn));
-
-          const soloBtn = document.createElement('button');
-          soloBtn.className = 'mute-btn';
-          soloBtn.textContent = 'Solo';
-          soloBtn.addEventListener('click', (function(targetIdx) {
-            return function() {
-              videos.forEach((other, j) => {
-                if (other.missing || other.processing) return;
-                if (j === targetIdx) { other.isMuted = false; if (other.loaded) other.element.muted = false; }
-                else { other.isMuted = true; if (other.loaded) other.element.muted = true; }
-              });
-              renderAudioControls();
-            };
-          })(i));
-
-          volRow.appendChild(volLabel); volRow.appendChild(volSlider);
-          muteRow.appendChild(muteBtn); muteRow.appendChild(soloBtn);
-          dropdown.appendChild(volRow); dropdown.appendChild(muteRow);
-        }
-
-        header.addEventListener('click', () => {
-          dropdown.classList.toggle('open');
-          arrow.classList.toggle('open');
-        });
-
-        row.appendChild(header); row.appendChild(dropdown);
-        container.appendChild(row);
-      });
-    }
-
-    // ========================
-    // EXPORT
-    // ========================
-
-    function renderExportTimeline() {
-      const timeline = document.getElementById('exportTimeline');
-      timeline.innerHTML = '';
-      selectedExportClips.clear();
-
-      videos.forEach((v, i) => {
-        if (v.missing || v.processing) return;
-
-        const clip = document.createElement('div');
-        clip.className = 'export-clip';
-        clip.id = 'export-clip-' + i;
-
-        const name = document.createElement('div');
-        name.className = 'export-clip-name';
-        name.textContent = v.username;
-
-        const dur = v.element ? (v.element.duration || 0) : 0;
-        const duration = document.createElement('div');
-        duration.className = 'export-clip-duration';
-        duration.textContent = v.loaded
-          ? (formatTime(dur) + ' \u2022 ' + (v.metadata ? Math.round((v.metadata.durationMs || dur * 1000) / 1000) + 's' : formatTime(dur)))
-          : (v.metadata ? Math.round((v.metadata.durationMs || 0) / 1000) + 's' : 'Not loaded');
-
-        clip.appendChild(name); clip.appendChild(duration);
-
-        clip.addEventListener('click', () => {
-          clip.classList.toggle('selected');
-          if (selectedExportClips.has(i)) selectedExportClips.delete(i);
-          else selectedExportClips.add(i);
-        });
-
-        timeline.appendChild(clip);
-      });
-    }
-
-    function selectAllClips() {
-      videos.forEach((v, i) => {
-        if (v.missing || v.processing) return;
-        selectedExportClips.add(i);
-        const el = document.getElementById('export-clip-' + i);
-        if (el) el.classList.add('selected');
-      });
-    }
-
-    function deselectAllClips() {
-      selectedExportClips.clear();
-      document.querySelectorAll('.export-clip').forEach(el => el.classList.remove('selected'));
-    }
-
-    async function downloadSelected() {
-      if (selectedExportClips.size === 0) { alert('Select at least one clip to download'); return; }
-      for (const idx of selectedExportClips) {
-        const v = videos[idx];
-        if (v.missing || v.processing) continue;
-        if (!v.loaded) await loadPOV(idx);
-        const link = document.createElement('a');
-        link.href = v.videoSrc;
-        link.download = v.username + '_highlight.mp4';
-        document.body.appendChild(link); link.click(); document.body.removeChild(link);
-      }
-    }
-
-    // ========================
-    // PLAYBACK
-    // ========================
-
-    function togglePlayPause() {
-      if (isPlaying) pauseAll(); else playAll();
-    }
-
-    function playAll() {
-      videos.forEach(v => { if (!v.missing && !v.processing && v.loaded) v.element.play().catch(() => {}); });
-      isPlaying = true;
-      document.getElementById('playPauseBtn').textContent = '\u23F8';
-      startProgressUpdate();
-    }
-
-    function pauseAll() {
-      videos.forEach(v => { if (!v.missing && !v.processing && v.loaded) v.element.pause(); });
-      isPlaying = false;
-      document.getElementById('playPauseBtn').textContent = '\u25B6';
-      if (animFrameId) cancelAnimationFrame(animFrameId);
-    }
-
-    function startProgressUpdate() {
-      function update() {
-        if (!isPlaying) return;
-        const primary = videos.find(v => !v.missing && !v.processing && v.loaded);
-        if (!primary) return;
-
-        const masterTime = (primary.element.currentTime || 0) + (primary.offset || 0);
-        document.getElementById('timeDisplay').textContent = formatTime(masterTime) + ' / ' + formatTime(masterDuration);
-        updateNeedle();
-
-        const allEnded = videos.filter(v => !v.missing && !v.processing && v.loaded).every(v => v.element.ended || v.element.paused);
-        if (allEnded && isPlaying) { pauseAll(); return; }
-
-        animFrameId = requestAnimationFrame(update);
-      }
-      update();
-    }
-
-    // ========================
-    // SHARE LINK
-    // ========================
-
-    function showShareLink(code) {
-      const url = window.location.origin + '/player?code=' + code;
-      document.getElementById('shareUrl').textContent = url;
-      document.getElementById('shareBar').style.display = 'flex';
-    }
-
-    function copyShareLink() {
-      const url = document.getElementById('shareUrl').textContent;
-      navigator.clipboard.writeText(url).then(() => {
-        const btn = document.getElementById('copyBtn');
-        btn.textContent = '\u2705 Copied!';
-        btn.classList.add('copied');
-        setTimeout(() => { btn.textContent = '\u{1F4CB} Copy Link'; btn.classList.remove('copied'); }, 2000);
-      });
-    }
-
-    // ========================
-    // COMPOSITE EXPORT
-    // ========================
-
-    function updateCompositeButton() {
-      const btn = document.getElementById('compositeBtn');
-      const count = videos.filter(v => !v.missing && !v.processing).length;
-      btn.disabled = count < 1;
-      btn.textContent = count < 1
-        ? '\u{1F3AC} Export Combined (0/' + expectedClips + ' clips ready)'
-        : count < expectedClips
-          ? '\u{1F3AC} Export Combined (' + count + '/' + expectedClips + ' clips)'
-          : '\u{1F3AC} Export Combined View';
-    }
-
-    async function startComposite() {
-      if (!currentSessionCode) return;
-      const btn = document.getElementById('compositeBtn');
-      const section = document.getElementById('compositeSection');
-      const status = document.getElementById('compositeStatus');
-      const progressBar = document.getElementById('compositeProgressBar');
-
-      btn.disabled = true; btn.textContent = 'Starting...';
-      section.style.display = 'flex';
-      status.className = 'composite-status processing';
-      status.textContent = 'Starting compositing job...';
-      progressBar.style.display = 'block';
-
-      try {
-        const res = await fetch('/sessions/' + currentSessionCode + '/composite', { method: 'POST' });
-        if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed to start job'); }
-        const { jobId } = await res.json();
-        compositeJobId = jobId;
-        status.textContent = 'FFmpeg is stitching your clips \u2014 this takes 2-5 minutes...';
-        pollCompositeJob(jobId);
-      } catch (err) {
-        status.className = 'composite-status failed';
-        status.textContent = '\u274C ' + err.message;
-        progressBar.style.display = 'none';
-        btn.disabled = false;
-        btn.textContent = '\u{1F3AC} Export Combined View';
-      }
-    }
-
-    function pollCompositeJob(jobId) {
-      if (compositePollInterval) clearInterval(compositePollInterval);
-      compositePollInterval = setInterval(async () => {
-        try {
-          const res = await fetch('/sessions/' + currentSessionCode + '/composite/' + jobId);
-          const data = await res.json();
-          if (data.status === 'done') {
-            clearInterval(compositePollInterval); compositePollInterval = null;
-            const sizeMB = data.fileSize ? (data.fileSize / 1024 / 1024).toFixed(1) + 'MB' : '';
-            document.getElementById('compositeStatus').className = 'composite-status ready';
-            document.getElementById('compositeStatus').textContent = '\u2705 Ready' + (sizeMB ? ' (' + sizeMB + ')' : '') + ' \u2014 downloading...';
-            document.getElementById('compositeProgressBar').style.display = 'none';
-            document.getElementById('compositeBtn').disabled = false;
-            document.getElementById('compositeBtn').textContent = '\u{1F3AC} Export Combined View';
-            const link = document.createElement('a');
-            link.href = data.downloadUrl; link.download = 'peak-abu-composite.mp4';
-            document.body.appendChild(link); link.click(); document.body.removeChild(link);
-          } else if (data.status === 'failed') {
-            clearInterval(compositePollInterval); compositePollInterval = null;
-            document.getElementById('compositeStatus').className = 'composite-status failed';
-            document.getElementById('compositeStatus').textContent = '\u274C Compositing failed \u2014 try again';
-            document.getElementById('compositeProgressBar').style.display = 'none';
-            document.getElementById('compositeBtn').disabled = false;
-            document.getElementById('compositeBtn').textContent = '\u{1F3AC} Export Combined View';
-          }
-        } catch (e) { console.log('Poll error:', e); }
-      }, 3000);
-    }
-
-
-    let aireelJobId = null;
-    let aireelPollInterval = null;
-
-    async function startAiReel() {
-      if (!currentSessionCode) return;
-      if (selectedExportClips.size === 0) {
-        alert('Select at least one clip in the Export Studio first');
+    function renderSessionHistory() {
+      var pane = document.getElementById('hudPane-history');
+      var history = loadSessionHistory();
+      if (history.length === 0) {
+        pane.innerHTML = '<div class="hud-empty">Session history appears here</div>';
         return;
       }
-      const targetSec = parseInt(document.getElementById('aireelLength').value);
-      const game = document.getElementById('aireelGame').value.trim();
-      const styleNotes = document.getElementById('aireelStyle').value.trim();
+      pane.innerHTML = '';
+      history.forEach(function(h) {
+        var item = document.createElement('div');
+        item.className = 'clip-item';
+        item.style.cursor = 'pointer';
 
-      const uploadIds = Array.from(selectedExportClips)
-        .map(i => videos[i])
-        .filter(v => v && !v.missing && !v.processing && v.uploadId)
-        .map(v => v.uploadId);
-      if (uploadIds.length === 0) { alert('Selected clips are not ready yet'); return; }
+        var info = document.createElement('span');
+        var roleIcon = h.role === 'host' ? '👑' : '👤';
+        info.textContent = roleIcon + ' ' + h.code;
 
-      const btn = document.getElementById('aireelBtn');
-      const status = document.getElementById('aireelStatus');
-      const report = document.getElementById('aireelReport');
-      btn.disabled = true; btn.textContent = 'Starting...';
-      status.textContent = 'Queuing job...';
-      report.style.display = 'none';
+        var time = document.createElement('span');
+        time.className = 'clip-time';
+        var d = new Date(h.timestamp);
+        time.textContent = d.toLocaleDateString([], {month:'short', day:'numeric'}) + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
 
-      try {
-        const res = await fetch('/sessions/' + currentSessionCode + '/aireel', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ uploadIds, targetSec, game, styleNotes })
+        item.appendChild(info);
+        item.appendChild(time);
+
+        item.addEventListener('click', function() {
+          document.getElementById('joinCodeInput').value = h.code;
+          navigator.clipboard.writeText(h.code).then(function() {
+            hudLog('system', '📋 Code ' + h.code + ' copied & filled', 'success');
+          });
         });
-        if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed to start'); }
-        const { jobId } = await res.json();
-        aireelJobId = jobId;
-        status.textContent = 'Job queued — analyzing your clips...';
-        pollAiReel(jobId);
-      } catch (err) {
-        status.textContent = '❌ ' + err.message;
-        btn.disabled = false;
-        btn.textContent = '🤖 Generate AI Reel';
+
+        pane.appendChild(item);
+      });
+    }
+
+      function hudLog(tab, text, type) {
+        type = type || 'info';
+        var pane = document.getElementById('hudPane-'+tab);
+        var empty = pane.querySelector('.hud-empty');
+        if (empty) empty.remove();
+        var item = document.createElement('div');
+        item.className = 'clip-item ' + type;
+        var msg = document.createElement('span');
+        msg.textContent = text;
+        var time = document.createElement('span');
+        time.className = 'clip-time';
+        time.textContent = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+        item.appendChild(msg);
+        item.appendChild(time);
+        pane.prepend(item);
+        while (pane.children.length > HUD_MAX_ITEMS) pane.removeChild(pane.lastChild);
+        if (window.activeHudTab !== tab) {
+          var badge = document.getElementById('hudBadge-'+tab);
+          var count = parseInt(badge.textContent||'0') + 1;
+          badge.textContent = count > 99 ? '99+' : count;
+          badge.style.display = 'inline-block';
+        }
       }
-    }
 
-    function pollAiReel(jobId) {
-      if (aireelPollInterval) clearInterval(aireelPollInterval);
-      aireelPollInterval = setInterval(async () => {
+      // =====================
+      // COPY SESSION CODE
+      // =====================
+      window.copySessionCode = function() {
+        var code = document.getElementById('sessionCodeDisplay').textContent.trim();
+        if (!code || code === '------') return;
+        navigator.clipboard.writeText(code).then(function() {
+          var el = document.getElementById('sessionCodeDisplay');
+          var hint = document.getElementById('sessionCodeHint');
+          el.classList.add('copied');
+          hint.textContent = '✅ Copied!';
+          setTimeout(function() { el.classList.remove('copied'); hint.textContent = 'Click the code to copy to clipboard'; }, 2000);
+        });
+      };
+
+      // =====================
+      // CLIP DURATION
+      // =====================
+      function formatDuration(ms) {
+        if (ms < 60000) return (ms/1000) + 's';
+        return (ms/60000) + ' min';
+      }
+
+      window.onClipDurationChange = function() {
+        var duration = parseInt(document.getElementById('clipDurationSelect').value);
+        if (!window.socket || !window.currentSessionCode) return;
+        window.socket.emit('set-clip-duration', { duration: duration });
+      };
+
+      function updateClipDurationUI(duration, isHost) {
+        window.sessionClipDuration = duration;
+        if (isHost) {
+          document.getElementById('clipDurationHost').style.display = 'flex';
+          document.getElementById('clipDurationMember').style.display = 'none';
+          document.getElementById('clipDurationSelect').value = String(duration);
+        } else {
+          document.getElementById('clipDurationHost').style.display = 'none';
+          document.getElementById('clipDurationMember').style.display = 'block';
+          document.getElementById('clipDurationValue').textContent = formatDuration(duration);
+        }
+      }
+
+      // =====================
+      // SETTINGS
+      // =====================
+      window.openSettings = function() { document.getElementById('settingsModal').classList.add('show'); loadStoragePath(); };
+      window.closeSettings = function() { document.getElementById('settingsModal').classList.remove('show'); };
+      function loadStoragePath() { ipcRenderer.invoke('get-storage-directory').then(function(p) { document.getElementById('storagePathDisplay').textContent = p; }); }
+      window.pickStorageDirectory = function() {
+        ipcRenderer.invoke('pick-storage-directory').then(function(r) {
+          if (r.success) { loadStoragePath(); hudLog('system','✅ Storage directory updated','success'); }
+        });
+      };
+      window.openUninstallGuide = function() {
+        alert('To uninstall Peak-Abu:\n\n1. Press Win+R\n2. Type "appwiz.cpl" and press Enter\n3. Find "Peak-Abu" in the list\n4. Click Uninstall\n\nYour video files stay in your storage directory.');
+      };
+      document.getElementById('settingsModal').addEventListener('click', function(e) { if (e.target.id==='settingsModal') closeSettings(); });
+
+      // =====================
+      // FIRST LAUNCH
+      // =====================
+      async function checkFirstLaunch() {
+        var isFirst = await ipcRenderer.invoke('is-first-launch');
+        if (isFirst) {
+          document.getElementById('installPathDisplay').textContent = await ipcRenderer.invoke('get-install-path') || 'Unknown';
+          document.getElementById('firstLaunchStorageDisplay').textContent = await ipcRenderer.invoke('get-storage-directory');
+          document.getElementById('firstLaunchModal').classList.add('show');
+        }
+      }
+      window.pickStorageFirstLaunch = async function() {
+        var r = await ipcRenderer.invoke('pick-storage-directory');
+        if (r.success) document.getElementById('firstLaunchStorageDisplay').textContent = r.path;
+      };
+      window.completeFirstLaunch = async function() {
+        await ipcRenderer.invoke('mark-first-launch-done');
+        document.getElementById('firstLaunchModal').classList.remove('show');
+        hudLog('system','Setup complete — ready to record!','success');
+      };
+      checkFirstLaunch();
+      renderSessionHistory();
+
+      // =====================
+      // HOTKEY
+      // =====================
+      ipcRenderer.invoke('get-current-hotkey').then(function(hk) { if (hk) { window.currentHotkey = hk; updateHotkeyDisplay(hk); } });
+
+      window.toggleHotkeyCapture = function() {
+        if (window.capturingHotkey) {
+          window.capturingHotkey = false;
+          document.getElementById('hotkeyCapture').blur();
+          document.getElementById('hotkeyDisplay').classList.remove('listening');
+          document.getElementById('hotkeyBtn').textContent = 'Change';
+          document.getElementById('hotkeyDisplay').textContent = window.currentHotkey;
+          document.getElementById('hotkeyHint').textContent = 'Press any F-key, or Ctrl/Alt/Shift + key';
+        } else {
+          window.capturingHotkey = true;
+          document.getElementById('hotkeyCapture').focus();
+          document.getElementById('hotkeyDisplay').classList.add('listening');
+          document.getElementById('hotkeyDisplay').textContent = '...';
+          document.getElementById('hotkeyBtn').textContent = 'Cancel';
+          document.getElementById('hotkeyHint').textContent = 'Listening — press your key combo now';
+        }
+      };
+
+      function updateHotkeyDisplay(hk) {
+        document.getElementById('hotkeyDisplay').textContent = hk;
+        var span = document.getElementById('saveBtnHotkey');
+        if (span) span.textContent = hk;
+      }
+
+      document.getElementById('hotkeyCapture').addEventListener('keydown', function(e) {
+        if (!window.capturingHotkey) return;
+        e.preventDefault(); e.stopPropagation();
+        if (['Control','Alt','Shift','Meta'].includes(e.key)) return;
+        var parts = [];
+        if (e.ctrlKey) parts.push('Ctrl');
+        if (e.altKey) parts.push('Alt');
+        if (e.shiftKey) parts.push('Shift');
+        var keyMap = {' ':'Space','ArrowUp':'Up','ArrowDown':'Down','ArrowLeft':'Left','ArrowRight':'Right','Backspace':'Backspace','Delete':'Delete','Enter':'Enter','Tab':'Tab'};
+        var keyName;
+        if (e.key==='Escape') { toggleHotkeyCapture(); return; }
+        else if (keyMap[e.key]) keyName = keyMap[e.key];
+        else if (/^F([1-9]|1[0-2])$/.test(e.key)) keyName = e.key;
+        else if (e.key.length===1) {
+          if (parts.length===0) { document.getElementById('hotkeyHint').textContent = 'Add Ctrl, Alt, or Shift with that key'; return; }
+          keyName = e.key.toUpperCase();
+        } else { document.getElementById('hotkeyHint').textContent = 'Key not supported — try F-key or modifier + letter'; return; }
+        parts.push(keyName);
+        var hotkey = parts.join('+');
+        window.capturingHotkey = false;
+        window.currentHotkey = hotkey;
+        document.getElementById('hotkeyCapture').blur();
+        updateHotkeyDisplay(hotkey);
+        document.getElementById('hotkeyDisplay').classList.remove('listening');
+        document.getElementById('hotkeyBtn').textContent = 'Change';
+        document.getElementById('hotkeyHint').textContent = 'Hotkey saved';
+        ipcRenderer.send('update-settings', { hotkey: hotkey });
+      });
+
+      ipcRenderer.on('hotkey-error', function(ev, msg) {
+        document.getElementById('hotkeyHint').textContent = '⚠ ' + msg;
+        updateHotkeyDisplay(window.currentHotkey);
+      });
+
+      // =====================
+      // MIC
+      // =====================
+      async function loadMicDevices() {
+       try {
+         var devices = await navigator.mediaDevices.enumerateDevices();
+         var mics = devices.filter(function(d){return d.kind==='audioinput';});
+         var sel = document.getElementById('micSelect');
+         sel.innerHTML = '<option value="">None</option>';
+         mics.forEach(function(m) {
+           var opt = document.createElement('option');
+           opt.value = m.deviceId;
+           opt.textContent = m.label || ('Mic ' + sel.children.length);
+           sel.appendChild(opt);
+         });
+
+        // Auto-select default mic on first load if user hasn't explicitly chosen None
+         if (!window.micHasBeenTouched && mics.length > 0) {
+           var defaultMic = mics.find(function(m) { return m.deviceId === 'default'; }) || mics[0];
+           sel.value = defaultMic.deviceId;
+           window.micDeviceId = defaultMic.deviceId;
+           window.micEnabled = true;
+           sel.classList.remove('mic-pulse');
+         } else if (!window.micDeviceId) {
+           // No mic selected and user hasn't touched it — pulse
+           sel.classList.add('mic-pulse');
+         }
+       } catch(e) {}
+     }
+
+      window.onMicDeviceChange = function() {
+       window.micHasBeenTouched = true;
+       var sel = document.getElementById('micSelect');
+       sel.classList.remove('mic-pulse');
+       window.micDeviceId = sel.value || null;
+       window.micEnabled = !!window.micDeviceId;
+     };
+      window.onMicVolumeChange = function() {
+        window.micVolume = parseInt(document.getElementById('micVolume').value);
+        ipcRenderer.send('update-mic-settings', { volume: window.micVolume });
+      };
+      window.toggleMicMute = function() {
+        window.micMuted = !window.micMuted;
+        var btn = document.getElementById('micMuteBtn');
+        btn.textContent = window.micMuted ? 'Unmute' : 'Mute';
+        btn.classList.toggle('muted', window.micMuted);
+        ipcRenderer.send('update-mic-settings', { muted: window.micMuted });
+      };
+      async function startMicCapture() {
+        if (!window.micDeviceId || !window.micEnabled) return;
         try {
-          const res = await fetch('/sessions/' + currentSessionCode + '/aireel/' + jobId);
-          const data = await res.json();
-          const status = document.getElementById('aireelStatus');
-          const report = document.getElementById('aireelReport');
-          const btn = document.getElementById('aireelBtn');
-          status.textContent = data.progress || data.status;
-          if (data.status === 'done') {
-            clearInterval(aireelPollInterval); aireelPollInterval = null;
-            const sizeMB = data.fileSize ? (data.fileSize / 1024 / 1024).toFixed(1) + 'MB' : '';
-            status.textContent = '✅ Reel ready' + (sizeMB ? ' (' + sizeMB + ')' : '') + ' — downloading...';
-            if (data.report) {
-              report.textContent = '📝 Editor: ' + data.editorEngine + '\n\n' + data.report;
-              report.style.display = 'block';
-            }
-            btn.disabled = false; btn.textContent = '🤖 Generate AI Reel';
-            const link = document.createElement('a');
-            link.href = data.downloadUrl; link.download = 'peak-abu-ai-reel.mp4';
-            document.body.appendChild(link); link.click(); document.body.removeChild(link);
-          } else if (data.status === 'failed') {
-            clearInterval(aireelPollInterval); aireelPollInterval = null;
-            status.textContent = '❌ ' + (data.progress || 'Failed');
-            btn.disabled = false; btn.textContent = '🤖 Generate AI Reel';
-          }
-        } catch (e) { /* transient, keep polling */ }
-      }, 3000);
-    }
+          var stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: window.micDeviceId } } });
+          window.micRecorder = new MediaRecorder(stream, { mimeType:'audio/webm;codecs=opus', audioBitsPerSecond:128000 });
+          window.micRecorder.ondataavailable = async function(ev) {
+            if (ev.data && ev.data.size > 0) { ipcRenderer.send('save-mic-chunk', await ev.data.arrayBuffer()); }
+          };
+          window.micRecorder.onerror = function(e) { console.log('Mic error:', e); };
+          window.micRecorder.start(10000);
+          ipcRenderer.send('mic-recording-started', Date.now()+20);
+          
+          hudLog('system','🎤 Mic capture started','success');
+        } catch(err) {
+        
+          hudLog('system','🎤 Mic failed: '+err.message,'error');
+        }
+      }
+      function stopMicCapture() {
+        if (window.micRecorder && window.micRecorder.state !== 'inactive') { window.micRecorder.stop(); window.micRecorder = null; }
+      }
 
+      async function loadAudioOutputDevices() {
+       try {
+         var devices = await navigator.mediaDevices.enumerateDevices();
+         var outputs = devices.filter(function(d) { return d.kind === 'audiooutput'; });
+         var sel = document.getElementById('audioOutputSelect');
+         sel.innerHTML = '<option value="default">Default</option>';
+         outputs.forEach(function(d) {
+           var opt = document.createElement('option');
+           opt.value = d.deviceId;
+           opt.textContent = d.label || ('Output ' + sel.children.length);
+           sel.appendChild(opt);
+         });
+       } catch(e) { console.log('Audio output enum failed:', e); }
+      }
 
-    function formatTime(seconds) {
-      const m = Math.floor(seconds / 60);
-      const s = Math.floor(seconds % 60);
-      return m + ':' + (s < 10 ? '0' : '') + s;
-    }
-  </script>
-</body>
+      window.onAudioOutputChange = function() {
+        var deviceId = document.getElementById('audioOutputSelect').value;
+        ipcRenderer.send('update-audio-output', { deviceId: deviceId });
+        hudLog('system', '🔊 Desktop audio source changed', 'info');
+     };
+
+     loadMicDevices();
+     loadAudioOutputDevices();
+     navigator.mediaDevices.addEventListener('devicechange', function() {
+       loadMicDevices();
+       loadAudioOutputDevices();
+     });
+        
+      
+
+      // =====================
+      // SESSION
+      // =====================
+      window.createSession = function() {
+        fetch('https://peakabu.app/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+window.authToken },
+          body: JSON.stringify({})
+        })
+        .then(function(res){return res.json();})
+        .then(function(data) {
+          if (data.error) { alert('Error: '+data.error); return; }
+          window.isSessionHost = true;
+          connectToSession(data.sessionCode, window.authUsername);
+        })
+        .catch(function() { alert('Could not reach server'); });
+      };
+
+      window.joinSession = function() {
+        var code = document.getElementById('joinCodeInput').value.trim().toUpperCase();
+        if (!code || code.length < 4) { alert('Enter a valid session code'); return; }
+        window.isSessionHost = false;
+        connectToSession(code, window.authUsername);
+      };
+
+      function connectToSession(code, username) {
+        window.socket = io('https://peakabu.app', { auth: { token: window.authToken } });
+
+        window.socket.on('connect_error', function(err) {
+          if (err.message==='auth_required'||err.message==='auth_invalid') { alert('Session expired. Please log in again.'); logoutUser(); }
+        });
+
+        window.socket.on('connect', function() {
+          window.socket.emit('join-session', { code: code, username: username });
+        });
+
+        window.socket.on('session-joined', function(data) {
+          window.currentSessionCode = data.code;
+          window.isSessionHost = (data.createdBy === window.authUsername);
+          document.getElementById('sessionPanel-disconnected').style.display = 'none';
+          document.getElementById('sessionPanel-connected').style.display = 'block';
+          document.getElementById('sessionCodeDisplay').textContent = data.code;
+          document.getElementById('playerLink').href = 'https://peakabu.app/player?code=' + data.code;
+          updateClipDurationUI(data.clipDuration || 30000, window.isSessionHost);
+          updateMemberList(data.members);
+          hudLog('squad','Joined session ' + data.code,'success');
+          ipcRenderer.send('session-connected', { code: data.code, username: username });
+          addSessionToHistory(data.code, window.isSessionHost ? 'host' : 'member');
+        });
+
+        window.socket.on('member-joined', function(d) { addMember(d.username, false); hudLog('squad',d.username+' joined','success'); });
+        window.socket.on('member-left', function(d) { removeMember(d.username); hudLog('squad',d.username+' left','info'); });
+        window.socket.on('member-recording-update', function(d) { updateMemberRecording(d.username, d.isRecording); });
+
+        window.socket.on('clip-duration-changed', function(d) {
+          window.sessionClipDuration = d.duration;
+          updateClipDurationUI(d.duration, window.isSessionHost);
+          hudLog('squad', d.setBy + ' set clip to ' + formatDuration(d.duration), 'info');
+        });
+
+        window.socket.on('coordinated-save-highlight', function(d) {
+         hudLog('activity','⚡ '+d.username+' triggered highlight — syncing all POVs...','broadcast');
+         ipcRenderer.send('broadcast-save-highlight', { coordinated_timestamp: d.coordinated_timestamp, clipDuration: d.clipDuration });
+
+         // Disable immediately as a fallback — don't wait on a separate cooldown event
+         if (!window.highlightCooldownActive) {
+           const estimatedLock = Math.ceil(d.clipDuration * 0.1) + 15000;
+           startSaveCooldown(Math.ceil(estimatedLock / 1000));
+         }
+       });
+
+        window.socket.on('highlight-unlocked', function() {
+          if (window.highlightCooldownTimer) { clearInterval(window.highlightCooldownTimer); window.highlightCooldownTimer = null; }
+          window.highlightCooldownActive = false;
+          var btn = document.getElementById('saveBtn');
+          btn.innerHTML = '💾 Save Highlight (or press <span id="saveBtnHotkey">'+window.currentHotkey+'</span>)';
+          btn.disabled = !(window.isRecordingActive && window.bufferReady);
+        });
+
+        window.socket.on('upload-received', function(d) { hudLog('activity','☁️ '+d.username+' uploaded their clip','success'); });
+
+        window.socket.on('error-message', function(d) {
+          if (d.message && d.message.includes('cooldown')) { hudLog('activity','⏳ '+d.message,'info'); return; }
+          alert('Session error: '+d.message);
+          if (window.socket) { window.socket.disconnect(); window.socket = null; }
+        });
+
+        window.socket.on('disconnect', function() { console.log('WebSocket disconnected'); });
+      }
+
+      window.leaveSession = function() {
+        if (window.socket) { window.socket.disconnect(); window.socket = null; }
+        window.currentSessionCode = null;
+        window.isSessionHost = false;
+        document.getElementById('sessionPanel-disconnected').style.display = 'block';
+        document.getElementById('sessionPanel-connected').style.display = 'none';
+        document.getElementById('memberList').innerHTML = '';
+        document.getElementById('clipDurationHost').style.display = 'none';
+        document.getElementById('clipDurationMember').style.display = 'none';
+        ipcRenderer.send('session-disconnected');
+      };
+
+      function updateMemberList(members) {
+        document.getElementById('memberList').innerHTML = '';
+        members.forEach(function(m) { addMember(m.username, m.isRecording); });
+      }
+      function addMember(username, isRec) {
+        var list = document.getElementById('memberList');
+        var safeId = 'member-' + CSS.escape(username);
+        if (document.getElementById(safeId)) return;
+        var item = document.createElement('div'); item.className = 'member-item'; item.id = safeId;
+        var name = document.createElement('span'); name.className = 'member-name'; name.textContent = username;
+        var status = document.createElement('span'); status.className = 'member-status '+(isRec?'rec':'idle'); status.textContent = isRec?'REC':'Idle';
+        item.appendChild(name); item.appendChild(status); list.appendChild(item);
+      }
+      function removeMember(username) { var el = document.getElementById('member-'+CSS.escape(username)); if (el) el.remove(); }
+      function updateMemberRecording(username, isRec) {
+        var el = document.getElementById('member-'+CSS.escape(username)); if (!el) return;
+        var b = el.querySelector('.member-status'); b.className = 'member-status '+(isRec?'rec':'idle'); b.textContent = isRec?'REC':'Idle';
+      }
+
+      // =====================
+      // RECORDING
+      // =====================
+      ipcRenderer.send('get-monitors');
+      ipcRenderer.on('monitors-list', function(ev, monitors) {
+        var sel = document.getElementById('monitorSelect');
+        sel.innerHTML = '';
+        monitors.forEach(function(m, i) {
+          var opt = document.createElement('option');
+          opt.value = m.index;
+          opt.textContent = 'Monitor '+(i+1)+' — '+m.width+'x'+m.height+(m.primary?' (Primary)':'');
+          sel.appendChild(opt);
+        });
+      });
+
+      async function startAudioCapture() {
+        try {
+          var sources = await ipcRenderer.invoke('get-desktop-sources');
+          var screen = sources[0];
+          var stream = await navigator.mediaDevices.getUserMedia({
+            audio: { mandatory: { chromeMediaSource:'desktop', chromeMediaSourceId:screen.id, minSampleRate:44100, echoCancellation:false, noiseSuppression:false, autoGainControl:false } },
+            video: { mandatory: { chromeMediaSource:'desktop', chromeMediaSourceId:screen.id, maxWidth:1, maxHeight:1 } }
+          });
+          stream.getVideoTracks().forEach(function(t){t.stop();});
+          var audioTrack = stream.getAudioTracks()[0];
+          if (!audioTrack) return;
+          var settings = audioTrack.getSettings();
+          if (settings.sampleRate && settings.sampleRate < 44100) { stream.getTracks().forEach(function(t){t.stop();}); return; }
+          var audioOnlyStream = new MediaStream([audioTrack]);
+          window.mediaRecorder = new MediaRecorder(audioOnlyStream, { mimeType:'audio/webm;codecs=opus', audioBitsPerSecond:192000 });
+          window.mediaRecorder.ondataavailable = async function(ev) {
+            if (ev.data && ev.data.size > 0) ipcRenderer.send('save-audio-chunk', await ev.data.arrayBuffer());
+          };
+          window.mediaRecorder.onerror = function(e) { console.log('MediaRecorder error:', e); };
+          window.mediaRecorder.start(10000);
+          ipcRenderer.send('audio-recording-started', Date.now()+20);
+        } catch(err) { console.log('Audio capture failed:', err.name, err.message); }
+      }
+
+      window.startRecording = async function() {
+        var monitorIndex = parseInt(document.getElementById('monitorSelect').value);
+        var monitorText = document.getElementById('monitorSelect').options[document.getElementById('monitorSelect').selectedIndex].textContent;
+        ipcRenderer.send('start-recording', { monitorIndex: monitorIndex });
+        window.isRecordingActive = true;
+        window.bufferReady = false;
+
+        document.getElementById('startBtn').textContent = '↺ Switch Monitor';
+        document.getElementById('stopBtn').disabled = false;
+        document.getElementById('monitorActive').style.display = 'block';
+        document.getElementById('monitorActiveName').textContent = monitorText;
+        document.getElementById('statusText').textContent = '● Buffering gameplay...';
+        document.getElementById('statusText').className = 'status-bar buffering';
+        document.getElementById('statusHelp').textContent = 'Building up a clip buffer — highlights will be available in ~15 seconds';
+        document.getElementById('saveBtn').disabled = true;
+
+        await startAudioCapture();
+        await startMicCapture();
+
+        if (window.socket) window.socket.emit('recording-status', { isRecording: true });
+      };
+
+      ipcRenderer.on('buffer-ready', function() {
+        if (!window.isRecordingActive) return;
+        window.bufferReady = true;
+        document.getElementById('statusText').textContent = '● Ready — save a highlight anytime';
+        document.getElementById('statusText').className = 'status-bar ready';
+        document.getElementById('statusHelp').textContent = 'Click Save or press ' + window.currentHotkey + ' to capture the last ' + formatDuration(window.sessionClipDuration) + ' of gameplay';
+        if (!window.highlightCooldownActive) document.getElementById('saveBtn').disabled = false;
+        hudLog('system','🎬 Buffer ready — highlights can be saved','success');
+      });
+
+      window.stopRecording = function() {
+      ipcRenderer.send('stop-recording');
+      window.isRecordingActive = false;
+      window.bufferReady = false;
+      if (window.mediaRecorder && window.mediaRecorder.state !== 'inactive') { window.mediaRecorder.stop(); window.mediaRecorder = null; }
+      stopMicCapture();
+      document.getElementById('startBtn').textContent = '▶ Start Highlight Session';
+      document.getElementById('stopBtn').disabled = true;
+      document.getElementById('saveBtn').disabled = true;
+      document.getElementById('monitorActive').style.display = 'none';
+      document.getElementById('statusText').textContent = '● Idle';
+      document.getElementById('statusText').className = 'status-bar idle';
+      document.getElementById('statusHelp').textContent = 'Start recording to begin buffering gameplay';
+      if (window.socket) window.socket.emit('recording-status', { isRecording: false });
+    };
+
+      // =====================
+      // SAVE HIGHLIGHT
+      // =====================
+      window.saveHighlight = function() {
+        if (window.highlightCooldownActive) return;
+        if (!window.isRecordingActive) return;
+        if (!window.bufferReady) { hudLog('system','⏳ Buffer not ready yet','error'); return; }
+        if (window.socket && window.currentSessionCode) {
+          window.socket.emit('broadcast-save-highlight');
+        } else {
+          ipcRenderer.send('save-highlight');
+          startSaveCooldown(15);
+        }
+      };
+
+      function startSaveCooldown(seconds) {
+       window.highlightCooldownActive = true;
+       var remaining = seconds || 15;
+       var btn = document.getElementById('saveBtn');
+       btn.innerHTML = '⏳ '+remaining+'s before next save';
+       btn.disabled = true;
+        
+       // Update status bar to reflect cooldown
+       document.getElementById('statusText').textContent = '● Cooldown — buffer refilling...';
+       document.getElementById('statusText').className = 'status-bar buffering';
+       document.getElementById('statusHelp').textContent = 'Next highlight available in ' + remaining + ' seconds';
+
+       window.highlightCooldownTimer = setInterval(function() {
+         remaining--;
+         if (remaining <= 0) {
+           clearInterval(window.highlightCooldownTimer);
+           window.highlightCooldownTimer = null;
+           window.highlightCooldownActive = false;
+           btn.innerHTML = '💾 Save Highlight (or press <span id="saveBtnHotkey">'+window.currentHotkey+'</span>)';
+           btn.disabled = !(window.isRecordingActive && window.bufferReady);
+
+           // Restore ready status
+           if (window.isRecordingActive && window.bufferReady) {
+             document.getElementById('statusText').textContent = '● Ready — save a highlight anytime';
+             document.getElementById('statusText').className = 'status-bar ready';
+             document.getElementById('statusHelp').textContent = 'Click Save or press ' + window.currentHotkey + ' to capture the last ' + formatDuration(window.sessionClipDuration) + ' of gameplay';
+           }
+         } else {
+           btn.innerHTML = '⏳ '+remaining+'s before next save';
+           document.getElementById('statusHelp').textContent = 'Next highlight available in ' + remaining + ' seconds';
+         }
+       }, 1000);
+      }
+
+      ipcRenderer.on('hotkey-save-pressed', function() { window.saveHighlight(); });
+      ipcRenderer.on('post-capture-started', function(ev, d) { hudLog('activity','📹 Capturing post-highlight footage ('+((d.postDelay)/1000).toFixed(1)+'s)...','info'); });
+      ipcRenderer.on('encoder-fallback', function(ev, enc) { hudLog('system','⚙ GPU unavailable — switched to '+enc+' encoding','info'); });
+      ipcRenderer.on('capture-engine', function(ev, label) {
+       hudLog('system', '🎥 Capture: ' + label, 'info');
+      });
+      ipcRenderer.on('highlight-saved', function(ev, fp) { hudLog('activity','✅ Saved: '+fp,'success'); });
+      ipcRenderer.on('highlight-error', function(ev, msg) { hudLog('activity','❌ '+msg,'error'); });
+
+      ipcRenderer.on('upload-progress', function(ev, pct) {
+        var wrap = document.getElementById('uploadProgressWrap');
+        var fill = document.getElementById('uploadProgressFill');
+        var label = document.getElementById('uploadPct');
+        if (pct===0) { wrap.style.display='block'; fill.className='upload-progress-fill'; fill.style.width='0%'; label.textContent='0%'; }
+        else if (pct===100) { fill.style.width='100%'; fill.classList.add('success'); label.textContent='100%'; setTimeout(function(){wrap.style.display='none';},2000); }
+        else if (pct===-1) { fill.classList.add('error'); label.textContent='Failed'; setTimeout(function(){wrap.style.display='none';},3000); }
+        else { fill.style.width=pct+'%'; label.textContent=pct+'%'; }
+      });
+
+      ipcRenderer.on('upload-complete', function(ev, id) { hudLog('activity','☁️ Upload complete: '+id,'success'); });
+      ipcRenderer.on('upload-error', function(ev, msg) {
+        hudLog('activity','⚠ Upload failed: '+msg,'error');
+        if (typeof msg === 'string' && /invalid or expired token|authentication required/i.test(msg)) {
+          hudLog('system','🔒 Login expired — please log in again','error');
+          logoutUser();
+        }
+      });
+
+      window.updateSettings = function() {
+       ipcRenderer.send('update-settings', {
+         bufferSeconds: '180',
+         fps: parseInt(document.getElementById('fpsSelect').value),
+         resolution: document.getElementById('resolutionSelect').value,
+         hdr: document.getElementById('hdrSelect').value === 'hdr'
+       });
+      };
+      window.addEventListener('DOMContentLoaded', function() {
+       window.updateSettings();
+       ipcRenderer.invoke('get-current-hdr').then(function(isHdr) {
+         document.getElementById('hdrSelect').value = isHdr ? 'hdr' : 'sdr';
+       });
+      });
+
+      // =====================
+      // AUTH
+      // =====================
+
+      // Show confirm field when user focuses password (register intent)
+      
+
+      async function checkAuthOnLoad() {
+       var stored = await ipcRenderer.invoke('get-auth-state');
+       window.authToken = stored.token;
+       window.authUsername = stored.username;
+       if (!window.authToken) { showAuthLoggedOut(); return; }
+        
+       // Push restored token to main process so uploads are authenticated
+       ipcRenderer.send('auth-token-updated', window.authToken);
+        
+       try {
+         var res = await fetch('https://peakabu.app/auth/me', { headers: { 'Authorization':'Bearer '+window.authToken } });
+         if (res.ok) { var d = await res.json(); showAuthLoggedIn(d.username); }
+         else if (res.status === 401) { clearAuthState(); showAuthLoggedOut(); }
+         else { if (window.authUsername) showAuthLoggedIn(window.authUsername); else showAuthLoggedOut(); }
+       } catch(e) {
+         if (window.authUsername) showAuthLoggedIn(window.authUsername);
+         else showAuthLoggedOut();
+       }
+      }
+
+      window.registerUser = async function() {
+      var confirmWrap = document.getElementById('authConfirmWrap');
+      if (confirmWrap.style.display === 'none' || confirmWrap.style.display === '') {
+        confirmWrap.style.display = 'block';
+        document.getElementById('authConfirmInput').focus();
+        showAuthError('Re-enter your password to confirm, then click Register again');
+        return;
+      }
+      var username = document.getElementById('authUsernameInput').value.trim();
+      var password = document.getElementById('authPasswordInput').value;
+      var confirm = document.getElementById('authConfirmInput').value;
+      if (!username || !password) { showAuthError('Fill in all fields'); return; }
+      if (password !== confirm) { showAuthError('Passwords do not match'); return; }
+        try {
+          var res = await fetch('https://peakabu.app/auth/register', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ username:username, password:password })
+          });
+          var data = await res.json();
+          if (!res.ok) { showAuthError(data.error||'Registration failed'); return; }
+          storeAuthState(data.token, data.username);
+          showAuthLoggedIn(data.username);
+        } catch(e) { showAuthError('Could not reach server'); }
+      };
+
+      window.loginUser = async function() {
+        var username = document.getElementById('authUsernameInput').value.trim();
+        var password = document.getElementById('authPasswordInput').value;
+        if (!username || !password) { showAuthError('Fill in both fields'); return; }
+        try {
+          var res = await fetch('https://peakabu.app/auth/login', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ username:username, password:password })
+          });
+          var data = await res.json();
+          if (!res.ok) { showAuthError(data.error||'Login failed'); return; }
+          storeAuthState(data.token, data.username);
+          showAuthLoggedIn(data.username);
+        } catch(e) { showAuthError('Could not reach server'); }
+      };
+
+      window.logoutUser = function() {
+        clearAuthState();
+        showAuthLoggedOut();
+        if (window.socket) { window.socket.disconnect(); window.socket = null; }
+        window.currentSessionCode = null;
+        document.getElementById('sessionPanel-disconnected').style.display = 'block';
+        document.getElementById('sessionPanel-connected').style.display = 'none';
+        document.getElementById('memberList').innerHTML = '';
+        ipcRenderer.send('auth-token-updated', null);
+        ipcRenderer.send('session-disconnected');
+        document.getElementById('authConfirmWrap').style.display = 'none';
+      };
+
+      function storeAuthState(token, username) {
+        window.authToken = token;
+        window.authUsername = username;
+        ipcRenderer.send('auth-token-updated', token);
+        ipcRenderer.invoke('set-auth-state', { token: token, username: username });
+      }
+      function clearAuthState() {
+        window.authToken = null;
+        window.authUsername = null;
+        ipcRenderer.send('auth-token-updated', null);
+        ipcRenderer.invoke('set-auth-state', { token: null, username: null });
+      }
+      function showAuthLoggedIn(username) {
+        window.authUsername = username;
+        document.getElementById('authPanel').style.display = 'none';
+        document.getElementById('authBar').style.display = 'flex';
+        document.getElementById('authBarName').textContent = username;
+        document.getElementById('sessionPanel').style.display = 'block';
+      }
+      function showAuthLoggedOut() {
+        document.getElementById('authPanel').style.display = 'block';
+        document.getElementById('authBar').style.display = 'none';
+        document.getElementById('sessionPanel').style.display = 'none';
+      }
+      function showAuthError(msg) {
+        var el = document.getElementById('authError');
+        el.textContent = msg; el.style.display = 'block';
+        setTimeout(function(){ el.style.display = 'none'; }, 4000);
+      }
+
+      checkAuthOnLoad();
+    </script>
+  </body>
 </html>

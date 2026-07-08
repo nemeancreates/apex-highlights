@@ -559,6 +559,30 @@
       font-family: monospace;
     }
 
+    /* Export select checkbox on POV tiles */
+    .pov-export-check {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 26px;
+      height: 26px;
+      background: rgba(15, 52, 96, 0.85);
+      border: 2px solid #556;
+      border-radius: 6px;
+      color: #888;
+      font-size: 16px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 10;
+      transition: all 0.15s;
+      line-height: 1;
+    }
+    .pov-export-check:hover { border-color: #e94560; color: #e94560; background: rgba(15, 52, 96, 0.95); }
+    .pov-export-check.selected { background: #e94560; border-color: #e94560; color: white; }
+
     .btn-copy {
       background: none;
       border: 1px solid #e94560;
@@ -668,30 +692,7 @@
        <div id="aireelReport" style="width:100%;font-size:12px;color:#aaa;background:#0a0a1a;border-left:2px solid #e94560;padding:8px 12px;display:none;white-space:pre-wrap;"></div>
       </div>
     </div>
-    <div class="composite-section" id="aireelSection" style="display:flex;flex-wrap:wrap;gap:8px;">
-    <div style="width:100%;font-size:13px;color:#e94560;font-weight:600;">🎞 AI Highlight Reel <span style="color:#888;font-weight:normal;">(T3/T4 preview — free during beta)</span></div>
-   <div>
-     <label style="font-size:11px;color:#999;">Length</label>
-     <select id="aireelLength" style="background:#0f3460;color:#eee;border:1px solid #2a2a5e;border-radius:4px;padding:4px 8px;">
-       <option value="30">30s</option>
-       <option value="60" selected>60s</option>
-       <option value="90">90s</option>
-       <option value="120">2 min</option>
-     </select>
-   </div>
 
-    <div>
-      <label style="font-size:11px;color:#999;">Game</label>
-      <input type="text" id="aireelGame" placeholder="e.g. Apex Legends" style="background:#0f3460;color:#eee;border:1px solid #2a2a5e;border-radius:4px;padding:4px 8px;width:160px;" />
-   </div>
-  <div style="flex:1;min-width:220px;">
-    <label style="font-size:11px;color:#999;">Style notes for the AI editor (saved per game)</label>
-    <input type="text" id="aireelStyle" placeholder="e.g. keep clutches long, cut fast on kills" style="background:#0f3460;color:#eee;border:1px solid #2a2a5e;border-radius:4px;padding:4px 8px;width:100%;" />
-  </div>
-  <button class="btn btn-small" id="aireelBtn" onclick="startAiReel()">🤖 Generate AI Reel</button>
-  <div id="aireelStatus" style="width:100%;font-size:12px;color:#888;"></div>
-  <div id="aireelReport" style="width:100%;font-size:12px;color:#aaa;background:#0a0a1a;border-left:2px solid #e94560;padding:8px 12px;display:none;white-space:pre-wrap;"></div>
-</div>
   </div>
 
   <script>
@@ -1434,6 +1435,32 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         container.appendChild(placeholder);
       }
+      // Export select checkbox overlay (visible when export bar is open)
+      if (!v.missing && !v.processing) {
+        const checkbox = document.createElement('div');
+        checkbox.className = 'pov-export-check' + (selectedExportClips.has(index) ? ' selected' : '');
+        checkbox.title = selectedExportClips.has(index) ? 'Remove from export' : 'Add to export';
+        checkbox.textContent = selectedExportClips.has(index) ? '✓' : '+';
+        checkbox.addEventListener('click', (function(idx) {
+          return function(e) {
+            e.stopPropagation();
+            if (selectedExportClips.has(idx)) {
+              selectedExportClips.delete(idx);
+            } else {
+              selectedExportClips.add(idx);
+            }
+            // Sync the export timeline bar
+            const exportClipEl = document.getElementById('export-clip-' + idx);
+            if (exportClipEl) exportClipEl.classList.toggle('selected', selectedExportClips.has(idx));
+            // Update this checkbox
+            this.classList.toggle('selected', selectedExportClips.has(idx));
+            this.textContent = selectedExportClips.has(idx) ? '✓' : '+';
+            this.title = selectedExportClips.has(idx) ? 'Remove from export' : 'Add to export';
+          };
+        })(index));
+        container.appendChild(checkbox);
+      }
+
       return container;
     }
 
