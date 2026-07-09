@@ -56,7 +56,6 @@ function fetchVersion() {
 // Download the installer to temp with progress callback. Returns file path or null.
 function downloadInstaller(url, onProgress) {
   return new Promise((resolve) => {
-    // Basic URL sanity — must be https and end in .exe
     let parsed;
     try { parsed = new URL(url); } catch { return resolve(null); }
     if (parsed.protocol !== 'https:' || !parsed.pathname.endsWith('.exe')) {
@@ -65,37 +64,81 @@ function downloadInstaller(url, onProgress) {
 
     const filename = `PeakAbu-Update-${Date.now()}.exe`;
     const filePath = path.join(os.tmpdir(), filename);
-    const file = fs.createWriteStream(filePath);
-    let downloaded = 0;
-    let total = 0;
-
-    const cleanup = () => {
-      try { file.close(); } catch {}
-      try { fs.unlinkSync(filePath); } catch {}
-    };
 
     const request = (targetUrl, redirectsLeft) => {
-      https.get(targetUrl, (res) => {
+      https.get(targetUrl, { timeout: 30000 }, (res) => {
         // Follow redirects (CDN often 302s)
         if ([301, 302, 303, 307, 308].includes(res.statusCode)) {
           res.resume();
           if (redirectsLeft <= 0 || !res.headers.location) {
-            cleanup(); return resolve(null);
+            console.error('[updater] Redirect chain exhausted');
+            return resolve(null);
           }
-          return request(res.headers.location, redirectsLeft - 1);
+          const nextUrl = new URL(res.headers.location, targetUrl).toString();
+          return request(nextUrl, redirectsLeft - 1);
         }
         if (res.statusCode !== 200) {
-          res.resume(); cleanup(); return resolve(null);
+          console.error(`[updater] HTTP ${res.statusCode} from ${targetUrl}`);
+          res.resume();
+          return resolve(null);
         }
-        total = parseInt(res.headers['content-length'] || '0', 10);
+
+        const total = parseInt(res.headers['content-length'] || '0', 10);
+        let downloaded = 0;
+
+        const file = fs.createWriteStream(filePath);
+
+        file.on('error', (err) => {
+          console.error('[updater] File write error:', err.message);
+          try { fs.unlinkSync(filePath); } catch {}
+          resolve(null);
+        });
+
         res.on('data', (chunk) => {
           downloaded += chunk.length;
           if (onProgress && total > 0) onProgress(downloaded, total);
         });
+
+        res.on('error', (err) => {
+          console.error('[updater] Response stream error:', err.message);
+          try { file.close(); fs.unlinkSync(filePath); } catch {}
+          resolve(null);
+        });
+
+        // Pipe AFTER attaching listeners
         res.pipe(file);
-        file.on('finish', () => file.close(() => resolve(filePath)));
-        file.on('error', () => { cleanup(); resolve(null); });
-      }).on('error', () => { cleanup(); resolve(null); });
+
+        file.on('finish', () => {
+          file.close(() => {
+            // Verify the file is real before claiming success
+            try {
+              const stats = fs.statSync(filePath);
+              if (stats.size < 1024 * 1024) {
+                console.error(`[updater] Downloaded file too small: ${stats.size} bytes`);
+                try { fs.unlinkSync(filePath); } catch {}
+                return resolve(null);
+              }
+              if (total > 0 && stats.size !== total) {
+                console.error(`[updater] Size mismatch: got ${stats.size}, expected ${total}`);
+                try { fs.unlinkSync(filePath); } catch {}
+                return resolve(null);
+              }
+              console.log(`[updater] Downloaded ${stats.size} bytes to ${filePath}`);
+              resolve(filePath);
+            } catch (e) {
+              console.error('[updater] Stat failed:', e.message);
+              resolve(null);
+            }
+          });
+        });
+      }).on('error', (err) => {
+        console.error('[updater] Request error:', err.message);
+        resolve(null);
+      }).on('timeout', function() {
+        console.error('[updater] Request timed out');
+        this.destroy();
+        resolve(null);
+      });
     };
 
     request(url, 5);

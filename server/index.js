@@ -608,7 +608,7 @@ const sessions = new Map();
 // ================================
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.12',
+  version: '0.1.13',
   downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.11.exe',
   releaseNotes: 'Squad clock sync, accurate multi-POV timestamps, idle-member save fix.'
 };
