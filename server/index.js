@@ -608,9 +608,9 @@ const sessions = new Map();
 // ================================
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.14',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.14.exe',
-  releaseNotes: 'Squad clock sync, accurate multi-POV timestamps, idle-member save fix.'
+  version: '0.1.15',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.15.exe',
+  releaseNotes: 'Full Session Mode toggle now works correctly in both directions.'
 };
 
 
