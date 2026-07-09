@@ -570,7 +570,9 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs) {
     .sort((a, b) => a.time - b.time);
 
   const withoutInProgress = allVideoFiles.slice(0, -1);
-  const newSinceLastSave = withoutInProgress.filter(f => f.time > lastHighlightBoundary);
+  const newSinceLastSave = withoutInProgress.filter(f =>
+    f.time > lastHighlightBoundary && f.time > recordingStartTime
+  );
   const videoFiles = newSinceLastSave.slice(-clipChunks);
 
   if (videoFiles.length === 0) {
@@ -961,8 +963,23 @@ function createWindow() {
   });
 
   ipcMain.on('stop-recording', () => {
-    stopRecordingInternal();
-  });
+   stopBufferReadyWatcher();
+   if (ffmpegProcess) {
+     stoppingIntentionally = true;
+     ffmpegProcess.kill();
+     ffmpegProcess = null;
+     console.log('Recording stopped');
+     mainWindow.webContents.send('recording-stopped');
+   }
+   // Clear stale chunks so an ended session can't leak old footage into a squad save
+   setTimeout(() => {
+     try {
+       const stale = fs.readdirSync(BUFFER_DIR).filter(f => f.endsWith('.mp4'));
+       for (const f of stale) { try { fs.unlinkSync(path.join(BUFFER_DIR, f)); } catch (e) {} }
+       console.log(`Buffer cleared on stop: removed ${stale.length} chunks`);
+     } catch (e) { console.log('Buffer clear on stop skipped:', e.message); }
+   }, 1000);
+ });
    
 
   ipcMain.on('update-settings', (event, settings) => {
