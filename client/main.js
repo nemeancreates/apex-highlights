@@ -26,8 +26,8 @@ const CHUNK_SECONDS = 10;
 // ================================
 // Update this whenever a new client build is uploaded to the CDN.
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.10',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.10.exe',
+  version: '0.1.14',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.14.exe',
   releaseNotes: 'Auto-updater added. The app now checks for updates on launch.'
 };
 
@@ -1086,13 +1086,13 @@ function createWindow() {
     event.reply('monitors-list', monitorList);
   });
 
-  // Full Session Mode toggle
-  ipcMain.on('set-full-session-mode', (event, enabled) => {
+ ipcMain.on('set-full-session-mode', (event, enabled) => {
     fullSessionMode = !!enabled;
     const prefs = loadUserPreferences();
     prefs.fullSessionMode = fullSessionMode;
     saveUserPreferences(prefs);
     console.log(`Full Session Mode ${fullSessionMode ? 'ENABLED' : 'disabled'}`);
+    event.reply('full-session-mode-set', fullSessionMode);
   });
 
   ipcMain.handle('get-full-session-mode', () => fullSessionMode);
