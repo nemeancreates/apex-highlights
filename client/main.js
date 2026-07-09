@@ -26,7 +26,7 @@ const CHUNK_SECONDS = 10;
 // ================================
 // Update this whenever a new client build is uploaded to the CDN.
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.14',
+  version: '0.1.15',
   downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.14.exe',
   releaseNotes: 'Auto-updater added. The app now checks for updates on launch.'
 };
