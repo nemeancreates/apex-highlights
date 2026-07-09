@@ -3,7 +3,6 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const NTPClient = require('ntp-time').Client;
 const FormData = require('form-data');
 const https = require('https');
 const { checkForUpdates } = require('./updater');
@@ -56,6 +55,7 @@ let videoStartTime = null;
 let audioFirstChunkTime = null;
 let bufferReadyWatcher = null;
 let recordingStartTime = null;
+let recordingSessionTag = Date.now();  // unique per recording session — chunk filenames never repeat
 let lastHighlightBoundary = 0;
 
 // ================================
@@ -270,18 +270,16 @@ function stopBufferReadyWatcher() {
   }
 }
 
-async function syncClock() {
-  try {
-    const client = new NTPClient('pool.ntp.org', 123, { timeout: 5000 });
-    const packet = await client.syncTime();
-    const serverTimeMs = (packet.transmitTimestamp - 2208988800) * 1000;
-    clockOffset = serverTimeMs - Date.now();
-    console.log(`Clock synced. Local offset from true UTC: ${clockOffset.toFixed(2)}ms`);
-  } catch (err) {
-    console.log('NTP sync failed, using local clock:', err.message);
-    clockOffset = 0;
+// clockOffset = Peak-Abu server clock minus this PC's clock.
+// Measured by the renderer via socket ping-pong (min-RTT sampling)
+// and pushed here. All squad clips are timestamped in the SAME
+// server clock domain, so cross-machine offsets cancel out.
+ipcMain.on('server-clock-offset', (event, offset) => {
+  if (typeof offset === 'number' && isFinite(offset) && Math.abs(offset) < 24 * 3600 * 1000) {
+    clockOffset = offset;
+    console.log(`Server clock offset updated: ${offset.toFixed(1)}ms`);
   }
-}
+});
 
 function getPreciseUTC() { return Date.now() + clockOffset; }
 
@@ -308,8 +306,7 @@ function pruneOldChunks() {
 // FFMPEG ARG BUILDER — per capture engine
 // ================================
 function buildCaptureArgs(engine, monitor) {
-  const chunkPattern = path.join(BUFFER_DIR, 'chunk_%03d.mp4');
-  const fpsStr = String(recordFps);
+const chunkPattern = path.join(BUFFER_DIR, `chunk_${recordingSessionTag}_%03d.mp4`);  const fpsStr = String(recordFps);
 
 
 
@@ -552,20 +549,24 @@ function saveHighlight(coordinatedTimestamp = null, clipDurationMs = null) {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('post-capture-started', { postDelay });
     }
-    setTimeout(() => doSaveHighlight(saveTimeUTC, clipChunks, duration), postDelay);
+    setTimeout(() => doSaveHighlight(saveTimeUTC, clipChunks, duration, coordinatedTimestamp), postDelay);
   } else {
-    doSaveHighlight(saveTimeUTC, clipChunks, duration);
+    doSaveHighlight(saveTimeUTC, clipChunks, duration, coordinatedTimestamp);
   }
 }
 
-function doSaveHighlight(saveTimeUTC, clipChunks, durationMs) {
+function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = null) {
   const allVideoFiles = fs.readdirSync(BUFFER_DIR)
     .filter(f => f.endsWith('.mp4') && !f.startsWith('temp_'))
-    .map(f => ({
-      name: f, path: path.join(BUFFER_DIR, f),
-      time: fs.statSync(path.join(BUFFER_DIR, f)).mtimeMs,
-      size: fs.statSync(path.join(BUFFER_DIR, f)).size
-    }))
+    .map(f => {
+      const st = fs.statSync(path.join(BUFFER_DIR, f));
+      return {
+        name: f, path: path.join(BUFFER_DIR, f),
+        time: st.mtimeMs,        // when the chunk FINISHED writing (footage end)
+        birth: st.birthtimeMs,   // when the chunk was CREATED (footage start)
+        size: st.size
+      };
+    })
     .filter(f => f.size > 100000)
     .sort((a, b) => a.time - b.time);
 
@@ -593,18 +594,21 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs) {
   const outputPath = path.join(CLIPS_DIR, `highlight-${timestamp}.mp4`);
   const metadataPath = path.join(CLIPS_DIR, `highlight-${timestamp}.json`);
 
-  const oldestChunkTime = videoFiles[0].time;
-  const chunkAgeMs = Date.now() - oldestChunkTime;
-  const startTimeUTC = saveTimeUTC - chunkAgeMs;
+  // v2 timestamps: footage start = birthtime of the first chunk (created the
+  // moment FFmpeg muxed its first frame); footage end = mtime of the last
+  // chunk (its final write). Both shifted into the shared server clock domain.
+  const startTimeUTC = Math.round(videoFiles[0].birth + clockOffset);
+  const endTimeUTC = Math.round(videoFiles[videoFiles.length - 1].time + clockOffset);
+  const realDurationMs = Math.max(0, endTimeUTC - startTimeUTC);
 
   const metadata = {
-    version: 1,
-    saveTimeUTC, startTimeUTC, endTimeUTC: saveTimeUTC,
-    durationMs: chunkAgeMs, clipDurationMs: durationMs,
+    version: 2,
+    saveTimeUTC, startTimeUTC, endTimeUTC,
+    durationMs: realDurationMs, clipDurationMs: durationMs,
     frameRate: recordFps, clockOffsetMs: clockOffset,
     userId: null,
     sessionId: currentSession ? currentSession.code : null,
-    coordinated_timestamp: null
+    coordinated_timestamp: coordinatedTs || null
   };
 
   const videoListPath = path.join(BUFFER_DIR, 'filelist_' + Date.now() + '.txt');
@@ -667,7 +671,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs) {
       });
 
       function runMerge(includeMic) {
-        const firstChunkNum = parseInt((videoFiles[0].name.match(/chunk_(\d+)\.mp4/) || [])[1] || '0', 10);
+        const firstChunkNum = parseInt((videoFiles[0].name.match(/chunk_(?:\d+_)?(\d+)\.mp4/) || [])[1] || '0', 10);
         const clipVideoStartMs = videoStartTime + (firstChunkNum * CHUNK_SECONDS * 1000) + 250;
         const deltaSec = audioFirstChunkTime ? (clipVideoStartMs - audioFirstChunkTime) / 1000 : 0;
         const audioSkipSec = Math.max(0, deltaSec);
@@ -957,6 +961,7 @@ function createWindow() {
     } catch (e) { console.log('Buffer clean skipped:', e.message); }
 
     stoppingIntentionally = false;
+    recordingSessionTag = Date.now();
     engineLadder = captureWindowTitle ? ['gdi-window'] : buildEngineLadder();
     engineIndex = 0;
     startRecording(monitorIndex);
@@ -1132,7 +1137,6 @@ app.whenReady().then(async () => {
   loadUserPreferences();
   ensureFolders();
   createWindow();
-  syncClock();
   const registered = globalShortcut.register(customHotkey, onHotkeyPressed);
   if (registered) console.log(`${customHotkey} hotkey registered successfully`);
   else console.log(`WARNING: ${customHotkey} hotkey registration FAILED - another app may be using it`);
@@ -1160,7 +1164,7 @@ function archiveFullSession() {
   let chunks;
   try {
     chunks = fs.readdirSync(BUFFER_DIR)
-      .filter(f => /^chunk_\d+\.mp4$/.test(f))
+      .filter(f => /^chunk_[\d_]+\.mp4$/.test(f))
       .map(f => ({ name: f, path: path.join(BUFFER_DIR, f), time: fs.statSync(path.join(BUFFER_DIR, f)).mtimeMs }))
       .sort((a, b) => a.time - b.time);
   } catch (e) {

@@ -1065,6 +1065,34 @@
         connectToSession(code, window.authUsername);
       };
 
+      // =====================
+      // SERVER CLOCK SYNC — 5 ping-pong samples, keep the lowest-RTT one
+      // =====================
+      window.clockSyncInterval = null;
+
+      async function syncServerClock() {
+        if (!window.socket || !window.socket.connected) return;
+        var best = null;
+        for (var i = 0; i < 5; i++) {
+          var sample = await new Promise(function(resolve) {
+            var t0 = Date.now();
+            var timer = setTimeout(function() { resolve(null); }, 2000);
+            window.socket.emit('time-sync', t0, function(res) {
+              clearTimeout(timer);
+              var t1 = Date.now();
+              if (!res || typeof res.serverTime !== 'number') { resolve(null); return; }
+              resolve({ rtt: t1 - t0, offset: res.serverTime - (t0 + t1) / 2 });
+            });
+          });
+          if (sample && (!best || sample.rtt < best.rtt)) best = sample;
+          await new Promise(function(r) { setTimeout(r, 150); });
+        }
+        if (best) {
+          ipcRenderer.send('server-clock-offset', best.offset);
+          console.log('Clock sync: offset=' + best.offset.toFixed(1) + 'ms (rtt=' + best.rtt + 'ms)');
+        }
+      }
+
       function connectToSession(code, username) {
         window.socket = io('https://peakabu.app', { auth: { token: window.authToken } });
 
@@ -1088,6 +1116,11 @@
           hudLog('squad','Joined session ' + data.code,'success');
           ipcRenderer.send('session-connected', { code: data.code, username: username });
           addSessionToHistory(data.code, window.isSessionHost ? 'host' : 'member');
+
+          // Sync clocks now and every 5 minutes while in session
+          syncServerClock();
+          if (window.clockSyncInterval) clearInterval(window.clockSyncInterval);
+          window.clockSyncInterval = setInterval(syncServerClock, 5 * 60 * 1000);
         });
 
         window.socket.on('member-joined', function(d) { addMember(d.username, false); hudLog('squad',d.username+' joined','success'); });
@@ -1101,6 +1134,10 @@
         });
 
         window.socket.on('coordinated-save-highlight', function(d) {
+         if (!window.isRecordingActive || !window.bufferReady) {
+           hudLog('activity','⚡ '+d.username+' triggered highlight — skipped (you are not recording)','info');
+           return;
+         }
          hudLog('activity','⚡ '+d.username+' triggered highlight — syncing all POVs...','broadcast');
          ipcRenderer.send('broadcast-save-highlight', { coordinated_timestamp: d.coordinated_timestamp, clipDuration: d.clipDuration });
 
@@ -1131,6 +1168,7 @@
       }
 
       window.leaveSession = function() {
+        if (window.clockSyncInterval) { clearInterval(window.clockSyncInterval); window.clockSyncInterval = null; }
         if (window.socket) { window.socket.disconnect(); window.socket = null; }
         window.currentSessionCode = null;
         window.isSessionHost = false;

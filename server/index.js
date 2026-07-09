@@ -601,6 +601,18 @@ const MAX_MEMBERS_PER_SESSION = 30;
 const ALLOWED_CLIP_DURATIONS = [15000, 30000, 60000, 180000];
 
 const sessions = new Map();
+
+// ================================
+// CLIENT VERSION — served at /api/version for the client auto-updater.
+// Update when a new client build is uploaded to the CDN.
+// ================================
+const LATEST_CLIENT_VERSION = {
+  version: '0.1.11',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.11.exe',
+  releaseNotes: 'Squad clock sync, accurate multi-POV timestamps, idle-member save fix.'
+};
+
+
 // ================================
 // USERS STORE + PERSISTENCE
 // ================================
@@ -1088,8 +1100,24 @@ io.use((socket, next) => {
     next(new Error('auth_invalid'));
   }
 });
+
 io.on('connection', (socket) => {
   log("debug", "client_connected", { socketId: socket.id });
+
+  // ================================
+  // TIME SYNC — clients ping to measure their offset from server clock.
+  // Uses ack callback; doesn't consume the main socket rate budget,
+  // but has its own light cap to prevent spam.
+  // ================================
+  socket._timeSyncCount = 0;
+  socket._timeSyncReset = Date.now() + 60000;
+  socket.on('time-sync', (clientT0, ack) => {
+    if (typeof ack !== 'function') return;
+    const now = Date.now();
+    if (now > socket._timeSyncReset) { socket._timeSyncCount = 0; socket._timeSyncReset = now + 60000; }
+    if (++socket._timeSyncCount > 60) return;
+    ack({ serverTime: now });
+  });
 
   socket.on('join-session', ({ code, username }) => {
     if (!checkSocketRate(socket.id)) {

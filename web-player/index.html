@@ -1329,14 +1329,14 @@ document.addEventListener('DOMContentLoaded', function() {
       let earliestStart = Infinity;
       let hasMetadata = false;
       videos.forEach(v => {
-        if (!v.missing && !v.processing && v.metadata && v.metadata.startTimeUTC) {
+        if (!v.missing && !v.processing && v.metadata && v.metadata.version >= 2 && v.metadata.startTimeUTC) {
           earliestStart = Math.min(earliestStart, v.metadata.startTimeUTC);
           hasMetadata = true;
         }
       });
       if (!hasMetadata) return;
       videos.forEach(v => {
-        if (!v.missing && !v.processing && v.metadata && v.metadata.startTimeUTC) {
+        if (!v.missing && !v.processing && v.metadata && v.metadata.version >= 2 && v.metadata.startTimeUTC) {
           v.offset = (v.metadata.startTimeUTC - earliestStart) / 1000;
         }
       });
