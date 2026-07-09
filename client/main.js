@@ -1089,8 +1089,9 @@ function createWindow() {
  ipcMain.on('set-full-session-mode', (event, enabled) => {
     fullSessionMode = !!enabled;
     const prefs = loadUserPreferences();
-    prefs.fullSessionMode = fullSessionMode;
+    prefs.fullSessionMode = enabled;  // use the original parameter, not the overwritten global
     saveUserPreferences(prefs);
+    fullSessionMode = !!enabled;  // re-set after loadUserPreferences overwrote it
     console.log(`Full Session Mode ${fullSessionMode ? 'ENABLED' : 'disabled'}`);
     event.reply('full-session-mode-set', fullSessionMode);
   });

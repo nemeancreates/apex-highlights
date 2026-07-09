@@ -564,13 +564,22 @@
       const { ipcRenderer } = require('electron');
 
        // ===== Full Session Mode =====
+
       window.toggleFullSession = function() {
        var checkbox = document.getElementById('fullSessionToggle');
-       var on = checkbox.checked;
-       ipcRenderer.send('set-full-session-mode', on);
-       document.getElementById('fsOptions').style.display = on ? 'block' : 'none';
-       console.log(`Toggle sent: ${on}`);
+       setTimeout(function() {
+         var on = checkbox.checked;
+         ipcRenderer.send('set-full-session-mode', on);
+         document.getElementById('fsOptions').style.display = on ? 'block' : 'none';
+         console.log(`Toggle sent: ${on}`);
+       }, 0);
       };
+
+      ipcRenderer.on('full-session-mode-set', function(event, enabled) {
+       document.getElementById('fullSessionToggle').checked = !!enabled;
+       document.getElementById('fsOptions').style.display = enabled ? 'block' : 'none';
+       console.log(`Full Session Mode confirmed: ${enabled}`);
+      });
 
       window.pickFullSessionDir = async function() {
         var res = await ipcRenderer.invoke('pick-fullsession-directory');
@@ -597,11 +606,7 @@
         } catch (e) {}
       })();
 
-      ipcRenderer.on('full-session-mode-set', function(event, enabled) {
-       document.getElementById('fullSessionToggle').checked = !!enabled;
-       document.getElementById('fsOptions').style.display = enabled ? 'block' : 'none';
-       console.log(`Full Session Mode confirmed: ${enabled}`);
-      });
+      
 
       // Populate free-space line when hovering the info icon
       document.getElementById('fsInfo').addEventListener('mouseenter', async function() {
