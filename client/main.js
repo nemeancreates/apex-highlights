@@ -26,8 +26,8 @@ const CHUNK_SECONDS = 10;
 // ================================
 // Update this whenever a new client build is uploaded to the CDN.
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.15',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.14.exe',
+  version: '0.1.16',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.16.exe',
   releaseNotes: 'Auto-updater added. The app now checks for updates on launch.'
 };
 
@@ -42,6 +42,7 @@ let recordFps = 30;
 let recordResolution = null; // null = native, or { width, height }
 let customHotkey = 'F9';
 let captureHdr = false;      // HDR monitor fix — tonemaps HDR desktop to correct SDR colors
+let captureAdapter = null;
 let captureWindowTitle = null; 
 let clockOffset = 0;
 let ffmpegProcess = null;
@@ -140,6 +141,73 @@ function setBelowNormalPriority(pid) {
 }
 
 // ================================
+// PROCESS SHUTDOWN — graceful FFmpeg quit + hard tree-kill
+// ================================
+// FFmpeg capturing via ddagrab/gdigrab does not reliably die on a plain
+// .kill() (SIGTERM). On Windows it can survive as a detached ffmpeg.exe still
+// holding the Desktop Duplication handle and still encoding — invisible because
+// we spawn with windowsHide. That orphan is what keeps dropping frames after
+// the client is closed. This kills the whole tree, gracefully first.
+//
+// Returns a promise that resolves once the process is gone (or ~1.5s elapsed).
+function killFFmpegTree(proc) {
+  return new Promise((resolve) => {
+    if (!proc || proc.killed || proc.exitCode !== null) {
+      resolve();
+      return;
+    }
+    const pid = proc.pid;
+    let settled = false;
+    const done = () => { if (!settled) { settled = true; resolve(); } };
+
+    // Ensure the tree is force-killed even if graceful quit is ignored.
+    const forceKill = setTimeout(() => {
+      try {
+        spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true });
+      } catch (e) {
+        console.log('taskkill failed:', e.message);
+        try { proc.kill('SIGKILL'); } catch (_) {}
+      }
+      done();
+    }, 1200);
+
+    proc.once('close', () => { clearTimeout(forceKill); done(); });
+    proc.once('exit',  () => { clearTimeout(forceKill); done(); });
+
+    // Graceful: FFmpeg quits cleanly and releases the DDA handle on 'q'.
+    try {
+      if (proc.stdin && proc.stdin.writable) {
+        proc.stdin.write('q');
+      }
+    } catch (e) {
+      console.log('Graceful quit write failed, will force-kill:', e.message);
+    }
+  });
+}
+
+// One-time sweep on launch: kill any orphaned ffmpeg.exe left over from a
+// previous crash or hard-close. Scoped to processes whose command line
+// references our buffer directory, so we never touch an unrelated ffmpeg.
+function sweepOrphanedFFmpeg() {
+  if (process.platform !== 'win32') return;
+  try {
+    const marker = 'apex-highlights-buffer';
+    // WMIC is deprecated on Win11; use PowerShell CIM to match on command line.
+    const ps = [
+      '-NoProfile', '-Command',
+      `Get-CimInstance Win32_Process -Filter "Name='ffmpeg.exe'" | ` +
+      `Where-Object { $_.CommandLine -like '*${marker}*' } | ` +
+      `ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`
+    ];
+    const sweep = spawn('powershell.exe', ps, { windowsHide: true });
+    sweep.on('close', () => console.log('Orphaned FFmpeg sweep complete'));
+    sweep.on('error', (e) => console.log('Orphan sweep skipped:', e.message));
+  } catch (e) {
+    console.log('Orphan sweep skipped:', e.message);
+  }
+}
+
+// ================================
 // MIC AUDIO BUFFERS
 // ================================
 let micBuffers = [];
@@ -186,6 +254,11 @@ function loadUserPreferences() {
       if (typeof prefs.captureHdr === 'boolean') {
         captureHdr = prefs.captureHdr;
         console.log(`Loaded HDR capture preference: ${captureHdr}`);
+      }
+
+      if (typeof prefs.captureAdapter === 'number' || prefs.captureAdapter === null) {
+        captureAdapter = prefs.captureAdapter;
+        console.log(`Loaded capture adapter preference: ${captureAdapter === null ? 'auto' : captureAdapter}`);
       }
 
       if (typeof prefs.fullSessionMode === 'boolean') {
@@ -338,10 +411,16 @@ const chunkPattern = path.join(BUFFER_DIR, `chunk_${recordingSessionTag}_%03d.mp
 
   const scaleTail = recordResolution ? `,scale=-2:${recordResolution.height}` : '';
 
-  // Desktop Duplication input — GPU capture, no BitBlt, no DWM slow path
+  // Desktop Duplication input — GPU capture, no BitBlt, no DWM slow path.
+  // On hybrid systems (Intel iGPU + discrete GPU) the display may be driven by
+  // one adapter while ddagrab defaults to another — that mismatch forces a
+  // cross-adapter GPU->GPU copy every frame and wrecks pacing. captureAdapter
+  // lets us pin capture to the GPU the monitor actually lives on.
+  const adapterOpt = (captureAdapter !== null && captureAdapter !== undefined)
+    ? `:adapter=${captureAdapter}` : '';
   const ddaInput = (tenBit) => [
     '-f', 'lavfi',
-    '-i', `ddagrab=output_idx=${monitor || 0}:framerate=${recordFps}${tenBit ? ':output_fmt=10bit' : ''}`
+    '-i', `ddagrab=output_idx=${monitor || 0}${adapterOpt}:framerate=${recordFps}${tenBit ? ':output_fmt=10bit' : ''}`
   ];
 
   const ddaCpuVf = `hwdownload,format=bgra${scaleTail},format=yuv420p`;
@@ -442,6 +521,54 @@ function stopDiskWatcher() {
   if (diskWatchTimer) { clearInterval(diskWatchTimer); diskWatchTimer = null; }
 }
 
+// ================================
+// CAPTURE HEALTH TELEMETRY
+// ================================
+// FFmpeg emits progress lines like:
+//   frame= 1234 fps= 59 q=23.0 size=... time=... bitrate=... speed=1.01x drop=0
+// speed < ~0.95x or a climbing drop count means capture can't keep up — the
+// objective signal behind "the app tanked my FPS". We surface it so testers
+// report "engine X, speed 0.7x, 400 drops" instead of a vibe.
+let lastDropCount = 0;
+let lowSpeedStreak = 0;
+
+function parseCaptureHealth(text, engine) {
+  const speedMatch = text.match(/speed=\s*([\d.]+)x/);
+  const dropMatch  = text.match(/drop=\s*(\d+)/);
+  const fpsMatch   = text.match(/fps=\s*([\d.]+)/);
+  if (!speedMatch && !dropMatch) return;
+
+  const speed = speedMatch ? parseFloat(speedMatch[1]) : null;
+  const drop  = dropMatch ? parseInt(dropMatch[1], 10) : null;
+  const fps   = fpsMatch ? parseFloat(fpsMatch[1]) : null;
+
+  if (drop !== null && drop > lastDropCount) {
+    const newDrops = drop - lastDropCount;
+    lastDropCount = drop;
+    console.log(`Capture dropped ${newDrops} frame(s) (total ${drop}) on [${engine}]`);
+  }
+
+  if (speed !== null) {
+    if (speed < 0.95) {
+      lowSpeedStreak++;
+      // Only warn after a sustained dip (3 consecutive reads) to avoid noise
+      // from the first second of startup.
+      if (lowSpeedStreak === 3 && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('capture-health', {
+          status: 'behind', engine, speed, drop, fps,
+          message: `Capture is falling behind (${speed.toFixed(2)}x) on ${ENGINE_LABELS[engine] || engine}. ` +
+                   `This can drop game FPS. Try a lighter engine, lower FPS, or check for other recorders (Shadowplay/OBS).`
+        });
+      }
+    } else {
+      if (lowSpeedStreak >= 3 && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('capture-health', { status: 'ok', engine, speed, drop, fps });
+      }
+      lowSpeedStreak = 0;
+    }
+  }
+}
+
 
 function startRecording(monitor) {
   ensureFolders();
@@ -472,7 +599,10 @@ function startRecording(monitor) {
   console.log(`Settings: ${recordFps}fps, resolution: ${recordResolution ? recordResolution.width + 'x' + recordResolution.height : 'native'}, buffer: ${maxChunks * CHUNK_SECONDS}s, HDR fix: ${captureHdr}`);
   console.log('FFmpeg args:', ffmpegArgs.join(' '));
 
-  ffmpegProcess = spawn(getFFmpegPath(), ffmpegArgs, { windowsHide: true });
+  ffmpegProcess = spawn(getFFmpegPath(), ffmpegArgs, {
+    windowsHide: true,
+    stdio: ['pipe', 'pipe', 'pipe']  // stdin pipe lets us send 'q' for graceful quit
+  });
 
   if (ffmpegProcess.pid) setBelowNormalPriority(ffmpegProcess.pid);
 
@@ -488,6 +618,8 @@ function startRecording(monitor) {
   videoStartTime = spawnStartTime;
   recordingStartTime = spawnStartTime;
   lastHighlightBoundary = 0;
+  lastDropCount = 0;
+  lowSpeedStreak = 0;
   audioFirstChunkTime = null;
   micFirstChunkTime = null;
   let stderrTail = '';
@@ -507,6 +639,7 @@ function startRecording(monitor) {
     const logPath = path.join(os.tmpdir(), 'peakabu-ffmpeg.log');
     fs.appendFileSync(logPath, text);
     stderrTail = (stderrTail + text).slice(-3000);
+    parseCaptureHealth(text, engine);
     pruneOldChunks();
   });
 
@@ -922,6 +1055,7 @@ function createWindow() {
 
   // Current HDR capture setting (for UI restore on launch)
   ipcMain.handle('get-current-hdr', () => captureHdr);
+  ipcMain.handle('get-current-adapter', () => captureAdapter);
 
   ipcMain.on('save-highlight', () => saveHighlight());
   ipcMain.on('broadcast-save-highlight', (event, { coordinated_timestamp, clipDuration }) => {
@@ -937,11 +1071,12 @@ function createWindow() {
   });
   ipcMain.on('session-disconnected', () => { currentSession = null; });
 
-  ipcMain.on('start-recording', (event, { monitorIndex, windowTitle }) => {
+  ipcMain.on('start-recording', async (event, { monitorIndex, windowTitle }) => {
     if (ffmpegProcess) {
       stoppingIntentionally = true;
-      ffmpegProcess.kill();
+      const dying = ffmpegProcess;
       ffmpegProcess = null;
+      await killFFmpegTree(dying);
     }
     audioBuffers = [];
     micBuffers = [];
@@ -967,24 +1102,26 @@ function createWindow() {
     startRecording(monitorIndex);
   });
 
-  ipcMain.on('stop-recording', () => {
-   stopBufferReadyWatcher();
-   if (ffmpegProcess) {
-     stoppingIntentionally = true;
-     ffmpegProcess.kill();
-     ffmpegProcess = null;
-     console.log('Recording stopped');
-     mainWindow.webContents.send('recording-stopped');
-   }
-   // Clear stale chunks so an ended session can't leak old footage into a squad save
-   setTimeout(() => {
-     try {
-       const stale = fs.readdirSync(BUFFER_DIR).filter(f => f.endsWith('.mp4'));
-       for (const f of stale) { try { fs.unlinkSync(path.join(BUFFER_DIR, f)); } catch (e) {} }
-       console.log(`Buffer cleared on stop: removed ${stale.length} chunks`);
-     } catch (e) { console.log('Buffer clear on stop skipped:', e.message); }
-   }, 1000);
- });
+  ipcMain.on('stop-recording', async () => {
+    stopBufferReadyWatcher();
+    if (ffmpegProcess) {
+      stoppingIntentionally = true;
+      const dying = ffmpegProcess;
+      ffmpegProcess = null;
+      await killFFmpegTree(dying);
+      console.log('Recording stopped');
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('recording-stopped');
+      }
+    }
+    // Clear stale chunks so an ended session can't leak old footage into a squad save.
+    // Runs after killFFmpegTree resolves, so no chunk is still open when we delete.
+    try {
+      const stale = fs.readdirSync(BUFFER_DIR).filter(f => f.endsWith('.mp4'));
+      for (const f of stale) { try { fs.unlinkSync(path.join(BUFFER_DIR, f)); } catch (e) {} }
+      console.log(`Buffer cleared on stop: removed ${stale.length} chunks`);
+    } catch (e) { console.log('Buffer clear on stop skipped:', e.message); }
+  });
    
 
   ipcMain.on('update-settings', (event, settings) => {
@@ -1009,6 +1146,16 @@ function createWindow() {
       prefs.captureHdr = captureHdr;
       saveUserPreferences(prefs);
       console.log(`HDR capture fix ${captureHdr ? 'ENABLED' : 'disabled'}`);
+    }
+
+    if ('adapter' in settings) {
+      const a = settings.adapter;
+      captureAdapter = (a === null || a === '' || a === 'auto') ? null : parseInt(a, 10);
+      if (Number.isNaN(captureAdapter)) captureAdapter = null;
+      const prefs = loadUserPreferences();
+      prefs.captureAdapter = captureAdapter;
+      saveUserPreferences(prefs);
+      console.log(`Capture adapter set to: ${captureAdapter === null ? 'auto' : captureAdapter}`);
     }
 
     if (settings.hotkey && isValidHotkey(settings.hotkey)) {
@@ -1137,6 +1284,7 @@ function createWindow() {
 app.whenReady().then(async () => {
   loadUserPreferences();
   ensureFolders();
+  sweepOrphanedFFmpeg();
   createWindow();
   const registered = globalShortcut.register(customHotkey, onHotkeyPressed);
   if (registered) console.log(`${customHotkey} hotkey registered successfully`);
@@ -1144,15 +1292,28 @@ app.whenReady().then(async () => {
   setTimeout(() => checkForUpdates(mainWindow), 3000);
 });
 
-app.on('window-all-closed', () => {
-  stopBufferReadyWatcher();
-  stopDiskWatcher();
+let isCleaningUp = false;
+
+app.on('before-quit', async (event) => {
+  if (isCleaningUp) return;          // second pass: let the quit proceed
   if (ffmpegProcess) {
+    event.preventDefault();          // hold the quit until FFmpeg is dead
+    isCleaningUp = true;
     stoppingIntentionally = true;
-    ffmpegProcess.kill();
+    stopBufferReadyWatcher();
+    const dying = ffmpegProcess;
+    ffmpegProcess = null;
+    await killFFmpegTree(dying);
+    globalShortcut.unregisterAll();
+    app.quit();                      // re-trigger quit; isCleaningUp lets it through
+  } else {
+    stopBufferReadyWatcher();
+    globalShortcut.unregisterAll();
   }
-  globalShortcut.unregisterAll();
-  if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();  // triggers before-quit
 });
 
 
