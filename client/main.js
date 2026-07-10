@@ -41,6 +41,7 @@ let maxChunks = 18;
 let recordFps = 30;
 let recordResolution = null; // null = native, or { width, height }
 let customHotkey = 'F9';
+let startupHotkeyRegistered = true;
 let captureHdr = false;      // HDR monitor fix — tonemaps HDR desktop to correct SDR colors
 let captureAdapter = null;
 let captureWindowTitle = null; 
@@ -1279,6 +1280,7 @@ function createWindow() {
   });
 
   ipcMain.handle('get-current-hotkey', () => customHotkey);
+  ipcMain.handle('get-hotkey-registered', () => startupHotkeyRegistered);
 }
 
 app.whenReady().then(async () => {
@@ -1286,8 +1288,8 @@ app.whenReady().then(async () => {
   ensureFolders();
   sweepOrphanedFFmpeg();
   createWindow();
-  const registered = globalShortcut.register(customHotkey, onHotkeyPressed);
-  if (registered) console.log(`${customHotkey} hotkey registered successfully`);
+  startupHotkeyRegistered = globalShortcut.register(customHotkey, onHotkeyPressed);
+  if (startupHotkeyRegistered) console.log(`${customHotkey} hotkey registered successfully`);
   else console.log(`WARNING: ${customHotkey} hotkey registration FAILED - another app may be using it`);
   setTimeout(() => checkForUpdates(mainWindow), 3000);
 });

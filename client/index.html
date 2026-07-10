@@ -28,6 +28,15 @@
         width: 100%; margin-bottom: 16px;
       }
       .header .brand { display: flex; align-items: center; gap: 10px; }
+      .patreon-btn {
+        display: flex; align-items: center; justify-content: center;
+        width: 24px; height: 24px; padding: 0; margin: 0;
+        border: none; border-radius: 50%; cursor: pointer;
+        background: #1e3527; color: #7a9686;
+        transition: background 0.15s ease, color 0.15s ease;
+      }
+      .patreon-btn svg { fill: currentColor; }
+      .patreon-btn:hover { background: #FF424D; color: #ffffff; }
 
       /* ===== Grid ===== */
       .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; align-items: stretch; }
@@ -281,6 +290,12 @@
         <div class="brand">
           <span style="font-size:26px;">🙈</span>
           <h1>Peak-Abu</h1>
+          <button class="patreon-btn" onclick="openPatreon()" title="Support Peak-Abu on Patreon" aria-label="Support Peak-Abu on Patreon">
+            <svg viewBox="0 0 569 546" width="16" height="16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <circle cx="362.589996" cy="204.589996" r="204.589996"/>
+              <rect height="545.799988" width="100" x="0" y="0"/>
+            </svg>
+          </button>
         </div>
         <button class="btn-secondary btn-sm" onclick="openSettings()">⚙ Settings</button>
       </div>
@@ -528,8 +543,12 @@
 
     </div>
     <script>
-      const { ipcRenderer, clipboard } = require('electron');
+      const { ipcRenderer, clipboard, shell } = require('electron');
       const io = require('socket.io-client');
+
+      window.openPatreon = function() {
+        shell.openExternal('https://www.patreon.com/16368967/join');
+      };
 
       // State
       window.mediaRecorder = null;
@@ -633,7 +652,11 @@
     function loadSessionHistory() {
       try {
         var raw = localStorage.getItem('peak_abu_session_history');
-        return raw ? JSON.parse(raw) : [];
+        if (!raw) return [];
+        var history = JSON.parse(raw);
+        var cutoff = Date.now() - (20 * 24 * 60 * 60 * 1000);
+        history = history.filter(function(h) { return new Date(h.timestamp).getTime() > cutoff; });
+        return history;
       } catch(e) { return []; }
     }
 
@@ -802,6 +825,9 @@
       // HOTKEY
       // =====================
       ipcRenderer.invoke('get-current-hotkey').then(function(hk) { if (hk) { window.currentHotkey = hk; updateHotkeyDisplay(hk); } });
+      ipcRenderer.invoke('get-hotkey-registered').then(function(ok) {
+        if (!ok) hudLog('system', '⚠ Hotkey \'' + window.currentHotkey + '\' couldn\'t be registered at startup — another app may have claimed it. Go to Settings to pick a different key.', 'error');
+      });
 
       window.toggleHotkeyCapture = function() {
         if (window.capturingHotkey) {
