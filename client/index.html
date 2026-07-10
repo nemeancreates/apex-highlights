@@ -3,295 +3,254 @@
   <head>
     <title>Peak-Abu</title>
     <style>
-
-        
       * { box-sizing: border-box; }
       body {
-        background: #1a1a2e;
-        color: #e0e0e0;
+        background: #0a1611;
+        color: #c8d6cd;
         font-family: 'Segoe UI', Arial, sans-serif;
-        font-size: 14px;
+        font-size: 15px;
         line-height: 1.5;
         display: flex;
         flex-direction: column;
         align-items: center;
-        padding: 30px 20px;
+        padding: 24px 20px;
         margin: 0;
       }
-      h1 { color: #e94560; margin: 0; font-size: 22px; }
-      h3 { margin-top: 0; color: #e94560; font-size: 15px; font-weight: 600; }
-      label { font-size: 12px; color: #999; display: block; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+      h1 { color: #e8f5ec; margin: 0; font-size: 24px; font-weight: 500; }
+      h3 { margin-top: 0; color: #39d3a0; font-size: 17px; font-weight: 500; }
+      label { font-size: 11px; color: #5f7a6a; display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.7px; }
 
-      /* ===== Layout ===== */
+      .app { width: 100%; max-width: 720px; }
+
+      /* ===== Header ===== */
       .header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        width: 100%;
-        max-width: 560px;
-        margin-bottom: 16px;
+        display: flex; align-items: center; justify-content: space-between;
+        width: 100%; margin-bottom: 16px;
       }
-      .section {
-        width: 100%;
-        max-width: 560px;
-        background: #16213e;
-        border-radius: 8px;
-        padding: 16px 20px;
-        margin: 6px 0;
-      }
+      .header .brand { display: flex; align-items: center; gap: 10px; }
 
+      /* ===== Grid ===== */
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; align-items: stretch; }
+      .col { display: flex; flex-direction: column; gap: 13px; }
 
-      /* ===== Full Session toggle ===== */
-      .fs-toggle-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin: 10px 0 4px;
-        position: relative;
+      /* ===== Card ===== */
+      .card {
+        background: #0f2318; border: 1px solid #1e3527;
+        border-radius: 10px; padding: 17px 18px;
       }
-      .fs-toggle-label { display: flex; align-items: center; gap: 6px; }
-      .fs-toggle-label .info { color: #e94560; cursor: help; font-size: 13px; }
-      .switch { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
-      .switch input { opacity: 0; width: 0; height: 0; }
-      .slider {
-        position: absolute; inset: 0; cursor: pointer;
-        background: #2a2a5e; border-radius: 24px; transition: .2s;
-      }
-      .slider:before {
-        content: ""; position: absolute; height: 18px; width: 18px;
-        left: 3px; bottom: 3px; background: #eee; border-radius: 50%; transition: .2s;
-      }
-      .switch input:checked + .slider { background: #e94560; }
-      .switch input:checked + .slider:before { transform: translateX(20px); }
-
-      .fs-tooltip {
-        display: none; position: absolute; top: 100%; left: 0; right: 0;
-        background: #0f3460; border: 1px solid #e94560; border-radius: 6px;
-        padding: 8px 10px; font-size: 12px; color: #ccc; z-index: 10;
-        margin-top: 4px; line-height: 1.4;
-      }
-      .fs-toggle-label .info:hover + .fs-tooltip,
-      .fs-tooltip:hover { display: block; }
-
-      .fs-detail {
-        font-size: 11px; color: #888; margin: 2px 0 6px;
-      }
-      .fs-detail b { color: #aaa; font-weight: 600; }
-      .fs-loc-row { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
-      .fs-loc-row .btn-sm { flex-shrink: 0; }
-      .disk-banner {
-        display: none; background: #3a1520; border: 1px solid #e94560;
-        border-radius: 6px; padding: 8px 10px; font-size: 12px; color: #ffb3c0;
-        margin: 6px 0;
-      }
-
-      /* ===== Inputs ===== */
-      select, input[type="text"], input[type="password"] {
-        width: 100%;
-        padding: 9px 12px;
-        background: #0f3460;
-        color: #eee;
-        border: 1px solid #2a2a5e;
-        border-radius: 6px;
-        font-size: 14px;
-        font-family: inherit;
-        margin-bottom: 8px;
-      }
-      input::placeholder { color: #556; }
-      select:focus, input:focus { border-color: #e94560; outline: none; }
 
       /* ===== Buttons ===== */
       button {
-        margin: 4px 0;
-        padding: 10px 20px;
-        background: #e94560;
-        color: white;
-        border: none;
-        border-radius: 6px;
-        font-size: 14px;
-        font-family: inherit;
-        cursor: pointer;
-        width: 100%;
-        transition: background 0.15s;
+        margin: 0; padding: 12px 18px; background: #14291d; color: #8fbfa3;
+        border: 1px solid #2a4636; border-radius: 8px; font-size: 15px;
+        font-family: inherit; cursor: pointer; width: 100%;
+        transition: background 0.15s, border-color 0.15s;
       }
-      button:hover { background: #c73652; }
-      button:disabled { background: #444; cursor: not-allowed; color: #888; }
-      .btn-secondary { background: #0f3460; border: 1px solid #2a2a5e; color: #ccc; }
-      .btn-secondary:hover { background: #1a4a8a; border-color: #e94560; }
-      .btn-sm { padding: 6px 14px; font-size: 13px; width: auto; margin: 0; }
-      .btn-icon { background: none; border: none; color: #e94560; padding: 4px 8px; width: auto; margin: 0; font-size: 16px; }
-      .btn-icon:hover { color: #ff6b8a; background: none; }
-      .btn-settings { background: #0f3460; border: 1px solid #2a2a5e; color: #999; padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; width: auto; }
-      .btn-settings:hover { border-color: #e94560; color: #e94560; }
+      button:hover { background: #1a3323; border-color: #39d3a0; }
+      button:disabled { background: #14291d; border-color: #1e3527; cursor: not-allowed; color: #45604f; box-shadow: none !important; }
 
-      /* ===== Auth bar (collapsed after login) ===== */
+      /* Primary teal action (Save) */
+      .btn-save {
+        background: #1d9e75; border: none; color: #04140d; font-size: 17px; font-weight: 600;
+        padding: 16px; border-radius: 9px; box-shadow: 0 0 0 1px #39d3a0;
+      }
+      .btn-save:hover { background: #23b686; border: none; box-shadow: 0 0 0 1px #4fe0b0; }
+
+      /* Violet session action (Start) */
+      .btn-start {
+        background: #6c4fd8; border: none; color: #fff; font-weight: 500;
+        box-shadow: 0 0 0 1px #a98fe8;
+      }
+      .btn-start:hover { background: #7d61e6; border: none; box-shadow: 0 0 0 1px #bda6f0; }
+
+      /* Amber end / stop */
+      .btn-end {
+        background: #4a2417; border: 1px solid #9c5230; color: #f0b48f; font-weight: 500;
+      }
+      .btn-end:hover { background: #5a2c1c; border-color: #c46a3f; }
+
+      /* Rose leave / logout-danger */
+      .btn-leave {
+        background: #3a1622; border: 1px solid #7a3149; color: #f0a5bd; font-weight: 500;
+      }
+      .btn-leave:hover { background: #481b2b; border-color: #a3405f; }
+
+      .btn-secondary { background: #14291d; border: 1px solid #2a4636; color: #8fbfa3; }
+      .btn-icon {
+        display: flex; align-items: center; justify-content: center;
+        background: #12251a; border: 1px solid #24402e; color: #39d3a0;
+        width: auto; padding: 0; cursor: pointer; line-height: 1;
+      }
+      .btn-icon:hover { background: #16311f; border-color: #39d3a0; }
+      .btn-sm { padding: 8px 14px; font-size: 14px; width: auto; }
+
+      /* ===== Auth ===== */
+      #authPanel select, input[type="text"], input[type="password"] {
+        width: 100%; padding: 10px 12px; background: #0c1c14; color: #e8f5ec;
+        border: 1px solid #2a4636; border-radius: 6px; font-size: 15px;
+        font-family: inherit; margin-bottom: 9px;
+      }
+      input::placeholder { color: #45604f; }
+      select { width: 100%; padding: 9px 11px; background: #0c1c14; color: #c8d6cd;
+        border: 1px solid #2a4636; border-radius: 6px; font-size: 14px; font-family: inherit; }
+      select:focus, input:focus { border-color: #39d3a0; outline: none; }
+
       .auth-bar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        width: 100%;
-        max-width: 560px;
-        padding: 8px 16px;
-        background: #12122a;
-        border-radius: 6px;
-        margin-bottom: 6px;
-        font-size: 13px;
+        display: flex; align-items: center; justify-content: space-between;
+        width: 100%; padding: 10px 16px; background: #0f1f17;
+        border: 1px solid #1e3527; border-radius: 8px; margin-bottom: 13px; font-size: 15px;
       }
-      .auth-bar .user-label { color: #999; }
-      .auth-bar .user-label strong { color: #e94560; }
-      .auth-bar button { width: auto; padding: 5px 12px; font-size: 12px; margin: 0; background: #0f3460; border: 1px solid #2a2a5e; }
-      .auth-bar button:hover { border-color: #e94560; }
+      .auth-bar .user-label { color: #7a9686; }
+      .auth-bar .user-label strong { color: #39d3a0; }
+      .auth-bar button { width: auto; padding: 6px 14px; font-size: 14px; }
 
-      /* ===== Row helpers ===== */
       .row { display: flex; gap: 8px; }
       .row > * { flex: 1; }
-      .row-tight { display: flex; gap: 8px; align-items: center; }
-      .divider { text-align: center; color: #444; margin: 8px 0; font-size: 12px; }
+      .divider { text-align: center; color: #3a5244; margin: 9px 0; font-size: 13px; }
 
       /* ===== Session code ===== */
       .session-code {
-        font-size: 30px;
-        font-weight: 700;
-        color: #e94560;
-        text-align: center;
-        letter-spacing: 6px;
-        padding: 12px;
-        background: #0f3460;
-        border-radius: 6px;
-        margin: 8px 0;
-        cursor: pointer;
-        user-select: all;
-        transition: background 0.15s;
-        font-family: 'Consolas', 'Courier New', monospace;
+        font-size: 31px; font-weight: 600; color: #dfe8ff; text-align: center;
+        letter-spacing: 7px; padding: 13px; background: #12251a; border: 1px solid #24402e;
+        border-radius: 8px; margin: 6px 0; cursor: pointer; user-select: all;
+        transition: background 0.15s, border-color 0.15s; font-family: 'Consolas', 'Courier New', monospace;
       }
-      .session-code:hover { background: #1a4a8a; }
-      .session-code.copied { background: #2a6a3a; }
-      .hint { font-size: 11px; color: #556; text-align: center; margin-top: -4px; margin-bottom: 6px; }
+      .session-code:hover { background: #16321f; border-color: #39d3a0; }
+      .session-code.copied { background: #16321f; border-color: #39d3a0; }
+      .hint { font-size: 13px; color: #5f7a6a; text-align: center; margin-top: 5px; margin-bottom: 6px; }
+
+      .uc-label { font-size: 11px; color: #5f7a6a; text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 5px; }
+
+      /* ===== Player link ===== */
+      .player-link { display: block; text-align: center; margin: 9px 0; font-size: 14px; color: #39d3a0; text-decoration: none; }
+      .player-link:hover { text-decoration: underline; color: #4fe0b0; }
+
+      /* ===== Members ===== */
+      .member-list { flex: 1; overflow-y: auto; min-height: 0; padding-right: 4px; margin: 5px 0; }
+      .member-list::-webkit-scrollbar { width: 6px; }
+      .member-list::-webkit-scrollbar-thumb { background: #24402e; border-radius: 3px; }
+      .member-item {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 9px 12px; background: #0c1c14; border-radius: 6px; margin: 3px 0; font-size: 15px;
+      }
+      .member-name { color: #c8d6cd; }
+      .member-status { font-size: 11px; padding: 3px 9px; border-radius: 4px; }
+      .member-status.rec { background: #8a1f1f; color: white; }
+      .member-status.idle { background: #1a2f22; color: #5f7a6a; }
+
+      /* ===== Status / Save panel ===== */
+      .status-bar { font-weight: 600; font-size: 16px; }
+      .status-bar.idle { color: #5f7a6a; }
+      .status-bar.buffering { color: #d8a838; }
+      .status-bar.ready { color: #39d3a0; }
+      .status-bar.recording { color: #f0857a; }
+      .status-help { font-size: 13px; color: #5f7a6a; font-weight: normal; }
+
+      .save-head { display: flex; align-items: center; justify-content: space-between; }
 
       /* ===== Clip duration ===== */
       .clip-duration-row {
-        display: flex; align-items: center; gap: 8px;
-        margin: 8px 0; padding: 8px 12px;
-        background: #0f3460; border-radius: 6px; border: 1px solid #2a2a5e;
+        display: flex; align-items: center; gap: 10px; margin: 12px 0 0;
+        background: #0c1c14; border: 1px solid #24402e; border-radius: 7px; padding: 8px 12px;
       }
-      .clip-duration-row label { margin: 0; white-space: nowrap; flex-shrink: 0; }
-      .clip-duration-row select { margin: 0; flex: 1; }
+      .clip-duration-row label { margin: 0; white-space: nowrap; flex-shrink: 0; font-size: 14px; color: #8fbfa3; text-transform: none; letter-spacing: 0; }
+      .clip-duration-row select { margin: 0; flex: 1; background: #12251a; }
       .clip-duration-display {
-        font-size: 13px; color: #999; text-align: center;
-        padding: 8px; background: #0f3460; border-radius: 6px; margin: 6px 0;
+        font-size: 14px; color: #8fbfa3; text-align: center;
+        padding: 9px; background: #0c1c14; border: 1px solid #24402e; border-radius: 7px; margin: 12px 0 0;
       }
-      .clip-duration-display strong { color: #e94560; }
+      .clip-duration-display strong { color: #39d3a0; }
 
-      /* ===== Player link ===== */
-      .player-link {
-        display: block; text-align: center; margin: 6px 0;
-        font-size: 12px; color: #e94560; text-decoration: none;
-      }
-      .player-link:hover { text-decoration: underline; color: #ff6b8a; }
-
-      /* ===== Members ===== */
-      .member-list { margin: 8px 0; }
-      .member-item {
-        display: flex; justify-content: space-between; align-items: center;
-        padding: 7px 12px; background: #0f3460; border-radius: 6px; margin: 3px 0; font-size: 13px;
-      }
-      .member-name { color: #eee; }
-      .member-status { font-size: 11px; padding: 2px 8px; border-radius: 4px; }
-      .member-status.rec { background: #ff4444; color: white; }
-      .member-status.idle { background: #333; color: #666; }
-
-      /* ===== Recording status ===== */
-      .status-bar {
-        padding: 12px 16px; border-radius: 6px; font-size: 14px;
-        text-align: center; font-weight: 600;
-      }
-      .status-bar.idle { color: #666; }
-      .status-bar.buffering { color: #e9a820; }
-      .status-bar.ready { color: #44ff88; }
-      .status-bar.recording { color: #ff4444; }
-      .status-help { font-size: 11px; color: #556; text-align: center; margin-top: 2px; font-weight: normal; }
-
-      /* ===== Monitor indicator ===== */
+      /* ===== Monitor active ===== */
       .monitor-active {
-        font-size: 12px; color: #44ff88; text-align: center;
-        margin: 4px 0; padding: 4px; background: #0f3460; border-radius: 4px;
+        font-size: 13px; color: #39d3a0; text-align: center;
+        margin: 8px 0 0; padding: 6px; background: #0c1c14; border-radius: 6px;
       }
 
-      /* ===== Hotkey ===== */
-      .hotkey-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
-      .hotkey-display {
-        flex: 1; padding: 8px 12px; background: #0f3460; border: 1px solid #2a2a5e;
-        border-radius: 6px; font-size: 14px; font-weight: 600; color: #eee;
-        letter-spacing: 2px; text-align: center; font-family: 'Consolas', monospace;
+      /* ===== Recording head + mic popover ===== */
+      .rec-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+      .rec-head h3 { margin: 0; }
+      .mic-menu {
+        display: none; position: absolute; top: 56px; right: 18px; width: 250px;
+        background: #12251a; border: 1px solid #2f4a3a; border-radius: 9px; padding: 13px;
+        z-index: 20; box-shadow: 0 6px 20px rgba(0,0,0,0.5);
       }
-      .hotkey-display.listening { border-color: #e9a820; color: #e9a820; animation: pulse 1s infinite; }
-      @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
-      .hotkey-hint { font-size: 11px; color: #556; margin-bottom: 8px; margin-top: -2px; }
+      .mic-menu.show { display: block; }
+      .mic-menu .uc-label { margin-bottom: 4px; }
+      .mic-menu select { margin-bottom: 10px; }
+      .mic-menu .vol-row { display: flex; align-items: center; gap: 9px; margin-bottom: 11px; }
+      .mic-menu input[type="range"] { flex: 1; accent-color: #39d3a0; }
+      .mic-mute-btn { width: auto; flex-shrink: 0; padding: 6px 11px; font-size: 13px; background: #0c1c14; }
+      .mic-mute-btn.muted { background: #3a1622; border-color: #7a3149; color: #f0a5bd; }
 
-      /* ===== Mic (compact, inside recording section) ===== */
-      .mic-group { margin-top: 12px; padding-top: 12px; border-top: 1px solid #2a2a4e; }
-      .mic-group h4 { color: #e94560; font-size: 13px; margin: 0 0 6px 0; }
-      .mic-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-      .mic-row label { margin: 0; flex-shrink: 0; min-width: 50px; }
-      .mic-row select { margin: 0; flex: 1; }
-      .mic-row input[type="range"] { flex: 1; accent-color: #e94560; height: 4px; }
-      .mic-mute-btn {
-        background: #0f3460; border: 1px solid #2a2a5e; color: #999;
-        padding: 5px 10px; border-radius: 6px; cursor: pointer;
-        font-size: 12px; width: auto; margin: 0; flex-shrink: 0;
+      /* ===== Full Session ===== */
+      .fs-toggle-row { display: flex; align-items: center; justify-content: space-between; margin: 12px 0 4px; position: relative; }
+      .fs-toggle-label { display: flex; align-items: center; gap: 6px; }
+      .fs-toggle-label .info { color: #39d3a0; cursor: help; font-size: 14px; }
+      .switch { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+      .switch input { opacity: 0; width: 0; height: 0; }
+      .slider { position: absolute; inset: 0; cursor: pointer; background: #1a2f22; border-radius: 24px; transition: .2s; }
+      .slider:before { content: ""; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px; background: #c8d6cd; border-radius: 50%; transition: .2s; }
+      .switch input:checked + .slider { background: #1d9e75; }
+      .switch input:checked + .slider:before { transform: translateX(20px); background: #04140d; }
+      .fs-tooltip {
+        display: none; position: absolute; top: 100%; left: 0; right: 0;
+        background: #12251a; border: 1px solid #39d3a0; border-radius: 6px;
+        padding: 8px 10px; font-size: 12px; color: #8fbfa3; z-index: 10; margin-top: 4px; line-height: 1.4;
       }
-      .mic-mute-btn:hover { border-color: #e94560; color: #e94560; }
-      .mic-mute-btn.muted { background: #e94560; color: white; border-color: #e94560; }
-      .mic-pulse {
-      animation: micPulse 2s ease-in-out infinite;
-      border-color: #e9a820;
-    }
-    @keyframes micPulse {
-      0%, 100% { border-color: #2a2a5e; }
-      50% { border-color: #e9a820; }
-    }
-      .mic-status { font-size: 11px; color: #556; }
+      .fs-toggle-label .info:hover + .fs-tooltip, .fs-tooltip:hover { display: block; }
+      .fs-detail { font-size: 12px; color: #5f7a6a; margin: 2px 0 6px; }
+      .fs-detail b { color: #8fbfa3; font-weight: 600; }
+      .fs-loc-row { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
+      .disk-banner {
+        display: none; background: #3a1520; border: 1px solid #7a3149;
+        border-radius: 6px; padding: 8px 10px; font-size: 12px; color: #f0a5bd; margin: 6px 0;
+      }
+
+      /* ===== Hotkey (hidden capture input) ===== */
+      input#hotkeyCapture { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
+      .hotkey-display { display: none; }
 
       /* ===== Upload progress ===== */
-      .upload-progress-wrap { margin: 8px 0; display: none; }
-      .upload-progress-label { font-size: 12px; color: #999; margin-bottom: 3px; display: flex; justify-content: space-between; }
-      .upload-progress-label span { color: #e94560; }
-      .upload-progress-track { width: 100%; height: 6px; background: #0f3460; border-radius: 3px; overflow: hidden; }
-      .upload-progress-fill { height: 100%; width: 0%; background: #e94560; border-radius: 3px; transition: width 0.3s ease; }
-      .upload-progress-fill.success { background: #44ff88; }
-      .upload-progress-fill.error { background: #ff4444; }
+      .upload-progress-wrap { margin: 10px 0 0; display: none; }
+      .upload-progress-label { font-size: 12px; color: #7a9686; margin-bottom: 3px; display: flex; justify-content: space-between; }
+      .upload-progress-label span { color: #39d3a0; }
+      .upload-progress-track { width: 100%; height: 6px; background: #0c1c14; border-radius: 3px; overflow: hidden; }
+      .upload-progress-fill { height: 100%; width: 0%; background: #39d3a0; border-radius: 3px; transition: width 0.3s ease; }
+      .upload-progress-fill.success { background: #39d3a0; }
+      .upload-progress-fill.error { background: #f0857a; }
 
       /* ===== HUD ===== */
-      .hud-tabs { display: flex; gap: 3px; margin-bottom: 0; }
+      .hud-card { background: #0f2318; border: 1px solid #1e3527; border-radius: 10px; margin-top: 13px; }
+      .hud-tabs { display: flex; gap: 3px; padding: 0 7px; }
       .hud-tab {
-        flex: 1; margin: 0; padding: 7px 4px; font-size: 12px;
-        background: #0f3460; border: 1px solid #0f3460; color: #888;
-        border-radius: 6px 6px 0 0; width: auto;
+        flex: none; width: auto; margin: 0; padding: 10px 16px; font-size: 14px;
+        background: transparent; border: 1px solid transparent; border-bottom: none;
+        color: #5f7a6a; border-radius: 8px 8px 0 0;
       }
-      .hud-tab:hover { background: #1a4a8a; }
-      .hud-tab.active { background: #16213e; border: 1px solid #2a2a5e; border-bottom: 2px solid #16213e; color: #e94560; font-weight: 600; }
+      .hud-tab:hover { background: transparent; color: #8fbfa3; border-color: transparent; border-bottom: none; }
+      .hud-tab.active { background: #0c1c14; border: 1px solid #24402e; border-bottom: none; color: #39d3a0; font-weight: 500; }
       .hud-tab .tab-badge {
         display: inline-block; min-width: 14px; padding: 1px 4px; margin-left: 3px;
-        background: #e94560; color: white; border-radius: 8px; font-size: 9px; font-weight: 700;
+        background: #1d9e75; color: #04140d; border-radius: 8px; font-size: 9px; font-weight: 700;
       }
       .hud-pane {
-        display: none; height: 180px; overflow-y: auto;
-        background: #101a33; border: 1px solid #2a2a5e; border-radius: 0 0 6px 6px; padding: 6px;
+        display: none; height: 150px; overflow-y: auto;
+        background: #0c1c14; border-top: 1px solid #24402e; border-radius: 0 0 10px 10px; padding: 8px 14px;
       }
       .hud-pane.active { display: block; }
       .hud-pane::-webkit-scrollbar { width: 6px; }
-      .hud-pane::-webkit-scrollbar-track { background: #101a33; }
-      .hud-pane::-webkit-scrollbar-thumb { background: #0f3460; border-radius: 3px; }
-      .hud-empty { color: #444; font-size: 12px; text-align: center; padding: 30px 0; font-style: italic; }
+      .hud-pane::-webkit-scrollbar-thumb { background: #24402e; border-radius: 3px; }
+      .hud-empty { color: #3a5244; font-size: 13px; text-align: center; padding: 30px 0; font-style: italic; }
       .clip-item {
-        background: #0f3460; padding: 6px 8px; margin: 3px 0; border-radius: 5px;
-        font-size: 11px; word-break: break-all; display: flex; justify-content: space-between; gap: 6px;
+        background: transparent; padding: 5px 0; margin: 0; border-radius: 0;
+        font-size: 14px; word-break: break-all; display: flex; justify-content: space-between; gap: 6px; color: #7a9686;
       }
-      .clip-item .clip-time { color: #556; font-size: 10px; flex-shrink: 0; white-space: nowrap; }
-      .clip-item.error { color: #ff4444; }
-      .clip-item.success { color: #44ff88; }
-      .clip-item.broadcast { color: #e9a820; }
-      .clip-item.info { color: #999; }
+      .clip-item .clip-time { color: #45604f; font-size: 12px; flex-shrink: 0; white-space: nowrap; }
+      .clip-item.error { color: #f0857a; }
+      .clip-item.success { color: #7a9686; }
+      .clip-item.broadcast { color: #d8a838; }
+      .clip-item.info { color: #7a9686; }
 
       /* ===== Modals ===== */
       .modal {
@@ -299,360 +258,277 @@
         background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;
       }
       .modal.show { display: flex; }
-      .modal-content { background: #16213e; border-radius: 8px; padding: 24px; width: 90%; max-width: 460px; color: #eee; }
+      .modal-content { background: #0f2318; border: 1px solid #1e3527; border-radius: 10px; padding: 24px; width: 90%; max-width: 460px; color: #c8d6cd; }
       .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-      .modal-header h2 { margin: 0; color: #e94560; font-size: 18px; }
-      .modal-close { background: none; border: none; color: #e94560; font-size: 24px; cursor: pointer; padding: 0; width: auto; margin: 0; }
-      .modal-close:hover { color: #ff6b7a; }
-      .storage-path { background: #0f3460; padding: 10px; border-radius: 6px; margin: 8px 0; font-size: 12px; word-break: break-all; border: 1px solid #2a2a5e; font-family: 'Consolas', monospace; }
+      .modal-header h2 { margin: 0; color: #39d3a0; font-size: 18px; font-weight: 500; }
+      .modal-close { background: none; border: none; color: #39d3a0; font-size: 24px; cursor: pointer; padding: 0; width: auto; line-height: 1; }
+      .modal-close:hover { background: none; color: #4fe0b0; }
+      .storage-path { background: #0c1c14; padding: 10px; border-radius: 6px; margin: 8px 0; font-size: 12px; word-break: break-all; border: 1px solid #24402e; font-family: 'Consolas', monospace; }
       .welcome-icon { font-size: 40px; text-align: center; margin-bottom: 8px; }
-      .welcome-title { text-align: center; color: #e94560; font-size: 20px; font-weight: 700; margin-bottom: 4px; }
-      .welcome-subtitle { text-align: center; color: #999; font-size: 13px; margin-bottom: 20px; }
-      .info-row { background: #0f3460; border-radius: 6px; padding: 10px; margin-bottom: 8px; font-size: 12px; }
-      .info-row-label { color: #999; font-size: 10px; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 1px; }
-      .info-row-value { color: #eee; word-break: break-all; font-family: 'Consolas', monospace; font-size: 11px; }
+      .welcome-title { text-align: center; color: #39d3a0; font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+      .welcome-subtitle { text-align: center; color: #7a9686; font-size: 13px; margin-bottom: 20px; }
+      .info-row { background: #0c1c14; border-radius: 6px; padding: 10px; margin-bottom: 8px; font-size: 12px; }
+      .info-row-label { color: #7a9686; font-size: 10px; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 1px; }
+      .info-row-value { color: #c8d6cd; word-break: break-all; font-family: 'Consolas', monospace; font-size: 11px; }
 
-      /* Hide by default */
       #sessionPanel-connected { display: none; }
-      input#hotkeyCapture { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
     </style>
   </head>
   <body>
-    <div class="header">
-      <h1>🙈 Peak-Abu</h1>
-      <button class="btn-settings" onclick="openSettings()">⚙ Settings</button>
-    </div>
+    <div class="app">
 
-    <!-- SETTINGS MODAL -->
-    <div id="settingsModal" class="modal">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2>Settings</h2>
-          <button class="modal-close" onclick="closeSettings()">×</button>
+      <div class="header">
+        <div class="brand">
+          <span style="font-size:26px;">🙈</span>
+          <h1>Peak-Abu</h1>
         </div>
-        <div>
-          <label>Video Storage Location</label>
-          <div class="storage-path" id="storagePathDisplay">Loading...</div>
-          <button class="btn-secondary" style="width:100%;margin-bottom:16px;" onclick="pickStorageDirectory()">📁 Change Storage Directory</button>
-          <hr style="border:1px solid #333;margin:16px 0;">
-          <button class="btn-secondary" style="width:100%;" onclick="openUninstallGuide()">🗑 Uninstall Peak-Abu</button>
-        </div>
+        <button class="btn-secondary btn-sm" onclick="openSettings()">⚙ Settings</button>
       </div>
-    </div>
 
-    <!-- FIRST LAUNCH MODAL -->
-    <div id="firstLaunchModal" class="modal">
-      <div class="modal-content">
-        <div class="welcome-icon">🙈</div>
-        <div class="welcome-title">Welcome to Peak-Abu</div>
-        <div class="welcome-subtitle">Let's get you set up before your first session.</div>
-        <div class="info-row">
-          <div class="info-row-label">📂 App Location</div>
-          <div class="info-row-value" id="installPathDisplay">Loading...</div>
-        </div>
-        <div class="info-row">
-          <div class="info-row-label">🎬 Video Storage</div>
-          <div class="info-row-value" id="firstLaunchStorageDisplay">Default — click below to change</div>
-        </div>
-        <button class="btn-secondary" style="width:100%;margin:8px 0;" onclick="pickStorageFirstLaunch()">📁 Choose Video Storage Folder</button>
-        <p style="font-size:11px;color:#444;text-align:center;margin:6px 0 12px;">You can change this anytime in Settings.</p>
-        <button onclick="completeFirstLaunch()" style="width:100%;">🚀 Get Started</button>
-      </div>
-    </div>
-
-    <!-- AUTH (login/register form — hidden after login) -->
-    <div class="section" id="authPanel">
-      <h3>Account</h3>
-      <div id="authLoggedOut">
-        <label>Username</label>
-        <input type="text" id="authUsernameInput" placeholder="Enter username" />
-        <label>Password</label>
-        <input type="password" id="authPasswordInput" placeholder="Enter password" />
-        <div id="authConfirmWrap" style="display:none;">
-          <label>Confirm Password</label>
-          <input type="password" id="authConfirmInput" placeholder="Re-enter password" />
-        </div>
-        <div id="authError" style="color:#ff4444;font-size:12px;margin-top:-4px;margin-bottom:6px;display:none;"></div>
-        <div class="row">
-          <button onclick="loginUser()">Log In</button>
-          <button class="btn-secondary" onclick="registerUser()">Register</button>
-        </div>
-        <p style="font-size:11px;color:#444;text-align:center;margin-top:6px;">New? Click Register to create an account.</p>
-      </div>
-    </div>
-
-    <!-- AUTH BAR (shown after login — compact) -->
-    <div class="auth-bar" id="authBar" style="display:none;">
-      <span class="user-label">Logged in as <strong id="authBarName"></strong></span>
-      <button onclick="logoutUser()">Log Out</button>
-    </div>
-
-    <!-- SESSION PANEL -->
-    <div class="section" id="sessionPanel" style="display:none;">
-      <h3>Squad Session</h3>
-      <div id="sessionPanel-disconnected">
-        <button onclick="createSession()">Create New Session</button>
-        <div class="divider">— or join a friend —</div>
-        <label>Session Code</label>
-        <input type="text" id="joinCodeInput" placeholder="e.g. ABCD12" maxlength="6"
-               style="text-transform:uppercase;letter-spacing:3px;text-align:center;" />
-        <button class="btn-secondary" onclick="joinSession()">Join Session</button>
-      </div>
-      <div id="sessionPanel-connected">
-        <label>Session Code (click to copy)</label>
-        <div class="session-code" id="sessionCodeDisplay" onclick="copySessionCode()">------</div>
-        <div class="hint" id="sessionCodeHint">Click the code to copy to clipboard</div>
-        <a class="player-link" id="playerLink" href="#" target="_blank">🌐 Open in Web Player</a>
-
-        
-
-        <div class="member-list" id="memberList"></div>
-        <button class="btn-secondary" onclick="leaveSession()">Leave Session</button>
-      </div>
-    </div>
-
-    <!-- RECORDING SETUP + MIC (combined) -->
-    <div class="section">
-      <h3>Recording</h3>
-      <label>Monitor</label>
-      <select id="monitorSelect">
-        <option>Loading monitors...</option>
-      </select>
-      <div class="monitor-active" id="monitorActive" style="display:none;">Recording: <span id="monitorActiveName">—</span></div>
-
-      <div class="fs-toggle-row">
-        <div class="fs-toggle-label">
-          <span>Full Session Mode</span>
-          <span class="info" id="fsInfo">&#9432;</span>
-          <div class="fs-tooltip" id="fsTooltip">
-            Saves your entire recording locally when you end the session — not just highlights.
-            Highlights still upload to your squad as normal. <b>Uses significant disk space</b>
-            for long sessions (roughly 0.5&ndash;1&nbsp;GB per 10&nbsp;min at 1080p).
-            <span id="fsFreeSpace"></span>
+      <!-- SETTINGS MODAL -->
+      <div id="settingsModal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2>Settings</h2>
+            <button class="modal-close" onclick="closeSettings()">×</button>
+          </div>
+          <div>
+            <label>Video Storage Location</label>
+            <div class="storage-path" id="storagePathDisplay">Loading...</div>
+            <button class="btn-secondary" style="width:100%;margin-bottom:16px;" onclick="pickStorageDirectory()">📁 Change Storage Directory</button>
+            <hr style="border:1px solid #1e3527;margin:16px 0;">
+            <button class="btn-secondary" style="width:100%;" onclick="openUninstallGuide()">🗑 Uninstall Peak-Abu</button>
           </div>
         </div>
-        <label class="switch">
-          <input type="checkbox" id="fullSessionToggle" onchange="toggleFullSession()" />
-          <span class="slider"></span>
-        </label>
       </div>
 
-      <div id="fsOptions" style="display:none;">
-        <div class="fs-detail">
-          Archive location: <b id="fsLocPath">default (next to highlights)</b>
-        </div>
-        <div class="fs-loc-row">
-          <button class="btn-sm btn-secondary" onclick="pickFullSessionDir()">Choose Location</button>
-          <button class="btn-sm btn-secondary" onclick="resetFullSessionDir()">Reset</button>
-        </div>
-      </div>
-
-      <div class="disk-banner" id="diskBanner"></div>
-
-      <div class="row" style="margin-bottom:6px;">
-        <div>
-          <label>Framerate</label>
-          <select id="fpsSelect" onchange="updateSettings()">
-            <option value="30" selected>30 FPS</option>
-            <option value="60">60 FPS</option>
-          </select>
-        </div>
-        <div>
-          <label>Quality</label>
-          <select id="resolutionSelect" onchange="updateSettings()">
-            <option value="native" selected>Native</option>
-            <option value="720">720p</option>
-            <option value="480">480p</option>
-          </select>
-        </div>
-        <div>
-          <label>Color</label>
-          <select id="hdrSelect" onchange="updateSettings()">
-            <option value="sdr" selected>Standard (SDR)</option>
-            <option value="hdr">HDR monitor fix</option>
-          </select>
+      <!-- FIRST LAUNCH MODAL -->
+      <div id="firstLaunchModal" class="modal">
+        <div class="modal-content">
+          <div class="welcome-icon">🙈</div>
+          <div class="welcome-title">Welcome to Peak-Abu</div>
+          <div class="welcome-subtitle">Let's get you set up before your first session.</div>
+          <div class="info-row">
+            <div class="info-row-label">📂 App Location</div>
+            <div class="info-row-value" id="installPathDisplay">Loading...</div>
+          </div>
+          <div class="info-row">
+            <div class="info-row-label">🎬 Video Storage</div>
+            <div class="info-row-value" id="firstLaunchStorageDisplay">Default — click below to change</div>
+          </div>
+          <button class="btn-secondary" style="width:100%;margin:8px 0;" onclick="pickStorageFirstLaunch()">📁 Choose Video Storage Folder</button>
+          <p style="font-size:11px;color:#3a5244;text-align:center;margin:6px 0 12px;">You can change this anytime in Settings.</p>
+          <button class="btn-save" onclick="completeFirstLaunch()" style="width:100%;">🚀 Get Started</button>
         </div>
       </div>
 
-
-      <input type="text" id="hotkeyCapture" readonly />
-      <label>Save Highlight Hotkey</label>
-      <div class="hotkey-row">
-        <div class="hotkey-display" id="hotkeyDisplay"></div>
-        <button class="btn-sm btn-secondary" id="hotkeyBtn" onclick="toggleHotkeyCapture()">Change</button>
+      <!-- AUTH (login/register form — hidden after login) -->
+      <div class="card" id="authPanel" style="margin-bottom:13px;">
+        <h3>Account</h3>
+        <div id="authLoggedOut">
+          <label>Username</label>
+          <input type="text" id="authUsernameInput" placeholder="Enter username" />
+          <label>Password</label>
+          <input type="password" id="authPasswordInput" placeholder="Enter password" />
+          <div id="authConfirmWrap" style="display:none;">
+            <label>Confirm Password</label>
+            <input type="password" id="authConfirmInput" placeholder="Re-enter password" />
+          </div>
+          <div id="authError" style="color:#f0857a;font-size:12px;margin-top:-4px;margin-bottom:6px;display:none;"></div>
+          <div class="row">
+            <button class="btn-save" onclick="loginUser()">Log In</button>
+            <button class="btn-secondary" onclick="registerUser()">Register</button>
+          </div>
+          <p style="font-size:11px;color:#3a5244;text-align:center;margin-top:6px;">New? Click Register to create an account.</p>
+        </div>
       </div>
-      <div class="hotkey-hint" id="hotkeyHint">Press any F-key, or Ctrl/Alt/Shift + key</div>
 
-      <div class="row">
-        <button id="startBtn" onclick="startRecording()">▶ Start Highlight Session</button>
-        <button id="stopBtn" class="btn-secondary" onclick="stopRecording()" disabled>⏹ End Session</button>
+      <!-- AUTH BAR (shown after login — compact) -->
+      <div class="auth-bar" id="authBar" style="display:none;">
+        <span class="user-label">Logged in as <strong id="authBarName"></strong></span>
+        <button onclick="logoutUser()">Log Out</button>
       </div>
 
-      <!-- MIC (compact, inside recording section) -->
-      <div class="mic-group" style="margin-bottom:8px;">
-          <h4>🔊 Desktop Audio Source</h4>
-         <div class="mic-row">
-           <label>Device</label>
-           <select id="audioOutputSelect" onchange="onAudioOutputChange()">
-              <option value="default">Default</option>
+      <!-- MAIN GRID -->
+      <div class="grid" id="mainGrid">
+
+        <!-- LEFT COLUMN: SESSION -->
+        <div class="col" id="leftCol">
+        <div class="card" id="sessionPanel" style="display:none;flex-direction:column;flex:1;">
+          <h3>Squad Session</h3>
+          <div id="sessionPanel-disconnected">
+            <button class="btn-save" onclick="createSession()">Create New Session</button>
+            <div class="divider">— or join a friend —</div>
+            <label>Session Code</label>
+            <input type="text" id="joinCodeInput" placeholder="e.g. ABCD12" maxlength="6"
+                   style="text-transform:uppercase;letter-spacing:3px;text-align:center;" />
+            <button class="btn-secondary" onclick="joinSession()">Join Session</button>
+          </div>
+          <div id="sessionPanel-connected" style="flex:1;flex-direction:column;">
+            <div class="uc-label">Session Code — click to copy</div>
+            <div class="session-code" id="sessionCodeDisplay" onclick="copySessionCode()">------</div>
+            <div class="hint" id="sessionCodeHint">Click the code to copy to clipboard</div>
+            <a class="player-link" id="playerLink" href="#" target="_blank">🌐 Open in Web Player</a>
+            <div class="uc-label" style="margin-top:13px;">Squad</div>
+            <div class="member-list" id="memberList"></div>
+            <button class="btn-leave" onclick="leaveSession()">Leave Session</button>
+          </div>
+        </div>
+        </div>
+
+        <!-- RIGHT COLUMN: STATUS/SAVE + RECORDING -->
+        <div class="col">
+
+          <!-- STATUS + SAVE -->
+          <div class="card">
+            <div class="save-head">
+              <div style="flex:1;">
+                <div class="status-bar idle" id="statusText">● Idle</div>
+                <div class="status-help" id="statusHelp">Start recording to begin buffering gameplay</div>
+              </div>
+              <button class="btn-icon" id="hotkeyBtn" title="Change highlight hotkey" onclick="toggleHotkeyCapture()"
+                      style="width:40px;height:40px;font-size:18px;flex-shrink:0;">⌨</button>
+            </div>
+
+            <input type="text" id="hotkeyCapture" readonly />
+            <div class="hotkey-display" id="hotkeyDisplay"></div>
+            <div class="hotkey-hint" id="hotkeyHint" style="display:none;"></div>
+
+            <!-- Clip duration: host picker / member display -->
+            <div class="clip-duration-row" id="clipDurationHost" style="display:none;">
+              <label>⏱ Clip length</label>
+              <select id="clipDurationSelect" onchange="onClipDurationChange()">
+                <option value="15000">15 sec</option>
+                <option value="30000" selected>30 sec</option>
+                <option value="60000">1 min</option>
+                <option value="180000">3 min</option>
+              </select>
+            </div>
+            <div class="clip-duration-display" id="clipDurationMember" style="display:none;">
+              ⏱ Clip length: <strong id="clipDurationValue">30s</strong>
+            </div>
+
+            <button class="btn-save" id="saveBtn" onclick="saveHighlight()" disabled style="margin-top:12px;">💾 Save Highlight (or press <span id="saveBtnHotkey">F9</span>)</button>
+
+            <div class="upload-progress-wrap" id="uploadProgressWrap">
+              <div class="upload-progress-label">
+                <span>Uploading clip...</span>
+                <span id="uploadPct">0%</span>
+              </div>
+              <div class="upload-progress-track">
+                <div class="upload-progress-fill" id="uploadProgressFill"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- RECORDING -->
+          <div class="card" style="position:relative;">
+            <div class="rec-head">
+              <h3>Recording</h3>
+              <button class="btn-icon" id="micMenuBtn" title="Audio settings" onclick="toggleMicMenu()"
+                      style="width:38px;height:36px;font-size:17px;">🎤</button>
+            </div>
+
+            <!-- MIC / AUDIO POPOVER -->
+            <div class="mic-menu" id="micMenu">
+              <div class="uc-label">🎤 Microphone</div>
+              <select id="micSelect" onchange="onMicDeviceChange()">
+                <option value="">None</option>
+              </select>
+              <div class="uc-label">Volume</div>
+              <div class="vol-row">
+                <input type="range" id="micVolume" min="0" max="100" value="80" oninput="onMicVolumeChange()" />
+                <button class="mic-mute-btn" id="micMuteBtn" onclick="toggleMicMute()">Mute</button>
+              </div>
+              <div class="uc-label">🔊 Desktop Audio Source</div>
+              <select id="audioOutputSelect" onchange="onAudioOutputChange()">
+                <option value="default">Default</option>
+              </select>
+            </div>
+
+            <label>Source</label>
+            <select id="monitorSelect" style="margin-bottom:11px;">
+              <option>Loading monitors...</option>
             </select>
+            <div class="monitor-active" id="monitorActive" style="display:none;">Recording: <span id="monitorActiveName">—</span></div>
+
+            <div class="row" style="margin-top:11px;">
+              <div>
+                <label>Framerate</label>
+                <select id="fpsSelect" onchange="updateSettings()">
+                  <option value="30" selected>30 FPS</option>
+                  <option value="60">60 FPS</option>
+                </select>
+              </div>
+              <div>
+                <label>Quality</label>
+                <select id="resolutionSelect" onchange="updateSettings()">
+                  <option value="native" selected>Native</option>
+                  <option value="720">720p</option>
+                  <option value="480">480p</option>
+                </select>
+              </div>
+              <div>
+                <label>Color</label>
+                <select id="hdrSelect" onchange="updateSettings()">
+                  <option value="sdr" selected>Standard (SDR)</option>
+                  <option value="hdr">HDR monitor fix</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- FULL SESSION MODE -->
+            <div class="fs-toggle-row">
+              <div class="fs-toggle-label">
+                <span style="font-size:13px;color:#8fbfa3;">Full Session Mode</span>
+                <span class="info" id="fsInfo">&#9432;</span>
+                <div class="fs-tooltip" id="fsTooltip">
+                  Saves your entire recording locally when you end the session — not just highlights.
+                  Highlights still upload to your squad as normal. <b>Uses significant disk space</b>
+                  for long sessions (roughly 0.5&ndash;1&nbsp;GB per 10&nbsp;min at 1080p).
+                  <span id="fsFreeSpace"></span>
+                </div>
+              </div>
+              <label class="switch" style="margin:0;">
+                <input type="checkbox" id="fullSessionToggle" onchange="toggleFullSession()" />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div id="fsOptions" style="display:none;">
+              <div class="fs-detail">Archive location: <b id="fsLocPath">default (next to highlights)</b></div>
+              <div class="fs-loc-row">
+                <button class="btn-sm btn-secondary" onclick="pickFullSessionDir()">Choose Location</button>
+                <button class="btn-sm btn-secondary" onclick="resetFullSessionDir()">Reset</button>
+              </div>
+            </div>
+            <div class="disk-banner" id="diskBanner"></div>
+
+            <div class="row" style="margin-top:13px;">
+              <button class="btn-start" id="startBtn" onclick="startRecording()">▶ Start Highlight Session</button>
+              <button class="btn-end" id="stopBtn" onclick="stopRecording()" disabled>⏹ End Session</button>
+            </div>
           </div>
-          <div class="mic-status">Select the playback device your game outputs to</div>
-      </div>
-      <div class="mic-group">
-        <h4>🎤 Microphone</h4>
-        <div class="mic-row">
-          <label>Device</label>
-          <select id="micSelect" onchange="onMicDeviceChange()">
-            <option value="">None</option>
-          </select>
-        </div>
-        <div class="mic-row">
-          <label>Vol</label>
-          <input type="range" id="micVolume" min="0" max="100" value="80" oninput="onMicVolumeChange()" />
-          <button class="mic-mute-btn" id="micMuteBtn" onclick="toggleMicMute()">Mute</button>
-        </div>
-        
-      </div>
-    </div>
 
-    <!-- STATUS + SAVE (prominent) -->
-    <div class="section">
-      <div class="status-bar idle" id="statusText">● Idle</div>
-      <div class="status-help" id="statusHelp">Start recording to begin buffering gameplay</div>
-      <!-- Clip duration: host picker / member display -->
-        <div class="clip-duration-row" id="clipDurationHost" style="display:none;">
-          <label>⏱ Clip</label>
-          <select id="clipDurationSelect" onchange="onClipDurationChange()">
-            <option value="15000">15 sec</option>
-            <option value="30000" selected>30 sec</option>
-            <option value="60000">1 min</option>
-            <option value="180000">3 min</option>
-          </select>
-        </div>
-        <div class="clip-duration-display" id="clipDurationMember" style="display:none;">
-          ⏱ Clip length: <strong id="clipDurationValue">30s</strong>
-        </div>
-      <button id="saveBtn" onclick="saveHighlight()" disabled style="margin-top:8px;">💾 Save Highlight (or press <span id="saveBtnHotkey">F9</span>)</button>
-      <div class="upload-progress-wrap" id="uploadProgressWrap">
-        <div class="upload-progress-label">
-          <span>Uploading clip...</span>
-          <span id="uploadPct">0%</span>
-        </div>
-        <div class="upload-progress-track">
-          <div class="upload-progress-fill" id="uploadProgressFill"></div>
         </div>
       </div>
-    </div>
 
-    <!-- SESSION HUD -->
-    <div class="section">
-      <div class="hud-tabs">
-        <button class="hud-tab active" id="hudTab-activity" onclick="switchHudTab('activity')">⚡ Activity<span class="tab-badge" id="hudBadge-activity" style="display:none;">0</span></button>
-        <button class="hud-tab" id="hudTab-squad" onclick="switchHudTab('squad')">👥 Squad<span class="tab-badge" id="hudBadge-squad" style="display:none;">0</span></button>
-        <button class="hud-tab" id="hudTab-system" onclick="switchHudTab('system')">🛠 System<span class="tab-badge" id="hudBadge-system" style="display:none;">0</span></button>
-        <button class="hud-tab" id="hudTab-history" onclick="switchHudTab('history')">📋 History<span class="tab-badge" id="hudBadge-history" style="display:none;">0</span></button>
+      <!-- SESSION HUD -->
+      <div class="hud-card">
+        <div class="hud-tabs">
+          <button class="hud-tab active" id="hudTab-activity" onclick="switchHudTab('activity')">⚡ Activity<span class="tab-badge" id="hudBadge-activity" style="display:none;">0</span></button>
+          <button class="hud-tab" id="hudTab-squad" onclick="switchHudTab('squad')">👥 Squad<span class="tab-badge" id="hudBadge-squad" style="display:none;">0</span></button>
+          <button class="hud-tab" id="hudTab-system" onclick="switchHudTab('system')">🛠 System<span class="tab-badge" id="hudBadge-system" style="display:none;">0</span></button>
+          <button class="hud-tab" id="hudTab-history" onclick="switchHudTab('history')">📋 History<span class="tab-badge" id="hudBadge-history" style="display:none;">0</span></button>
+        </div>
+        <div class="hud-pane active" id="hudPane-activity"><div class="hud-empty">Highlight saves and uploads appear here</div></div>
+        <div class="hud-pane" id="hudPane-squad"><div class="hud-empty">Squad joins and leaves appear here</div></div>
+        <div class="hud-pane" id="hudPane-system"><div class="hud-empty">App messages appear here</div></div>
+        <div class="hud-pane" id="hudPane-history"><div class="hud-empty">Session history appears here</div></div>
       </div>
-      <div class="hud-pane active" id="hudPane-activity"><div class="hud-empty">Highlight saves and uploads appear here</div></div>
-      <div class="hud-pane" id="hudPane-squad"><div class="hud-empty">Squad joins and leaves appear here</div></div>
-      <div class="hud-pane" id="hudPane-system"><div class="hud-empty">App messages appear here</div></div>
-      <div class="hud-pane" id="hudPane-history"><div class="hud-empty">Session history appears here</div></div>
-    </div>
 
+    </div>
     <script>
-
-      const { ipcRenderer } = require('electron');
-
-       // ===== Full Session Mode =====
-
-      window.toggleFullSession = function() {
-       var checkbox = document.getElementById('fullSessionToggle');
-       setTimeout(function() {
-         var on = checkbox.checked;
-         ipcRenderer.send('set-full-session-mode', on);
-         document.getElementById('fsOptions').style.display = on ? 'block' : 'none';
-         console.log(`Toggle sent: ${on}`);
-       }, 0);
-      };
-
-      ipcRenderer.on('full-session-mode-set', function(event, enabled) {
-       document.getElementById('fullSessionToggle').checked = !!enabled;
-       document.getElementById('fsOptions').style.display = enabled ? 'block' : 'none';
-       console.log(`Full Session Mode confirmed: ${enabled}`);
-      });
-
-      window.pickFullSessionDir = async function() {
-        var res = await ipcRenderer.invoke('pick-fullsession-directory');
-        if (res && res.success) {
-          document.getElementById('fsLocPath').textContent = res.path;
-        }
-      };
-
-      window.resetFullSessionDir = async function() {
-        var res = await ipcRenderer.invoke('clear-fullsession-directory');
-        document.getElementById('fsLocPath').textContent = 'default (next to highlights)';
-      };
-
-      // Restore toggle state + free space on launch
-      (async function initFullSession() {
-        try {
-          var on = await ipcRenderer.invoke('get-full-session-mode');
-          document.getElementById('fullSessionToggle').checked = !!on;
-          document.getElementById('fsOptions').style.display = on ? 'block' : 'none';
-          if (on) {
-            var loc = await ipcRenderer.invoke('get-fullsession-directory');
-            if (loc) document.getElementById('fsLocPath').textContent = loc;
-          }
-        } catch (e) {}
-      })();
-
-      
-
-      // Populate free-space line when hovering the info icon
-      document.getElementById('fsInfo').addEventListener('mouseenter', async function() {
-        try {
-          var gb = await ipcRenderer.invoke('get-free-space-gb');
-          var el = document.getElementById('fsFreeSpace');
-          if (gb === null) { el.textContent = ''; return; }
-          var warn = gb <= 20 ? ' \u26A0' : '';
-          el.innerHTML = '<br><b>Free space: ' + gb + ' GB' + warn + '</b>';
-        } catch (e) {}
-      });
-
-      // Disk warning / critical banners from main process
-      ipcRenderer.on('disk-warning', function(ev, d) {
-        var b = document.getElementById('diskBanner');
-        b.style.display = 'block';
-        b.textContent = '\u26A0 Low disk space: ' + d.freeGB + ' GB left. Recording will auto-stop at 10 GB to protect your system.';
-      });
-
-      ipcRenderer.on('disk-critical', function(ev, d) {
-        var b = document.getElementById('diskBanner');
-        b.style.display = 'block';
-        b.textContent = '\u26D4 Disk critical: ' + d.freeGB + ' GB left. Recording was stopped automatically and your session is being archived.';
-      });
-
-      ipcRenderer.on('archive-started', function(ev, d) {
-        var b = document.getElementById('diskBanner');
-        b.style.display = 'block';
-        b.style.color = '#9fd0ff';
-        b.textContent = '\uD83D\uDCBE Saving full session (' + d.chunks + ' segments)...';
-      });
-
-      ipcRenderer.on('archive-complete', function(ev, d) {
-        var b = document.getElementById('diskBanner');
-        b.style.display = 'block';
-        b.style.color = '#8fe08f';
-        b.textContent = '\u2713 Full session saved (' + d.sizeMB + ' MB): ' + d.path;
-      });
-
-      ipcRenderer.on('archive-failed', function(ev, d) {
-        var b = document.getElementById('diskBanner');
-        b.style.display = 'block';
-        b.style.color = '#ffb3c0';
-        b.textContent = '\u26A0 Archive failed, but raw segments are safe in: ' + d.path;
-      });
-
+      const { ipcRenderer, clipboard } = require('electron');
       const io = require('socket.io-client');
 
       // State
@@ -753,9 +629,9 @@
 
         item.addEventListener('click', function() {
           document.getElementById('joinCodeInput').value = h.code;
-          navigator.clipboard.writeText(h.code).then(function() {
+          clipboard.writeText(h.code); (function() {
             hudLog('system', '📋 Code ' + h.code + ' copied & filled', 'success');
-          });
+          })();
         });
 
         pane.appendChild(item);
@@ -792,13 +668,13 @@
       window.copySessionCode = function() {
         var code = document.getElementById('sessionCodeDisplay').textContent.trim();
         if (!code || code === '------') return;
-        navigator.clipboard.writeText(code).then(function() {
+        clipboard.writeText(code); (function() {
           var el = document.getElementById('sessionCodeDisplay');
           var hint = document.getElementById('sessionCodeHint');
           el.classList.add('copied');
           hint.textContent = '✅ Copied!';
           setTimeout(function() { el.classList.remove('copied'); hint.textContent = 'Click the code to copy to clipboard'; }, 2000);
-        });
+        })();
       };
 
       // =====================
@@ -933,55 +809,53 @@
       // =====================
       // MIC
       // =====================
-
       async function loadMicDevices() {
-        try {
+       try {
          var devices = await navigator.mediaDevices.enumerateDevices();
-         var mics = devices.filter(function(d) { return d.kind === 'audioinput'; });
-
-         // Only dedup when labels are actually populated. If labels are empty
-         // (permission not yet granted), show everything — don't collapse them.
-         var labelsReady = mics.some(function(m) { return m.label && m.label.trim() !== ''; });
-
-         var filtered = mics;
-         if (labelsReady) {
-          var seen = {};
-          filtered = [];
-          mics.forEach(function(m) {
-           var label = m.label || '';
-            // Skip the Windows role aliases outright
-           if (/^Default\s*-/i.test(label) || /^Communications\s*-/i.test(label)) return;
-            // Dedup by the actual device label
-           if (seen[label]) return;
-           seen[label] = true;
-           filtered.push(m);
+         var mics = devices.filter(function(d){return d.kind==='audioinput';});
+         var sel = document.getElementById('micSelect');
+         sel.innerHTML = '<option value="">None</option>';
+         mics.forEach(function(m) {
+           var opt = document.createElement('option');
+           opt.value = m.deviceId;
+           opt.textContent = m.label || ('Mic ' + sel.children.length);
+           sel.appendChild(opt);
          });
-         if (filtered.length === 0) filtered = mics; // safety fallback
-        }
 
-        var sel = document.getElementById('micSelect');
-        var prevValue = sel.value;  // preserve current selection across re-enumeration
-        sel.innerHTML = '<option value="">None</option>';
-        filtered.forEach(function(m) {
+        // Auto-select default mic on first load if user hasn't explicitly chosen None
+         if (!window.micHasBeenTouched && mics.length > 0) {
+           var defaultMic = mics.find(function(m) { return m.deviceId === 'default'; }) || mics[0];
+           sel.value = defaultMic.deviceId;
+           window.micDeviceId = defaultMic.deviceId;
+           window.micEnabled = true;
+           sel.classList.remove('mic-pulse');
+         } else if (!window.micDeviceId) {
+           // No mic selected and user hasn't touched it — pulse
+           sel.classList.add('mic-pulse');
+         }
+       } catch(e) {}
+     }
+
+     async function loadAudioOutputDevices() {
+      try {
+        var devices = await navigator.mediaDevices.enumerateDevices();
+        var outputs = devices.filter(function(d) { return d.kind === 'audiooutput'; });
+        var sel = document.getElementById('audioOutputSelect');
+        sel.innerHTML = '<option value="default">Default</option>';
+        outputs.forEach(function(d) {
           var opt = document.createElement('option');
-          opt.value = m.deviceId;
-          opt.textContent = m.label || ('Microphone ' + (sel.children.length));
+          opt.value = d.deviceId;
+          opt.textContent = d.label || ('Output ' + sel.children.length);
           sel.appendChild(opt);
         });
-
-        // Restore prior selection if it still exists
-        if (prevValue && Array.prototype.some.call(sel.options, function(o){ return o.value === prevValue; })) {
-          sel.value = prevValue;
-        } else if (!window.micHasBeenTouched && filtered.length > 0) {
-          sel.value = filtered[0].deviceId;
-          window.micDeviceId = filtered[0].deviceId;
-          window.micEnabled = true;
-          sel.classList.remove('mic-pulse');
-        } else if (!window.micDeviceId) {
-          sel.classList.add('mic-pulse');
-        }
-      } catch(e) {}
+      } catch(e) { console.log('Audio output enum failed:', e); }
     }
+
+    window.onAudioOutputChange = function() {
+      var deviceId = document.getElementById('audioOutputSelect').value;
+      ipcRenderer.send('update-audio-output', { deviceId: deviceId });
+      hudLog('system', '🔊 Audio capture source changed', 'info');
+     };
 
       window.onMicDeviceChange = function() {
        window.micHasBeenTouched = true;
@@ -1053,8 +927,6 @@
         
       
 
-
-
       // =====================
       // SESSION
       // =====================
@@ -1080,34 +952,6 @@
         connectToSession(code, window.authUsername);
       };
 
-      // =====================
-      // SERVER CLOCK SYNC — 5 ping-pong samples, keep the lowest-RTT one
-      // =====================
-      window.clockSyncInterval = null;
-
-      async function syncServerClock() {
-        if (!window.socket || !window.socket.connected) return;
-        var best = null;
-        for (var i = 0; i < 5; i++) {
-          var sample = await new Promise(function(resolve) {
-            var t0 = Date.now();
-            var timer = setTimeout(function() { resolve(null); }, 2000);
-            window.socket.emit('time-sync', t0, function(res) {
-              clearTimeout(timer);
-              var t1 = Date.now();
-              if (!res || typeof res.serverTime !== 'number') { resolve(null); return; }
-              resolve({ rtt: t1 - t0, offset: res.serverTime - (t0 + t1) / 2 });
-            });
-          });
-          if (sample && (!best || sample.rtt < best.rtt)) best = sample;
-          await new Promise(function(r) { setTimeout(r, 150); });
-        }
-        if (best) {
-          ipcRenderer.send('server-clock-offset', best.offset);
-          console.log('Clock sync: offset=' + best.offset.toFixed(1) + 'ms (rtt=' + best.rtt + 'ms)');
-        }
-      }
-
       function connectToSession(code, username) {
         window.socket = io('https://peakabu.app', { auth: { token: window.authToken } });
 
@@ -1131,11 +975,6 @@
           hudLog('squad','Joined session ' + data.code,'success');
           ipcRenderer.send('session-connected', { code: data.code, username: username });
           addSessionToHistory(data.code, window.isSessionHost ? 'host' : 'member');
-
-          // Sync clocks now and every 5 minutes while in session
-          syncServerClock();
-          if (window.clockSyncInterval) clearInterval(window.clockSyncInterval);
-          window.clockSyncInterval = setInterval(syncServerClock, 5 * 60 * 1000);
         });
 
         window.socket.on('member-joined', function(d) { addMember(d.username, false); hudLog('squad',d.username+' joined','success'); });
@@ -1149,10 +988,6 @@
         });
 
         window.socket.on('coordinated-save-highlight', function(d) {
-         if (!window.isRecordingActive || !window.bufferReady) {
-           hudLog('activity','⚡ '+d.username+' triggered highlight — skipped (you are not recording)','info');
-           return;
-         }
          hudLog('activity','⚡ '+d.username+' triggered highlight — syncing all POVs...','broadcast');
          ipcRenderer.send('broadcast-save-highlight', { coordinated_timestamp: d.coordinated_timestamp, clipDuration: d.clipDuration });
 
@@ -1183,7 +1018,6 @@
       }
 
       window.leaveSession = function() {
-        if (window.clockSyncInterval) { clearInterval(window.clockSyncInterval); window.clockSyncInterval = null; }
         if (window.socket) { window.socket.disconnect(); window.socket = null; }
         window.currentSessionCode = null;
         window.isSessionHost = false;
@@ -1217,62 +1051,16 @@
       // =====================
       // RECORDING
       // =====================
-      // =====================
-      // RECORDING
-      // =====================
-      window.availableWindows = [];
-      window.currentMonitors = [];
-
-      function populateCaptureDropdown(monitors) {
-        var sel = document.getElementById('monitorSelect');
-        sel.innerHTML = '';
-
-        monitors.forEach(function(m, i) {
-          var opt = document.createElement('option');
-          opt.value = 'monitor:' + m.index;
-          opt.textContent = 'Monitor ' + (i+1) + ' — ' + m.width + 'x' + m.height + (m.primary ? ' (Primary)' : '');
-          sel.appendChild(opt);
-        });
-
-        if (window.availableWindows.length > 0) {
-          var sep = document.createElement('option');
-          sep.disabled = true;
-          sep.textContent = '─── Game / Window Capture ───';
-          sel.appendChild(sep);
-
-          window.availableWindows.forEach(function(w) {
-            var opt = document.createElement('option');
-            opt.value = 'window:' + w.title;
-            opt.textContent = '🎮 ' + w.title;
-            sel.appendChild(opt);
-          });
-        }
-
-        var refresh = document.createElement('option');
-        refresh.value = 'refresh';
-        refresh.textContent = '🔄 Refresh window list...';
-        sel.appendChild(refresh);
-      }
-
       ipcRenderer.send('get-monitors');
       ipcRenderer.on('monitors-list', function(ev, monitors) {
-        window.currentMonitors = monitors;
-        populateCaptureDropdown(monitors);
-      });
-
-      document.getElementById('monitorSelect').addEventListener('change', async function() {
-        if (this.value === 'refresh') {
-          this.disabled = true;
-          window.availableWindows = await ipcRenderer.invoke('get-windows');
-          populateCaptureDropdown(window.currentMonitors);
-          this.disabled = false;
-          if (window.availableWindows.length > 0) {
-            this.value = 'window:' + window.availableWindows[0].title;
-          } else {
-            this.value = 'monitor:' + (window.currentMonitors[0] ? window.currentMonitors[0].index : 0);
-            hudLog('system', 'No capturable windows found — open your game first', 'info');
-          }
-        }
+        var sel = document.getElementById('monitorSelect');
+        sel.innerHTML = '';
+        monitors.forEach(function(m, i) {
+          var opt = document.createElement('option');
+          opt.value = m.index;
+          opt.textContent = 'Monitor '+(i+1)+' — '+m.width+'x'+m.height+(m.primary?' (Primary)':'');
+          sel.appendChild(opt);
+        });
       });
 
       async function startAudioCapture() {
@@ -1300,30 +1088,16 @@
       }
 
       window.startRecording = async function() {
-        var selVal = document.getElementById('monitorSelect').value;
-        var selText = document.getElementById('monitorSelect').options[document.getElementById('monitorSelect').selectedIndex].textContent;
-
-        if (selVal === 'refresh' || selVal === '') {
-          hudLog('system', 'Pick a monitor or window first', 'error');
-          return;
-        }
-
-        var startPayload = {};
-        if (selVal.indexOf('window:') === 0) {
-          startPayload.windowTitle = selVal.substring(7);
-          startPayload.monitorIndex = 0; // fallback, unused in window mode
-        } else {
-          startPayload.monitorIndex = parseInt(selVal.substring(8)); // after "monitor:"
-        }
-
-        ipcRenderer.send('start-recording', startPayload);
+        var monitorIndex = parseInt(document.getElementById('monitorSelect').value);
+        var monitorText = document.getElementById('monitorSelect').options[document.getElementById('monitorSelect').selectedIndex].textContent;
+        ipcRenderer.send('start-recording', { monitorIndex: monitorIndex });
         window.isRecordingActive = true;
         window.bufferReady = false;
 
-        document.getElementById('startBtn').textContent = '↺ Switch Source';
+        document.getElementById('startBtn').textContent = '↺ Switch Monitor';
         document.getElementById('stopBtn').disabled = false;
         document.getElementById('monitorActive').style.display = 'block';
-        document.getElementById('monitorActiveName').textContent = selText;
+        document.getElementById('monitorActiveName').textContent = monitorText;
         document.getElementById('statusText').textContent = '● Buffering gameplay...';
         document.getElementById('statusText').className = 'status-bar buffering';
         document.getElementById('statusHelp').textContent = 'Building up a clip buffer — highlights will be available in ~15 seconds';
@@ -1453,6 +1227,13 @@
        });
       });
 
+    ipcRenderer.on('capture-engine', function(ev, label) {
+      hudLog('system', '🎥 Capture: ' + label, 'info');
+    });
+      ipcRenderer.invoke('get-current-hdr').then(function(isHdr) {
+       document.getElementById('hdrSelect').value = isHdr ? 'hdr' : 'sdr';
+      });
+
       // =====================
       // AUTH
       // =====================
@@ -1551,7 +1332,7 @@
         document.getElementById('authPanel').style.display = 'none';
         document.getElementById('authBar').style.display = 'flex';
         document.getElementById('authBarName').textContent = username;
-        document.getElementById('sessionPanel').style.display = 'block';
+        document.getElementById('sessionPanel').style.display = 'flex';
       }
       function showAuthLoggedOut() {
         document.getElementById('authPanel').style.display = 'block';
@@ -1565,6 +1346,57 @@
       }
 
       checkAuthOnLoad();
+    </script>
+    <script>
+      // ===== Redesign compatibility shims =====
+      // The hotkey control is now an icon (⌨). The original logic sets
+      // hotkeyBtn.textContent to 'Change'/'Cancel', which would wipe the icon.
+      // Intercept text writes to keep the glyph and mirror listening state via title.
+      (function() {
+        var btn = document.getElementById('hotkeyBtn');
+        if (btn) {
+          Object.defineProperty(btn, 'textContent', {
+            configurable: true,
+            set: function(v) {
+              btn.setAttribute('data-state', v);
+              btn.title = (v === 'Cancel') ? 'Cancel — listening for hotkey' : 'Change highlight hotkey';
+              // keep the icon glyph rendered
+              btn.innerHTML = '⌨';
+            },
+            get: function() { return btn.getAttribute('data-state') || ''; }
+          });
+        }
+
+        // The hotkey hint text now surfaces in the status help line while capturing,
+        // since there's no dedicated hint element visible. Mirror hotkeyHint -> statusHelp.
+        var hint = document.getElementById('hotkeyHint');
+        var statusHelp = document.getElementById('statusHelp');
+        if (hint && statusHelp) {
+          Object.defineProperty(hint, 'textContent', {
+            configurable: true,
+            set: function(v) {
+              hint.setAttribute('data-text', v);
+              if (window.capturingHotkey || /Listening|Add Ctrl|not supported|saved|⚠/.test(v)) {
+                statusHelp.textContent = v;
+              }
+            },
+            get: function() { return hint.getAttribute('data-text') || ''; }
+          });
+        }
+      })();
+
+      // ===== Mic popover: toggle + close on outside click =====
+      window.toggleMicMenu = function() {
+        var m = document.getElementById('micMenu');
+        m.classList.toggle('show');
+      };
+      document.addEventListener('click', function(e) {
+        var menu = document.getElementById('micMenu');
+        var btn = document.getElementById('micMenuBtn');
+        if (!menu || !menu.classList.contains('show')) return;
+        if (menu.contains(e.target) || btn.contains(e.target)) return;
+        menu.classList.remove('show');
+      });
     </script>
   </body>
 </html>
