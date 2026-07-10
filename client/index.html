@@ -546,6 +546,61 @@
       window.authToken = null;
       window.authUsername = null;
 
+      // =====================
+      // CLOCK SYNC — measures this PC's offset from the Peak-Abu server
+      // clock via min-RTT ping sampling, then pushes it to main so every
+      // clip timestamp lands in the shared server clock domain. Without
+      // this, clips are stamped in raw local Windows time and POVs drift.
+      // =====================
+      window.clockSyncInterval = null;
+
+      function runClockSyncBurst() {
+        if (!window.socket || !window.socket.connected) return;
+        var samples = [];
+        var sent = 0;
+        var finished = false;
+        var TOTAL = 10;
+
+        function finishBurst() {
+          if (finished || samples.length < 3) return;
+          finished = true;
+          samples.sort(function(a, b) { return a.rtt - b.rtt; });
+          var best = samples.slice(0, Math.min(5, samples.length));
+          var offsets = best.map(function(s) { return s.offset; }).sort(function(a, b) { return a - b; });
+          var median = offsets[Math.floor(offsets.length / 2)];
+          var uncertaintyMs = best[0].rtt / 2;
+          ipcRenderer.send('server-clock-offset', { offset: median, uncertaintyMs: uncertaintyMs });
+          console.log('Clock sync: offset ' + median.toFixed(1) + 'ms, +/-' + uncertaintyMs.toFixed(1) + 'ms (' + samples.length + ' samples)');
+          hudLog('activity', 'Clock synced to server (+/-' + Math.ceil(uncertaintyMs) + 'ms)', 'info');
+        }
+
+        function fireOne() {
+          if (!window.socket || !window.socket.connected) return;
+          var t0 = Date.now();
+          window.socket.emit('time-sync', t0, function(res) {
+            var t1 = Date.now();
+            if (res && typeof res.serverTime === 'number') {
+              samples.push({ rtt: t1 - t0, offset: res.serverTime - (t0 + t1) / 2 });
+            }
+          });
+          sent++;
+          if (sent < TOTAL) setTimeout(fireOne, 150);
+          else setTimeout(finishBurst, 1500); // give the last acks time to land
+        }
+
+        fireOne();
+      }
+
+      function startClockSync() {
+        stopClockSync();
+        runClockSyncBurst();
+        window.clockSyncInterval = setInterval(runClockSyncBurst, 5 * 60 * 1000);
+      }
+
+      function stopClockSync() {
+        if (window.clockSyncInterval) { clearInterval(window.clockSyncInterval); window.clockSyncInterval = null; }
+      }
+
       // Mic state
       window.micDeviceId = null;
       window.micEnabled = false;
@@ -961,6 +1016,7 @@
 
         window.socket.on('connect', function() {
           window.socket.emit('join-session', { code: code, username: username });
+          startClockSync();
         });
 
         window.socket.on('session-joined', function(data) {
@@ -1014,7 +1070,7 @@
           if (window.socket) { window.socket.disconnect(); window.socket = null; }
         });
 
-        window.socket.on('disconnect', function() { console.log('WebSocket disconnected'); });
+        window.socket.on('disconnect', function() { console.log('WebSocket disconnected'); stopClockSync(); });
       }
 
       window.leaveSession = function() {

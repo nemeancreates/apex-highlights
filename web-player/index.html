@@ -583,6 +583,52 @@
     .pov-export-check:hover { border-color: #e94560; color: #e94560; background: rgba(15, 52, 96, 0.95); }
     .pov-export-check.selected { background: #e94560; border-color: #e94560; color: white; }
 
+    .pov-nudge-bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 28px;
+      background: rgba(0, 0, 0, 0.72);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      z-index: 10;
+      opacity: 0;
+      transition: opacity 0.15s;
+      pointer-events: none;
+    }
+    .pov-container:hover .pov-nudge-bar,
+    .pov-container.active .pov-nudge-bar { opacity: 1; pointer-events: auto; }
+    .nudge-btn {
+      background: rgba(233, 69, 96, 0.15);
+      border: 1px solid #e94560;
+      color: #e94560;
+      width: 22px;
+      height: 22px;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: bold;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.1s;
+    }
+    .nudge-btn:hover { background: rgba(233, 69, 96, 0.4); }
+    .nudge-readout {
+      font-size: 11px;
+      color: #ddd;
+      min-width: 52px;
+      text-align: center;
+      font-family: 'Consolas', 'Courier New', monospace;
+      letter-spacing: 0.5px;
+    }
+    .nudge-readout.nonzero { color: #e94560; }
+
     .btn-copy {
       background: none;
       border: 1px solid #e94560;
@@ -803,7 +849,7 @@
         return clip || {
           element: null, metadata: null, username,
           uploadId: null, videoFile: null, videoSrc: null,
-          thumbnailSrc: null, offset: 0, volume: 80,
+          thumbnailSrc: null, offset: 0, nudgeMs: 0, volume: 80,
           isMuted: true, loaded: false, missing: true
         };
       });
@@ -1104,7 +1150,7 @@ document.addEventListener('DOMContentLoaded', function() {
             uploadId: upload.id, videoFile: upload.videoFile,
             videoSrc: upload.videoUrl || null,
             thumbnailSrc: upload.thumbnailUrl || (upload.thumbnailFile ? '/media/' + code + '/' + upload.thumbnailFile : null),
-            offset: 0, volume: 80, isMuted: true, loaded: false,
+            offset: 0, nudgeMs: 0, volume: 80, isMuted: true, loaded: false,
             missing: false, processing: isProcessing
           });
         }
@@ -1241,7 +1287,7 @@ document.addEventListener('DOMContentLoaded', function() {
               uploadId: upload.id, videoFile: upload.videoFile,
               videoSrc: upload.videoUrl || null,
               thumbnailSrc: upload.thumbnailUrl || (upload.thumbnailFile ? '/media/' + currentSessionCode + '/' + upload.thumbnailFile : null),
-              offset: 0, volume: 80, isMuted: true, loaded: false,
+              offset: 0, nudgeMs: 0, volume: 80, isMuted: true, loaded: false,
               missing: false, processing: isProcessing
             });
           }
@@ -1459,6 +1505,57 @@ document.addEventListener('DOMContentLoaded', function() {
           };
         })(index));
         container.appendChild(checkbox);
+      }
+
+      // Nudge bar — only on loaded clips, lets viewer fine-tune sync by ±50ms steps
+      if (!v.missing && !v.processing && v.loaded) {
+        const nudgeBar = document.createElement('div');
+        nudgeBar.className = 'pov-nudge-bar';
+        nudgeBar.id = 'nudge-bar-' + index;
+
+        const btnMinus = document.createElement('button');
+        btnMinus.className = 'nudge-btn';
+        btnMinus.textContent = '−';
+        btnMinus.title = 'Shift this POV 50ms earlier';
+
+        const readout = document.createElement('div');
+        readout.className = 'nudge-readout' + ((v.nudgeMs || 0) !== 0 ? ' nonzero' : '');
+        readout.id = 'nudge-readout-' + index;
+        readout.textContent = formatNudge(v.nudgeMs || 0);
+
+        const btnPlus = document.createElement('button');
+        btnPlus.className = 'nudge-btn';
+        btnPlus.textContent = '+';
+        btnPlus.title = 'Shift this POV 50ms later';
+
+        function applyNudge(deltaMs) {
+          v.nudgeMs = (v.nudgeMs || 0) + deltaMs;
+          v.offset = (v.offset || 0) + deltaMs / 1000;
+          readout.textContent = formatNudge(v.nudgeMs);
+          readout.className = 'nudge-readout' + (v.nudgeMs !== 0 ? ' nonzero' : '');
+          // Re-seek this POV to stay in sync with current master time
+          const masterTime = getCurrentMasterTime();
+          const adjusted = masterTime - v.offset;
+          if (v.element && adjusted >= 0 && adjusted <= v.element.duration) {
+            v.element.currentTime = adjusted;
+          }
+          // Update master duration in case this is the earliest clip
+          masterDuration = 0;
+          videos.forEach(vid => {
+            if (!vid.missing && !vid.processing && vid.loaded && vid.element) {
+              const dur = (vid.element.duration || 0) + (vid.offset || 0);
+              if (dur > masterDuration) masterDuration = dur;
+            }
+          });
+        }
+
+        btnMinus.addEventListener('click', function(e) { e.stopPropagation(); applyNudge(-50); });
+        btnPlus.addEventListener('click',  function(e) { e.stopPropagation(); applyNudge(+50); });
+
+        nudgeBar.appendChild(btnMinus);
+        nudgeBar.appendChild(readout);
+        nudgeBar.appendChild(btnPlus);
+        container.appendChild(nudgeBar);
       }
 
       return container;
@@ -1973,6 +2070,11 @@ document.addEventListener('DOMContentLoaded', function() {
       const m = Math.floor(seconds / 60);
       const s = Math.floor(seconds % 60);
       return m + ':' + (s < 10 ? '0' : '') + s;
+    }
+
+    function formatNudge(ms) {
+      if (ms === 0) return '+0ms';
+      return (ms > 0 ? '+' : '') + ms + 'ms';
     }
   </script>
 </body>
