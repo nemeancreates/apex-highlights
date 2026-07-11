@@ -227,6 +227,58 @@
     .pov-processing .proc-text { font-size: 11px; color: #7a9686; }
 
     /* ========================
+       LOCAL CLIPS
+    ======================== */
+    .local-badge {
+      position: absolute;
+      top: 6px;
+      right: 36px;
+      background: rgba(79, 224, 176, 0.85);
+      color: #04140d;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      z-index: 3;
+      pointer-events: none;
+    }
+
+    .local-status-bar {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 12px;
+      background: #0c1c14;
+      border: 1px solid #24402e;
+      border-radius: 6px;
+      font-size: 11px;
+      color: #8fbfa3;
+      margin-left: 8px;
+      white-space: nowrap;
+    }
+    .local-status-bar.active { display: flex; }
+    .local-status-bar .local-count { color: #4fe0b0; font-weight: 700; }
+    .local-status-bar .local-dismiss {
+      background: none; border: none; color: #5f7a6a; cursor: pointer;
+      font-size: 14px; padding: 0 2px; line-height: 1;
+    }
+    .local-status-bar .local-dismiss:hover { color: #f0857a; }
+
+    .btn-local {
+      padding: 6px 10px;
+      background: #0c1c14;
+      color: #8fbfa3;
+      border: 1px solid #2a4636;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn-local:hover { background: #16321f; border-color: #39d3a0; color: #39d3a0; }
+    .btn-local.loaded { background: #16321f; border-color: #4fe0b0; color: #4fe0b0; }
+
+    /* ========================
        SESSION TIMELINE
     ======================== */
     .session-timeline {
@@ -365,6 +417,7 @@
     .member-dot.unloaded { background: #45604f; }
     .member-dot.missing { background: #f0857a; }
     .member-dot.processing { background: #d8a838; }
+    .member-dot.local { background: #4fe0b0; box-shadow: 0 0 4px #4fe0b0; }
 
     .panel-row-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -675,6 +728,13 @@
         <span class="share-url" id="shareUrl"></span>
         <button class="btn-copy" id="copyBtn" onclick="copyShareLink()">&#x1F4CB; Copy Link</button>
       </div>
+      <!-- LOCAL CLIPS STATUS -->
+      <div class="local-status-bar" id="localStatusBar">
+        &#x1F4C2; <span class="local-count" id="localMatchCount">0</span> local &middot;
+        <span id="localTotalCount">0</span> scanned
+        <button class="local-dismiss" onclick="clearLocalClips()" title="Clear local clips">&#x2715;</button>
+      </div>
+      <button class="btn-local" id="localBtn" onclick="pickLocalFolder()" title="Load clips from your PeakAbu folder to skip CDN downloads">&#x1F4C2; Use Local Clips</button>
       <div class="join-bar">
         <input type="text" id="sessionInput" placeholder="Session code" maxlength="6" />
         <button class="btn-paste" id="pasteBtn" onclick="pasteAndLoad()" title="Paste session code from clipboard">&#x1F4CB; Paste</button>
@@ -800,7 +860,6 @@
         setTimeout(() => { btn.textContent = '\u{1F4CB} Paste'; btn.classList.remove('pasted'); }, 1500);
         loadSession();
       } catch (e) {
-        // Clipboard access denied — user can paste manually
         btn.textContent = '\u274C Denied';
         setTimeout(() => { btn.textContent = '\u{1F4CB} Paste'; }, 1500);
       }
@@ -818,8 +877,6 @@
     let masterDuration = 0;
     let animFrameId = null;
     let focusedIndex = -1;
-    // Export selection is keyed by uploadId (NOT by grid index) so selections
-    // persist across highlight switches and can span multiple highlights.
     let selectedExportClips = new Set();
     let expectedClips = 0;
     let currentSessionCode = null;
@@ -829,6 +886,213 @@
 
     let sessionStart = 0;
     let sessionTotalDuration = 0;
+
+    // ========================
+    // LOCAL CLIPS
+    // ========================
+    // Maps clipId (from metadata JSON) → { mp4FileHandle, jsonFileHandle }
+    // Built by scanning a user-selected folder. When a server upload's
+    // metadata.clipId matches, we use a blob URL from the local file
+    // instead of streaming from CDN — zero metered bandwidth.
+    let localClipMap = new Map();
+    // Track blob URLs so we can revoke them on clear
+    let localBlobUrls = [];
+
+    async function pickLocalFolder() {
+      const btn = document.getElementById('localBtn');
+      if (!window.showDirectoryPicker) {
+        // Fallback: webkitdirectory file input
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.webkitdirectory = true;
+        input.multiple = true;
+        input.addEventListener('change', async function() {
+          await scanFileList(input.files);
+          applyLocalMatches();
+        });
+        input.click();
+        return;
+      }
+
+      try {
+        const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+        btn.classList.add('loaded');
+        btn.textContent = '\u{1F4C2} Scanning...';
+        await scanDirectoryHandle(dirHandle);
+        applyLocalMatches();
+        btn.textContent = '\u{1F4C2} Rescan Local';
+      } catch (e) {
+        if (e.name === 'AbortError') return; // user cancelled
+        console.log('Local folder pick failed:', e);
+        btn.textContent = '\u{1F4C2} Use Local Clips';
+        btn.classList.remove('loaded');
+      }
+    }
+
+    async function scanDirectoryHandle(dirHandle) {
+      localClipMap.clear();
+      const jsonFiles = new Map(); // name → handle
+      const mp4Files = new Map();  // name → handle
+
+      for await (const entry of dirHandle.values()) {
+        if (entry.kind !== 'file') continue;
+        const name = entry.name.toLowerCase();
+        if (name.startsWith('highlight-') && name.endsWith('.json')) {
+          jsonFiles.set(entry.name, entry);
+        } else if (name.startsWith('highlight-') && name.endsWith('.mp4')) {
+          mp4Files.set(entry.name, entry);
+        }
+      }
+
+      for (const [jsonName, jsonHandle] of jsonFiles) {
+        try {
+          const file = await jsonHandle.getFile();
+          const text = await file.text();
+          const meta = JSON.parse(text);
+          if (!meta.clipId) continue;
+
+          // Find matching mp4: same timestamp portion of filename
+          const baseName = jsonName.replace(/\.json$/, '.mp4');
+          const mp4Handle = mp4Files.get(baseName);
+
+          localClipMap.set(meta.clipId, {
+            mp4Handle: mp4Handle || null,
+            metadata: meta,
+            jsonName: jsonName
+          });
+        } catch (e) {
+          // Malformed JSON or read error — skip
+        }
+      }
+
+      updateLocalStatusBar();
+      console.log('Local scan: ' + localClipMap.size + ' clips with clipId found (' + jsonFiles.size + ' JSONs scanned)');
+    }
+
+    async function scanFileList(fileList) {
+      // webkitdirectory fallback: FileList from <input>
+      localClipMap.clear();
+      const jsonFiles = new Map();
+      const mp4Files = new Map();
+
+      for (const file of fileList) {
+        const name = file.name.toLowerCase();
+        if (name.startsWith('highlight-') && name.endsWith('.json')) {
+          jsonFiles.set(file.name, file);
+        } else if (name.startsWith('highlight-') && name.endsWith('.mp4')) {
+          mp4Files.set(file.name, file);
+        }
+      }
+
+      for (const [jsonName, jsonFile] of jsonFiles) {
+        try {
+          const text = await jsonFile.text();
+          const meta = JSON.parse(text);
+          if (!meta.clipId) continue;
+
+          const baseName = jsonName.replace(/\.json$/, '.mp4');
+          const mp4File = mp4Files.get(baseName) || null;
+
+          localClipMap.set(meta.clipId, {
+            mp4File: mp4File,
+            metadata: meta,
+            jsonName: jsonName
+          });
+        } catch (e) {}
+      }
+
+      updateLocalStatusBar();
+      console.log('Local scan (file input): ' + localClipMap.size + ' clips with clipId');
+    }
+
+    function updateLocalStatusBar() {
+      const bar = document.getElementById('localStatusBar');
+      document.getElementById('localTotalCount').textContent = localClipMap.size;
+      // Match count is updated after applyLocalMatches
+      if (localClipMap.size > 0) {
+        bar.classList.add('active');
+      }
+    }
+
+    function clearLocalClips() {
+      localClipMap.clear();
+      localBlobUrls.forEach(url => { try { URL.revokeObjectURL(url); } catch(e) {} });
+      localBlobUrls = [];
+      document.getElementById('localStatusBar').classList.remove('active');
+      document.getElementById('localBtn').classList.remove('loaded');
+      document.getElementById('localBtn').textContent = '\u{1F4C2} Use Local Clips';
+
+      // Revert any local sources back to CDN
+      allUploads.forEach(u => {
+        if (u.isLocal && u.originalVideoSrc) {
+          u.videoSrc = u.originalVideoSrc;
+          u.isLocal = false;
+          if (u.loaded && u.element) {
+            u.element.src = '';
+            u.loaded = false;
+          }
+        }
+      });
+
+      // Rebuild current view
+      if (allUploads.length > 0) {
+        videos = buildVideosForHighlight(currentHighlightIndex);
+        renderVideoGrid();
+        renderMemberList();
+      }
+    }
+
+    // After scanning local folder OR after loading session data from server,
+    // match local clipIds to server uploads and swap in blob URLs.
+    async function applyLocalMatches() {
+      if (localClipMap.size === 0) return;
+      let matched = 0;
+
+      for (const u of allUploads) {
+        if (!u.metadata || !u.metadata.clipId) continue;
+        if (u.isLocal) continue; // already matched
+
+        const local = localClipMap.get(u.metadata.clipId);
+        if (!local) continue;
+
+        // Get the mp4 as a blob URL
+        let mp4File = null;
+        if (local.mp4Handle && local.mp4Handle.getFile) {
+          // Directory picker path (FileSystemFileHandle)
+          try { mp4File = await local.mp4Handle.getFile(); } catch(e) {}
+        } else if (local.mp4File) {
+          // webkitdirectory path (File object)
+          mp4File = local.mp4File;
+        }
+
+        if (!mp4File) continue;
+
+        const blobUrl = URL.createObjectURL(mp4File);
+        localBlobUrls.push(blobUrl);
+
+        u.originalVideoSrc = u.videoSrc; // stash CDN URL for revert
+        u.videoSrc = blobUrl;
+        u.isLocal = true;
+
+        // If already loaded with CDN source, unload so next play uses local
+        if (u.loaded && u.element) {
+          u.element.src = '';
+          u.loaded = false;
+        }
+
+        matched++;
+      }
+
+      document.getElementById('localMatchCount').textContent = matched;
+      console.log('Local match: ' + matched + '/' + allUploads.length + ' uploads resolved locally');
+
+      // Refresh the current view
+      if (matched > 0 && allUploads.length > 0) {
+        videos = buildVideosForHighlight(currentHighlightIndex);
+        renderVideoGrid();
+        renderMemberList();
+      }
+    }
 
     // ========================
     // HIGHLIGHT CLUSTERING
@@ -874,7 +1138,7 @@
           element: null, metadata: null, username,
           uploadId: null, videoFile: null, videoSrc: null,
           thumbnailSrc: null, offset: 0, nudgeMs: 0, volume: 80,
-          isMuted: true, loaded: false, missing: true
+          isMuted: true, loaded: false, missing: true, isLocal: false
         };
       });
     }
@@ -900,33 +1164,26 @@
     // ========================
     // SESSION TIMELINE RENDER
     // ========================
-    // Layout guarantees: blocks never overlap, every block keeps a visible
-    // GAP of breathing room from its neighbors, widths never drop below
-    // MIN_W, and everything stays inside the track. If proportional
-    // placement can't honor those guarantees, we fall back to even spacing.
 
     function layoutTimelineBlocks() {
       const n = highlights.length;
       if (n === 0) return [];
 
-      const LEFT_M = 0.5;    // % margin from left edge
-      const RIGHT_M = 0.5;   // % margin from right edge
-      const GAP = 1.5;       // % guaranteed space between blocks
-      const MIN_W = 5;       // % minimum block width
-      const MAX_W = 30;      // % cap so one long highlight can't dominate
+      const LEFT_M = 0.5;
+      const RIGHT_M = 0.5;
+      const GAP = 1.5;
+      const MIN_W = 5;
+      const MAX_W = 30;
       const avail = 100 - LEFT_M - RIGHT_M;
 
       const timing = computeSessionTiming();
 
-      // Too many highlights to honor minimum width + gaps → even spacing,
-      // shrinking width and gap as needed.
       if (n * MIN_W + (n - 1) * GAP > avail) {
         const gap = 0.8;
         const w = Math.max(2, (avail - (n - 1) * gap) / n);
         return highlights.map((_, i) => ({ left: LEFT_M + i * (w + gap), width: w }));
       }
 
-      // No timing metadata → even spacing at comfortable width.
       if (!timing) {
         const w = Math.min(MAX_W, Math.max(MIN_W, (avail - (n - 1) * GAP) / n));
         const totalW = n * w + (n - 1) * GAP;
@@ -934,7 +1191,6 @@
         return highlights.map((_, i) => ({ left: startX + i * (w + GAP), width: w }));
       }
 
-      // Proportional placement from real timestamps.
       const geo = highlights.map(hl => {
         let hlDuration = 0;
         hl.clips.forEach(clip => {
@@ -951,12 +1207,8 @@
         };
       });
 
-      // Clamp widths into [MIN_W, MAX_W].
       geo.forEach(g => { g.width = Math.min(MAX_W, Math.max(MIN_W, g.width)); });
 
-      // If total width can't fit alongside the gaps, shrink the widest
-      // blocks proportionally (never below MIN_W). Feasibility is
-      // guaranteed by the early-out above, so this converges.
       const maxTotalW = avail - (n - 1) * GAP;
       let totalW = geo.reduce((s, g) => s + g.width, 0);
       for (let pass = 0; pass < 4 && totalW > maxTotalW + 0.01; pass++) {
@@ -970,15 +1222,12 @@
         totalW = geo.reduce((s, g) => s + g.width, 0);
       }
 
-      // Forward pass: preserve chronological order, enforce the gap.
       let prevEnd = LEFT_M - GAP;
       geo.forEach(g => {
         g.left = Math.max(g.left, prevEnd + GAP);
         prevEnd = g.left + g.width;
       });
 
-      // Backward pass: pull anything hanging off the right edge back in,
-      // maintaining the gap against the block to its right.
       let nextLeft = 100 - RIGHT_M + GAP;
       for (let i = n - 1; i >= 0; i--) {
         const g = geo[i];
@@ -1031,83 +1280,73 @@
       needle.style.left = (blockLeft + fraction * blockWidth).toFixed(2) + '%';
     }
 
-    
-
     let isScrubbing = false;
-let wasPlayingBeforeScrub = false;
+    let wasPlayingBeforeScrub = false;
 
-function scrubNeedleToEvent(event) {
-  if (masterDuration <= 0) return;
+    function scrubNeedleToEvent(event) {
+      if (masterDuration <= 0) return;
 
-  const track = document.getElementById('timelineTrack');
-  const rect = track.getBoundingClientRect();
-  let clickFraction = (event.clientX - rect.left) / rect.width;
-  clickFraction = Math.max(0, Math.min(1, clickFraction));
+      const track = document.getElementById('timelineTrack');
+      const rect = track.getBoundingClientRect();
+      let clickFraction = (event.clientX - rect.left) / rect.width;
+      clickFraction = Math.max(0, Math.min(1, clickFraction));
 
-  const activeBlock = track.querySelector('.highlight-block.active');
-  if (!activeBlock) return;
+      const activeBlock = track.querySelector('.highlight-block.active');
+      if (!activeBlock) return;
 
-  const blockLeft = parseFloat(activeBlock.style.left) / 100;
-  const blockWidth = parseFloat(activeBlock.style.width) / 100;
-  const withinFraction = Math.max(0, Math.min(1, (clickFraction - blockLeft) / blockWidth));
+      const blockLeft = parseFloat(activeBlock.style.left) / 100;
+      const blockWidth = parseFloat(activeBlock.style.width) / 100;
+      const withinFraction = Math.max(0, Math.min(1, (clickFraction - blockLeft) / blockWidth));
 
-  // Move needle visually — instant, no decode cost
-  const needle = document.getElementById('timelineNeedle');
-  needle.style.left = (parseFloat(activeBlock.style.left) + withinFraction * parseFloat(activeBlock.style.width)).toFixed(2) + '%';
-  document.getElementById('timeDisplay').textContent =
-    formatTime(withinFraction * masterDuration) + ' / ' + formatTime(masterDuration);
+      const needle = document.getElementById('timelineNeedle');
+      needle.style.left = (parseFloat(activeBlock.style.left) + withinFraction * parseFloat(activeBlock.style.width)).toFixed(2) + '%';
+      document.getElementById('timeDisplay').textContent =
+        formatTime(withinFraction * masterDuration) + ' / ' + formatTime(masterDuration);
 
-  // Seek ONLY the primary video during drag — one decoder, real-time feedback
-  const primary = focusedIndex >= 0
-    ? videos[focusedIndex]
-    : videos.find(v => !v.missing && !v.processing && v.loaded);
-  if (primary && primary.element) {
-    const targetTime = withinFraction * masterDuration;
-    const adjusted = targetTime - primary.offset;
-    if (adjusted >= 0 && adjusted <= primary.element.duration) {
-      primary.element.currentTime = adjusted;
-    }
-  }
+      const primary = focusedIndex >= 0
+        ? videos[focusedIndex]
+        : videos.find(v => !v.missing && !v.processing && v.loaded);
+      if (primary && primary.element) {
+        const targetTime = withinFraction * masterDuration;
+        const adjusted = targetTime - primary.offset;
+        if (adjusted >= 0 && adjusted <= primary.element.duration) {
+          primary.element.currentTime = adjusted;
+        }
+      }
 
-  // Stash for the full-sync seek on release
-  track._pendingSeek = withinFraction;
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-  const track = document.getElementById('timelineTrack');
-
-  track.addEventListener('pointerdown', function(e) {
-    if (e.target.classList.contains('highlight-block') && !e.target.classList.contains('active')) return;
-    if (masterDuration <= 0) return;
-    isScrubbing = true;
-    wasPlayingBeforeScrub = isPlaying;
-    if (isPlaying) pauseAll();
-    track.setPointerCapture(e.pointerId);
-    scrubNeedleToEvent(e);
-  });
-
-  track.addEventListener('pointermove', function(e) {
-    if (isScrubbing) scrubNeedleToEvent(e);
-  });
-
-  track.addEventListener('pointerup', function(e) {
-    if (!isScrubbing) return;
-    isScrubbing = false;
-    try { track.releasePointerCapture(e.pointerId); } catch (err) {}
-
-    // Sync all other POVs to the primary's position
-    if (track._pendingSeek !== undefined) {
-      seekToFraction(track._pendingSeek);
-      delete track._pendingSeek;
+      track._pendingSeek = withinFraction;
     }
 
-    if (wasPlayingBeforeScrub) playAll();
-  });
-});
+    document.addEventListener('DOMContentLoaded', function() {
+      const track = document.getElementById('timelineTrack');
 
+      track.addEventListener('pointerdown', function(e) {
+        if (e.target.classList.contains('highlight-block') && !e.target.classList.contains('active')) return;
+        if (masterDuration <= 0) return;
+        isScrubbing = true;
+        wasPlayingBeforeScrub = isPlaying;
+        if (isPlaying) pauseAll();
+        track.setPointerCapture(e.pointerId);
+        scrubNeedleToEvent(e);
+      });
 
+      track.addEventListener('pointermove', function(e) {
+        if (isScrubbing) scrubNeedleToEvent(e);
+      });
 
+      track.addEventListener('pointerup', function(e) {
+        if (!isScrubbing) return;
+        isScrubbing = false;
+        try { track.releasePointerCapture(e.pointerId); } catch (err) {}
 
+        if (track._pendingSeek !== undefined) {
+          seekToFraction(track._pendingSeek);
+          delete track._pendingSeek;
+        }
+
+        if (wasPlayingBeforeScrub) playAll();
+      });
+    });
 
     function seekToFraction(fraction) {
       const targetTime = fraction * masterDuration;
@@ -1118,8 +1357,6 @@ document.addEventListener('DOMContentLoaded', function() {
           v.element.currentTime = 0;
           v.element.pause();
         } else if (adjustedTime > v.element.duration) {
-          // Never park exactly on duration — that fires 'ended', and a later
-          // play() on an ended element restarts it from 0 (freeze/desync).
           v.element.currentTime = Math.max(0, v.element.duration - 0.05);
           v.element.pause();
         } else {
@@ -1219,7 +1456,6 @@ document.addEventListener('DOMContentLoaded', function() {
             } catch (e) {}
           }
 
-          // Check if this upload is still processing (no CDN URL yet)
           const isProcessing = !upload.videoUrl;
           if (isProcessing) hasProcessing = true;
 
@@ -1234,9 +1470,13 @@ document.addEventListener('DOMContentLoaded', function() {
             videoSrc: upload.videoUrl || null,
             thumbnailSrc: upload.thumbnailUrl || (upload.thumbnailFile ? '/media/' + code + '/' + upload.thumbnailFile : null),
             offset: 0, nudgeMs: 0, volume: 80, isMuted: true, loaded: false,
-            missing: false, processing: isProcessing
+            missing: false, processing: isProcessing,
+            isLocal: false, originalVideoSrc: null
           });
         }
+
+        // Apply local clips if a folder was already scanned
+        await applyLocalMatches();
 
         allUsers = deriveAllUsers();
         highlights = clusterHighlights();
@@ -1268,7 +1508,6 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('exportBar').style.display = 'flex';
 
         if (refreshInterval) clearInterval(refreshInterval);
-        // Refresh faster if uploads are still processing
         refreshInterval = setInterval(refreshUploads, hasProcessing ? 10000 : 45000);
 
         console.log('Loaded ' + code + ' — ' + allUploads.length + ' uploads, ' + highlights.length + ' highlight(s), ' + allUsers.length + ' user(s)' + (hasProcessing ? ' (some still processing)' : ''));
@@ -1301,7 +1540,6 @@ document.addEventListener('DOMContentLoaded', function() {
       try {
         const uploadsRes = await fetch('/sessions/' + currentSessionCode + '/uploads');
 
-        // Session was purged — stop polling and notify
         if (uploadsRes.status === 404) {
           if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
           showExpiredState('This session has expired. Videos are no longer available.');
@@ -1317,23 +1555,22 @@ document.addEventListener('DOMContentLoaded', function() {
         let hadProcessing = false;
         let stillProcessing = false;
 
-        // Update existing entries: CDN URLs arriving, or processing → ready
         for (const upload of uploadsData.uploads) {
           if (!existingIds.has(upload.id)) continue;
           const existing = allUploads.find(u => u.uploadId === upload.id);
           if (!existing) continue;
 
-          // Track if anything was processing
           if (existing.processing) hadProcessing = true;
 
-          // Upload now has a CDN URL — mark as ready
           if (upload.videoUrl && existing.processing) {
             existing.processing = false;
-            existing.videoSrc = upload.videoUrl;
+            // Only use CDN if not already matched locally
+            if (!existing.isLocal) {
+              existing.videoSrc = upload.videoUrl;
+            }
             if (upload.thumbnailUrl) existing.thumbnailSrc = upload.thumbnailUrl;
             console.log('Upload ready:', upload.username, upload.id);
-          } else if (upload.videoUrl && existing.videoSrc && !existing.videoSrc.startsWith('https://peakbu-media')) {
-            // Existing entry upgraded to CDN URL
+          } else if (upload.videoUrl && !existing.isLocal && existing.videoSrc && !existing.videoSrc.startsWith('https://peakbu-media')) {
             existing.videoSrc = upload.videoUrl;
             if (upload.thumbnailUrl) existing.thumbnailSrc = upload.thumbnailUrl;
             if (existing.element && existing.element.src && !existing.element.src.startsWith('https://peakbu-media')) {
@@ -1343,7 +1580,6 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('Updated to CDN URL:', upload.id);
           }
 
-          // Still waiting?
           if (!upload.videoUrl) stillProcessing = true;
         }
 
@@ -1371,12 +1607,15 @@ document.addEventListener('DOMContentLoaded', function() {
               videoSrc: upload.videoUrl || null,
               thumbnailSrc: upload.thumbnailUrl || (upload.thumbnailFile ? '/media/' + currentSessionCode + '/' + upload.thumbnailFile : null),
               offset: 0, nudgeMs: 0, volume: 80, isMuted: true, loaded: false,
-              missing: false, processing: isProcessing
+              missing: false, processing: isProcessing,
+              isLocal: false, originalVideoSrc: null
             });
           }
+
+          // Try matching new uploads against local clips
+          await applyLocalMatches();
         }
 
-        // Adjust refresh speed based on whether anything is still processing
         if (stillProcessing && refreshInterval) {
           clearInterval(refreshInterval);
           refreshInterval = setInterval(refreshUploads, 10000);
@@ -1467,7 +1706,6 @@ document.addEventListener('DOMContentLoaded', function() {
       videos.forEach(v => {
         if (!v.missing && !v.processing && v.metadata && v.metadata.version >= 2 && v.metadata.startTimeUTC) {
           v.offset = (v.metadata.startTimeUTC - earliestStart) / 1000;
-          // Preserve any manual nudge the viewer applied across re-syncs
           if (v.nudgeMs) v.offset += v.nudgeMs / 1000;
         }
       });
@@ -1525,13 +1763,20 @@ document.addEventListener('DOMContentLoaded', function() {
       label.textContent = v.username;
       container.appendChild(label);
 
+      // LOCAL badge — shows when this POV is playing from a local file
+      if (v.isLocal) {
+        const localBadge = document.createElement('div');
+        localBadge.className = 'local-badge';
+        localBadge.textContent = 'LOCAL';
+        container.appendChild(localBadge);
+      }
+
       if (v.missing) {
         const md = document.createElement('div');
         md.className = 'pov-missing';
         md.innerHTML = '<div class="monkey">&#x1F648;</div><div class="missing-name">' + v.username + '</div><div class="missing-text">No clip in this highlight</div>';
         container.appendChild(md);
       } else if (v.processing) {
-        // Upload exists but CDN URL not ready yet
         const pd = document.createElement('div');
         pd.className = 'pov-processing';
         pd.innerHTML = '<div class="spinner">&#x23F3;</div><div class="proc-name">' + v.username + '</div><div class="proc-text">Upload processing\u2026</div>';
@@ -1550,7 +1795,8 @@ document.addEventListener('DOMContentLoaded', function() {
           const icon = document.createElement('div');
           icon.className = 'play-icon'; icon.textContent = '\u25B6';
           const hint = document.createElement('div');
-          hint.className = 'load-hint'; hint.textContent = 'Click to load';
+          hint.className = 'load-hint';
+          hint.textContent = v.isLocal ? 'Click to load (local)' : 'Click to load';
           overlay.appendChild(icon); overlay.appendChild(hint);
           placeholder.style.position = 'relative';
           placeholder.appendChild(img); placeholder.appendChild(overlay);
@@ -1561,13 +1807,14 @@ document.addEventListener('DOMContentLoaded', function() {
           const nameDiv = document.createElement('div');
           nameDiv.textContent = v.username;
           const hint = document.createElement('div');
-          hint.className = 'load-hint'; hint.textContent = 'Click to load';
+          hint.className = 'load-hint';
+          hint.textContent = v.isLocal ? 'Click to load (local)' : 'Click to load';
           placeholder.appendChild(icon); placeholder.appendChild(nameDiv); placeholder.appendChild(hint);
         }
         container.appendChild(placeholder);
       }
-      // Export select checkbox overlay — toggles by uploadId so selection
-      // survives highlight switches and can span multiple highlights.
+
+      // Export select checkbox
       if (!v.missing && !v.processing && v.uploadId) {
         const checkbox = document.createElement('div');
         const isSel = selectedExportClips.has(v.uploadId);
@@ -1583,7 +1830,7 @@ document.addEventListener('DOMContentLoaded', function() {
         container.appendChild(checkbox);
       }
 
-      // Nudge bar — only on loaded clips, lets viewer fine-tune sync by ±50ms steps
+      // Nudge bar
       if (!v.missing && !v.processing && v.loaded) {
         const nudgeBar = document.createElement('div');
         nudgeBar.className = 'pov-nudge-bar';
@@ -1605,9 +1852,6 @@ document.addEventListener('DOMContentLoaded', function() {
         btnPlus.title = 'Shift this POV 50ms later';
 
         function applyNudge(deltaMs) {
-          // Capture master time BEFORE changing the offset — otherwise
-          // nudging the primary POV computes against its own new offset
-          // and the seek becomes a no-op while state silently desyncs.
           const masterTime = getCurrentMasterTime();
 
           v.nudgeMs = (v.nudgeMs || 0) + deltaMs;
@@ -1615,19 +1859,13 @@ document.addEventListener('DOMContentLoaded', function() {
           readout.textContent = formatNudge(v.nudgeMs);
           readout.className = 'nudge-readout' + (v.nudgeMs !== 0 ? ' nonzero' : '');
 
-          // Re-seek this POV, CLAMPED — the element's position must never
-          // diverge from state. Never park exactly on duration (fires
-          // 'ended'; a later play() would restart the clip from 0).
           if (v.element && isFinite(v.element.duration)) {
             const adjusted = masterTime - v.offset;
             const maxSeek = Math.max(0, v.element.duration - 0.05);
             v.element.currentTime = Math.min(Math.max(adjusted, 0), maxSeek);
-            // Seeking an unbuffered region can stall the element — resume
-            // explicitly if we're supposed to be playing.
             if (isPlaying) v.element.play().catch(() => {});
           }
 
-          // Update master duration in case this is the earliest clip
           masterDuration = 0;
           videos.forEach(vid => {
             if (!vid.missing && !vid.processing && vid.loaded && vid.element) {
@@ -1683,6 +1921,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const isMissing = !v || v.missing;
         const isProcessing = v && v.processing;
         const isFocused = videoIdx === focusedIndex;
+        const isLocal = v && v.isLocal;
 
         const row = document.createElement('div');
         row.className = 'panel-row';
@@ -1694,11 +1933,11 @@ document.addEventListener('DOMContentLoaded', function() {
         left.className = 'panel-row-header-left';
 
         const dot = document.createElement('div');
-        dot.className = 'member-dot' + (isMissing ? ' missing' : isProcessing ? ' processing' : (v && v.loaded ? '' : ' unloaded'));
+        dot.className = 'member-dot' + (isMissing ? ' missing' : isProcessing ? ' processing' : isLocal ? ' local' : (v && v.loaded ? '' : ' unloaded'));
 
         const name = document.createElement('div');
         name.className = 'panel-row-name';
-        name.textContent = username + (isProcessing ? ' (processing)' : '');
+        name.textContent = username + (isProcessing ? ' (processing)' : isLocal ? ' (local)' : '');
 
         left.appendChild(dot);
         left.appendChild(name);
@@ -1787,7 +2026,7 @@ document.addEventListener('DOMContentLoaded', function() {
         left.className = 'panel-row-header-left';
 
         const dot = document.createElement('div');
-        dot.className = 'member-dot' + (v.loaded ? '' : ' unloaded');
+        dot.className = 'member-dot' + (v.loaded ? (v.isLocal ? ' local' : '') : ' unloaded');
 
         const name = document.createElement('span');
         name.className = 'panel-row-name';
@@ -1881,10 +2120,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // ========================
     // EXPORT
     // ========================
-    // The Export Studio shows EVERY clip in the session, grouped by
-    // highlight, and selection is keyed by uploadId — so you can queue
-    // clips from H1, H3, and H5 in one export without losing your picks
-    // when you switch highlights in the viewer.
 
     function toggleExportSelection(uploadId) {
       if (!uploadId) return;
@@ -1893,11 +2128,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
       const isSel = selectedExportClips.has(uploadId);
 
-      // Sync the export bar tile
       const clipEl = document.getElementById('export-clip-' + uploadId);
       if (clipEl) clipEl.classList.toggle('selected', isSel);
 
-      // Sync the POV checkbox if this clip is in the current grid
       const idx = videos.findIndex(v => v.uploadId === uploadId);
       if (idx >= 0) {
         const container = document.getElementById('pov-container-' + idx);
@@ -1914,7 +2147,6 @@ document.addEventListener('DOMContentLoaded', function() {
       const timeline = document.getElementById('exportTimeline');
       timeline.innerHTML = '';
 
-      // Drop selections for uploads that no longer exist (session refresh)
       const validIds = new Set(allUploads.map(u => u.uploadId));
       for (const id of Array.from(selectedExportClips)) {
         if (!validIds.has(id)) selectedExportClips.delete(id);
@@ -1937,7 +2169,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
           const name = document.createElement('div');
           name.className = 'export-clip-name';
-          name.textContent = u.username;
+          name.textContent = u.username + (u.isLocal ? ' 📂' : '');
 
           const durMs = u.metadata && u.metadata.durationMs;
           const duration = document.createElement('div');
@@ -1978,11 +2210,13 @@ document.addEventListener('DOMContentLoaded', function() {
         const u = allUploads.find(x => x.uploadId === id);
         if (!u || u.processing || !u.videoSrc) continue;
         const link = document.createElement('a');
-        link.href = u.videoSrc;
+        // Use original CDN URL for download if available (local blob URLs
+        // work too but the CDN filename is more useful for sharing)
+        link.href = (u.originalVideoSrc && !u.originalVideoSrc.startsWith('blob:'))
+          ? u.originalVideoSrc : u.videoSrc;
         link.download = u.username + '_highlight.mp4';
         document.body.appendChild(link); link.click(); document.body.removeChild(link);
         n++;
-        // Small stagger so the browser doesn't swallow rapid-fire downloads
         await new Promise(r => setTimeout(r, 350));
       }
       if (n === 0) alert('Selected clips are not ready to download yet');
@@ -2135,7 +2369,6 @@ document.addEventListener('DOMContentLoaded', function() {
       const game = document.getElementById('aireelGame').value.trim();
       const styleNotes = document.getElementById('aireelStyle').value.trim();
 
-      // Selection is already uploadIds — just drop anything not ready
       const uploadIds = Array.from(selectedExportClips).filter(id => {
         const u = allUploads.find(x => x.uploadId === id);
         return u && !u.processing;
