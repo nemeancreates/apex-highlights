@@ -574,15 +574,22 @@
       window.clockSyncInterval = null;
 
       function runClockSyncBurst() {
-        if (!window.socket || !window.socket.connected) return;
+        if (!window.socket || !window.socket.connected) {
+          hudLog('system', '⚠ Clock sync skipped — not connected to server', 'error');
+          return;
+        }
         var samples = [];
         var sent = 0;
         var finished = false;
         var TOTAL = 10;
 
         function finishBurst() {
-          if (finished || samples.length < 3) return;
+          if (finished) return;
           finished = true;
+          if (samples.length < 3) {
+            hudLog('system', '⚠ Clock sync failed — only ' + samples.length + '/10 pings answered. POV sync may drift this session.', 'error');
+            return;
+          }
           samples.sort(function(a, b) { return a.rtt - b.rtt; });
           var best = samples.slice(0, Math.min(5, samples.length));
           var offsets = best.map(function(s) { return s.offset; }).sort(function(a, b) { return a - b; });

@@ -26,8 +26,8 @@ const CHUNK_SECONDS = 10;
 // ================================
 // Update this whenever a new client build is uploaded to the CDN.
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.17',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.17.exe',
+  version: '0.1.18',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.18.exe',
   releaseNotes: 'Auto-updater added. The app now checks for updates on launch.'
 };
 
@@ -46,6 +46,7 @@ let captureHdr = false;      // HDR monitor fix — tonemaps HDR desktop to corr
 let captureAdapter = null;
 let captureWindowTitle = null; 
 let clockOffset = 0;
+let clockUncertaintyMs = null;
 let ffmpegProcess = null;
 let mainWindow = null;
 let currentSession = null;
@@ -348,10 +349,16 @@ function stopBufferReadyWatcher() {
 // Measured by the renderer via socket ping-pong (min-RTT sampling)
 // and pushed here. All squad clips are timestamped in the SAME
 // server clock domain, so cross-machine offsets cancel out.
-ipcMain.on('server-clock-offset', (event, offset) => {
+ipcMain.on('server-clock-offset', (event, payload) => {
+  // v0.1.17+ renderer sends { offset, uncertaintyMs }; older builds sent a bare number.
+  const offset = (payload && typeof payload === 'object') ? payload.offset : payload;
+  const uncertainty = (payload && typeof payload === 'object') ? payload.uncertaintyMs : null;
   if (typeof offset === 'number' && isFinite(offset) && Math.abs(offset) < 24 * 3600 * 1000) {
     clockOffset = offset;
-    console.log(`Server clock offset updated: ${offset.toFixed(1)}ms`);
+    if (typeof uncertainty === 'number' && isFinite(uncertainty)) clockUncertaintyMs = uncertainty;
+    console.log(`Server clock offset updated: ${offset.toFixed(1)}ms (±${uncertainty === null ? '?' : uncertainty.toFixed(1)}ms)`);
+  } else {
+    console.log('server-clock-offset: rejected invalid payload:', JSON.stringify(payload));
   }
 });
 
@@ -740,6 +747,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     saveTimeUTC, startTimeUTC, endTimeUTC,
     durationMs: realDurationMs, clipDurationMs: durationMs,
     frameRate: recordFps, clockOffsetMs: clockOffset,
+    syncUncertaintyMs: clockUncertaintyMs,
     userId: null,
     sessionId: currentSession ? currentSession.code : null,
     coordinated_timestamp: coordinatedTs || null
