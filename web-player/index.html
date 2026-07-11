@@ -6,8 +6,8 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      background: #0a0a1a;
-      color: #eee;
+      background: #0a1611;
+      color: #c8d6cd;
       font-family: 'Segoe UI', Arial, sans-serif;
       height: 100vh;
       overflow: hidden;
@@ -20,21 +20,21 @@
       justify-content: space-between;
       align-items: center;
       padding: 10px 20px;
-      background: #1a1a2e;
-      border-bottom: 2px solid #e94560;
+      background: #12251a;
+      border-bottom: 2px solid #1d9e75;
       flex-shrink: 0;
       height: 50px;
     }
 
-    .header h1 { color: #e94560; font-size: 20px; }
+    .header h1 { color: #39d3a0; font-size: 20px; }
 
     .join-bar { display: flex; gap: 8px; align-items: center; }
 
     .join-bar input {
       padding: 6px 12px;
-      background: #0f3460;
-      color: #eee;
-      border: 1px solid #e94560;
+      background: #0c1c14;
+      color: #e8f5ec;
+      border: 1px solid #24402e;
       border-radius: 6px;
       font-size: 14px;
       text-transform: uppercase;
@@ -42,36 +42,38 @@
       width: 130px;
       text-align: center;
     }
+    .join-bar input:focus { border-color: #39d3a0; outline: none; }
 
-    .join-bar input::placeholder { color: #556; text-transform: none; letter-spacing: normal; }
+    .join-bar input::placeholder { color: #45604f; text-transform: none; letter-spacing: normal; }
 
     .btn {
       padding: 6px 16px;
-      background: #e94560;
-      color: white;
+      background: #1d9e75;
+      color: #04140d;
       border: none;
       border-radius: 6px;
       font-size: 13px;
+      font-weight: 600;
       cursor: pointer;
     }
-    .btn:hover { background: #c73652; }
-    .btn:disabled { background: #555; cursor: not-allowed; }
+    .btn:hover { background: #23b686; }
+    .btn:disabled { background: #14291d; color: #45604f; cursor: not-allowed; }
     .btn-small { padding: 4px 10px; font-size: 12px; }
-    .btn-secondary { background: #0f3460; border: 1px solid #e94560; }
-    .btn-secondary:hover { background: #1a4a8a; }
+    .btn-secondary { background: #14291d; border: 1px solid #2a4636; color: #8fbfa3; font-weight: 500; }
+    .btn-secondary:hover { background: #16321f; border-color: #39d3a0; color: #39d3a0; }
 
     .btn-paste {
       padding: 6px 10px;
-      background: #0f3460;
-      color: #e94560;
-      border: 1px solid #e94560;
+      background: #0c1c14;
+      color: #39d3a0;
+      border: 1px solid #39d3a0;
       border-radius: 6px;
       font-size: 13px;
       cursor: pointer;
       white-space: nowrap;
     }
-    .btn-paste:hover { background: #1a4a8a; }
-    .btn-paste.pasted { background: #44ff88; border-color: #44ff88; color: #000; }
+    .btn-paste:hover { background: #16321f; }
+    .btn-paste.pasted { background: #4fe0b0; border-color: #4fe0b0; color: #04140d; }
 
     .main-layout { display: flex; flex: 1; min-height: 0; }
 
@@ -80,7 +82,7 @@
       display: flex;
       flex-direction: column;
       min-width: 0;
-      border-right: 2px solid #1a1a2e;
+      border-right: 2px solid #12251a;
     }
 
     .video-grid {
@@ -93,8 +95,8 @@
     }
 
     .video-grid::-webkit-scrollbar { width: 6px; }
-    .video-grid::-webkit-scrollbar-track { background: #111; }
-    .video-grid::-webkit-scrollbar-thumb { background: #e94560; border-radius: 3px; }
+    .video-grid::-webkit-scrollbar-track { background: #04140d; }
+    .video-grid::-webkit-scrollbar-thumb { background: #24402e; border-radius: 3px; }
 
     .grid-1 { grid-template-columns: 1fr; }
     .grid-2 { grid-template-columns: 1fr 1fr; }
@@ -115,27 +117,27 @@
       overflow-y: hidden;
       gap: 3px;
       padding: 3px;
-      background: #111;
+      background: #04140d;
       flex-shrink: 0;
     }
 
     .focused-sidebar::-webkit-scrollbar { height: 6px; }
-    .focused-sidebar::-webkit-scrollbar-track { background: #111; }
-    .focused-sidebar::-webkit-scrollbar-thumb { background: #e94560; border-radius: 3px; }
+    .focused-sidebar::-webkit-scrollbar-track { background: #04140d; }
+    .focused-sidebar::-webkit-scrollbar-thumb { background: #24402e; border-radius: 3px; }
 
     .focused-sidebar .pov-container { min-width: 180px; height: 100%; cursor: pointer; }
 
     .pov-container {
       position: relative;
-      background: #111;
+      background: #04140d;
       border-radius: 4px;
       overflow: hidden;
       cursor: pointer;
       border: 2px solid transparent;
       transition: border-color 0.2s;
     }
-    .pov-container:hover { border-color: #e94560; }
-    .pov-container.active { border-color: #e94560; }
+    .pov-container:hover { border-color: #39d3a0; }
+    .pov-container.active { border-color: #39d3a0; }
 
     .pov-container video {
       width: 100%;
@@ -149,8 +151,8 @@
       position: absolute;
       top: 6px;
       left: 6px;
-      background: rgba(233, 69, 96, 0.85);
-      color: white;
+      background: rgba(57, 211, 160, 0.9);
+      color: #04140d;
       padding: 3px 8px;
       border-radius: 4px;
       font-size: 11px;
@@ -167,15 +169,15 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      background: #0a0a1a;
-      color: #555;
+      background: #0a1611;
+      color: #45604f;
       font-size: 13px;
       gap: 8px;
       cursor: pointer;
     }
 
-    .pov-placeholder .play-icon { font-size: 32px; color: #e94560; opacity: 0.6; }
-    .pov-placeholder .load-hint { font-size: 11px; color: #444; }
+    .pov-placeholder .play-icon { font-size: 32px; color: #39d3a0; opacity: 0.6; }
+    .pov-placeholder .load-hint { font-size: 11px; color: #3a5244; }
 
     .pov-loading {
       width: 100%;
@@ -184,8 +186,8 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #0a0a1a;
-      color: #e94560;
+      background: #0a1611;
+      color: #39d3a0;
       font-size: 13px;
     }
 
@@ -197,14 +199,14 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      background: #0a0a1a;
-      color: #555;
+      background: #0a1611;
+      color: #45604f;
       font-size: 13px;
       gap: 8px;
     }
     .pov-missing .monkey { font-size: 32px; }
-    .pov-missing .missing-name { color: #e94560; font-weight: bold; font-size: 12px; }
-    .pov-missing .missing-text { font-size: 11px; color: #444; }
+    .pov-missing .missing-name { color: #39d3a0; font-weight: bold; font-size: 12px; }
+    .pov-missing .missing-text { font-size: 11px; color: #3a5244; }
 
     .pov-processing {
       width: 100%;
@@ -214,23 +216,23 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      background: #0a0a1a;
-      color: #e9a820;
+      background: #0a1611;
+      color: #d8a838;
       font-size: 13px;
       gap: 8px;
     }
     .pov-processing .spinner { font-size: 28px; animation: spin 2s linear infinite; }
     @keyframes spin { 100% { transform: rotate(360deg); } }
-    .pov-processing .proc-name { color: #e94560; font-weight: bold; font-size: 12px; }
-    .pov-processing .proc-text { font-size: 11px; color: #888; }
+    .pov-processing .proc-name { color: #39d3a0; font-weight: bold; font-size: 12px; }
+    .pov-processing .proc-text { font-size: 11px; color: #7a9686; }
 
     /* ========================
        SESSION TIMELINE
     ======================== */
     .session-timeline {
       flex-shrink: 0;
-      background: #1a1a2e;
-      border-top: 1px solid #2a2a4e;
+      background: #12251a;
+      border-top: 1px solid #1e3527;
       padding: 8px 12px;
       display: flex;
       flex-direction: column;
@@ -243,16 +245,16 @@
       gap: 10px;
     }
 
-    .time-display { font-size: 12px; color: #aaa; min-width: 90px; text-align: center; }
+    .time-display { font-size: 12px; color: #8fbfa3; min-width: 90px; text-align: center; }
 
     .timeline-track-wrap { flex: 1; }
 
     .timeline-track {
       position: relative;
       height: 36px;
-      background: #0a0a1a;
+      background: #0a1611;
       border-radius: 6px;
-      border: 1px solid #2a2a4e;
+      border: 1px solid #1e3527;
       cursor: pointer;
       overflow: hidden;
       user-select: none;
@@ -262,15 +264,15 @@
       position: absolute;
       top: 4px;
       height: calc(100% - 8px);
-      background: #0f3460;
-      border: 1px solid #e94560;
+      background: #0c1c14;
+      border: 1px solid #24402e;
       border-radius: 4px;
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 10px;
       font-weight: bold;
-      color: #e94560;
+      color: #39d3a0;
       cursor: pointer;
       transition: background 0.15s;
       min-width: 28px;
@@ -278,8 +280,8 @@
       white-space: nowrap;
     }
 
-    .highlight-block:hover { background: #1a4a8a; }
-    .highlight-block.active { background: #e94560; color: white; border-color: #ff7090; }
+    .highlight-block:hover { background: #16321f; border-color: #39d3a0; }
+    .highlight-block.active { background: #39d3a0; color: #04140d; border-color: #4fe0b0; }
 
     .timeline-needle {
       position: absolute;
@@ -295,7 +297,7 @@
     .timeline-track:hover .timeline-needle {
       width: 4px;
       transform: translateX(-2px);
-      background: #e94560;
+      background: #39d3a0;
       transition: width 0.15s, background 0.15s;
     }
 
@@ -314,29 +316,29 @@
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
-      background: #12122a;
-      border-left: 2px solid #1a1a2e;
+      background: #0f2318;
+      border-left: 2px solid #12251a;
     }
 
     .panel-section { padding: 10px; }
 
     .panel-section h3 {
-      color: #e94560;
+      color: #39d3a0;
       font-size: 13px;
       margin-bottom: 8px;
       text-transform: uppercase;
       letter-spacing: 1px;
     }
 
-    .members-section { flex: 1; overflow-y: auto; border-bottom: 1px solid #2a2a4e; }
+    .members-section { flex: 1; overflow-y: auto; border-bottom: 1px solid #1e3527; }
     .members-section::-webkit-scrollbar { width: 5px; }
-    .members-section::-webkit-scrollbar-track { background: #111; }
-    .members-section::-webkit-scrollbar-thumb { background: #e94560; border-radius: 3px; }
+    .members-section::-webkit-scrollbar-track { background: #04140d; }
+    .members-section::-webkit-scrollbar-thumb { background: #24402e; border-radius: 3px; }
 
-    .audio-section { max-height: 220px; overflow-y: auto; border-top: 1px solid #2a2a4e; }
+    .audio-section { max-height: 220px; overflow-y: auto; border-top: 1px solid #1e3527; }
     .audio-section::-webkit-scrollbar { width: 5px; }
-    .audio-section::-webkit-scrollbar-track { background: #111; }
-    .audio-section::-webkit-scrollbar-thumb { background: #e94560; border-radius: 3px; }
+    .audio-section::-webkit-scrollbar-track { background: #04140d; }
+    .audio-section::-webkit-scrollbar-thumb { background: #24402e; border-radius: 3px; }
 
     .panel-row { padding: 2px 8px; }
 
@@ -348,8 +350,8 @@
       padding: 6px 0;
       font-size: 13px;
     }
-    .panel-row-header:hover { color: #e94560; }
-    .panel-row-header.focused { color: #e94560; }
+    .panel-row-header:hover { color: #39d3a0; }
+    .panel-row-header.focused { color: #39d3a0; }
 
     .panel-row-header-left {
       display: flex;
@@ -359,14 +361,14 @@
       min-width: 0;
     }
 
-    .member-dot { width: 8px; height: 8px; border-radius: 50%; background: #44ff88; flex-shrink: 0; }
-    .member-dot.unloaded { background: #555; }
-    .member-dot.missing { background: #ff4444; }
-    .member-dot.processing { background: #e9a820; }
+    .member-dot { width: 8px; height: 8px; border-radius: 50%; background: #4fe0b0; flex-shrink: 0; }
+    .member-dot.unloaded { background: #45604f; }
+    .member-dot.missing { background: #f0857a; }
+    .member-dot.processing { background: #d8a838; }
 
     .panel-row-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-    .audio-arrow { font-size: 10px; transition: transform 0.2s; color: #888; flex-shrink: 0; }
+    .audio-arrow { font-size: 10px; transition: transform 0.2s; color: #7a9686; flex-shrink: 0; }
     .audio-arrow.open { transform: rotate(90deg); }
 
     .panel-row-dropdown { display: none; padding: 4px 0 6px 16px; }
@@ -378,12 +380,12 @@
       gap: 6px;
       padding: 4px 0;
       font-size: 11px;
-      color: #aaa;
+      color: #8fbfa3;
       cursor: default;
     }
     .player-hl-item.has-clip { cursor: pointer; }
-    .player-hl-item.has-clip:hover { color: #e94560; }
-    .player-hl-item.current-hl { color: #e94560; font-weight: bold; }
+    .player-hl-item.has-clip:hover { color: #39d3a0; }
+    .player-hl-item.current-hl { color: #39d3a0; font-weight: bold; }
 
     .hl-dot {
       width: 6px;
@@ -397,23 +399,23 @@
       align-items: center;
       gap: 6px;
       font-size: 11px;
-      color: #aaa;
+      color: #8fbfa3;
       margin-bottom: 4px;
     }
     .audio-control-row label { width: 50px; flex-shrink: 0; }
-    .audio-control-row input[type="range"] { flex: 1; accent-color: #e94560; height: 4px; }
+    .audio-control-row input[type="range"] { flex: 1; accent-color: #39d3a0; height: 4px; }
 
     .mute-btn {
       background: none;
-      border: 1px solid #555;
-      color: #aaa;
+      border: 1px solid #45604f;
+      color: #8fbfa3;
       padding: 2px 6px;
       border-radius: 3px;
       font-size: 11px;
       cursor: pointer;
     }
-    .mute-btn:hover { border-color: #e94560; color: #e94560; }
-    .mute-btn.muted { background: #e94560; color: white; border-color: #e94560; }
+    .mute-btn:hover { border-color: #39d3a0; color: #39d3a0; }
+    .mute-btn.muted { background: #39d3a0; color: #04140d; border-color: #39d3a0; }
 
     /* ========================
        EXPORT BAR
@@ -421,8 +423,8 @@
     .export-bar {
       min-height: 140px;
       flex-shrink: 0;
-      background: #16213e;
-      border-top: 2px solid #e94560;
+      background: #0f2318;
+      border-top: 2px solid #1d9e75;
       display: flex;
       flex-direction: column;
     }
@@ -432,10 +434,10 @@
       justify-content: space-between;
       align-items: center;
       padding: 8px 16px;
-      border-bottom: 1px solid #2a2a4e;
+      border-bottom: 1px solid #1e3527;
     }
 
-    .export-header h3 { color: #e94560; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
+    .export-header h3 { color: #39d3a0; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
     .export-actions { display: flex; gap: 8px; }
 
     .export-timeline {
@@ -448,14 +450,31 @@
     }
 
     .export-timeline::-webkit-scrollbar { height: 6px; }
-    .export-timeline::-webkit-scrollbar-track { background: #111; }
-    .export-timeline::-webkit-scrollbar-thumb { background: #e94560; border-radius: 3px; }
+    .export-timeline::-webkit-scrollbar-track { background: #04140d; }
+    .export-timeline::-webkit-scrollbar-thumb { background: #24402e; border-radius: 3px; }
+
+    .export-hl-label {
+      flex-shrink: 0;
+      align-self: stretch;
+      display: flex;
+      align-items: center;
+      padding: 0 8px 0 10px;
+      font-size: 11px;
+      font-weight: bold;
+      color: #7a9686;
+      border-left: 2px solid #24402e;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .export-hl-label:hover { color: #39d3a0; }
+    .export-hl-label.current { color: #39d3a0; border-left-color: #39d3a0; }
 
     .export-clip {
       min-width: 120px;
       height: 70px;
-      background: #0f3460;
-      border: 2px solid #2a2a5e;
+      background: #0c1c14;
+      border: 2px solid #24402e;
       border-radius: 6px;
       display: flex;
       flex-direction: column;
@@ -475,44 +494,46 @@
       position: absolute;
       top: 6px; right: 6px;
       width: 14px; height: 14px;
-      border: 2px solid #2a2a5e;
+      border: 2px solid #24402e;
       border-radius: 3px;
       background: transparent;
       transition: all 0.15s;
     }
-    .export-clip:hover { border-color: #e94560; }
-    .export-clip:hover::after { border-color: #e94560; }
-    .export-clip.selected { border-color: #e94560; background: #1a3a6e; }
+    .export-clip:hover { border-color: #39d3a0; }
+    .export-clip:hover::after { border-color: #39d3a0; }
+    .export-clip.selected { border-color: #39d3a0; background: #16321f; }
     .export-clip.selected::after {
-      background: #e94560;
-      border-color: #e94560;
+      background: #39d3a0;
+      border-color: #39d3a0;
       content: '✓';
-      color: white;
+      color: #04140d;
       font-size: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
     }
+    .export-clip.disabled { opacity: 0.5; cursor: not-allowed; }
+    .export-clip.disabled:hover { border-color: #24402e; }
 
     .composite-section {
       padding: 8px 16px;
       display: flex;
       align-items: center;
       gap: 12px;
-      border-top: 1px solid #2a2a4e;
+      border-top: 1px solid #1e3527;
       flex-shrink: 0;
     }
 
-    .composite-status { font-size: 12px; color: #888; flex: 1; }
-    .composite-status.ready { color: #44ff88; }
-    .composite-status.processing { color: #e9a820; }
-    .composite-status.failed { color: #ff4444; }
+    .composite-status { font-size: 12px; color: #7a9686; flex: 1; }
+    .composite-status.ready { color: #4fe0b0; }
+    .composite-status.processing { color: #d8a838; }
+    .composite-status.failed { color: #f0857a; }
 
-    .progress-bar { width: 140px; height: 6px; background: #333; border-radius: 3px; overflow: hidden; flex-shrink: 0; }
+    .progress-bar { width: 140px; height: 6px; background: #1e3527; border-radius: 3px; overflow: hidden; flex-shrink: 0; }
 
     .progress-fill {
       height: 100%;
-      background: #e9a820;
+      background: #d8a838;
       border-radius: 3px;
       width: 0%;
       transition: width 0.3s;
@@ -531,19 +552,20 @@
       align-items: center;
       justify-content: center;
       height: 100%;
-      color: #444;
+      color: #3a5244;
       font-size: 16px;
       gap: 10px;
     }
     .empty-state .monkey { font-size: 48px; }
-    .empty-state .expired-msg { color: #e9a820; font-size: 14px; }
+    .empty-state .expired-msg { color: #d8a838; font-size: 14px; }
 
     .share-bar {
       display: flex;
       align-items: center;
       gap: 8px;
       padding: 6px 16px;
-      background: #0f3460;
+      background: #0c1c14;
+      border: 1px solid #1e3527;
       border-radius: 6px;
       margin-left: 12px;
       max-width: 320px;
@@ -552,7 +574,7 @@
     .share-url {
       flex: 1;
       font-size: 12px;
-      color: #aaa;
+      color: #8fbfa3;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -566,10 +588,10 @@
       right: 6px;
       width: 26px;
       height: 26px;
-      background: rgba(15, 52, 96, 0.85);
-      border: 2px solid #556;
+      background: rgba(18, 37, 26, 0.85);
+      border: 2px solid #45604f;
       border-radius: 6px;
-      color: #888;
+      color: #7a9686;
       font-size: 16px;
       font-weight: 700;
       display: flex;
@@ -580,8 +602,8 @@
       transition: all 0.15s;
       line-height: 1;
     }
-    .pov-export-check:hover { border-color: #e94560; color: #e94560; background: rgba(15, 52, 96, 0.95); }
-    .pov-export-check.selected { background: #e94560; border-color: #e94560; color: white; }
+    .pov-export-check:hover { border-color: #39d3a0; color: #39d3a0; background: rgba(18, 37, 26, 0.95); }
+    .pov-export-check.selected { background: #39d3a0; border-color: #39d3a0; color: #04140d; }
 
     .pov-nudge-bar {
       position: absolute;
@@ -602,9 +624,9 @@
     .pov-container:hover .pov-nudge-bar,
     .pov-container.active .pov-nudge-bar { opacity: 1; pointer-events: auto; }
     .nudge-btn {
-      background: rgba(233, 69, 96, 0.15);
-      border: 1px solid #e94560;
-      color: #e94560;
+      background: rgba(57, 211, 160, 0.15);
+      border: 1px solid #39d3a0;
+      color: #39d3a0;
       width: 22px;
       height: 22px;
       border-radius: 4px;
@@ -618,21 +640,21 @@
       flex-shrink: 0;
       transition: background 0.1s;
     }
-    .nudge-btn:hover { background: rgba(233, 69, 96, 0.4); }
+    .nudge-btn:hover { background: rgba(57, 211, 160, 0.4); }
     .nudge-readout {
       font-size: 11px;
-      color: #ddd;
+      color: #c8d6cd;
       min-width: 52px;
       text-align: center;
       font-family: 'Consolas', 'Courier New', monospace;
       letter-spacing: 0.5px;
     }
-    .nudge-readout.nonzero { color: #e94560; }
+    .nudge-readout.nonzero { color: #39d3a0; }
 
     .btn-copy {
       background: none;
-      border: 1px solid #e94560;
-      color: #e94560;
+      border: 1px solid #39d3a0;
+      color: #39d3a0;
       padding: 4px 10px;
       border-radius: 4px;
       font-size: 12px;
@@ -640,8 +662,8 @@
       white-space: nowrap;
       flex-shrink: 0;
     }
-    .btn-copy:hover { background: #e94560; color: white; }
-    .btn-copy.copied { background: #44ff88; border-color: #44ff88; color: #000; }
+    .btn-copy:hover { background: #39d3a0; color: #04140d; }
+    .btn-copy.copied { background: #4fe0b0; border-color: #4fe0b0; color: #04140d; }
   </style>
 </head>
 <body>
@@ -715,10 +737,10 @@
         <div class="progress-fill" id="compositeFill"></div>
       </div>
       <div class="composite-section" id="aireelSection" style="display:flex;flex-wrap:wrap;gap:8px;padding:8px 16px;">
-       <div style="width:100%;font-size:13px;color:#e94560;font-weight:600;">🎞 AI Highlight Reel <span style="color:#888;font-weight:normal;">(T3/T4 — free during beta)</span></div>
+       <div style="width:100%;font-size:13px;color:#39d3a0;font-weight:600;">🎞 AI Highlight Reel <span style="color:#7a9686;font-weight:normal;">(T3/T4 — free during beta)</span></div>
        <div>
-         <label style="font-size:11px;color:#999;display:block;">Length</label>
-         <select id="aireelLength" style="background:#0f3460;color:#eee;border:1px solid #2a2a5e;border-radius:4px;padding:4px 8px;">
+         <label style="font-size:11px;color:#7a9686;display:block;">Length</label>
+         <select id="aireelLength" style="background:#0c1c14;color:#c8d6cd;border:1px solid #24402e;border-radius:4px;padding:4px 8px;">
            <option value="30">30s</option>
            <option value="60" selected>60s</option>
            <option value="90">90s</option>
@@ -726,16 +748,16 @@
          </select>
        </div>
        <div>
-         <label style="font-size:11px;color:#999;display:block;">Game</label>
-         <input type="text" id="aireelGame" placeholder="e.g. Apex Legends" style="background:#0f3460;color:#eee;border:1px solid #2a2a5e;border-radius:4px;padding:4px 8px;width:160px;" />
+         <label style="font-size:11px;color:#7a9686;display:block;">Game</label>
+         <input type="text" id="aireelGame" placeholder="e.g. Apex Legends" style="background:#0c1c14;color:#c8d6cd;border:1px solid #24402e;border-radius:4px;padding:4px 8px;width:160px;" />
        </div>
        <div style="flex:1;min-width:220px;">
-         <label style="font-size:11px;color:#999;display:block;">Style notes for the AI editor (saved per game)</label>
-         <input type="text" id="aireelStyle" placeholder="e.g. keep clutches long, cut fast on kills" style="background:#0f3460;color:#eee;border:1px solid #2a2a5e;border-radius:4px;padding:4px 8px;width:100%;" />
+         <label style="font-size:11px;color:#7a9686;display:block;">Style notes for the AI editor (saved per game)</label>
+         <input type="text" id="aireelStyle" placeholder="e.g. keep clutches long, cut fast on kills" style="background:#0c1c14;color:#c8d6cd;border:1px solid #24402e;border-radius:4px;padding:4px 8px;width:100%;" />
        </div>
        <button class="btn btn-small" id="aireelBtn" onclick="startAiReel()">🤖 Generate AI Reel</button>
-       <div id="aireelStatus" style="width:100%;font-size:12px;color:#888;margin-top:4px;"></div>
-       <div id="aireelReport" style="width:100%;font-size:12px;color:#aaa;background:#0a0a1a;border-left:2px solid #e94560;padding:8px 12px;display:none;white-space:pre-wrap;"></div>
+       <div id="aireelStatus" style="width:100%;font-size:12px;color:#7a9686;margin-top:4px;"></div>
+       <div id="aireelReport" style="width:100%;font-size:12px;color:#8fbfa3;background:#0a1611;border-left:2px solid #39d3a0;padding:8px 12px;display:none;white-space:pre-wrap;"></div>
       </div>
     </div>
 
@@ -796,6 +818,8 @@
     let masterDuration = 0;
     let animFrameId = null;
     let focusedIndex = -1;
+    // Export selection is keyed by uploadId (NOT by grid index) so selections
+    // persist across highlight switches and can span multiple highlights.
     let selectedExportClips = new Set();
     let expectedClips = 0;
     let currentSessionCode = null;
@@ -876,14 +900,102 @@
     // ========================
     // SESSION TIMELINE RENDER
     // ========================
+    // Layout guarantees: blocks never overlap, every block keeps a visible
+    // GAP of breathing room from its neighbors, widths never drop below
+    // MIN_W, and everything stays inside the track. If proportional
+    // placement can't honor those guarantees, we fall back to even spacing.
+
+    function layoutTimelineBlocks() {
+      const n = highlights.length;
+      if (n === 0) return [];
+
+      const LEFT_M = 0.5;    // % margin from left edge
+      const RIGHT_M = 0.5;   // % margin from right edge
+      const GAP = 1.5;       // % guaranteed space between blocks
+      const MIN_W = 5;       // % minimum block width
+      const MAX_W = 30;      // % cap so one long highlight can't dominate
+      const avail = 100 - LEFT_M - RIGHT_M;
+
+      const timing = computeSessionTiming();
+
+      // Too many highlights to honor minimum width + gaps → even spacing,
+      // shrinking width and gap as needed.
+      if (n * MIN_W + (n - 1) * GAP > avail) {
+        const gap = 0.8;
+        const w = Math.max(2, (avail - (n - 1) * gap) / n);
+        return highlights.map((_, i) => ({ left: LEFT_M + i * (w + gap), width: w }));
+      }
+
+      // No timing metadata → even spacing at comfortable width.
+      if (!timing) {
+        const w = Math.min(MAX_W, Math.max(MIN_W, (avail - (n - 1) * GAP) / n));
+        const totalW = n * w + (n - 1) * GAP;
+        const startX = LEFT_M + Math.max(0, (avail - totalW) / 2);
+        return highlights.map((_, i) => ({ left: startX + i * (w + GAP), width: w }));
+      }
+
+      // Proportional placement from real timestamps.
+      const geo = highlights.map(hl => {
+        let hlDuration = 0;
+        hl.clips.forEach(clip => {
+          if (clip.metadata && clip.metadata.durationMs) {
+            hlDuration = Math.max(hlDuration, clip.metadata.durationMs);
+          }
+        });
+        if (hlDuration === 0) hlDuration = 180000;
+
+        const ts = hl.timestamp > 0 ? hl.timestamp : timing.start;
+        return {
+          left: LEFT_M + ((ts - timing.start) / timing.duration) * avail,
+          width: (hlDuration / timing.duration) * avail
+        };
+      });
+
+      // Clamp widths into [MIN_W, MAX_W].
+      geo.forEach(g => { g.width = Math.min(MAX_W, Math.max(MIN_W, g.width)); });
+
+      // If total width can't fit alongside the gaps, shrink the widest
+      // blocks proportionally (never below MIN_W). Feasibility is
+      // guaranteed by the early-out above, so this converges.
+      const maxTotalW = avail - (n - 1) * GAP;
+      let totalW = geo.reduce((s, g) => s + g.width, 0);
+      for (let pass = 0; pass < 4 && totalW > maxTotalW + 0.01; pass++) {
+        const shrinkable = geo.filter(g => g.width > MIN_W);
+        const pool = shrinkable.reduce((s, g) => s + (g.width - MIN_W), 0);
+        if (pool <= 0) break;
+        const excess = totalW - maxTotalW;
+        shrinkable.forEach(g => {
+          g.width = Math.max(MIN_W, g.width - excess * (g.width - MIN_W) / pool);
+        });
+        totalW = geo.reduce((s, g) => s + g.width, 0);
+      }
+
+      // Forward pass: preserve chronological order, enforce the gap.
+      let prevEnd = LEFT_M - GAP;
+      geo.forEach(g => {
+        g.left = Math.max(g.left, prevEnd + GAP);
+        prevEnd = g.left + g.width;
+      });
+
+      // Backward pass: pull anything hanging off the right edge back in,
+      // maintaining the gap against the block to its right.
+      let nextLeft = 100 - RIGHT_M + GAP;
+      for (let i = n - 1; i >= 0; i--) {
+        const g = geo[i];
+        if (g.left + g.width > nextLeft - GAP) {
+          g.left = nextLeft - GAP - g.width;
+        }
+        nextLeft = g.left;
+      }
+
+      return geo;
+    }
 
     function renderSessionTimeline() {
       const track = document.getElementById('timelineTrack');
       track.querySelectorAll('.highlight-block').forEach(b => b.remove());
 
-      const timing = computeSessionTiming();
-
-      let prevEnd = 0;
+      const geo = layoutTimelineBlocks();
 
       highlights.forEach((hl, i) => {
         const block = document.createElement('div');
@@ -891,41 +1003,8 @@
         block.dataset.index = i;
         block.textContent = 'H' + (i + 1);
 
-        let left, width;
-        if (timing && hl.timestamp > 0) {
-          let hlDuration = 0;
-          hl.clips.forEach(clip => {
-            if (clip.metadata && clip.metadata.durationMs) {
-              hlDuration = Math.max(hlDuration, clip.metadata.durationMs);
-            }
-          });
-          if (hlDuration === 0) hlDuration = 180000;
-
-          left = ((hl.timestamp - timing.start) / timing.duration) * 100;
-          width = (hlDuration / timing.duration) * 100;
-          left = Math.max(0, Math.min(left, 94));
-          width = Math.max(4, Math.min(width, 100 - left));
-        } else {
-          const total = highlights.length;
-          const gap = total === 1 ? 0 : 5;
-          const blockW = total === 1 ? 90 : (90 - gap * (total - 1)) / total;
-          left = total === 1 ? 5 : i * (blockW + gap) + 5;
-          width = blockW;
-        }
-
-        const GAP = 0.5;
-        const MIN_W = 3;
-        if (left < prevEnd + GAP) {
-          left = prevEnd + GAP;
-        }
-        if (left + width > 100) {
-          width = Math.max(MIN_W, 100 - left);
-          if (left + width > 100) left = 100 - width;
-        }
-        prevEnd = left + width;
-
-        block.style.left = left.toFixed(2) + '%';
-        block.style.width = width.toFixed(2) + '%';
+        block.style.left = geo[i].left.toFixed(2) + '%';
+        block.style.width = geo[i].width.toFixed(2) + '%';
 
         block.addEventListener('click', e => {
           e.stopPropagation();
@@ -1039,7 +1118,10 @@ document.addEventListener('DOMContentLoaded', function() {
           v.element.currentTime = 0;
           v.element.pause();
         } else if (adjustedTime > v.element.duration) {
-          v.element.currentTime = v.element.duration;
+          // Never park exactly on duration — that fires 'ended', and a later
+          // play() on an ended element restarts it from 0 (freeze/desync).
+          v.element.currentTime = Math.max(0, v.element.duration - 0.05);
+          v.element.pause();
         } else {
           v.element.currentTime = adjustedTime;
           if (isPlaying) v.element.play().catch(() => {});
@@ -1120,6 +1202,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         allUploads = [];
         focusedIndex = -1;
+        selectedExportClips.clear();
         currentSessionCode = code;
         currentHighlightIndex = 0;
         expectedClips = session.members ? session.members.length : 0;
@@ -1384,6 +1467,8 @@ document.addEventListener('DOMContentLoaded', function() {
       videos.forEach(v => {
         if (!v.missing && !v.processing && v.metadata && v.metadata.version >= 2 && v.metadata.startTimeUTC) {
           v.offset = (v.metadata.startTimeUTC - earliestStart) / 1000;
+          // Preserve any manual nudge the viewer applied across re-syncs
+          if (v.nudgeMs) v.offset += v.nudgeMs / 1000;
         }
       });
     }
@@ -1481,29 +1566,20 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         container.appendChild(placeholder);
       }
-      // Export select checkbox overlay (visible when export bar is open)
-      if (!v.missing && !v.processing) {
+      // Export select checkbox overlay — toggles by uploadId so selection
+      // survives highlight switches and can span multiple highlights.
+      if (!v.missing && !v.processing && v.uploadId) {
         const checkbox = document.createElement('div');
-        checkbox.className = 'pov-export-check' + (selectedExportClips.has(index) ? ' selected' : '');
-        checkbox.title = selectedExportClips.has(index) ? 'Remove from export' : 'Add to export';
-        checkbox.textContent = selectedExportClips.has(index) ? '✓' : '+';
-        checkbox.addEventListener('click', (function(idx) {
+        const isSel = selectedExportClips.has(v.uploadId);
+        checkbox.className = 'pov-export-check' + (isSel ? ' selected' : '');
+        checkbox.title = isSel ? 'Remove from export' : 'Add to export';
+        checkbox.textContent = isSel ? '✓' : '+';
+        checkbox.addEventListener('click', (function(uploadId) {
           return function(e) {
             e.stopPropagation();
-            if (selectedExportClips.has(idx)) {
-              selectedExportClips.delete(idx);
-            } else {
-              selectedExportClips.add(idx);
-            }
-            // Sync the export timeline bar
-            const exportClipEl = document.getElementById('export-clip-' + idx);
-            if (exportClipEl) exportClipEl.classList.toggle('selected', selectedExportClips.has(idx));
-            // Update this checkbox
-            this.classList.toggle('selected', selectedExportClips.has(idx));
-            this.textContent = selectedExportClips.has(idx) ? '✓' : '+';
-            this.title = selectedExportClips.has(idx) ? 'Remove from export' : 'Add to export';
+            toggleExportSelection(uploadId);
           };
-        })(index));
+        })(v.uploadId));
         container.appendChild(checkbox);
       }
 
@@ -1529,16 +1605,28 @@ document.addEventListener('DOMContentLoaded', function() {
         btnPlus.title = 'Shift this POV 50ms later';
 
         function applyNudge(deltaMs) {
+          // Capture master time BEFORE changing the offset — otherwise
+          // nudging the primary POV computes against its own new offset
+          // and the seek becomes a no-op while state silently desyncs.
+          const masterTime = getCurrentMasterTime();
+
           v.nudgeMs = (v.nudgeMs || 0) + deltaMs;
           v.offset = (v.offset || 0) + deltaMs / 1000;
           readout.textContent = formatNudge(v.nudgeMs);
           readout.className = 'nudge-readout' + (v.nudgeMs !== 0 ? ' nonzero' : '');
-          // Re-seek this POV to stay in sync with current master time
-          const masterTime = getCurrentMasterTime();
-          const adjusted = masterTime - v.offset;
-          if (v.element && adjusted >= 0 && adjusted <= v.element.duration) {
-            v.element.currentTime = adjusted;
+
+          // Re-seek this POV, CLAMPED — the element's position must never
+          // diverge from state. Never park exactly on duration (fires
+          // 'ended'; a later play() would restart the clip from 0).
+          if (v.element && isFinite(v.element.duration)) {
+            const adjusted = masterTime - v.offset;
+            const maxSeek = Math.max(0, v.element.duration - 0.05);
+            v.element.currentTime = Math.min(Math.max(adjusted, 0), maxSeek);
+            // Seeking an unbuffered region can stall the element — resume
+            // explicitly if we're supposed to be playing.
+            if (isPlaying) v.element.play().catch(() => {});
           }
+
           // Update master duration in case this is the earliest clip
           masterDuration = 0;
           videos.forEach(vid => {
@@ -1632,7 +1720,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
           const hlDot = document.createElement('div');
           hlDot.className = 'hl-dot';
-          hlDot.style.background = hasClip ? '#44ff88' : '#ff4444';
+          hlDot.style.background = hasClip ? '#4fe0b0' : '#f0857a';
 
           const hlLabel = document.createElement('span');
           hlLabel.textContent = 'Highlight ' + (hlIdx + 1) + (hasClip ? '' : ' \u2014 no clip');
@@ -1720,7 +1808,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (!v.loaded) {
           const hint = document.createElement('div');
-          hint.style.cssText = 'font-size:11px;color:#555;padding:4px 0;';
+          hint.style.cssText = 'font-size:11px;color:#45604f;padding:4px 0;';
           hint.textContent = 'Click player to load this POV first';
           dropdown.appendChild(hint);
         } else {
@@ -1793,67 +1881,111 @@ document.addEventListener('DOMContentLoaded', function() {
     // ========================
     // EXPORT
     // ========================
+    // The Export Studio shows EVERY clip in the session, grouped by
+    // highlight, and selection is keyed by uploadId — so you can queue
+    // clips from H1, H3, and H5 in one export without losing your picks
+    // when you switch highlights in the viewer.
+
+    function toggleExportSelection(uploadId) {
+      if (!uploadId) return;
+      if (selectedExportClips.has(uploadId)) selectedExportClips.delete(uploadId);
+      else selectedExportClips.add(uploadId);
+
+      const isSel = selectedExportClips.has(uploadId);
+
+      // Sync the export bar tile
+      const clipEl = document.getElementById('export-clip-' + uploadId);
+      if (clipEl) clipEl.classList.toggle('selected', isSel);
+
+      // Sync the POV checkbox if this clip is in the current grid
+      const idx = videos.findIndex(v => v.uploadId === uploadId);
+      if (idx >= 0) {
+        const container = document.getElementById('pov-container-' + idx);
+        const box = container && container.querySelector('.pov-export-check');
+        if (box) {
+          box.classList.toggle('selected', isSel);
+          box.textContent = isSel ? '✓' : '+';
+          box.title = isSel ? 'Remove from export' : 'Add to export';
+        }
+      }
+    }
 
     function renderExportTimeline() {
       const timeline = document.getElementById('exportTimeline');
       timeline.innerHTML = '';
-      selectedExportClips.clear();
 
-      videos.forEach((v, i) => {
-        if (v.missing || v.processing) return;
+      // Drop selections for uploads that no longer exist (session refresh)
+      const validIds = new Set(allUploads.map(u => u.uploadId));
+      for (const id of Array.from(selectedExportClips)) {
+        if (!validIds.has(id)) selectedExportClips.delete(id);
+      }
 
-        const clip = document.createElement('div');
-        clip.className = 'export-clip';
-        clip.id = 'export-clip-' + i;
+      highlights.forEach((hl, hlIdx) => {
+        const label = document.createElement('div');
+        label.className = 'export-hl-label' + (hlIdx === currentHighlightIndex ? ' current' : '');
+        label.textContent = 'H' + (hlIdx + 1);
+        label.title = 'Jump to Highlight ' + (hlIdx + 1);
+        label.addEventListener('click', () => switchHighlight(hlIdx));
+        timeline.appendChild(label);
 
-        const name = document.createElement('div');
-        name.className = 'export-clip-name';
-        name.textContent = v.username;
+        hl.clips.forEach(u => {
+          const clip = document.createElement('div');
+          clip.className = 'export-clip'
+            + (selectedExportClips.has(u.uploadId) ? ' selected' : '')
+            + (u.processing ? ' disabled' : '');
+          clip.id = 'export-clip-' + u.uploadId;
 
-        const dur = v.element ? (v.element.duration || 0) : 0;
-        const duration = document.createElement('div');
-        duration.className = 'export-clip-duration';
-        duration.textContent = v.loaded
-          ? (formatTime(dur) + ' \u2022 ' + (v.metadata ? Math.round((v.metadata.durationMs || dur * 1000) / 1000) + 's' : formatTime(dur)))
-          : (v.metadata ? Math.round((v.metadata.durationMs || 0) / 1000) + 's' : 'Not loaded');
+          const name = document.createElement('div');
+          name.className = 'export-clip-name';
+          name.textContent = u.username;
 
-        clip.appendChild(name); clip.appendChild(duration);
+          const durMs = u.metadata && u.metadata.durationMs;
+          const duration = document.createElement('div');
+          duration.className = 'export-clip-duration';
+          duration.textContent = u.processing
+            ? 'processing\u2026'
+            : (durMs ? Math.round(durMs / 1000) + 's' : '\u2014');
 
-        clip.addEventListener('click', () => {
-          clip.classList.toggle('selected');
-          if (selectedExportClips.has(i)) selectedExportClips.delete(i);
-          else selectedExportClips.add(i);
+          clip.appendChild(name); clip.appendChild(duration);
+
+          if (!u.processing) {
+            clip.addEventListener('click', () => toggleExportSelection(u.uploadId));
+          }
+
+          timeline.appendChild(clip);
         });
-
-        timeline.appendChild(clip);
       });
     }
 
     function selectAllClips() {
-      videos.forEach((v, i) => {
-        if (v.missing || v.processing) return;
-        selectedExportClips.add(i);
-        const el = document.getElementById('export-clip-' + i);
-        if (el) el.classList.add('selected');
+      allUploads.forEach(u => {
+        if (!u.processing && u.uploadId) selectedExportClips.add(u.uploadId);
       });
+      renderExportTimeline();
+      renderVideoGrid();
     }
 
     function deselectAllClips() {
       selectedExportClips.clear();
-      document.querySelectorAll('.export-clip').forEach(el => el.classList.remove('selected'));
+      renderExportTimeline();
+      renderVideoGrid();
     }
 
     async function downloadSelected() {
       if (selectedExportClips.size === 0) { alert('Select at least one clip to download'); return; }
-      for (const idx of selectedExportClips) {
-        const v = videos[idx];
-        if (v.missing || v.processing) continue;
-        if (!v.loaded) await loadPOV(idx);
+      let n = 0;
+      for (const id of selectedExportClips) {
+        const u = allUploads.find(x => x.uploadId === id);
+        if (!u || u.processing || !u.videoSrc) continue;
         const link = document.createElement('a');
-        link.href = v.videoSrc;
-        link.download = v.username + '_highlight.mp4';
+        link.href = u.videoSrc;
+        link.download = u.username + '_highlight.mp4';
         document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        n++;
+        // Small stagger so the browser doesn't swallow rapid-fire downloads
+        await new Promise(r => setTimeout(r, 350));
       }
+      if (n === 0) alert('Selected clips are not ready to download yet');
     }
 
     // ========================
@@ -2003,10 +2135,11 @@ document.addEventListener('DOMContentLoaded', function() {
       const game = document.getElementById('aireelGame').value.trim();
       const styleNotes = document.getElementById('aireelStyle').value.trim();
 
-      const uploadIds = Array.from(selectedExportClips)
-        .map(i => videos[i])
-        .filter(v => v && !v.missing && !v.processing && v.uploadId)
-        .map(v => v.uploadId);
+      // Selection is already uploadIds — just drop anything not ready
+      const uploadIds = Array.from(selectedExportClips).filter(id => {
+        const u = allUploads.find(x => x.uploadId === id);
+        return u && !u.processing;
+      });
       if (uploadIds.length === 0) { alert('Selected clips are not ready yet'); return; }
 
       const btn = document.getElementById('aireelBtn');
