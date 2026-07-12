@@ -27,8 +27,8 @@ const CHUNK_SECONDS = 10;
 // ================================
 // Update this whenever a new client build is uploaded to the CDN.
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.19',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.19.exe',
+  version: '0.1.20',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.20.exe',
   releaseNotes: 'Auto-updater added. The app now checks for updates on launch.'
 };
 
@@ -692,9 +692,13 @@ function startRecording(monitor) {
 // ================================
 function saveHighlight(coordinatedTimestamp = null, clipDurationMs = null) {
   const duration = clipDurationMs || 30000;
-  const postDelay = Math.ceil(duration * 0.1);
   const clipChunks = Math.ceil(duration / (CHUNK_SECONDS * 1000));
   const saveTimeUTC = coordinatedTimestamp || getPreciseUTC();
+
+  // Queued triggers arrive with a timestamp in the past — some or all of the
+  // post-capture window has already elapsed, so only wait for the remainder.
+  const alreadyElapsed = coordinatedTimestamp ? Math.max(0, getPreciseUTC() - coordinatedTimestamp) : 0;
+  const postDelay = Math.max(0, Math.ceil(duration * 0.1) - alreadyElapsed);
 
   if (postDelay > 500) {
     console.log(`Post-capture: waiting ${postDelay}ms for remaining footage (${(duration / 1000)}s clip, ${clipChunks} chunks)...`);
@@ -723,9 +727,22 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     .sort((a, b) => a.time - b.time);
 
   const withoutInProgress = allVideoFiles.slice(0, -1);
-  const newSinceLastSave = withoutInProgress.filter(f =>
+  let newSinceLastSave = withoutInProgress.filter(f =>
     f.time > lastHighlightBoundary && f.time > recordingStartTime
   );
+
+  // For timestamp-anchored saves (coordinated or queued), drop chunks whose
+  // footage STARTED after the trigger's post-capture window closed — a queued
+  // clip should end at its event, not at whenever the queue got drained.
+  // Fallback: if that empties the list (event was fully inside the previous
+  // clip's window), keep the unfiltered set so we still save something.
+  if (coordinatedTs) {
+    const localTriggerMs = saveTimeUTC - clockOffset;
+    const localCutoff = localTriggerMs + Math.ceil(durationMs * 0.1) + (CHUNK_SECONDS * 1000);
+    const trimmed = newSinceLastSave.filter(f => f.birth <= localCutoff);
+    if (trimmed.length > 0) newSinceLastSave = trimmed;
+  }
+
   const videoFiles = newSinceLastSave.slice(-clipChunks);
 
   if (videoFiles.length === 0) {
@@ -1094,6 +1111,14 @@ function createWindow() {
   ipcMain.handle('get-current-adapter', () => captureAdapter);
 
   ipcMain.on('save-highlight', () => saveHighlight());
+  // Solo-mode queued save: renderer passes the LOCAL ms timestamp of the
+  // original keypress; shift into the server clock domain so the anchored
+  // save path treats it like a coordinated timestamp.
+  ipcMain.on('save-highlight-at', (event, localTs) => {
+    if (typeof localTs !== 'number' || !isFinite(localTs)) return saveHighlight();
+    console.log(`Queued solo highlight: anchored ${(Date.now() - localTs) / 1000}s in the past`);
+    saveHighlight(localTs + clockOffset);
+  });
   ipcMain.on('broadcast-save-highlight', (event, { coordinated_timestamp, clipDuration }) => {
     console.log(`Received broadcast save-highlight: ts=${coordinated_timestamp}, clipDuration=${clipDuration}ms`);
     saveHighlight(coordinated_timestamp, clipDuration);

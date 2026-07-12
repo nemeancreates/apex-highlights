@@ -1087,12 +1087,12 @@
          }
        });
 
+        window.socket.on('highlight-queued', function(d) {
+          hudLog('activity','📥 '+d.username+' queued a highlight — captures after cooldown ('+d.queued+' waiting)','info');
+        });
+
         window.socket.on('highlight-unlocked', function() {
-          if (window.highlightCooldownTimer) { clearInterval(window.highlightCooldownTimer); window.highlightCooldownTimer = null; }
-          window.highlightCooldownActive = false;
-          var btn = document.getElementById('saveBtn');
-          btn.innerHTML = '💾 Save Highlight (or press <span id="saveBtnHotkey">'+window.currentHotkey+'</span>)';
-          btn.disabled = !(window.isRecordingActive && window.bufferReady);
+          endSaveCooldown();
         });
 
         window.socket.on('upload-received', function(d) { hudLog('activity','☁️ '+d.username+' uploaded their clip','success'); });
@@ -1192,6 +1192,14 @@
         document.getElementById('statusHelp').textContent = 'Building up a clip buffer — highlights will be available in ~15 seconds';
         document.getElementById('saveBtn').disabled = true;
 
+
+        // Stop any prior recorders (Switch Monitor path) — a second live
+        // MediaRecorder would interleave headerless blobs into the new audio file
+        if (window.mediaRecorder && window.mediaRecorder.state !== 'inactive') { window.mediaRecorder.stop(); }
+        window.mediaRecorder = null;
+        stopMicCapture();
+
+
         await startAudioCapture();
         await startMicCapture();
 
@@ -1212,6 +1220,7 @@
       ipcRenderer.send('stop-recording');
       window.isRecordingActive = false;
       window.bufferReady = false;
+      window.pendingLocalHighlights = [];
       if (window.mediaRecorder && window.mediaRecorder.state !== 'inactive') { window.mediaRecorder.stop(); window.mediaRecorder = null; }
       stopMicCapture();
       document.getElementById('startBtn').textContent = '▶ Start Highlight Session';
@@ -1228,16 +1237,30 @@
       // SAVE HIGHLIGHT
       // =====================
       window.saveHighlight = function() {
-        if (window.highlightCooldownActive) return;
         if (!window.isRecordingActive) return;
         if (!window.bufferReady) { hudLog('system','⏳ Buffer not ready yet','error'); return; }
         if (window.socket && window.currentSessionCode) {
+          // Always emit, even during cooldown — the server queues the trigger
+          // with its original timestamp and fires it when the lock expires
           window.socket.emit('broadcast-save-highlight');
         } else {
+          if (window.highlightCooldownActive) { queueLocalHighlight(); return; }
           ipcRenderer.send('save-highlight');
           startSaveCooldown(15);
         }
       };
+
+      // Solo-mode queue: cooldown-time presses are stored with their original
+      // timestamp and captured one-by-one as each cooldown ends
+      window.pendingLocalHighlights = [];
+      function queueLocalHighlight() {
+        if (window.pendingLocalHighlights.length >= 3) {
+          hudLog('activity','⏳ Highlight queue full — wait for cooldown','error');
+          return;
+        }
+        window.pendingLocalHighlights.push(Date.now());
+        hudLog('activity','📥 Highlight queued — will capture when cooldown ends ('+window.pendingLocalHighlights.length+' waiting)','info');
+      }
 
       function startSaveCooldown(seconds) {
        window.highlightCooldownActive = true;
@@ -1254,23 +1277,47 @@
        window.highlightCooldownTimer = setInterval(function() {
          remaining--;
          if (remaining <= 0) {
-           clearInterval(window.highlightCooldownTimer);
-           window.highlightCooldownTimer = null;
-           window.highlightCooldownActive = false;
-           btn.innerHTML = '💾 Save Highlight (or press <span id="saveBtnHotkey">'+window.currentHotkey+'</span>)';
-           btn.disabled = !(window.isRecordingActive && window.bufferReady);
-
-           // Restore ready status
-           if (window.isRecordingActive && window.bufferReady) {
-             document.getElementById('statusText').textContent = '● Ready — save a highlight anytime';
-             document.getElementById('statusText').className = 'status-bar ready';
-             document.getElementById('statusHelp').textContent = 'Click Save or press ' + window.currentHotkey + ' to capture the last ' + formatDuration(window.sessionClipDuration) + ' of gameplay';
-           }
+           endSaveCooldown();
          } else {
            btn.innerHTML = '⏳ '+remaining+'s before next save';
            document.getElementById('statusHelp').textContent = 'Next highlight available in ' + remaining + ' seconds';
          }
        }, 1000);
+      }
+
+      // Fully clears cooldown state and restores the button + status bar.
+      // Called by both the local countdown finishing AND the server's
+      // 'highlight-unlocked' event — the server event usually arrives first,
+      // which previously left the status bar stuck on "Cooldown / 1 seconds".
+      function endSaveCooldown() {
+        if (window.highlightCooldownTimer) { clearInterval(window.highlightCooldownTimer); window.highlightCooldownTimer = null; }
+        window.highlightCooldownActive = false;
+
+        // Solo mode: drain the next queued highlight before showing Ready.
+        // (In a session the SERVER drains its queue and re-fires
+        // coordinated-save-highlight, which restarts the cooldown.)
+        if (!window.currentSessionCode && window.pendingLocalHighlights && window.pendingLocalHighlights.length > 0
+            && window.isRecordingActive && window.bufferReady) {
+          var queuedTs = window.pendingLocalHighlights.shift();
+          hudLog('activity','⚡ Capturing queued highlight ('+window.pendingLocalHighlights.length+' still waiting)...','info');
+          ipcRenderer.send('save-highlight-at', queuedTs);
+          startSaveCooldown(15);
+          return;
+        }
+
+        var btn = document.getElementById('saveBtn');
+        btn.innerHTML = '💾 Save Highlight (or press <span id="saveBtnHotkey">'+window.currentHotkey+'</span>)';
+        btn.disabled = !(window.isRecordingActive && window.bufferReady);
+
+        if (window.isRecordingActive && window.bufferReady) {
+          document.getElementById('statusText').textContent = '● Ready — save a highlight anytime';
+          document.getElementById('statusText').className = 'status-bar ready';
+          document.getElementById('statusHelp').textContent = 'Click Save or press ' + window.currentHotkey + ' to capture the last ' + formatDuration(window.sessionClipDuration) + ' of gameplay';
+        } else if (window.isRecordingActive) {
+          document.getElementById('statusText').textContent = '● Buffering gameplay...';
+          document.getElementById('statusText').className = 'status-bar buffering';
+          document.getElementById('statusHelp').textContent = 'Building up a clip buffer — highlights will be available shortly';
+        }
       }
 
       ipcRenderer.on('hotkey-save-pressed', function() { window.saveHighlight(); });

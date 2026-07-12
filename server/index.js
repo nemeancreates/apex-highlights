@@ -249,9 +249,9 @@ function reencodeVideo(inputPath, outputPath) {
   return new Promise((resolve) => {
     const ffmpeg = spawn('ffmpeg', [
       '-i', inputPath,
-      '-c:v', 'libx264',
-      '-preset', 'fast',
-      '-crf', '28',
+      '-c:v', 'libsvtav1',
+      '-preset', '6',
+      '-crf', '35',
       '-c:a', 'libopus',
       '-b:a', '128k',
       '-y',
@@ -445,10 +445,15 @@ async function runComposite(session, code, outputPath, jobId) {
     '-filter_complex', filterComplex,
     '-map', '[out]',
     '-map', '[aout]',
-    '-c:v', 'libsvtav1',
-    '-preset', '6',
-    '-crf', '35',
-    '-c:a', 'libopus',
+    // x264 veryfast: 10-30x faster than SVT-AV1 preset 6 on a 1-vCPU droplet,
+    // universally playable MP4 (AV1+Opus-in-MP4 support is spotty on mobile).
+    // Revisit AV1 for bandwidth savings once encoding moves to a worker queue.
+    '-c:v', 'libx264',
+    '-preset', 'veryfast',
+    '-crf', '23',
+    '-pix_fmt', 'yuv420p',
+    '-movflags', '+faststart',
+    '-c:a', 'aac',
     '-b:a', '128k',
     '-y',
     outputPath
@@ -594,6 +599,7 @@ function sanitizeCode(input) {
 // ================================
 const MAX_SESSIONS = 100;
 const MAX_MEMBERS_PER_SESSION = 30;
+const MAX_HIGHLIGHTS_PER_SESSION = 200;
 
 // ================================
 // CLIP DURATION: Allowed values (ms)
@@ -608,8 +614,8 @@ const sessions = new Map();
 // ================================
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.19',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.19.exe',
+  version: '0.1.20',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.20.exe',
   releaseNotes: 'Full Session Mode toggle now works correctly in both directions.'
 };
 
@@ -847,6 +853,8 @@ app.post('/sessions', requireAuth, (req, res) => {
     createdAt: new Date().toISOString(),
     clipDuration: 30000,        // default 30s — host can change
     highlightLockedUntil: 0,    // timestamp when session-wide lock expires
+    highlightCount: 0,          // coordinated highlight triggers this session (cap: MAX_HIGHLIGHTS_PER_SESSION)
+    pendingHighlights: [],      // triggers that arrived during lock — fired in order when it expires
     members: [],
     uploads: []
   };
@@ -899,8 +907,15 @@ app.get('/sessions/:code', (req, res) => {
     return res.status(403).json({ error: 'You are not a member of this session' });
   }
 
-  const MAX_UPLOADS_PER_SESSION = 50;
-  if (session.uploads.length >= MAX_UPLOADS_PER_SESSION) {
+  // 200 highlights per session = up to 200 clips per member.
+  // Cap is per-uploader so one member's volume can't starve the squad,
+  // with an absolute session backstop of 200 x current member count.
+  const uploaderClipCount = session.uploads.filter(u => u.username === uploaderName).length;
+  if (uploaderClipCount >= MAX_HIGHLIGHTS_PER_SESSION) {
+    return safeError(res, 400, 'Highlight limit reached for this session (200 per member).');
+  }
+  const sessionUploadCap = MAX_HIGHLIGHTS_PER_SESSION * Math.max(session.members.length, 1);
+  if (session.uploads.length >= sessionUploadCap) {
     return safeError(res, 400, 'Upload limit reached for this session.');
   }
 
@@ -1223,33 +1238,24 @@ io.on('connection', (socket) => {
   // ================================
   // HIGHLIGHT SAVE — session-wide lock
   // ================================
-  socket.on('broadcast-save-highlight', () => {
-    if (!checkSocketRate(socket.id)) return;
-    const sessionCode = socket.sessionCode;
-    if (!sessionCode) return;
-    const session = sessions.get(sessionCode);
-    if (!session) return;
-
-    // Check session-wide lock — reject if a save is already in progress
-    const now = Date.now();
-    if (session.highlightLockedUntil && now < session.highlightLockedUntil) {
-      socket.emit('error-message', { message: 'Highlight save in progress — wait for cooldown' });
-      return;
-    }
-
+  // Fires a coordinated save to all clients, locks the session, and on
+  // expiry either drains the next queued trigger (with its original
+  // timestamp) or emits highlight-unlocked.
+  function fireCoordinatedHighlight(sessionCode, session, username, coordinated_timestamp) {
     const clipDuration = session.clipDuration || 30000;
     const postCapture = Math.ceil(clipDuration * 0.1);
     // Lock for: post-capture window + 15s buffer refill cooldown
     const lockDuration = postCapture + 15000;
 
-    session.highlightLockedUntil = now + lockDuration;
+    session.highlightCount = (session.highlightCount || 0) + 1;
+    session.highlightLockedUntil = Date.now() + lockDuration;
 
-    const coordinated_timestamp = now;
-    log("info", "highlight_triggered", { session: sessionCode, username: socket.username, ts: coordinated_timestamp, clipDuration, lockMs: lockDuration });
+    log("info", "highlight_triggered", { session: sessionCode, username, ts: coordinated_timestamp, clipDuration, lockMs: lockDuration, highlightCount: session.highlightCount });
 
-    // Tell every client to save their POV
+    // Tell every client to save their POV — anchored to the trigger's
+    // original timestamp (may be in the past for queued triggers)
     io.to(sessionCode).emit('coordinated-save-highlight', {
-      username: socket.username,
+      username,
       coordinated_timestamp,
       clipDuration
     });
@@ -1260,13 +1266,59 @@ io.on('connection', (socket) => {
       clipDuration
     });
 
-    // Auto-unlock after lock expires
+    // Auto-unlock after lock expires. Guard against setTimeout firing a few
+    // ms early (which previously skipped the emit entirely, leaving clients
+    // locked): only skip if a NEWER lock replaced this one. After unlocking,
+    // drain the next queued trigger if one is waiting.
+    const thisLockExpiry = session.highlightLockedUntil;
     setTimeout(() => {
       const current = sessions.get(sessionCode);
-      if (current && current.highlightLockedUntil <= Date.now()) {
-        io.to(sessionCode).emit('highlight-unlocked');
+      if (!current) return;
+      if (current.highlightLockedUntil > thisLockExpiry) return; // a newer save re-locked
+      current.highlightLockedUntil = 0;
+      io.to(sessionCode).emit('highlight-unlocked');
+
+      const next = (current.pendingHighlights || []).shift();
+      if (next) {
+        log("info", "highlight_dequeued", { session: sessionCode, username: next.username, ts: next.ts, remaining: current.pendingHighlights.length });
+        fireCoordinatedHighlight(sessionCode, current, next.username, next.ts);
       }
-    }, lockDuration);
+    }, lockDuration + 100);
+  }
+
+  socket.on('broadcast-save-highlight', () => {
+    if (!checkSocketRate(socket.id)) return;
+    const sessionCode = socket.sessionCode;
+    if (!sessionCode) return;
+    const session = sessions.get(sessionCode);
+    if (!session) return;
+
+    const now = Date.now();
+    const pending = session.pendingHighlights = session.pendingHighlights || [];
+
+    // Session highlight cap — count fired + already-queued triggers
+    if ((session.highlightCount || 0) + pending.length >= MAX_HIGHLIGHTS_PER_SESSION) {
+      socket.emit('error-message', { message: 'Highlight limit reached for this session (' + MAX_HIGHLIGHTS_PER_SESSION + ')' });
+      return;
+    }
+
+    // Locked: queue the trigger with its ORIGINAL timestamp instead of
+    // rejecting. It fires when the lock expires — clients cut the clip
+    // anchored to this moment, and their lastHighlightBoundary dedup
+    // guarantees zero footage overlap with the previous clip.
+    if (session.highlightLockedUntil && now < session.highlightLockedUntil) {
+      const MAX_PENDING_HIGHLIGHTS = 3;
+      if (pending.length >= MAX_PENDING_HIGHLIGHTS) {
+        socket.emit('error-message', { message: 'Highlight queue full — wait for cooldown' });
+        return;
+      }
+      pending.push({ username: socket.username, ts: now });
+      log("info", "highlight_queued", { session: sessionCode, username: socket.username, ts: now, queueDepth: pending.length });
+      io.to(sessionCode).emit('highlight-queued', { username: socket.username, queued: pending.length });
+      return;
+    }
+
+    fireCoordinatedHighlight(sessionCode, session, socket.username, now);
   });
 
   socket.on('disconnect', () => {
@@ -1317,4 +1369,3 @@ initAiReel({
 server.listen(PORT, () => {
   log("info", "server_start", { port: PORT });
 });
-
