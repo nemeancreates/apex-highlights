@@ -569,3 +569,1642 @@ Spaces configured: peakbu-media nyc3
 {"ts":"2026-07-09T19:43:39.628Z","level":"info","event":"sessions_loaded","loaded":16,"expired":0}
 {"ts":"2026-07-09T19:43:39.630Z","level":"info","event":"aireel_ready","aiEditor":false,"model":"claude-sonnet-4-6"}
 {"ts":"2026-07-09T19:43:39.632Z","level":"info","event":"server_start","port":"3000"}
+Spaces configured: peakbu-media nyc3
+{"ts":"2026-07-12T03:51:23.867Z","level":"info","event":"users_loaded","count":12}
+{"ts":"2026-07-12T03:51:23.874Z","level":"info","event":"sessions_loaded","loaded":0,"expired":16}
+{"ts":"2026-07-12T03:51:23.876Z","level":"info","event":"aireel_ready","aiEditor":false,"model":"claude-sonnet-4-6"}
+{"ts":"2026-07-12T03:51:23.878Z","level":"info","event":"server_start","port":3000}
+Spaces configured: peakbu-media nyc3
+{"ts":"2026-07-12T03:53:22.779Z","level":"info","event":"users_loaded","count":12}
+{"ts":"2026-07-12T03:53:22.781Z","level":"info","event":"sessions_loaded","loaded":0,"expired":16}
+{"ts":"2026-07-12T03:53:22.782Z","level":"info","event":"aireel_ready","aiEditor":false,"model":"claude-sonnet-4-6"}
+{"ts":"2026-07-12T03:53:22.784Z","level":"info","event":"server_start","port":3000}
+Spaces configured: peakbu-media nyc3
+{"ts":"2026-07-12T04:04:33.578Z","level":"info","event":"users_loaded","count":12}
+{"ts":"2026-07-12T04:04:33.580Z","level":"info","event":"sessions_loaded","loaded":0,"expired":16}
+{"ts":"2026-07-12T04:04:33.581Z","level":"info","event":"aireel_ready","aiEditor":false,"model":"claude-sonnet-4-6"}
+{"ts":"2026-07-12T04:04:33.583Z","level":"info","event":"server_start","port":3000}
+{"ts":"2026-07-12T04:05:21.235Z","level":"info","event":"session_created","code":"RSM668","createdBy":"Nemean"}
+{"ts":"2026-07-12T04:05:21.561Z","level":"info","event":"member_joined","session":"RSM668","username":"Nemean"}
+{"ts":"2026-07-12T04:05:28.701Z","level":"info","event":"recording_status","session":"RSM668","username":"Nemean","isRecording":true}
+{"ts":"2026-07-12T04:06:25.724Z","level":"info","event":"clip_duration_changed","session":"RSM668","duration":15000,"setBy":"Nemean"}
+{"ts":1783829203145,"level":"info","event":"highlight_triggered","session":"RSM668","username":"Nemean","clipDuration":15000,"lockMs":16500}
+{"ts":"2026-07-12T04:06:49.504Z","level":"info","event":"upload_received","session":"RSM668","username":"Nemean","sizeMB":"23.0"}
+{"ts":"2026-07-12T04:06:50.388Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-06-43-145Z_1783829209261.jpg"}
+{"ts":"2026-07-12T04:07:08.728Z","level":"info","event":"spaces_upload_complete","session":"RSM668"}
+{"ts":1783829229391,"level":"info","event":"highlight_triggered","session":"RSM668","username":"Nemean","clipDuration":15000,"lockMs":16500}
+{"ts":"2026-07-12T04:07:15.740Z","level":"info","event":"upload_received","session":"RSM668","username":"Nemean","sizeMB":"19.4"}
+{"ts":"2026-07-12T04:07:16.526Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-07-09-391Z_1783829235572.jpg"}
+{"ts":"2026-07-12T04:07:20.202Z","level":"info","event":"spaces_upload_complete","session":"RSM668"}
+Composite: Output #0, mp4, to '/tmp/peak-abu-composites/composite_a5b92866-bb56-4cbf-b635-741ab1b52d37.mp4':
+  Metadata:
+    major_brand     : isom
+    minor_version   : 512
+    compatible_brands: isomiso2avc1mp41
+    encoder         : Lavf60.16.100
+  Stream #0:0: Video: av1 (av01 / 0x31307661), yuv420p(progressive), 1280x360 [SAR 1:1 DAR 32:9], q=2-31, 30 fps, 15360 tbn
+    Metadata:
+      encoder         : Lavc60.31.102 libsvtav1
+  Stream #0:1: Audio: opus (Opus / 0x7375704F), 48000 Hz, stereo, flt, 128 kb/s
+    Metadata:
+      encoder         : Lavc60.31.102 libopus
+frame=    0 fps=0.0 q=0.0 size=       0kB time=-00:00:00.00 bitrate=  -0.0kbits/s speed=N/A
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:00.11 bitrate=   3.4kbits/s speed=0.164x
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:00.53 bitrate=   0.7kbits/s speed=0.445x
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:00.97 bitrate=   0.4kbits/s speed=0.569x
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:01.31 bitrate=   0.3kbits/s speed=0.401x
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:01.71 bitrate=   0.2kbits/s speed=0.453x
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:02.13 bitrate=   0.2kbits/s speed=0.496x
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:02.35 bitrate=   0.2kbits/s speed=0.443x
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:02.37 bitrate=   0.2kbits/s speed=0.404x    frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:02.37 bitrate=   0.2kbits/s speed=0.262x
+Composite: frame=    0 fps=0.0 q=7.0 size=       0kB time=00:00:02.41 bitrate=   0.2kbits/s speed=0.244x    frame=    1 fps=0.1 q=7.0 size=       0kB time=00:00:02.41 bitrate=   0.2kbits/s speed=0.221x
+Composite: frame=    1 fps=0.1 q=35.0 size=       0kB time=00:00:02.43 bitrate=   0.2kbits/s speed=0.205x    frame=    2 fps=0.2 q=35.0 size=       0kB time=00:00:02.43 bitrate=   0.2kbits/s speed=0.187x
+Composite: frame=    2 fps=0.1 q=33.0 size=       0kB time=00:00:02.47 bitrate=   0.2kbits/s speed=0.177x
+Composite: frame=    3 fps=0.2 q=33.0 size=       0kB time=00:00:02.47 bitrate=   0.2kbits/s speed=0.165x
+Composite: frame=    3 fps=0.2 q=35.0 size=       0kB time=00:00:02.49 bitrate=   0.2kbits/s speed=0.154x    frame=    4 fps=0.2 q=35.0 size=       0kB time=00:00:02.49 bitrate=   0.2kbits/s speed=0.147x
+Composite: frame=    4 fps=0.2 q=30.0 size=       0kB time=00:00:02.55 bitrate=   0.2kbits/s speed=0.14x
+Composite: frame=    5 fps=0.3 q=30.0 size=       0kB time=00:00:02.55 bitrate=   0.2kbits/s speed=0.135x
+Composite: frame=    5 fps=0.3 q=30.0 size=       0kB time=00:00:02.57 bitrate=   0.1kbits/s speed=0.132x
+Composite: frame=    6 fps=0.3 q=35.0 size=       0kB time=00:00:02.57 bitrate=   0.1kbits/s speed=0.123x
+Composite: frame=    6 fps=0.3 q=33.0 size=       0kB time=00:00:02.61 bitrate=   0.1kbits/s speed=0.118x    frame=    7 fps=0.3 q=33.0 size=       0kB time=00:00:02.61 bitrate=   0.1kbits/s speed=0.114x
+Composite: frame=   20 fps=0.9 q=35.0 size=       0kB time=00:00:03.03 bitrate=   0.1kbits/s speed=0.13x
+Composite: frame=   31 fps=1.2 q=35.0 size=     256kB time=00:00:03.43 bitrate= 610.9kbits/s speed=0.138x    frame=   32 fps=1.2 q=35.0 size=     256kB time=00:00:03.43 bitrate= 610.9kbits/s speed=0.132x
+Composite: frame=   32 fps=1.2 q=20.0 size=     256kB time=00:00:03.49 bitrate= 600.4kbits/s speed=0.13x
+Composite: frame=   33 fps=1.2 q=20.0 size=     256kB time=00:00:03.49 bitrate= 600.4kbits/s speed=0.125x
+Composite: frame=   33 fps=1.1 q=35.0 size=     256kB time=00:00:03.51 bitrate= 597.0kbits/s speed=0.122x
+Composite: frame=   34 fps=1.1 q=35.0 size=     256kB time=00:00:03.51 bitrate= 597.0kbits/s speed=0.117x
+Composite: frame=   34 fps=1.1 q=34.0 size=     256kB time=00:00:03.55 bitrate= 590.3kbits/s speed=0.115x    frame=   35 fps=1.1 q=34.0 size=     256kB time=00:00:03.55 bitrate= 590.3kbits/s speed=0.112x
+{"ts":1783829274527,"level":"info","event":"highlight_triggered","session":"RSM668","username":"Nemean","clipDuration":15000,"lockMs":16500}
+Composite: frame=   35 fps=1.1 q=35.0 size=     256kB time=00:00:03.57 bitrate= 587.0kbits/s speed=0.109x    frame=   36 fps=1.1 q=35.0 size=     256kB time=00:00:03.57 bitrate= 587.0kbits/s speed=0.105x
+Composite: frame=   36 fps=1.0 q=32.0 size=     256kB time=00:00:03.61 bitrate= 580.5kbits/s speed=0.104x
+Composite: frame=   37 fps=1.0 q=32.0 size=     256kB time=00:00:03.61 bitrate= 580.5kbits/s speed=0.101x
+Composite: frame=   37 fps=1.0 q=35.0 size=     256kB time=00:00:03.63 bitrate= 577.3kbits/s speed=0.0984x    frame=   38 fps=1.0 q=35.0 size=     256kB time=00:00:03.63 bitrate= 577.3kbits/s speed=0.0958x
+Composite: frame=   38 fps=1.0 q=34.0 size=     256kB time=00:00:03.67 bitrate= 571.0kbits/s speed=0.095x    frame=   39 fps=1.0 q=34.0 size=     256kB time=00:00:03.67 bitrate= 571.0kbits/s speed=0.0921x
+Composite: frame=   41 fps=1.0 q=35.0 size=     256kB time=00:00:03.77 bitrate= 555.9kbits/s speed=0.0933x
+Composite: frame=   46 fps=1.1 q=35.0 size=     256kB time=00:00:03.91 bitrate= 536.0kbits/s speed=0.0955x
+Composite: frame=   53 fps=1.3 q=35.0 size=     256kB time=00:00:04.17 bitrate= 502.6kbits/s speed=0.101x
+Composite: frame=   62 fps=1.5 q=35.0 size=     512kB time=00:00:04.45 bitrate= 941.9kbits/s speed=0.106x
+Composite: frame=   64 fps=1.5 q=23.0 size=     512kB time=00:00:04.55 bitrate= 921.2kbits/s speed=0.107x    frame=   65 fps=1.5 q=23.0 size=     512kB time=00:00:04.55 bitrate= 921.2kbits/s speed=0.104x
+Composite: frame=   65 fps=1.4 q=23.0 size=     512kB time=00:00:04.57 bitrate= 917.2kbits/s speed=0.0996x    frame=   65 fps=1.4 q=23.0 size=     512kB time=00:00:04.57 bitrate= 917.2kbits/s speed=0.0975x
+Composite: frame=   65 fps=1.3 q=35.0 size=     512kB time=00:00:04.61 bitrate= 909.2kbits/s speed=0.0943x    frame=   66 fps=1.3 q=35.0 size=     512kB time=00:00:04.61 bitrate= 909.2kbits/s speed=0.0922x
+Composite: frame=   66 fps=1.3 q=33.0 size=     512kB time=00:00:04.63 bitrate= 905.3kbits/s speed=0.091x    frame=   67 fps=1.3 q=33.0 size=     512kB time=00:00:04.63 bitrate= 905.3kbits/s speed=0.0893x
+Composite: frame=   67 fps=1.2 q=35.0 size=     512kB time=00:00:04.67 bitrate= 897.5kbits/s speed=0.0868x    frame=   68 fps=1.2 q=35.0 size=     512kB time=00:00:04.67 bitrate= 897.5kbits/s speed=0.0852x
+{"ts":"2026-07-12T04:08:18.521Z","level":"info","event":"upload_received","session":"RSM668","username":"Nemean","sizeMB":"20.5"}
+Composite: frame=   68 fps=1.2 q=31.0 size=     512kB time=00:00:04.69 bitrate= 893.7kbits/s speed=0.084x    frame=   69 fps=1.2 q=31.0 size=     512kB time=00:00:04.69 bitrate= 893.7kbits/s speed=0.0825x
+Composite: frame=   69 fps=1.2 q=35.0 size=     512kB time=00:00:04.73 bitrate= 886.2kbits/s speed=0.0818x    frame=   70 fps=1.2 q=35.0 size=     512kB time=00:00:04.73 bitrate= 886.2kbits/s speed=0.0803x
+Composite: frame=   70 fps=1.2 q=33.0 size=     512kB time=00:00:04.77 bitrate= 878.7kbits/s speed=0.0797x    frame=   71 fps=1.2 q=33.0 size=     512kB time=00:00:04.77 bitrate= 878.7kbits/s speed=0.0787x
+Composite: frame=   71 fps=1.2 q=35.0 size=     512kB time=00:00:04.81 bitrate= 871.4kbits/s speed=0.0787x
+Composite: frame=   79 fps=1.3 q=35.0 size=     512kB time=00:00:05.09 bitrate= 823.5kbits/s speed=0.0826x
+Composite: frame=   87 fps=1.4 q=35.0 size=     768kB time=00:00:05.33 bitrate=1179.7kbits/s speed=0.0857x
+Composite: frame=   94 fps=1.5 q=33.0 size=     768kB time=00:00:05.57 bitrate=1128.9kbits/s speed=0.0876x
+Composite: frame=   95 fps=1.5 q=35.0 size=     768kB time=00:00:05.61 bitrate=1120.8kbits/s speed=0.0871x    frame=   96 fps=1.5 q=23.0 size=     768kB time=00:00:05.63 bitrate=1116.9kbits/s speed=0.0866x    frame=   97 fps=1.5 q=23.0 size=     768kB time=00:00:05.63 bitrate=1116.9kbits/s speed=0.0849x    frame=   97 fps=1.4 q=23.0 size=     768kB time=00:00:05.67 bitrate=1109.0kbits/s speed=0.0846x    frame=   97 fps=1.4 q=23.0 size=     768kB time=00:00:05.69 bitrate=1105.1kbits/s speed=0.084x    frame=   97 fps=1.4 q=23.0 size=     768kB time=00:00:05.69 bitrate=1105.1kbits/s speed=0.083x    frame=   97 fps=1.4 q=23.0 size=     768kB time=00:00:05.75 bitrate=1093.6kbits/s speed=0.0832x    frame=   97 fps=1.4 q=35.0 size=     768kB time=00:00:05.77 bitrate=1089.8kbits/s speed=0.0828x    frame=   98 fps=1.4 q=34.0 size=     768kB time=00:00:05.81 bitrate=1082.3kbits/s speed=0.0823x    frame=   99 fps=1.4 q=35.0 size=     768kB time=00:00:05.83 bitrate=1078.6kbits/s speed=0.0814x
+Composite: frame=  100 fps=1.3 q=32.0 size=     768kB time=00:00:05.87 bitrate=1071.2kbits/s speed=0.0777x    frame=  101 fps=1.3 q=32.0 size=     768kB time=00:00:05.87 bitrate=1071.2kbits/s speed=0.0765x
+{"ts":"2026-07-12T04:08:39.537Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-07-54-527Z_1783829283592.jpg"}
+Composite: frame=  102 fps=1.3 q=35.0 size=     768kB time=00:00:05.91 bitrate=1064.0kbits/s speed=0.0759x    frame=  102 fps=1.3 q=34.0 size=    1024kB time=00:00:05.93 bitrate=1413.8kbits/s speed=0.0752x    frame=  103 fps=1.3 q=34.0 size=    1024kB time=00:00:05.93 bitrate=1413.8kbits/s speed=0.0746x    frame=  104 fps=1.3 q=35.0 size=    1024kB time=00:00:05.97 bitrate=1404.4kbits/s speed=0.0743x    frame=  105 fps=1.3 q=29.0 size=    1024kB time=00:00:05.99 bitrate=1399.7kbits/s speed=0.0735x    frame=  106 fps=1.3 q=35.0 size=    1024kB time=00:00:06.05 bitrate=1385.8kbits/s speed=0.0736x    frame=  114 fps=1.4 q=34.0 size=    1024kB time=00:00:06.33 bitrate=1324.5kbits/s speed=0.0766x    frame=  122 fps=1.5 q=35.0 size=    1024kB time=00:00:06.57 bitrate=1276.2kbits/s speed=0.079x
+Composite: frame=  125 fps=1.5 q=32.0 size=    1024kB time=00:00:06.69 bitrate=1253.3kbits/s speed=0.0785x
+Composite: frame=  125 fps=1.4 q=35.0 size=    1024kB time=00:00:06.71 bitrate=1249.6kbits/s speed=0.0774x
+Composite: frame=  126 fps=1.4 q=34.0 size=    1024kB time=00:00:06.75 bitrate=1242.2kbits/s speed=0.0769x    frame=  127 fps=1.4 q=35.0 size=    1024kB time=00:00:06.77 bitrate=1238.5kbits/s speed=0.0762x    frame=  128 fps=1.4 q=35.0 size=    1024kB time=00:00:06.77 bitrate=1238.5kbits/s speed=0.0756x
+Composite: frame=  129 fps=1.4 q=23.0 size=    1024kB time=00:00:06.81 bitrate=1231.2kbits/s speed=0.0745x
+Composite: frame=  130 fps=1.4 q=35.0 size=    1024kB time=00:00:06.83 bitrate=1227.6kbits/s speed=0.0735x
+Composite: frame=  130 fps=1.4 q=33.0 size=    1280kB time=00:00:06.87 bitrate=1525.6kbits/s speed=0.0728x    frame=  131 fps=1.4 q=33.0 size=    1280kB time=00:00:06.87 bitrate=1525.6kbits/s speed=0.0715x
+Composite: frame=  131 fps=1.4 q=35.0 size=    1280kB time=00:00:06.89 bitrate=1521.2kbits/s speed=0.0711x    frame=  132 fps=1.3 q=35.0 size=    1280kB time=00:00:06.89 bitrate=1521.2kbits/s speed=0.0704x
+Composite: frame=  132 fps=1.3 q=31.0 size=    1280kB time=00:00:06.93 bitrate=1512.4kbits/s speed=0.0701x
+Composite: frame=  133 fps=1.3 q=31.0 size=    1280kB time=00:00:06.93 bitrate=1512.4kbits/s speed=0.0694x
+Composite: frame=  133 fps=1.3 q=35.0 size=    1280kB time=00:00:06.97 bitrate=1503.7kbits/s speed=0.0686x    frame=  134 fps=1.3 q=33.0 size=    1280kB time=00:00:07.01 bitrate=1495.1kbits/s speed=0.0686x
+Composite: frame=  143 fps=1.4 q=35.0 size=    1280kB time=00:00:07.29 bitrate=1437.7kbits/s speed=0.071x
+{"ts":"2026-07-12T04:09:04.547Z","level":"info","event":"spaces_upload_complete","session":"RSM668"}
+Composite: frame=  154 fps=1.5 q=33.0 size=    1536kB time=00:00:07.67 bitrate=1639.8kbits/s speed=0.0743x
+Composite: frame=  157 fps=1.5 q=31.0 size=    1536kB time=00:00:07.75 bitrate=1622.9kbits/s speed=0.0739x    frame=  157 fps=1.5 q=31.0 size=    1536kB time=00:00:07.77 bitrate=1618.7kbits/s speed=0.0727x
+Composite: frame=  157 fps=1.5 q=35.0 size=    1536kB time=00:00:07.77 bitrate=1618.7kbits/s speed=0.072x
+Composite: frame=  158 fps=1.4 q=35.0 size=    1536kB time=00:00:07.77 bitrate=1618.7kbits/s speed=0.071x
+Composite: frame=  158 fps=1.4 q=33.0 size=    1536kB time=00:00:07.81 bitrate=1610.5kbits/s speed=0.0704x    frame=  159 fps=1.4 q=33.0 size=    1536kB time=00:00:07.81 bitrate=1610.5kbits/s speed=0.0698x
+Composite: frame=  159 fps=1.4 q=35.0 size=    1536kB time=00:00:07.83 bitrate=1606.3kbits/s speed=0.0693x    frame=  160 fps=1.4 q=35.0 size=    1536kB time=00:00:07.83 bitrate=1606.3kbits/s speed=0.0688x
+Composite: frame=  160 fps=1.4 q=28.0 size=    1536kB time=00:00:07.87 bitrate=1598.2kbits/s speed=0.0685x    frame=  161 fps=1.4 q=28.0 size=    1536kB time=00:00:07.87 bitrate=1598.2kbits/s speed=0.0679x
+Composite: frame=  161 fps=1.4 q=8.0 size=    1536kB time=00:00:07.89 bitrate=1594.1kbits/s speed=0.0675x    frame=  162 fps=1.4 q=8.0 size=    1536kB time=00:00:07.89 bitrate=1594.1kbits/s speed=0.0669x
+Composite: frame=  162 fps=1.4 q=35.0 size=    1536kB time=00:00:07.93 bitrate=1586.1kbits/s speed=0.0667x
+Composite: frame=  163 fps=1.4 q=35.0 size=    1536kB time=00:00:07.93 bitrate=1586.1kbits/s speed=0.0661x
+Composite: frame=  163 fps=1.3 q=34.0 size=    1536kB time=00:00:07.97 bitrate=1578.1kbits/s speed=0.0659x
+Composite: frame=  164 fps=1.3 q=34.0 size=    1536kB time=00:00:07.97 bitrate=1578.1kbits/s speed=0.0654x
+Composite: frame=  164 fps=1.3 q=35.0 size=    1536kB time=00:00:08.01 bitrate=1570.3kbits/s speed=0.0652x
+Composite: frame=  165 fps=1.3 q=35.0 size=    1536kB time=00:00:08.01 bitrate=1570.3kbits/s speed=0.0647x
+Composite: frame=  165 fps=1.3 q=32.0 size=    1792kB time=00:00:08.05 bitrate=1822.9kbits/s speed=0.0645x    frame=  166 fps=1.3 q=32.0 size=    1792kB time=00:00:08.05 bitrate=1822.9kbits/s speed=0.064x
+Composite: frame=  174 fps=1.4 q=32.0 size=    1792kB time=00:00:08.33 bitrate=1761.6kbits/s speed=0.0659x
+Composite: frame=  186 fps=1.5 q=27.0 size=    1792kB time=00:00:08.71 bitrate=1684.8kbits/s speed=0.0686x
+Composite: frame=  188 fps=1.5 q=35.0 size=    1792kB time=00:00:08.81 bitrate=1665.7kbits/s speed=0.0691x
+Composite: frame=  189 fps=1.5 q=35.0 size=    1792kB time=00:00:08.81 bitrate=1665.7kbits/s speed=0.0683x
+Composite: frame=  189 fps=1.4 q=31.0 size=    1792kB time=00:00:08.83 bitrate=1661.9kbits/s speed=0.0677x    frame=  190 fps=1.4 q=31.0 size=    1792kB time=00:00:08.83 bitrate=1661.9kbits/s speed=0.0673x
+Composite: frame=  190 fps=1.4 q=35.0 size=    1792kB time=00:00:08.87 bitrate=1654.4kbits/s speed=0.0668x
+Composite: frame=  191 fps=1.4 q=35.0 size=    1792kB time=00:00:08.87 bitrate=1654.4kbits/s speed=0.0657x
+Composite: frame=  191 fps=1.4 q=35.0 size=    2048kB time=00:00:08.89 bitrate=1886.5kbits/s speed=0.0656x
+Composite: frame=  191 fps=1.4 q=33.0 size=    2048kB time=00:00:08.89 bitrate=1886.5kbits/s speed=0.065x    frame=  192 fps=1.4 q=33.0 size=    2048kB time=00:00:08.89 bitrate=1886.5kbits/s speed=0.0644x
+Composite: frame=  192 fps=1.4 q=35.0 size=    2048kB time=00:00:08.95 bitrate=1873.9kbits/s speed=0.0643x    frame=  193 fps=1.4 q=35.0 size=    2048kB time=00:00:08.95 bitrate=1873.9kbits/s speed=0.064x
+Composite: frame=  193 fps=1.4 q=24.0 size=    2048kB time=00:00:08.97 bitrate=1869.7kbits/s speed=0.0635x    frame=  194 fps=1.4 q=24.0 size=    2048kB time=00:00:08.97 bitrate=1869.7kbits/s speed=0.0632x
+Composite: frame=  194 fps=1.4 q=35.0 size=    2048kB time=00:00:09.01 bitrate=1861.4kbits/s speed=0.0631x
+Composite: frame=  195 fps=1.4 q=35.0 size=    2048kB time=00:00:09.01 bitrate=1861.4kbits/s speed=0.0626x
+Composite: frame=  195 fps=1.3 q=33.0 size=    2048kB time=00:00:09.03 bitrate=1857.3kbits/s speed=0.0624x    frame=  196 fps=1.3 q=33.0 size=    2048kB time=00:00:09.03 bitrate=1857.3kbits/s speed=0.0619x
+Composite: frame=  200 fps=1.4 q=33.0 size=    2048kB time=00:00:09.17 bitrate=1828.9kbits/s speed=0.0626x
+Composite: frame=  209 fps=1.4 q=35.0 size=    2048kB time=00:00:09.47 bitrate=1771.0kbits/s speed=0.0645x
+Composite: frame=  220 fps=1.5 q=35.0 size=    2304kB time=00:00:09.89 bitrate=1907.8kbits/s speed=0.0658x
+Composite: frame=  221 fps=1.5 q=35.0 size=    2304kB time=00:00:09.89 bitrate=1907.8kbits/s speed=0.0655x
+Composite: frame=  221 fps=1.5 q=32.0 size=    2304kB time=00:00:09.91 bitrate=1903.9kbits/s speed=0.0653x
+Composite: frame=  222 fps=1.5 q=32.0 size=    2304kB time=00:00:09.91 bitrate=1903.9kbits/s speed=0.0648x
+Composite: frame=  222 fps=1.4 q=35.0 size=    2304kB time=00:00:09.95 bitrate=1896.3kbits/s speed=0.0647x
+Composite: frame=  223 fps=1.4 q=35.0 size=    2304kB time=00:00:09.95 bitrate=1896.3kbits/s speed=0.0643x
+Composite: frame=  223 fps=1.4 q=34.0 size=    2304kB time=00:00:09.97 bitrate=1892.5kbits/s speed=0.0639x    frame=  224 fps=1.4 q=34.0 size=    2304kB time=00:00:09.97 bitrate=1892.5kbits/s speed=0.0636x
+Composite: frame=  224 fps=1.4 q=35.0 size=    2304kB time=00:00:10.01 bitrate=1884.9kbits/s speed=0.0634x
+Composite: frame=  225 fps=1.4 q=35.0 size=    2304kB time=00:00:10.01 bitrate=1884.9kbits/s speed=0.063x
+Composite: frame=  225 fps=1.4 q=23.0 size=    2304kB time=00:00:10.03 bitrate=1881.2kbits/s speed=0.0627x    frame=  226 fps=1.4 q=23.0 size=    2304kB time=00:00:10.03 bitrate=1881.2kbits/s speed=0.0624x
+Composite: frame=  226 fps=1.4 q=35.0 size=    2304kB time=00:00:10.07 bitrate=1873.7kbits/s speed=0.0622x
+Composite: frame=  227 fps=1.4 q=35.0 size=    2304kB time=00:00:10.07 bitrate=1873.7kbits/s speed=0.0618x
+Composite: frame=  227 fps=1.4 q=35.0 size=    2304kB time=00:00:10.09 bitrate=1870.0kbits/s speed=0.0618x
+Composite: frame=  227 fps=1.4 q=34.0 size=    2304kB time=00:00:10.09 bitrate=1870.0kbits/s speed=0.0612x    frame=  228 fps=1.4 q=34.0 size=    2304kB time=00:00:10.09 bitrate=1870.0kbits/s speed=0.0608x
+Composite: frame=  228 fps=1.4 q=35.0 size=    2304kB time=00:00:10.13 bitrate=1862.6kbits/s speed=0.0607x
+Composite: frame=  237 fps=1.4 q=32.0 size=    2560kB time=00:00:10.43 bitrate=2010.1kbits/s speed=0.0623x
+Composite: frame=  248 fps=1.5 q=33.0 size=    2560kB time=00:00:10.77 bitrate=1946.6kbits/s speed=0.0641x
+Composite: frame=  252 fps=1.5 q=35.0 size=    2560kB time=00:00:10.95 bitrate=1914.6kbits/s speed=0.0645x    frame=  253 fps=1.5 q=35.0 size=    2560kB time=00:00:10.95 bitrate=1914.6kbits/s speed=0.0641x
+Composite: frame=  253 fps=1.5 q=31.0 size=    2560kB time=00:00:10.97 bitrate=1911.1kbits/s speed=0.0638x
+Composite: frame=  254 fps=1.5 q=31.0 size=    2560kB time=00:00:10.97 bitrate=1911.1kbits/s speed=0.0635x
+Composite: frame=  254 fps=1.5 q=31.0 size=    2560kB time=00:00:10.99 bitrate=1907.7kbits/s speed=0.0631x
+Composite: frame=  254 fps=1.5 q=35.0 size=    2560kB time=00:00:11.01 bitrate=1904.2kbits/s speed=0.063x
+Composite: frame=  255 fps=1.4 q=35.0 size=    2560kB time=00:00:11.01 bitrate=1904.2kbits/s speed=0.0626x
+Composite: frame=  255 fps=1.4 q=33.0 size=    2560kB time=00:00:11.03 bitrate=1900.7kbits/s speed=0.0624x    frame=  256 fps=1.4 q=33.0 size=    2560kB time=00:00:11.03 bitrate=1900.7kbits/s speed=0.062x
+Composite: frame=  256 fps=1.4 q=33.0 size=    2560kB time=00:00:11.07 bitrate=1893.9kbits/s speed=0.0618x
+Composite: frame=  256 fps=1.4 q=35.0 size=    2560kB time=00:00:11.07 bitrate=1893.9kbits/s speed=0.0615x
+Composite: frame=  257 fps=1.4 q=35.0 size=    2560kB time=00:00:11.07 bitrate=1893.9kbits/s speed=0.0611x
+Composite: frame=  257 fps=1.4 q=35.0 size=    2560kB time=00:00:11.09 bitrate=1890.5kbits/s speed=0.061x
+Composite: frame=  257 fps=1.4 q=25.0 size=    2816kB time=00:00:11.09 bitrate=2079.5kbits/s speed=0.0607x
+Composite: frame=  258 fps=1.4 q=25.0 size=    2816kB time=00:00:11.09 bitrate=2079.5kbits/s speed=0.0602x
+Composite: frame=  258 fps=1.4 q=25.0 size=    2816kB time=00:00:11.11 bitrate=2075.8kbits/s speed=0.0601x
+Composite: frame=  258 fps=1.4 q=35.0 size=    2816kB time=00:00:11.13 bitrate=2072.0kbits/s speed=0.0598x
+Composite: frame=  270 fps=1.4 q=32.0 size=    2816kB time=00:00:11.51 bitrate=2003.7kbits/s speed=0.0617x
+Composite: frame=  281 fps=1.5 q=28.0 size=    3072kB time=00:00:11.91 bitrate=2112.4kbits/s speed=0.0636x
+Composite: frame=  285 fps=1.5 q=31.0 size=    3072kB time=00:00:12.03 bitrate=2091.3kbits/s speed=0.0636x
+Composite: frame=  286 fps=1.5 q=31.0 size=    3072kB time=00:00:12.03 bitrate=2091.3kbits/s speed=0.0632x    frame=  286 fps=1.5 q=31.0 size=    3072kB time=00:00:12.05 bitrate=2087.9kbits/s speed=0.0631x
+Composite: frame=  286 fps=1.5 q=35.0 size=    3072kB time=00:00:12.07 bitrate=2084.4kbits/s speed=0.0629x    frame=  287 fps=1.5 q=35.0 size=    3072kB time=00:00:12.07 bitrate=2084.4kbits/s speed=0.0626x
+Composite: frame=  287 fps=1.5 q=33.0 size=    3072kB time=00:00:12.09 bitrate=2081.0kbits/s speed=0.0623x    frame=  288 fps=1.5 q=33.0 size=    3072kB time=00:00:12.09 bitrate=2081.0kbits/s speed=0.062x    frame=  288 fps=1.5 q=33.0 size=    3072kB time=00:00:12.13 bitrate=2074.1kbits/s speed=0.062x
+Composite: frame=  289 fps=1.5 q=35.0 size=    3072kB time=00:00:12.15 bitrate=2070.7kbits/s speed=0.0617x
+Composite: frame=  289 fps=1.5 q=23.0 size=    3072kB time=00:00:12.17 bitrate=2067.3kbits/s speed=0.0615x
+Composite: frame=  290 fps=1.5 q=23.0 size=    3072kB time=00:00:12.17 bitrate=2067.3kbits/s speed=0.0611x
+Composite: frame=  290 fps=1.4 q=23.0 size=    3072kB time=00:00:12.21 bitrate=2060.5kbits/s speed=0.061x
+Composite: frame=  290 fps=1.4 q=35.0 size=    3072kB time=00:00:12.21 bitrate=2060.5kbits/s speed=0.0607x    frame=  291 fps=1.4 q=35.0 size=    3072kB time=00:00:12.21 bitrate=2060.5kbits/s speed=0.0604x
+Composite: frame=  291 fps=1.4 q=34.0 size=    3072kB time=00:00:12.23 bitrate=2057.2kbits/s speed=0.0603x    frame=  292 fps=1.4 q=34.0 size=    3072kB time=00:00:12.23 bitrate=2057.2kbits/s speed=0.06x
+Composite: frame=  292 fps=1.4 q=35.0 size=    3072kB time=00:00:12.27 bitrate=2050.5kbits/s speed=0.0598x
+Composite: frame=  293 fps=1.4 q=32.0 size=    3328kB time=00:00:12.31 bitrate=2214.1kbits/s speed=0.0598x
+Composite: frame=  308 fps=1.5 q=34.0 size=    3328kB time=00:00:12.77 bitrate=2134.4kbits/s speed=0.0619x
+Composite: frame=  317 fps=1.5 q=32.0 size=    3328kB time=00:00:13.11 bitrate=2079.0kbits/s speed=0.0631x
+Composite: frame=  318 fps=1.5 q=35.0 size=    3328kB time=00:00:13.15 bitrate=2072.7kbits/s speed=0.0628x
+Composite: frame=  319 fps=1.5 q=35.0 size=    3328kB time=00:00:13.15 bitrate=2072.7kbits/s speed=0.0622x    frame=  319 fps=1.5 q=35.0 size=    3328kB time=00:00:13.17 bitrate=2069.6kbits/s speed=0.062x
+Composite: frame=  319 fps=1.5 q=34.0 size=    3584kB time=00:00:13.17 bitrate=2228.8kbits/s speed=0.0618x    frame=  320 fps=1.5 q=34.0 size=    3584kB time=00:00:13.17 bitrate=2228.8kbits/s speed=0.0615x
+Composite: frame=  320 fps=1.5 q=35.0 size=    3584kB time=00:00:13.21 bitrate=2222.0kbits/s speed=0.0615x
+Composite: frame=  321 fps=1.5 q=35.0 size=    3584kB time=00:00:13.21 bitrate=2222.0kbits/s speed=0.0612x
+Composite: frame=  321 fps=1.5 q=35.0 size=    3584kB time=00:00:13.23 bitrate=2218.7kbits/s speed=0.061x
+Composite: frame=  321 fps=1.5 q=35.0 size=    3584kB time=00:00:13.23 bitrate=2218.7kbits/s speed=0.0606x
+Composite: frame=  321 fps=1.5 q=28.0 size=    3584kB time=00:00:13.23 bitrate=2218.7kbits/s speed=0.0605x
+Composite: frame=  322 fps=1.5 q=28.0 size=    3584kB time=00:00:13.23 bitrate=2218.7kbits/s speed=0.0602x    frame=  322 fps=1.5 q=28.0 size=    3584kB time=00:00:13.25 bitrate=2215.3kbits/s speed=0.06x
+Composite: frame=  322 fps=1.4 q=8.0 size=    3584kB time=00:00:13.27 bitrate=2212.0kbits/s speed=0.0598x
+Composite: frame=  323 fps=1.4 q=8.0 size=    3584kB time=00:00:13.27 bitrate=2212.0kbits/s speed=0.0595x
+Composite: frame=  323 fps=1.4 q=8.0 size=    3584kB time=00:00:13.29 bitrate=2208.6kbits/s speed=0.0593x
+Composite: frame=  323 fps=1.4 q=8.0 size=    3584kB time=00:00:13.29 bitrate=2208.6kbits/s speed=0.059x
+Composite: frame=  323 fps=1.4 q=35.0 size=    3584kB time=00:00:13.29 bitrate=2208.6kbits/s speed=0.0588x    frame=  324 fps=1.4 q=35.0 size=    3584kB time=00:00:13.29 bitrate=2208.6kbits/s speed=0.0583x
+Composite: frame=  325 fps=1.4 q=34.0 size=    3584kB time=00:00:13.33 bitrate=2202.0kbits/s speed=0.0583x
+Composite: frame=  339 fps=1.5 q=27.0 size=    3840kB time=00:00:13.81 bitrate=2277.3kbits/s speed=0.0603x
+Composite: frame=  349 fps=1.5 q=35.0 size=    3840kB time=00:00:14.17 bitrate=2219.5kbits/s speed=0.0614x
+Composite: frame=  350 fps=1.5 q=35.0 size=    3840kB time=00:00:14.17 bitrate=2219.5kbits/s speed=0.0611x    frame=  350 fps=1.5 q=35.0 size=    3840kB time=00:00:14.19 bitrate=2216.3kbits/s speed=0.0609x
+Composite: frame=  350 fps=1.5 q=32.0 size=    3840kB time=00:00:14.21 bitrate=2213.2kbits/s speed=0.0607x    frame=  351 fps=1.5 q=32.0 size=    3840kB time=00:00:14.21 bitrate=2213.2kbits/s speed=0.0604x    frame=  351 fps=1.5 q=32.0 size=    3840kB time=00:00:14.23 bitrate=2210.1kbits/s speed=0.0604x
+Composite: frame=  352 fps=1.5 q=35.0 size=    3840kB time=00:00:14.23 bitrate=2210.1kbits/s speed=0.0601x
+Composite: frame=  352 fps=1.5 q=34.0 size=    3840kB time=00:00:14.27 bitrate=2203.9kbits/s speed=0.0599x
+Composite: frame=  353 fps=1.5 q=34.0 size=    3840kB time=00:00:14.27 bitrate=2203.9kbits/s speed=0.0597x
+Composite: frame=  353 fps=1.5 q=34.0 size=    3840kB time=00:00:14.29 bitrate=2200.8kbits/s speed=0.0595x
+Composite: frame=  353 fps=1.5 q=34.0 size=    3840kB time=00:00:14.29 bitrate=2200.8kbits/s speed=0.0593x
+Composite: frame=  353 fps=1.5 q=35.0 size=    3840kB time=00:00:14.29 bitrate=2200.8kbits/s speed=0.059x
+Composite: frame=  354 fps=1.5 q=35.0 size=    3840kB time=00:00:14.29 bitrate=2200.8kbits/s speed=0.0588x
+Composite: frame=  354 fps=1.5 q=35.0 size=    3840kB time=00:00:14.31 bitrate=2197.8kbits/s speed=0.0586x    frame=  354 fps=1.4 q=35.0 size=    3840kB time=00:00:14.31 bitrate=2197.8kbits/s speed=0.0584x
+Composite: frame=  354 fps=1.4 q=22.0 size=    3840kB time=00:00:14.33 bitrate=2194.7kbits/s speed=0.0583x    frame=  355 fps=1.4 q=22.0 size=    3840kB time=00:00:14.33 bitrate=2194.7kbits/s speed=0.0581x
+Composite: frame=  369 fps=1.5 q=33.0 size=    4096kB time=00:00:14.81 bitrate=2265.2kbits/s speed=0.0599x
+Composite: frame=  381 fps=1.5 q=35.0 size=    4352kB time=00:00:15.23 bitrate=2340.4kbits/s speed=0.0612x    frame=  382 fps=1.5 q=35.0 size=    4352kB time=00:00:15.23 bitrate=2340.4kbits/s speed=0.0607x
+Composite: frame=  382 fps=1.5 q=30.0 size=    4352kB time=00:00:15.27 bitrate=2334.2kbits/s speed=0.0606x
+Composite: frame=  383 fps=1.5 q=30.0 size=    4352kB time=00:00:15.27 bitrate=2334.2kbits/s speed=0.0604x
+Composite: frame=  383 fps=1.5 q=30.0 size=    4352kB time=00:00:15.29 bitrate=2331.2kbits/s speed=0.0602x
+Composite: frame=  383 fps=1.5 q=30.0 size=    4352kB time=00:00:15.29 bitrate=2331.2kbits/s speed=0.06x
+Composite: frame=  383 fps=1.5 q=35.0 size=    4352kB time=00:00:15.29 bitrate=2331.2kbits/s speed=0.0596x
+Composite: frame=  384 fps=1.5 q=35.0 size=    4352kB time=00:00:15.29 bitrate=2331.2kbits/s speed=0.0595x
+Composite: frame=  384 fps=1.5 q=35.0 size=    4352kB time=00:00:15.33 bitrate=2325.1kbits/s speed=0.0594x
+Composite: frame=  384 fps=1.5 q=35.0 size=    4352kB time=00:00:15.33 bitrate=2325.1kbits/s speed=0.0591x
+Composite: frame=  384 fps=1.5 q=35.0 size=    4352kB time=00:00:15.35 bitrate=2322.1kbits/s speed=0.059x
+Composite: frame=  384 fps=1.5 q=33.0 size=    4352kB time=00:00:15.35 bitrate=2322.1kbits/s speed=0.0588x
+Composite: frame=  385 fps=1.5 q=33.0 size=    4352kB time=00:00:15.35 bitrate=2322.1kbits/s speed=0.0586x
+Composite: frame=  385 fps=1.5 q=33.0 size=    4352kB time=00:00:15.37 bitrate=2319.1kbits/s speed=0.0585x
+Composite: frame=  385 fps=1.5 q=33.0 size=    4352kB time=00:00:15.37 bitrate=2319.1kbits/s speed=0.0583x
+Composite: frame=  385 fps=1.5 q=35.0 size=    4352kB time=00:00:15.37 bitrate=2319.1kbits/s speed=0.0579x    frame=  386 fps=1.5 q=35.0 size=    4352kB time=00:00:15.37 bitrate=2319.1kbits/s speed=0.0578x
+Composite: frame=  400 fps=1.5 q=35.0 size=    4352kB time=00:00:15.83 bitrate=2251.7kbits/s speed=0.0594x
+Composite: frame=  413 fps=1.5 q=33.0 size=    4608kB time=00:00:16.31 bitrate=2314.0kbits/s speed=0.0611x
+Composite: frame=  413 fps=1.5 q=35.0 size=    4608kB time=00:00:16.31 bitrate=2314.0kbits/s speed=0.0606x    frame=  414 fps=1.5 q=35.0 size=    4608kB time=00:00:16.31 bitrate=2314.0kbits/s speed=0.0604x
+Composite: frame=  414 fps=1.5 q=35.0 size=    4608kB time=00:00:16.35 bitrate=2308.3kbits/s speed=0.0604x
+Composite: frame=  414 fps=1.5 q=31.0 size=    4608kB time=00:00:16.35 bitrate=2308.3kbits/s speed=0.0601x
+Composite: frame=  415 fps=1.5 q=31.0 size=    4608kB time=00:00:16.35 bitrate=2308.3kbits/s speed=0.0599x
+Composite: frame=  415 fps=1.5 q=31.0 size=    4608kB time=00:00:16.37 bitrate=2305.5kbits/s speed=0.0598x
+Composite: frame=  415 fps=1.5 q=31.0 size=    4608kB time=00:00:16.37 bitrate=2305.5kbits/s speed=0.0595x
+Composite: frame=  415 fps=1.5 q=35.0 size=    4608kB time=00:00:16.37 bitrate=2305.5kbits/s speed=0.0593x
+Composite: frame=  416 fps=1.5 q=35.0 size=    4608kB time=00:00:16.37 bitrate=2305.5kbits/s speed=0.0591x
+Composite: frame=  416 fps=1.5 q=35.0 size=    4608kB time=00:00:16.39 bitrate=2302.7kbits/s speed=0.0589x
+Composite: frame=  416 fps=1.5 q=35.0 size=    4608kB time=00:00:16.39 bitrate=2302.7kbits/s speed=0.0587x
+Composite: frame=  416 fps=1.5 q=35.0 size=    4608kB time=00:00:16.41 bitrate=2299.9kbits/s speed=0.0586x
+Composite: frame=  416 fps=1.5 q=35.0 size=    4608kB time=00:00:16.41 bitrate=2299.9kbits/s speed=0.0584x
+Composite: frame=  416 fps=1.5 q=33.0 size=    4608kB time=00:00:16.41 bitrate=2299.9kbits/s speed=0.0581x
+Composite: frame=  417 fps=1.5 q=33.0 size=    4608kB time=00:00:16.41 bitrate=2299.9kbits/s speed=0.058x
+Composite: frame=  417 fps=1.5 q=33.0 size=    4608kB time=00:00:16.43 bitrate=2297.1kbits/s speed=0.0578x
+Composite: frame=  417 fps=1.5 q=33.0 size=    4608kB time=00:00:16.43 bitrate=2297.1kbits/s speed=0.0576x
+Composite: frame=  429 fps=1.5 q=35.0 size=    4864kB time=00:00:16.83 bitrate=2367.1kbits/s speed=0.0589x
+Composite: frame=  442 fps=1.5 q=35.0 size=    4864kB time=00:00:17.27 bitrate=2306.8kbits/s speed=0.0604x
+Composite: frame=  446 fps=1.5 q=31.0 size=    4864kB time=00:00:17.41 bitrate=2288.2kbits/s speed=0.0605x
+Composite: frame=  447 fps=1.5 q=31.0 size=    4864kB time=00:00:17.41 bitrate=2288.2kbits/s speed=0.0601x
+Composite: frame=  447 fps=1.5 q=35.0 size=    4864kB time=00:00:17.43 bitrate=2285.6kbits/s speed=0.0601x
+Composite: frame=  448 fps=1.5 q=35.0 size=    4864kB time=00:00:17.43 bitrate=2285.6kbits/s speed=0.0599x
+Composite: frame=  448 fps=1.5 q=35.0 size=    4864kB time=00:00:17.45 bitrate=2283.0kbits/s speed=0.0597x
+Composite: frame=  448 fps=1.5 q=35.0 size=    4864kB time=00:00:17.45 bitrate=2283.0kbits/s speed=0.0595x
+Composite: frame=  448 fps=1.5 q=35.0 size=    4864kB time=00:00:17.47 bitrate=2280.4kbits/s speed=0.0594x
+Composite: frame=  448 fps=1.5 q=35.0 size=    4864kB time=00:00:17.47 bitrate=2280.4kbits/s speed=0.0593x
+Composite: frame=  448 fps=1.5 q=33.0 size=    4864kB time=00:00:17.47 bitrate=2280.4kbits/s speed=0.059x
+Composite: frame=  449 fps=1.5 q=33.0 size=    4864kB time=00:00:17.47 bitrate=2280.4kbits/s speed=0.0588x
+Composite: frame=  449 fps=1.5 q=33.0 size=    4864kB time=00:00:17.49 bitrate=2277.8kbits/s speed=0.0587x
+Composite: frame=  449 fps=1.5 q=33.0 size=    4864kB time=00:00:17.49 bitrate=2277.8kbits/s speed=0.0585x
+Composite: frame=  449 fps=1.5 q=35.0 size=    4864kB time=00:00:17.49 bitrate=2277.8kbits/s speed=0.0583x
+Composite: frame=  450 fps=1.5 q=35.0 size=    4864kB time=00:00:17.49 bitrate=2277.8kbits/s speed=0.0581x
+Composite: frame=  450 fps=1.5 q=35.0 size=    4864kB time=00:00:17.51 bitrate=2275.2kbits/s speed=0.058x    frame=  450 fps=1.5 q=35.0 size=    4864kB time=00:00:17.51 bitrate=2275.2kbits/s speed=0.0578x
+Composite: frame=  452 fps=1.5 q=33.0 size=    5120kB time=00:00:17.61 bitrate=2381.3kbits/s speed=0.058x
+Composite: frame=  466 fps=1.5 q=35.0 size=    5120kB time=00:00:18.03 bitrate=2325.9kbits/s speed=0.0593x
+Composite: frame=  478 fps=1.6 q=35.0 size=    5376kB time=00:00:18.45 bitrate=2386.6kbits/s speed=0.0605x
+Composite: frame=  478 fps=1.6 q=32.0 size=    5376kB time=00:00:18.47 bitrate=2384.0kbits/s speed=0.0604x    frame=  479 fps=1.6 q=32.0 size=    5376kB time=00:00:18.47 bitrate=2384.0kbits/s speed=0.0602x
+Composite: frame=  479 fps=1.6 q=35.0 size=    5376kB time=00:00:18.49 bitrate=2381.4kbits/s speed=0.0601x    frame=  480 fps=1.6 q=35.0 size=    5376kB time=00:00:18.49 bitrate=2381.4kbits/s speed=0.0598x
+Composite: frame=  480 fps=1.5 q=35.0 size=    5376kB time=00:00:18.53 bitrate=2376.3kbits/s speed=0.0598x
+Composite: frame=  480 fps=1.5 q=34.0 size=    5376kB time=00:00:18.55 bitrate=2373.7kbits/s speed=0.0597x
+Composite: frame=  481 fps=1.5 q=34.0 size=    5376kB time=00:00:18.55 bitrate=2373.7kbits/s speed=0.0595x
+Composite: frame=  481 fps=1.5 q=34.0 size=    5376kB time=00:00:18.57 bitrate=2371.2kbits/s speed=0.0593x
+Composite: frame=  481 fps=1.5 q=34.0 size=    5376kB time=00:00:18.57 bitrate=2371.2kbits/s speed=0.0591x
+Composite: frame=  481 fps=1.5 q=35.0 size=    5376kB time=00:00:18.57 bitrate=2371.2kbits/s speed=0.059x
+Composite: frame=  482 fps=1.5 q=35.0 size=    5376kB time=00:00:18.57 bitrate=2371.2kbits/s speed=0.0588x
+Composite: frame=  482 fps=1.5 q=35.0 size=    5376kB time=00:00:18.59 bitrate=2368.6kbits/s speed=0.0586x    frame=  482 fps=1.5 q=35.0 size=    5376kB time=00:00:18.59 bitrate=2368.6kbits/s speed=0.0584x
+Composite: frame=  482 fps=1.5 q=30.0 size=    5376kB time=00:00:18.61 bitrate=2366.1kbits/s speed=0.0582x
+Composite: frame=  483 fps=1.5 q=30.0 size=    5376kB time=00:00:18.61 bitrate=2366.1kbits/s speed=0.0581x
+Composite: frame=  483 fps=1.5 q=30.0 size=    5376kB time=00:00:18.63 bitrate=2363.5kbits/s speed=0.0581x
+Composite: frame=  483 fps=1.5 q=30.0 size=    5376kB time=00:00:18.63 bitrate=2363.5kbits/s speed=0.0579x
+Composite: frame=  483 fps=1.5 q=8.0 size=    5376kB time=00:00:18.63 bitrate=2363.5kbits/s speed=0.0577x
+Composite: frame=  484 fps=1.5 q=8.0 size=    5376kB time=00:00:18.63 bitrate=2363.5kbits/s speed=0.0575x
+Composite: frame=  484 fps=1.5 q=8.0 size=    5376kB time=00:00:18.65 bitrate=2361.0kbits/s speed=0.0574x    frame=  484 fps=1.5 q=8.0 size=    5376kB time=00:00:18.65 bitrate=2361.0kbits/s speed=0.0572x
+Composite: frame=  499 fps=1.5 q=35.0 size=    5632kB time=00:00:19.13 bitrate=2411.4kbits/s speed=0.0586x
+Composite: frame=  510 fps=1.6 q=33.0 size=    5888kB time=00:00:19.53 bitrate=2469.3kbits/s speed=0.0596x
+Composite: frame=  510 fps=1.5 q=33.0 size=    5888kB time=00:00:19.55 bitrate=2466.8kbits/s speed=0.0594x
+Composite: frame=  510 fps=1.5 q=35.0 size=    5888kB time=00:00:19.55 bitrate=2466.8kbits/s speed=0.0592x
+Composite: frame=  511 fps=1.5 q=35.0 size=    5888kB time=00:00:19.55 bitrate=2466.8kbits/s speed=0.059x
+Composite: frame=  511 fps=1.5 q=35.0 size=    5888kB time=00:00:19.57 bitrate=2464.3kbits/s speed=0.0589x
+Composite: frame=  511 fps=1.5 q=35.0 size=    5888kB time=00:00:19.57 bitrate=2464.3kbits/s speed=0.0587x
+Composite: frame=  511 fps=1.5 q=31.0 size=    5888kB time=00:00:19.57 bitrate=2464.3kbits/s speed=0.0586x
+Composite: frame=  512 fps=1.5 q=31.0 size=    5888kB time=00:00:19.57 bitrate=2464.3kbits/s speed=0.0584x    frame=  512 fps=1.5 q=31.0 size=    5888kB time=00:00:19.59 bitrate=2461.8kbits/s speed=0.0583x
+Composite: frame=  512 fps=1.5 q=35.0 size=    5888kB time=00:00:19.61 bitrate=2459.3kbits/s speed=0.0582x
+Composite: frame=  513 fps=1.5 q=35.0 size=    5888kB time=00:00:19.61 bitrate=2459.3kbits/s speed=0.058x
+Composite: frame=  513 fps=1.5 q=35.0 size=    5888kB time=00:00:19.63 bitrate=2456.8kbits/s speed=0.0579x
+Composite: frame=  513 fps=1.5 q=35.0 size=    5888kB time=00:00:19.63 bitrate=2456.8kbits/s speed=0.0577x
+Composite: frame=  513 fps=1.5 q=33.0 size=    5888kB time=00:00:19.63 bitrate=2456.8kbits/s speed=0.0576x
+Composite: frame=  514 fps=1.5 q=33.0 size=    5888kB time=00:00:19.63 bitrate=2456.8kbits/s speed=0.0574x
+Composite: frame=  514 fps=1.5 q=33.0 size=    5888kB time=00:00:19.65 bitrate=2454.3kbits/s speed=0.0573x
+Composite: frame=  518 fps=1.5 q=34.0 size=    5888kB time=00:00:19.77 bitrate=2439.4kbits/s speed=0.0576x
+{"ts":"2026-07-12T04:13:30.537Z","level":"info","event":"member_left","session":"RSM668","username":"Nemean","remaining":0}
+Composite: [out#0/mp4 @ 0x55eca9b5b040] video:6734kB audio:217kB subtitle:0kB other streams:0kB global headers:0kB muxing overhead: 0.236066%
+frame=  600 fps=1.6 q=33.0 Lsize=    6967kB time=00:00:19.97 bitrate=2857.5kbits/s speed=0.0536x
+{"ts":"2026-07-12T04:13:34.770Z","level":"info","event":"composite_done","jobId":"a5b92866-bb56-4cbf-b635-741ab1b52d37","sizeMB":"6.8"}
+{"ts":"2026-07-12T04:13:34.879Z","level":"info","event":"session_created","code":"XUU7K5","createdBy":"cabbam"}
+{"ts":"2026-07-12T04:13:35.304Z","level":"info","event":"member_joined","session":"XUU7K5","username":"cabbam"}
+{"ts":"2026-07-12T04:14:01.783Z","level":"info","event":"recording_status","session":"XUU7K5","username":"cabbam","isRecording":true}
+{"ts":"2026-07-12T04:14:10.626Z","level":"info","event":"recording_status","session":"XUU7K5","username":"cabbam","isRecording":false}
+{"ts":"2026-07-12T04:14:15.427Z","level":"info","event":"member_joined","session":"XUU7K5","username":"Nemean"}
+{"ts":"2026-07-12T04:14:35.724Z","level":"info","event":"recording_status","session":"XUU7K5","username":"Nemean","isRecording":true}
+{"ts":"2026-07-12T04:15:51.496Z","level":"info","event":"recording_status","session":"XUU7K5","username":"cabbam","isRecording":true}
+{"ts":"2026-07-12T04:15:58.670Z","level":"info","event":"user_registered","username":"moonfroggy"}
+{"ts":"2026-07-12T04:17:05.362Z","level":"info","event":"member_joined","session":"XUU7K5","username":"moonfroggy"}
+{"ts":"2026-07-12T04:18:31.505Z","level":"info","event":"session_archived","session":"RSM668","uploads":3}
+{"ts":1783829917954,"level":"info","event":"highlight_triggered","session":"XUU7K5","username":"cabbam","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T04:18:46.415Z","level":"info","event":"upload_received","session":"XUU7K5","username":"cabbam","sizeMB":"28.2"}
+{"ts":"2026-07-12T04:18:48.928Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-18-37-954Z_1783829926093.jpg"}
+{"ts":"2026-07-12T04:18:51.306Z","level":"info","event":"spaces_upload_complete","session":"XUU7K5"}
+{"ts":"2026-07-12T04:18:53.681Z","level":"info","event":"upload_received","session":"XUU7K5","username":"Nemean","sizeMB":"35.4"}
+{"ts":"2026-07-12T04:18:54.553Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-18-37-954Z_1783829933274.jpg"}
+{"ts":"2026-07-12T04:18:56.692Z","level":"info","event":"spaces_upload_complete","session":"XUU7K5"}
+{"ts":"2026-07-12T04:19:55.746Z","level":"info","event":"recording_status","session":"XUU7K5","username":"cabbam","isRecording":false}
+{"ts":"2026-07-12T04:20:20.349Z","level":"info","event":"member_left","session":"XUU7K5","username":"moonfroggy","remaining":2}
+{"ts":"2026-07-12T04:20:22.778Z","level":"info","event":"user_login","username":"moonfroggy"}
+{"ts":"2026-07-12T04:20:24.974Z","level":"info","event":"member_joined","session":"XUU7K5","username":"moonfroggy"}
+{"ts":"2026-07-12T04:21:05.486Z","level":"info","event":"recording_status","session":"XUU7K5","username":"cabbam","isRecording":true}
+{"ts":"2026-07-12T04:21:09.272Z","level":"info","event":"recording_status","session":"XUU7K5","username":"moonfroggy","isRecording":true}
+{"ts":1783830092033,"level":"info","event":"highlight_triggered","session":"XUU7K5","username":"cabbam","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T04:21:39.023Z","level":"info","event":"upload_received","session":"XUU7K5","username":"cabbam","sizeMB":"47.8"}
+{"ts":"2026-07-12T04:21:41.105Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-21-32-033Z_1783830098551.jpg"}
+{"ts":"2026-07-12T04:21:42.859Z","level":"info","event":"upload_received","session":"XUU7K5","username":"moonfroggy","sizeMB":"12.3"}
+{"ts":"2026-07-12T04:21:43.651Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-21-32-033Z_1783830102399.jpg"}
+{"ts":"2026-07-12T04:21:45.511Z","level":"info","event":"spaces_upload_complete","session":"XUU7K5"}
+{"ts":"2026-07-12T04:21:45.514Z","level":"info","event":"spaces_upload_complete","session":"XUU7K5"}
+{"ts":"2026-07-12T04:21:46.620Z","level":"info","event":"upload_received","session":"XUU7K5","username":"Nemean","sizeMB":"15.2"}
+{"ts":"2026-07-12T04:21:47.364Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-21-32-033Z_1783830106429.jpg"}
+{"ts":"2026-07-12T04:21:48.883Z","level":"info","event":"spaces_upload_complete","session":"XUU7K5"}
+{"ts":"2026-07-12T04:23:05.246Z","level":"info","event":"recording_status","session":"XUU7K5","username":"cabbam","isRecording":false}
+{"ts":"2026-07-12T04:23:07.777Z","level":"info","event":"recording_status","session":"XUU7K5","username":"cabbam","isRecording":true}
+{"ts":1783830205644,"level":"info","event":"highlight_triggered","session":"XUU7K5","username":"cabbam","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T04:23:31.307Z","level":"info","event":"upload_received","session":"XUU7K5","username":"cabbam","sizeMB":"20.5"}
+{"ts":"2026-07-12T04:23:33.088Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-23-25-644Z_1783830211063.jpg"}
+{"ts":"2026-07-12T04:23:35.262Z","level":"info","event":"spaces_upload_complete","session":"XUU7K5"}
+{"ts":"2026-07-12T04:23:39.023Z","level":"info","event":"upload_received","session":"XUU7K5","username":"Nemean","sizeMB":"6.7"}
+{"ts":"2026-07-12T04:23:39.679Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-23-25-644Z_1783830218938.jpg"}
+{"ts":"2026-07-12T04:23:40.850Z","level":"info","event":"spaces_upload_complete","session":"XUU7K5"}
+{"ts":"2026-07-12T04:26:21.536Z","level":"info","event":"recording_status","session":"XUU7K5","username":"cabbam","isRecording":false}
+{"ts":"2026-07-12T04:26:24.637Z","level":"info","event":"recording_status","session":"XUU7K5","username":"cabbam","isRecording":true}
+{"ts":1783830410466,"level":"info","event":"highlight_triggered","session":"XUU7K5","username":"cabbam","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T04:26:57.132Z","level":"info","event":"upload_received","session":"XUU7K5","username":"cabbam","sizeMB":"25.8"}
+{"ts":"2026-07-12T04:26:58.966Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-26-50-466Z_1783830416863.jpg"}
+{"ts":"2026-07-12T04:27:01.057Z","level":"info","event":"spaces_upload_complete","session":"XUU7K5"}
+{"ts":"2026-07-12T04:27:04.350Z","level":"info","event":"upload_received","session":"XUU7K5","username":"Nemean","sizeMB":"9.1"}
+{"ts":"2026-07-12T04:27:05.128Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-26-50-466Z_1783830424291.jpg"}
+{"ts":"2026-07-12T04:27:06.485Z","level":"info","event":"spaces_upload_complete","session":"XUU7K5"}
+{"ts":"2026-07-12T04:28:25.277Z","level":"info","event":"recording_status","session":"XUU7K5","username":"moonfroggy","isRecording":false}
+{"ts":"2026-07-12T04:28:27.685Z","level":"info","event":"member_left","session":"XUU7K5","username":"moonfroggy","remaining":2}
+{"ts":"2026-07-12T04:28:34.156Z","level":"info","event":"member_left","session":"XUU7K5","username":"Nemean","remaining":1}
+{"ts":"2026-07-12T04:28:34.850Z","level":"info","event":"recording_status","session":"XUU7K5","username":"cabbam","isRecording":false}
+{"ts":"2026-07-12T04:28:35.623Z","level":"info","event":"member_left","session":"XUU7K5","username":"cabbam","remaining":0}
+{"ts":"2026-07-12T04:28:38.024Z","level":"info","event":"session_created","code":"KPQCS8","createdBy":"cabbam"}
+{"ts":"2026-07-12T04:28:38.366Z","level":"info","event":"member_joined","session":"KPQCS8","username":"cabbam"}
+{"ts":"2026-07-12T04:28:50.597Z","level":"info","event":"member_joined","session":"KPQCS8","username":"Nemean"}
+{"ts":"2026-07-12T04:28:52.911Z","level":"info","event":"recording_status","session":"KPQCS8","username":"Nemean","isRecording":true}
+{"ts":"2026-07-12T04:29:01.998Z","level":"info","event":"recording_status","session":"KPQCS8","username":"cabbam","isRecording":true}
+{"ts":"2026-07-12T04:29:02.484Z","level":"info","event":"member_joined","session":"XUU7K5","username":"moonfroggy"}
+{"ts":"2026-07-12T04:29:08.604Z","level":"info","event":"recording_status","session":"XUU7K5","username":"moonfroggy","isRecording":true}
+{"ts":"2026-07-12T04:36:41.004Z","level":"info","event":"member_left","session":"XUU7K5","username":"moonfroggy","remaining":0}
+{"ts":"2026-07-12T04:36:46.446Z","level":"info","event":"member_joined","session":"KPQCS8","username":"moonfroggy"}
+{"ts":"2026-07-12T04:36:48.959Z","level":"info","event":"recording_status","session":"KPQCS8","username":"moonfroggy","isRecording":true}
+{"ts":1783831039413,"level":"info","event":"highlight_triggered","session":"KPQCS8","username":"Nemean","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T04:37:33.296Z","level":"info","event":"upload_received","session":"KPQCS8","username":"cabbam","sizeMB":"34.7"}
+{"ts":"2026-07-12T04:37:33.529Z","level":"info","event":"upload_received","session":"KPQCS8","username":"moonfroggy","sizeMB":"19.0"}
+{"ts":"2026-07-12T04:37:35.383Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-37-19-413Z_1783831053015.jpg"}
+{"ts":"2026-07-12T04:37:36.506Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-37-19-413Z_1783831053329.jpg"}
+{"ts":"2026-07-12T04:37:39.405Z","level":"info","event":"upload_received","session":"KPQCS8","username":"Nemean","sizeMB":"60.0"}
+{"ts":"2026-07-12T04:37:39.571Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T04:37:39.815Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T04:37:40.785Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-37-19-413Z_1783831058560.jpg"}
+{"ts":"2026-07-12T04:37:45.131Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T04:41:41.005Z","level":"info","event":"session_archived","session":"XUU7K5","uploads":9}
+{"ts":1783831436395,"level":"info","event":"highlight_triggered","session":"KPQCS8","username":"cabbam","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T04:44:09.519Z","level":"info","event":"upload_received","session":"KPQCS8","username":"cabbam","sizeMB":"56.2"}
+{"ts":"2026-07-12T04:44:11.682Z","level":"info","event":"upload_received","session":"KPQCS8","username":"moonfroggy","sizeMB":"18.7"}
+{"ts":"2026-07-12T04:44:11.967Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-43-56-395Z_1783831448865.jpg"}
+{"ts":"2026-07-12T04:44:13.212Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-43-56-395Z_1783831451490.jpg"}
+{"ts":"2026-07-12T04:44:15.943Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T04:44:16.232Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T04:44:19.262Z","level":"info","event":"upload_received","session":"KPQCS8","username":"Nemean","sizeMB":"32.0"}
+{"ts":"2026-07-12T04:44:21.043Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-43-56-395Z_1783831458940.jpg"}
+{"ts":"2026-07-12T04:44:23.411Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":1783831506998,"level":"info","event":"highlight_triggered","session":"KPQCS8","username":"Nemean","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T04:45:20.960Z","level":"info","event":"upload_received","session":"KPQCS8","username":"cabbam","sizeMB":"83.7"}
+{"ts":"2026-07-12T04:45:22.754Z","level":"info","event":"upload_received","session":"KPQCS8","username":"moonfroggy","sizeMB":"19.0"}
+{"ts":"2026-07-12T04:45:24.272Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-45-06-998Z_1783831519862.jpg"}
+{"ts":"2026-07-12T04:45:26.480Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-45-06-998Z_1783831522464.jpg"}
+{"ts":"2026-07-12T04:45:27.735Z","level":"info","event":"upload_received","session":"KPQCS8","username":"Nemean","sizeMB":"28.7"}
+{"ts":"2026-07-12T04:45:29.613Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-45-06-998Z_1783831526013.jpg"}
+{"ts":"2026-07-12T04:45:30.925Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T04:45:32.780Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T04:45:37.599Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":1783831683800,"level":"info","event":"highlight_triggered","session":"KPQCS8","username":"Nemean","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T04:48:18.440Z","level":"info","event":"upload_received","session":"KPQCS8","username":"cabbam","sizeMB":"59.4"}
+{"ts":"2026-07-12T04:48:20.943Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-48-03-800Z_1783831697607.jpg"}
+{"ts":"2026-07-12T04:48:23.260Z","level":"info","event":"upload_received","session":"KPQCS8","username":"moonfroggy","sizeMB":"27.1"}
+{"ts":"2026-07-12T04:48:23.864Z","level":"info","event":"upload_received","session":"KPQCS8","username":"Nemean","sizeMB":"47.6"}
+{"ts":"2026-07-12T04:48:24.473Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-48-03-800Z_1783831702616.jpg"}
+{"ts":"2026-07-12T04:48:26.707Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-48-03-800Z_1783831703117.jpg"}
+{"ts":"2026-07-12T04:48:27.326Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T04:48:28.105Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T04:48:30.031Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":1783832035252,"level":"info","event":"highlight_triggered","session":"KPQCS8","username":"cabbam","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T04:54:12.213Z","level":"info","event":"upload_received","session":"KPQCS8","username":"moonfroggy","sizeMB":"17.7"}
+{"ts":"2026-07-12T04:54:13.304Z","level":"info","event":"upload_received","session":"KPQCS8","username":"cabbam","sizeMB":"88.1"}
+{"ts":"2026-07-12T04:54:13.667Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-53-55-252Z_1783832051677.jpg"}
+{"ts":"2026-07-12T04:54:15.974Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T04:54:16.490Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-53-55-252Z_1783832051697.jpg"}
+{"ts":"2026-07-12T04:54:19.723Z","level":"info","event":"upload_received","session":"KPQCS8","username":"Nemean","sizeMB":"28.9"}
+{"ts":"2026-07-12T04:54:20.449Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T04:54:21.434Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-53-55-252Z_1783832059215.jpg"}
+{"ts":"2026-07-12T04:54:24.206Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":1783832504376,"level":"info","event":"highlight_triggered","session":"KPQCS8","username":"Nemean","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T05:02:01.141Z","level":"info","event":"upload_received","session":"KPQCS8","username":"moonfroggy","sizeMB":"16.8"}
+{"ts":"2026-07-12T05:02:01.850Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-01-44-376Z_1783832520961.jpg"}
+{"ts":"2026-07-12T05:02:03.632Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:02:09.269Z","level":"info","event":"upload_received","session":"KPQCS8","username":"cabbam","sizeMB":"57.0"}
+{"ts":"2026-07-12T05:02:10.354Z","level":"info","event":"upload_received","session":"KPQCS8","username":"Nemean","sizeMB":"27.7"}
+{"ts":"2026-07-12T05:02:11.859Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-01-44-376Z_1783832528545.jpg"}
+{"ts":"2026-07-12T05:02:14.390Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-01-44-376Z_1783832529853.jpg"}
+{"ts":"2026-07-12T05:02:17.407Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:02:17.683Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":1783832675606,"level":"info","event":"highlight_triggered","session":"KPQCS8","username":"cabbam","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T05:04:54.822Z","level":"info","event":"upload_received","session":"KPQCS8","username":"cabbam","sizeMB":"74.8"}
+{"ts":"2026-07-12T05:04:57.150Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-04-35-606Z_1783832693913.jpg"}
+{"ts":"2026-07-12T05:04:58.812Z","level":"info","event":"upload_received","session":"KPQCS8","username":"moonfroggy","sizeMB":"23.2"}
+{"ts":"2026-07-12T05:04:59.806Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-04-35-606Z_1783832698409.jpg"}
+{"ts":"2026-07-12T05:05:03.407Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:05:03.470Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:05:06.060Z","level":"info","event":"upload_received","session":"KPQCS8","username":"Nemean","sizeMB":"42.3"}
+{"ts":"2026-07-12T05:05:07.543Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-04-35-606Z_1783832705500.jpg"}
+{"ts":"2026-07-12T05:05:10.550Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":1783833084074,"level":"info","event":"highlight_triggered","session":"KPQCS8","username":"cabbam","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T05:11:45.023Z","level":"info","event":"upload_received","session":"KPQCS8","username":"moonfroggy","sizeMB":"19.1"}
+{"ts":"2026-07-12T05:11:46.321Z","level":"info","event":"upload_received","session":"KPQCS8","username":"cabbam","sizeMB":"100.1"}
+{"ts":"2026-07-12T05:11:46.637Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-11-24-074Z_1783833104185.jpg"}
+{"ts":"2026-07-12T05:11:48.853Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:11:49.624Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-11-24-074Z_1783833104208.jpg"}
+{"ts":"2026-07-12T05:11:55.130Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:11:55.557Z","level":"info","event":"upload_received","session":"KPQCS8","username":"Nemean","sizeMB":"30.3"}
+{"ts":"2026-07-12T05:11:57.148Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-11-24-074Z_1783833115120.jpg"}
+{"ts":"2026-07-12T05:12:00.547Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":1783833564539,"level":"info","event":"highlight_triggered","session":"KPQCS8","username":"cabbam","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T05:19:45.676Z","level":"info","event":"upload_received","session":"KPQCS8","username":"cabbam","sizeMB":"63.4"}
+{"ts":"2026-07-12T05:19:45.697Z","level":"info","event":"upload_received","session":"KPQCS8","username":"moonfroggy","sizeMB":"18.4"}
+{"ts":"2026-07-12T05:19:47.766Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-19-24-539Z_1783833584946.jpg"}
+{"ts":"2026-07-12T05:19:48.613Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-19-24-539Z_1783833585393.jpg"}
+{"ts":"2026-07-12T05:19:51.663Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:19:53.637Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:19:55.266Z","level":"info","event":"upload_received","session":"KPQCS8","username":"Nemean","sizeMB":"31.7"}
+{"ts":"2026-07-12T05:19:56.623Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-19-24-539Z_1783833594902.jpg"}
+{"ts":"2026-07-12T05:19:59.096Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":1783834248727,"level":"info","event":"highlight_triggered","session":"KPQCS8","username":"cabbam","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T05:31:11.705Z","level":"info","event":"upload_received","session":"KPQCS8","username":"moonfroggy","sizeMB":"17.4"}
+{"ts":"2026-07-12T05:31:12.333Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-30-48-727Z_1783834271553.jpg"}
+{"ts":"2026-07-12T05:31:14.013Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:31:15.052Z","level":"info","event":"upload_received","session":"KPQCS8","username":"cabbam","sizeMB":"71.0"}
+{"ts":"2026-07-12T05:31:16.961Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-30-48-727Z_1783834274439.jpg"}
+{"ts":"2026-07-12T05:31:21.137Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:31:33.984Z","level":"info","event":"upload_received","session":"KPQCS8","username":"Nemean","sizeMB":"26.5"}
+{"ts":"2026-07-12T05:31:35.250Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-30-48-727Z_1783834293644.jpg"}
+{"ts":"2026-07-12T05:31:37.785Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":1783834321490,"level":"info","event":"highlight_triggered","session":"KPQCS8","username":"cabbam","clipDuration":30000,"lockMs":18000}
+{"ts":1783834342448,"level":"info","event":"highlight_triggered","session":"KPQCS8","username":"cabbam","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T05:32:26.963Z","level":"info","event":"upload_received","session":"KPQCS8","username":"moonfroggy","sizeMB":"22.1"}
+{"ts":"2026-07-12T05:32:27.881Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-32-01-490Z_1783834346580.jpg"}
+{"ts":"2026-07-12T05:32:29.476Z","level":"info","event":"upload_received","session":"KPQCS8","username":"cabbam","sizeMB":"109.9"}
+{"ts":"2026-07-12T05:32:30.102Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:32:31.575Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-32-01-490Z_1783834348128.jpg"}
+{"ts":"2026-07-12T05:32:38.151Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:32:44.330Z","level":"info","event":"upload_received","session":"KPQCS8","username":"Nemean","sizeMB":"26.2"}
+{"ts":"2026-07-12T05:32:44.391Z","level":"info","event":"upload_received","session":"KPQCS8","username":"moonfroggy","sizeMB":"15.4"}
+{"ts":"2026-07-12T05:32:46.007Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-32-01-490Z_1783834363856.jpg"}
+{"ts":"2026-07-12T05:32:48.287Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-32-22-448Z_1783834364086.jpg"}
+{"ts":"2026-07-12T05:32:49.153Z","level":"info","event":"upload_received","session":"KPQCS8","username":"cabbam","sizeMB":"88.9"}
+{"ts":"2026-07-12T05:32:50.822Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:32:51.078Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:32:51.475Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-32-22-448Z_1783834367910.jpg"}
+{"ts":"2026-07-12T05:32:57.347Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":1783834382625,"level":"info","event":"highlight_triggered","session":"KPQCS8","username":"Nemean","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T05:33:03.431Z","level":"info","event":"upload_received","session":"KPQCS8","username":"Nemean","sizeMB":"24.4"}
+{"ts":"2026-07-12T05:33:04.986Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-32-22-448Z_1783834383052.jpg"}
+{"ts":"2026-07-12T05:33:07.610Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:33:26.625Z","level":"info","event":"upload_received","session":"KPQCS8","username":"moonfroggy","sizeMB":"18.6"}
+{"ts":"2026-07-12T05:33:27.334Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-33-02-625Z_1783834406406.jpg"}
+{"ts":"2026-07-12T05:33:28.941Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:33:29.444Z","level":"info","event":"upload_received","session":"KPQCS8","username":"cabbam","sizeMB":"73.0"}
+{"ts":"2026-07-12T05:33:31.764Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-33-02-625Z_1783834408523.jpg"}
+{"ts":"2026-07-12T05:33:35.723Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:33:43.952Z","level":"info","event":"upload_received","session":"KPQCS8","username":"Nemean","sizeMB":"33.4"}
+{"ts":"2026-07-12T05:33:45.112Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-33-02-625Z_1783834423683.jpg"}
+{"ts":"2026-07-12T05:33:47.592Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":1783834471307,"level":"info","event":"highlight_triggered","session":"KPQCS8","username":"cabbam","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T05:34:55.381Z","level":"info","event":"upload_received","session":"KPQCS8","username":"moonfroggy","sizeMB":"18.2"}
+{"ts":"2026-07-12T05:34:55.780Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-34-31-307Z_1783834495230.jpg"}
+{"ts":"2026-07-12T05:34:57.952Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:34:58.709Z","level":"info","event":"upload_received","session":"KPQCS8","username":"cabbam","sizeMB":"82.2"}
+{"ts":"2026-07-12T05:35:00.777Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-34-31-307Z_1783834497902.jpg"}
+{"ts":"2026-07-12T05:35:05.916Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:35:13.756Z","level":"info","event":"upload_received","session":"KPQCS8","username":"Nemean","sizeMB":"34.1"}
+{"ts":"2026-07-12T05:35:15.135Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-34-31-307Z_1783834513363.jpg"}
+{"ts":"2026-07-12T05:35:17.966Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":1783834567697,"level":"info","event":"highlight_triggered","session":"KPQCS8","username":"cabbam","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T05:36:32.008Z","level":"info","event":"upload_received","session":"KPQCS8","username":"moonfroggy","sizeMB":"18.3"}
+{"ts":"2026-07-12T05:36:32.404Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-36-07-697Z_1783834591840.jpg"}
+{"ts":"2026-07-12T05:36:34.354Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:36:35.426Z","level":"info","event":"upload_received","session":"KPQCS8","username":"cabbam","sizeMB":"91.0"}
+{"ts":"2026-07-12T05:36:37.522Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-36-07-697Z_1783834594417.jpg"}
+{"ts":"2026-07-12T05:36:44.333Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:36:52.990Z","level":"info","event":"upload_received","session":"KPQCS8","username":"Nemean","sizeMB":"29.9"}
+{"ts":"2026-07-12T05:36:54.380Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-36-07-697Z_1783834612519.jpg"}
+{"ts":"2026-07-12T05:36:56.913Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":1783834661683,"level":"info","event":"highlight_triggered","session":"KPQCS8","username":"cabbam","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T05:38:05.420Z","level":"info","event":"upload_received","session":"KPQCS8","username":"moonfroggy","sizeMB":"16.0"}
+{"ts":"2026-07-12T05:38:05.846Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-37-41-683Z_1783834685305.jpg"}
+{"ts":"2026-07-12T05:38:07.735Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:38:09.102Z","level":"info","event":"upload_received","session":"KPQCS8","username":"cabbam","sizeMB":"72.7"}
+{"ts":"2026-07-12T05:38:10.869Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-37-41-683Z_1783834688496.jpg"}
+{"ts":"2026-07-12T05:38:16.366Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:38:26.806Z","level":"info","event":"upload_received","session":"KPQCS8","username":"Nemean","sizeMB":"35.8"}
+{"ts":"2026-07-12T05:38:28.175Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-37-41-683Z_1783834706413.jpg"}
+{"ts":"2026-07-12T05:38:31.094Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":1783834786076,"level":"info","event":"highlight_triggered","session":"KPQCS8","username":"Nemean","clipDuration":30000,"lockMs":18000}
+{"ts":1783834807249,"level":"info","event":"highlight_triggered","session":"KPQCS8","username":"Nemean","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T05:40:12.832Z","level":"info","event":"upload_received","session":"KPQCS8","username":"moonfroggy","sizeMB":"21.6"}
+{"ts":"2026-07-12T05:40:13.207Z","level":"info","event":"upload_received","session":"KPQCS8","username":"cabbam","sizeMB":"54.9"}
+{"ts":"2026-07-12T05:40:13.810Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-39-46-076Z_1783834812283.jpg"}
+{"ts":"2026-07-12T05:40:15.974Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-39-46-076Z_1783834812184.jpg"}
+{"ts":"2026-07-12T05:40:17.086Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:40:20.132Z","level":"info","event":"spaces_upload_complete","session":"KPQCS8"}
+{"ts":"2026-07-12T05:41:16.547Z","level":"info","event":"member_left","session":"KPQCS8","username":"Nemean","remaining":2}
+{"ts":"2026-07-12T05:41:18.407Z","level":"info","event":"session_created","code":"GHEVHG","createdBy":"Nemean"}
+{"ts":"2026-07-12T05:41:18.742Z","level":"info","event":"member_joined","session":"GHEVHG","username":"Nemean"}
+{"ts":"2026-07-12T05:41:26.908Z","level":"info","event":"member_left","session":"KPQCS8","username":"moonfroggy","remaining":1}
+{"ts":"2026-07-12T05:41:35.118Z","level":"info","event":"recording_status","session":"GHEVHG","username":"Nemean","isRecording":false}
+{"ts":"2026-07-12T05:41:38.824Z","level":"info","event":"recording_status","session":"GHEVHG","username":"Nemean","isRecording":true}
+{"ts":"2026-07-12T05:41:42.533Z","level":"info","event":"member_joined","session":"GHEVHG","username":"moonfroggy"}
+{"ts":"2026-07-12T05:41:45.673Z","level":"info","event":"recording_status","session":"GHEVHG","username":"moonfroggy","isRecording":true}
+{"ts":"2026-07-12T05:41:49.612Z","level":"info","event":"recording_status","session":"KPQCS8","username":"cabbam","isRecording":false}
+{"ts":"2026-07-12T05:41:50.430Z","level":"info","event":"member_left","session":"KPQCS8","username":"cabbam","remaining":0}
+{"ts":"2026-07-12T05:42:13.058Z","level":"info","event":"member_joined","session":"GHEVHG","username":"cabbam"}
+{"ts":"2026-07-12T05:42:15.179Z","level":"info","event":"member_left","session":"GHEVHG","username":"cabbam","remaining":2}
+{"ts":"2026-07-12T05:46:50.430Z","level":"info","event":"session_archived","session":"KPQCS8","uploads":50}
+{"ts":1783835574757,"level":"info","event":"highlight_triggered","session":"GHEVHG","username":"Nemean","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T05:53:08.843Z","level":"info","event":"upload_received","session":"GHEVHG","username":"moonfroggy","sizeMB":"14.1"}
+{"ts":"2026-07-12T05:53:09.449Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-52-54-757Z_1783835588662.jpg"}
+{"ts":"2026-07-12T05:53:12.618Z","level":"info","event":"upload_received","session":"GHEVHG","username":"Nemean","sizeMB":"27.5"}
+{"ts":"2026-07-12T05:53:12.722Z","level":"info","event":"spaces_upload_complete","session":"GHEVHG"}
+{"ts":"2026-07-12T05:53:13.994Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T05-52-54-757Z_1783835592315.jpg"}
+{"ts":"2026-07-12T05:53:16.287Z","level":"info","event":"spaces_upload_complete","session":"GHEVHG"}
+{"ts":1783836024145,"level":"info","event":"highlight_triggered","session":"GHEVHG","username":"Nemean","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T06:00:41.634Z","level":"info","event":"upload_received","session":"GHEVHG","username":"moonfroggy","sizeMB":"19.1"}
+{"ts":"2026-07-12T06:00:42.062Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T06-00-24-145Z_1783836041460.jpg"}
+{"ts":"2026-07-12T06:00:43.928Z","level":"info","event":"spaces_upload_complete","session":"GHEVHG"}
+{"ts":"2026-07-12T06:00:44.675Z","level":"info","event":"upload_received","session":"GHEVHG","username":"Nemean","sizeMB":"27.6"}
+{"ts":"2026-07-12T06:00:45.868Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T06-00-24-145Z_1783836044393.jpg"}
+{"ts":"2026-07-12T06:00:48.062Z","level":"info","event":"spaces_upload_complete","session":"GHEVHG"}
+{"ts":"2026-07-12T06:00:56.373Z","level":"info","event":"member_joined","session":"GHEVHG","username":"cabbam"}
+{"ts":"2026-07-12T06:00:59.826Z","level":"info","event":"recording_status","session":"GHEVHG","username":"cabbam","isRecording":true}
+{"ts":"2026-07-12T06:02:17.578Z","level":"info","event":"recording_status","session":"GHEVHG","username":"cabbam","isRecording":false}
+{"ts":"2026-07-12T06:02:31.136Z","level":"info","event":"recording_status","session":"GHEVHG","username":"cabbam","isRecording":true}
+{"ts":1783836285901,"level":"info","event":"highlight_triggered","session":"GHEVHG","username":"Nemean","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T06:04:54.954Z","level":"info","event":"upload_received","session":"GHEVHG","username":"cabbam","sizeMB":"29.8"}
+{"ts":"2026-07-12T06:04:56.821Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T06-04-45-901Z_1783836294665.jpg"}
+{"ts":"2026-07-12T06:04:58.883Z","level":"info","event":"spaces_upload_complete","session":"GHEVHG"}
+{"ts":"2026-07-12T06:05:07.714Z","level":"info","event":"upload_received","session":"GHEVHG","username":"moonfroggy","sizeMB":"25.6"}
+{"ts":"2026-07-12T06:05:08.359Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T06-04-45-901Z_1783836307486.jpg"}
+{"ts":"2026-07-12T06:05:09.618Z","level":"info","event":"upload_received","session":"GHEVHG","username":"Nemean","sizeMB":"48.4"}
+{"ts":"2026-07-12T06:05:10.276Z","level":"info","event":"spaces_upload_complete","session":"GHEVHG"}
+{"ts":"2026-07-12T06:05:10.994Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T06-04-45-901Z_1783836309146.jpg"}
+{"ts":"2026-07-12T06:05:13.927Z","level":"info","event":"spaces_upload_complete","session":"GHEVHG"}
+{"ts":1783836615964,"level":"info","event":"highlight_triggered","session":"GHEVHG","username":"Nemean","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T06:10:27.844Z","level":"info","event":"upload_received","session":"GHEVHG","username":"cabbam","sizeMB":"71.7"}
+{"ts":"2026-07-12T06:10:30.708Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T06-10-15-964Z_1783836626994.jpg"}
+{"ts":"2026-07-12T06:10:34.795Z","level":"info","event":"spaces_upload_complete","session":"GHEVHG"}
+{"ts":"2026-07-12T06:10:37.574Z","level":"info","event":"upload_received","session":"GHEVHG","username":"moonfroggy","sizeMB":"22.2"}
+{"ts":"2026-07-12T06:10:38.479Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T06-10-15-964Z_1783836637013.jpg"}
+{"ts":"2026-07-12T06:10:41.290Z","level":"info","event":"spaces_upload_complete","session":"GHEVHG"}
+{"ts":"2026-07-12T06:10:41.563Z","level":"info","event":"upload_received","session":"GHEVHG","username":"Nemean","sizeMB":"28.6"}
+{"ts":"2026-07-12T06:10:43.179Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T06-10-15-964Z_1783836641118.jpg"}
+{"ts":"2026-07-12T06:10:46.268Z","level":"info","event":"spaces_upload_complete","session":"GHEVHG"}
+{"ts":1783836676263,"level":"info","event":"highlight_triggered","session":"GHEVHG","username":"Nemean","clipDuration":30000,"lockMs":18000}
+{"ts":"2026-07-12T06:11:28.610Z","level":"info","event":"upload_received","session":"GHEVHG","username":"cabbam","sizeMB":"100.7"}
+{"ts":"2026-07-12T06:11:31.528Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T06-11-16-263Z_1783836687634.jpg"}
+{"ts":"2026-07-12T06:11:36.292Z","level":"info","event":"upload_received","session":"GHEVHG","username":"moonfroggy","sizeMB":"19.7"}
+{"ts":"2026-07-12T06:11:37.089Z","level":"info","event":"recording_status","session":"GHEVHG","username":"cabbam","isRecording":false}
+{"ts":"2026-07-12T06:11:37.423Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T06-11-16-263Z_1783836695747.jpg"}
+{"ts":"2026-07-12T06:11:38.280Z","level":"info","event":"spaces_upload_complete","session":"GHEVHG"}
+{"ts":"2026-07-12T06:11:39.979Z","level":"info","event":"upload_received","session":"GHEVHG","username":"Nemean","sizeMB":"27.9"}
+{"ts":"2026-07-12T06:11:40.264Z","level":"info","event":"spaces_upload_complete","session":"GHEVHG"}
+{"ts":"2026-07-12T06:11:41.604Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T06-11-16-263Z_1783836699724.jpg"}
+{"ts":"2026-07-12T06:11:43.902Z","level":"info","event":"spaces_upload_complete","session":"GHEVHG"}
+{"ts":"2026-07-12T06:11:48.844Z","level":"info","event":"member_left","session":"GHEVHG","username":"moonfroggy","remaining":2}
+{"ts":"2026-07-12T06:12:06.918Z","level":"info","event":"member_left","session":"GHEVHG","username":"cabbam","remaining":1}
+{"ts":"2026-07-12T06:12:24.462Z","level":"info","event":"member_left","session":"GHEVHG","username":"Nemean","remaining":0}
+{"ts":"2026-07-12T06:17:24.464Z","level":"info","event":"session_archived","session":"GHEVHG","uploads":13}
+Spaces configured: peakbu-media nyc3
+{"ts":"2026-07-12T15:02:53.154Z","level":"info","event":"users_loaded","count":13}
+{"ts":"2026-07-12T15:02:53.160Z","level":"info","event":"sessions_loaded","loaded":4,"expired":0}
+{"ts":"2026-07-12T15:02:53.163Z","level":"info","event":"aireel_ready","aiEditor":false,"model":"claude-sonnet-4-6"}
+{"ts":"2026-07-12T15:02:53.165Z","level":"info","event":"server_start","port":3000}
+Spaces configured: peakbu-media nyc3
+{"ts":"2026-07-12T15:18:07.474Z","level":"info","event":"users_loaded","count":13}
+{"ts":"2026-07-12T15:18:07.476Z","level":"info","event":"sessions_loaded","loaded":4,"expired":0}
+{"ts":"2026-07-12T15:18:07.477Z","level":"info","event":"aireel_ready","aiEditor":false,"model":"claude-sonnet-4-6"}
+{"ts":"2026-07-12T15:18:07.479Z","level":"info","event":"server_start","port":3000}
+{"ts":"2026-07-12T15:33:19.863Z","level":"info","event":"session_created","code":"CB5A7C","createdBy":"Nemean"}
+{"ts":"2026-07-12T15:33:20.194Z","level":"info","event":"member_joined","session":"CB5A7C","username":"Nemean"}
+{"ts":"2026-07-12T15:33:23.374Z","level":"info","event":"recording_status","session":"CB5A7C","username":"Nemean","isRecording":true}
+{"ts":1783870601103,"level":"info","event":"highlight_triggered","session":"CB5A7C","username":"Nemean","clipDuration":30000,"lockMs":18000,"highlightCount":1}
+{"ts":1783870603311,"level":"info","event":"highlight_queued","session":"CB5A7C","username":"Nemean","queueDepth":1}
+{"ts":1783870608373,"level":"info","event":"highlight_queued","session":"CB5A7C","username":"Nemean","queueDepth":2}
+{"ts":"2026-07-12T15:36:53.272Z","level":"info","event":"upload_received","session":"CB5A7C","username":"Nemean","sizeMB":"43.8"}
+{"ts":"2026-07-12T15:36:54.498Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T15-36-41-103Z_1783870612820.jpg"}
+{"ts":"2026-07-12T15:36:57.085Z","level":"info","event":"spaces_upload_complete","session":"CB5A7C"}
+{"ts":1783870619044,"level":"info","event":"highlight_queued","session":"CB5A7C","username":"Nemean","queueDepth":3}
+{"ts":1783870603311,"level":"info","event":"highlight_dequeued","session":"CB5A7C","username":"Nemean","remaining":2}
+{"ts":1783870603311,"level":"info","event":"highlight_triggered","session":"CB5A7C","username":"Nemean","clipDuration":30000,"lockMs":18000,"highlightCount":2}
+{"ts":"2026-07-12T15:37:05.293Z","level":"info","event":"upload_received","session":"CB5A7C","username":"Nemean","sizeMB":"19.0"}
+{"ts":"2026-07-12T15:37:06.224Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T15-36-43-311Z_1783870625104.jpg"}
+{"ts":"2026-07-12T15:37:08.156Z","level":"info","event":"spaces_upload_complete","session":"CB5A7C"}
+{"ts":1783870608373,"level":"info","event":"highlight_dequeued","session":"CB5A7C","username":"Nemean","remaining":1}
+{"ts":1783870608373,"level":"info","event":"highlight_triggered","session":"CB5A7C","username":"Nemean","clipDuration":30000,"lockMs":18000,"highlightCount":3}
+{"ts":"2026-07-12T15:37:21.459Z","level":"info","event":"upload_received","session":"CB5A7C","username":"Nemean","sizeMB":"9.7"}
+{"ts":"2026-07-12T15:37:22.281Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T15-36-48-373Z_1783870641347.jpg"}
+{"ts":"2026-07-12T15:37:23.565Z","level":"info","event":"spaces_upload_complete","session":"CB5A7C"}
+{"ts":1783870619044,"level":"info","event":"highlight_dequeued","session":"CB5A7C","username":"Nemean","remaining":0}
+{"ts":1783870619044,"level":"info","event":"highlight_triggered","session":"CB5A7C","username":"Nemean","clipDuration":30000,"lockMs":18000,"highlightCount":4}
+{"ts":"2026-07-12T15:37:40.419Z","level":"info","event":"upload_received","session":"CB5A7C","username":"Nemean","sizeMB":"9.7"}
+{"ts":"2026-07-12T15:37:41.159Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T15-36-59-044Z_1783870660354.jpg"}
+{"ts":"2026-07-12T15:37:42.555Z","level":"info","event":"spaces_upload_complete","session":"CB5A7C"}
+{"ts":1783871040575,"level":"info","event":"highlight_triggered","session":"CB5A7C","username":"Nemean","clipDuration":30000,"lockMs":18000,"highlightCount":5}
+{"ts":"2026-07-12T15:44:13.095Z","level":"info","event":"upload_received","session":"CB5A7C","username":"Nemean","sizeMB":"31.9"}
+{"ts":1783871053579,"level":"info","event":"highlight_queued","session":"CB5A7C","username":"Nemean","queueDepth":1}
+{"ts":"2026-07-12T15:44:13.832Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T15-44-00-575Z_1783871052827.jpg"}
+{"ts":"2026-07-12T15:44:15.940Z","level":"info","event":"spaces_upload_complete","session":"CB5A7C"}
+{"ts":1783871053579,"level":"info","event":"highlight_dequeued","session":"CB5A7C","username":"Nemean","remaining":0}
+{"ts":1783871053579,"level":"info","event":"highlight_triggered","session":"CB5A7C","username":"Nemean","clipDuration":30000,"lockMs":18000,"highlightCount":6}
+{"ts":"2026-07-12T15:44:27.230Z","level":"info","event":"upload_received","session":"CB5A7C","username":"Nemean","sizeMB":"18.9"}
+{"ts":"2026-07-12T15:44:28.202Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T15-44-13-579Z_1783871067128.jpg"}
+{"ts":"2026-07-12T15:44:29.953Z","level":"info","event":"spaces_upload_complete","session":"CB5A7C"}
+{"ts":"2026-07-12T15:45:16.280Z","level":"info","event":"recording_status","session":"CB5A7C","username":"Nemean","isRecording":false}
+{"ts":"2026-07-12T15:45:27.798Z","level":"info","event":"recording_status","session":"CB5A7C","username":"Nemean","isRecording":true}
+{"ts":1783871376370,"level":"info","event":"highlight_triggered","session":"CB5A7C","username":"Nemean","clipDuration":30000,"lockMs":18000,"highlightCount":7}
+{"ts":"2026-07-12T15:49:44.813Z","level":"info","event":"upload_received","session":"CB5A7C","username":"Nemean","sizeMB":"26.4"}
+{"ts":"2026-07-12T15:49:45.590Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T15-49-36-370Z_1783871384629.jpg"}
+{"ts":1783871387654,"level":"info","event":"highlight_queued","session":"CB5A7C","username":"Nemean","queueDepth":1}
+{"ts":"2026-07-12T15:49:47.767Z","level":"info","event":"spaces_upload_complete","session":"CB5A7C"}
+{"ts":1783871387654,"level":"info","event":"highlight_dequeued","session":"CB5A7C","username":"Nemean","remaining":0}
+{"ts":1783871387654,"level":"info","event":"highlight_triggered","session":"CB5A7C","username":"Nemean","clipDuration":30000,"lockMs":18000,"highlightCount":8}
+{"ts":"2026-07-12T15:49:57.885Z","level":"info","event":"upload_received","session":"CB5A7C","username":"Nemean","sizeMB":"8.2"}
+{"ts":"2026-07-12T15:49:58.610Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T15-49-47-654Z_1783871397841.jpg"}
+{"ts":"2026-07-12T15:50:00.321Z","level":"info","event":"spaces_upload_complete","session":"CB5A7C"}
+{"ts":1783872056063,"level":"info","event":"highlight_triggered","session":"CB5A7C","username":"Nemean","clipDuration":30000,"lockMs":18000,"highlightCount":9}
+{"ts":"2026-07-12T16:01:06.640Z","level":"info","event":"upload_received","session":"CB5A7C","username":"Nemean","sizeMB":"27.9"}
+{"ts":"2026-07-12T16:01:07.537Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T16-00-56-063Z_1783872066314.jpg"}
+{"ts":"2026-07-12T16:01:09.528Z","level":"info","event":"spaces_upload_complete","session":"CB5A7C"}
+{"ts":1783872140220,"level":"info","event":"highlight_triggered","session":"CB5A7C","username":"Nemean","clipDuration":30000,"lockMs":18000,"highlightCount":10}
+{"ts":"2026-07-12T16:02:37.142Z","level":"info","event":"upload_received","session":"CB5A7C","username":"Nemean","sizeMB":"24.5"}
+{"ts":"2026-07-12T16:02:37.851Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T16-02-20-220Z_1783872156983.jpg"}
+{"ts":"2026-07-12T16:02:40.131Z","level":"info","event":"spaces_upload_complete","session":"CB5A7C"}
+{"ts":1783872241871,"level":"info","event":"highlight_triggered","session":"CB5A7C","username":"Nemean","clipDuration":30000,"lockMs":18000,"highlightCount":11}
+{"ts":"2026-07-12T16:04:13.220Z","level":"info","event":"upload_received","session":"CB5A7C","username":"Nemean","sizeMB":"28.5"}
+{"ts":"2026-07-12T16:04:14.015Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T16-04-01-871Z_1783872253014.jpg"}
+{"ts":"2026-07-12T16:04:16.329Z","level":"info","event":"spaces_upload_complete","session":"CB5A7C"}
+{"ts":1783881917413,"level":"info","event":"highlight_triggered","session":"CB5A7C","username":"Nemean","clipDuration":30000,"lockMs":18000,"highlightCount":12}
+{"ts":"2026-07-12T18:45:46.201Z","level":"info","event":"upload_received","session":"CB5A7C","username":"Nemean","sizeMB":"31.7"}
+{"ts":"2026-07-12T18:45:47.375Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T18-45-17-413Z_1783881945824.jpg"}
+{"ts":"2026-07-12T18:45:49.882Z","level":"info","event":"spaces_upload_complete","session":"CB5A7C"}
+Composite: Output #0, mp4, to '/tmp/peak-abu-composites/composite_e74e8b2f-02dd-450c-b0cb-5a85dde9e2ff.mp4':
+  Metadata:
+    major_brand     : isom
+    minor_version   : 512
+    compatible_brands: isomiso2avc1mp41
+    encoder         : Lavf60.16.100
+  Stream #0:0: Video: h264 (avc1 / 0x31637661), yuv420p(progressive), 2560x1080 [SAR 1:1 DAR 64:27], q=2-31, 30 fps, 15360 tbn
+    Metadata:
+      encoder         : Lavc60.31.102 libx264
+    Side data:
+      cpb: bitrate max/min/avg: 0/0/0 buffer size: 0 vbv_delay: N/A
+  Stream #0:1: Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, stereo, fltp, 128 kb/s
+    Metadata:
+      encoder         : Lavc60.31.102 aac
+frame=    0 fps=0.0 q=0.0 size=       0kB time=N/A bitrate=N/A speed=N/A
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=-00:00:00.02 bitrate=N/A speed=N/A
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=-00:00:00.02 bitrate=N/A speed=N/A
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=-00:00:00.02 bitrate=N/A speed=N/A
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:00.02 bitrate=  18.0kbits/s speed=0.00559x
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:00.02 bitrate=  18.0kbits/s speed=0.00492x
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:00.04 bitrate=   9.0kbits/s speed=0.00879x
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:00.10 bitrate=   3.6kbits/s speed=0.0199x
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:00.14 bitrate=   2.6kbits/s speed=0.0253x
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:00.14 bitrate=   2.6kbits/s speed=0.0233x
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:00.17 bitrate=   2.2kbits/s speed=0.0246x
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:00.17 bitrate=   2.2kbits/s speed=0.0229x
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:00.21 bitrate=   1.8kbits/s speed=0.0269x
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:00.25 bitrate=   1.5kbits/s speed=0.0301x
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:00.25 bitrate=   1.5kbits/s speed=0.0278x
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:00.27 bitrate=   1.4kbits/s speed=0.0285x
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:00.27 bitrate=   1.4kbits/s speed=0.027x
+Composite: frame=    1 fps=0.1 q=29.0 size=       0kB time=00:00:00.27 bitrate=   1.4kbits/s speed=0.0241x
+Composite: frame=    1 fps=0.1 q=29.0 size=     256kB time=00:00:00.32 bitrate=6554.8kbits/s speed=0.0263x
+Composite: frame=    1 fps=0.1 q=29.0 size=     256kB time=00:00:00.32 bitrate=6554.8kbits/s speed=0.0251x
+Composite: frame=    2 fps=0.1 q=29.0 size=     256kB time=00:00:00.32 bitrate=6554.8kbits/s speed=0.0237x
+Composite: frame=    2 fps=0.1 q=29.0 size=     256kB time=00:00:00.34 bitrate=6145.1kbits/s speed=0.0244x
+Composite: frame=    3 fps=0.2 q=29.0 size=     256kB time=00:00:00.38 bitrate=5462.3kbits/s speed=0.0263x
+Composite: frame=    3 fps=0.2 q=29.0 size=     256kB time=00:00:00.38 bitrate=5462.3kbits/s speed=0.0254x
+Composite: frame=    3 fps=0.2 q=29.0 size=     256kB time=00:00:00.38 bitrate=5462.3kbits/s speed=0.0245x
+Composite: frame=    4 fps=0.2 q=29.0 size=     256kB time=00:00:00.40 bitrate=5174.8kbits/s speed=0.025x
+Composite: frame=    4 fps=0.2 q=29.0 size=     256kB time=00:00:00.40 bitrate=5174.8kbits/s speed=0.0241x
+Composite: frame=    5 fps=0.3 q=29.0 size=     256kB time=00:00:00.40 bitrate=5174.8kbits/s speed=0.023x
+Composite: frame=    5 fps=0.3 q=29.0 size=     256kB time=00:00:00.44 bitrate=4682.0kbits/s speed=0.0246x
+Composite: frame=    6 fps=0.3 q=29.0 size=     256kB time=00:00:00.44 bitrate=4682.0kbits/s speed=0.023x
+Composite: frame=    6 fps=0.3 q=29.0 size=     512kB time=00:00:00.46 bitrate=8937.6kbits/s speed=0.0234x
+Composite: frame=    7 fps=0.3 q=29.0 size=     512kB time=00:00:00.46 bitrate=8937.6kbits/s speed=0.0229x
+Composite: frame=    7 fps=0.3 q=29.0 size=     512kB time=00:00:00.51 bitrate=8192.8kbits/s speed=0.0243x
+Composite: frame=    7 fps=0.3 q=29.0 size=     512kB time=00:00:00.51 bitrate=8192.8kbits/s speed=0.0237x
+Composite: frame=    8 fps=0.4 q=29.0 size=     512kB time=00:00:00.51 bitrate=8192.8kbits/s speed=0.023x
+Composite: frame=    8 fps=0.4 q=29.0 size=     512kB time=00:00:00.55 bitrate=7562.5kbits/s speed=0.0243x
+Composite: frame=    8 fps=0.3 q=29.0 size=     512kB time=00:00:00.55 bitrate=7562.5kbits/s speed=0.0238x
+Composite: frame=    9 fps=0.4 q=29.0 size=     512kB time=00:00:00.55 bitrate=7562.5kbits/s speed=0.0232x
+Composite: frame=    9 fps=0.4 q=29.0 size=     512kB time=00:00:00.57 bitrate=7282.4kbits/s speed=0.0235x
+Composite: frame=   10 fps=0.4 q=29.0 size=     512kB time=00:00:00.57 bitrate=7282.4kbits/s speed=0.0224x
+Composite: frame=   10 fps=0.4 q=29.0 size=     512kB time=00:00:00.61 bitrate=6780.2kbits/s speed=0.0236x
+Composite: frame=   11 fps=0.4 q=29.0 size=     512kB time=00:00:00.61 bitrate=6780.2kbits/s speed=0.023x
+Composite: frame=   11 fps=0.4 q=29.0 size=     512kB time=00:00:00.64 bitrate=6554.2kbits/s speed=0.0233x
+Composite: frame=   11 fps=0.4 q=29.0 size=     512kB time=00:00:00.64 bitrate=6554.2kbits/s speed=0.0228x
+Composite: frame=   12 fps=0.4 q=29.0 size=     512kB time=00:00:00.64 bitrate=6554.2kbits/s speed=0.022x
+Composite: frame=   12 fps=0.4 q=29.0 size=     512kB time=00:00:00.68 bitrate=6144.6kbits/s speed=0.023x
+Composite: frame=   12 fps=0.4 q=29.0 size=     512kB time=00:00:00.68 bitrate=6144.6kbits/s speed=0.0226x
+Composite: frame=   13 fps=0.4 q=29.0 size=     512kB time=00:00:00.68 bitrate=6144.6kbits/s speed=0.0217x
+Composite: frame=   13 fps=0.4 q=29.0 size=     512kB time=00:00:00.70 bitrate=5958.4kbits/s speed=0.022x
+Composite: frame=   13 fps=0.4 q=29.0 size=     512kB time=00:00:00.70 bitrate=5958.4kbits/s speed=0.0216x
+Composite: frame=   14 fps=0.4 q=29.0 size=     512kB time=00:00:00.70 bitrate=5958.4kbits/s speed=0.021x
+Composite: frame=   14 fps=0.4 q=29.0 size=     512kB time=00:00:00.74 bitrate=5617.9kbits/s speed=0.022x
+Composite: frame=   15 fps=0.4 q=29.0 size=     512kB time=00:00:00.74 bitrate=5617.9kbits/s speed=0.0215x
+Composite: frame=   15 fps=0.4 q=29.0 size=     512kB time=00:00:00.78 bitrate=5314.2kbits/s speed=0.0223x
+Composite: frame=   15 fps=0.4 q=29.0 size=     512kB time=00:00:00.78 bitrate=5314.2kbits/s speed=0.022x
+Composite: frame=   16 fps=0.4 q=29.0 size=     512kB time=00:00:00.78 bitrate=5314.2kbits/s speed=0.0216x
+Composite: frame=   16 fps=0.4 q=29.0 size=     512kB time=00:00:00.81 bitrate=5174.4kbits/s speed=0.0219x
+Composite: frame=   16 fps=0.4 q=29.0 size=     512kB time=00:00:00.81 bitrate=5174.4kbits/s speed=0.0216x
+Composite: frame=   17 fps=0.4 q=29.0 size=     512kB time=00:00:00.81 bitrate=5174.4kbits/s speed=0.0212x
+Composite: frame=   17 fps=0.4 q=29.0 size=     512kB time=00:00:00.85 bitrate=4915.7kbits/s speed=0.0221x
+Composite: frame=   17 fps=0.4 q=29.0 size=     512kB time=00:00:00.85 bitrate=4915.7kbits/s speed=0.0217x
+Composite: frame=   18 fps=0.4 q=29.0 size=     512kB time=00:00:00.85 bitrate=4915.7kbits/s speed=0.021x
+Composite: frame=   18 fps=0.4 q=29.0 size=     768kB time=00:00:00.87 bitrate=7193.4kbits/s speed=0.0212x
+Composite: frame=   19 fps=0.5 q=29.0 size=     768kB time=00:00:00.87 bitrate=7193.4kbits/s speed=0.0208x
+Composite: frame=   20 fps=0.5 q=29.0 size=     768kB time=00:00:00.91 bitrate=6858.8kbits/s speed=0.0215x
+Composite: frame=   20 fps=0.5 q=29.0 size=     768kB time=00:00:00.93 bitrate=6703.0kbits/s speed=0.0217x
+Composite: frame=   21 fps=0.5 q=29.0 size=     768kB time=00:00:00.93 bitrate=6703.0kbits/s speed=0.0213x
+Composite: frame=   21 fps=0.5 q=29.0 size=     768kB time=00:00:00.98 bitrate=6411.5kbits/s speed=0.022x
+Composite: frame=   21 fps=0.5 q=29.0 size=     768kB time=00:00:00.98 bitrate=6411.5kbits/s speed=0.0218x
+Composite: frame=   22 fps=0.5 q=29.0 size=     768kB time=00:00:00.98 bitrate=6411.5kbits/s speed=0.0212x
+Composite: frame=   22 fps=0.5 q=29.0 size=     768kB time=00:00:01.00 bitrate=6275.1kbits/s speed=0.0214x
+Composite: frame=   22 fps=0.5 q=29.0 size=     768kB time=00:00:01.00 bitrate=6275.1kbits/s speed=0.0211x
+Composite: frame=   23 fps=0.5 q=29.0 size=     768kB time=00:00:01.00 bitrate=6275.1kbits/s speed=0.0207x
+Composite: frame=   23 fps=0.5 q=29.0 size=     768kB time=00:00:01.04 bitrate=6019.0kbits/s speed=0.0213x
+Composite: frame=   24 fps=0.5 q=29.0 size=     768kB time=00:00:01.04 bitrate=6019.0kbits/s speed=0.021x
+Composite: frame=   24 fps=0.5 q=29.0 size=     768kB time=00:00:01.08 bitrate=5782.9kbits/s speed=0.0216x
+Composite: frame=   25 fps=0.5 q=29.0 size=     768kB time=00:00:01.08 bitrate=5782.9kbits/s speed=0.0213x
+Composite: frame=   25 fps=0.5 q=29.0 size=     768kB time=00:00:01.10 bitrate=5671.7kbits/s speed=0.0215x
+Composite: frame=   25 fps=0.5 q=29.0 size=     768kB time=00:00:01.10 bitrate=5671.7kbits/s speed=0.0212x
+Composite: frame=   26 fps=0.5 q=29.0 size=     768kB time=00:00:01.10 bitrate=5671.7kbits/s speed=0.0208x
+Composite: frame=   26 fps=0.5 q=29.0 size=     768kB time=00:00:01.15 bitrate=5461.7kbits/s speed=0.0214x
+Composite: frame=   26 fps=0.5 q=29.0 size=     768kB time=00:00:01.15 bitrate=5461.7kbits/s speed=0.0212x
+Composite: frame=   27 fps=0.5 q=29.0 size=     768kB time=00:00:01.15 bitrate=5461.7kbits/s speed=0.0207x
+Composite: frame=   27 fps=0.5 q=29.0 size=    1024kB time=00:00:01.17 bitrate=7149.7kbits/s speed=0.0209x
+Composite: frame=   27 fps=0.5 q=29.0 size=    1024kB time=00:00:01.17 bitrate=7149.7kbits/s speed=0.0207x
+Composite: frame=   28 fps=0.5 q=29.0 size=    1024kB time=00:00:01.17 bitrate=7149.7kbits/s speed=0.0205x
+Composite: frame=   28 fps=0.5 q=29.0 size=    1024kB time=00:00:01.21 bitrate=6898.8kbits/s speed=0.021x
+Composite: frame=   29 fps=0.5 q=29.0 size=    1024kB time=00:00:01.21 bitrate=6898.8kbits/s speed=0.0208x
+Composite: frame=   29 fps=0.5 q=29.0 size=    1024kB time=00:00:01.23 bitrate=6779.9kbits/s speed=0.021x
+Composite: frame=   29 fps=0.5 q=29.0 size=    1024kB time=00:00:01.23 bitrate=6779.9kbits/s speed=0.0208x
+Composite: frame=   30 fps=0.5 q=29.0 size=    1024kB time=00:00:01.23 bitrate=6779.9kbits/s speed=0.0203x
+Composite: frame=   30 fps=0.5 q=29.0 size=    1024kB time=00:00:01.28 bitrate=6553.9kbits/s speed=0.0208x
+Composite: frame=   30 fps=0.5 q=29.0 size=    1024kB time=00:00:01.28 bitrate=6553.9kbits/s speed=0.0207x
+Composite: frame=   30 fps=0.5 q=29.0 size=    1024kB time=00:00:01.28 bitrate=6553.9kbits/s speed=0.0205x
+Composite: frame=   31 fps=0.5 q=29.0 size=    1024kB time=00:00:01.28 bitrate=6553.9kbits/s speed=0.0201x
+Composite: frame=   31 fps=0.5 q=29.0 size=    1024kB time=00:00:01.32 bitrate=6342.5kbits/s speed=0.0206x
+Composite: frame=   31 fps=0.5 q=29.0 size=    1024kB time=00:00:01.32 bitrate=6342.5kbits/s speed=0.0204x
+Composite: frame=   32 fps=0.5 q=29.0 size=    1024kB time=00:00:01.32 bitrate=6342.5kbits/s speed=0.0203x
+Composite: frame=   32 fps=0.5 q=29.0 size=    1024kB time=00:00:01.34 bitrate=6241.8kbits/s speed=0.0204x
+Composite: frame=   33 fps=0.5 q=29.0 size=    1024kB time=00:00:01.34 bitrate=6241.8kbits/s speed=0.0203x
+Composite: frame=   33 fps=0.5 q=29.0 size=    1024kB time=00:00:01.38 bitrate=6049.8kbits/s speed=0.0207x
+Composite: frame=   33 fps=0.5 q=29.0 size=    1024kB time=00:00:01.38 bitrate=6049.8kbits/s speed=0.0206x
+Composite: frame=   33 fps=0.5 q=29.0 size=    1024kB time=00:00:01.38 bitrate=6049.8kbits/s speed=0.0204x
+Composite: frame=   34 fps=0.5 q=29.0 size=    1024kB time=00:00:01.38 bitrate=6049.8kbits/s speed=0.02x
+Composite: frame=   34 fps=0.5 q=29.0 size=    1024kB time=00:00:01.40 bitrate=5958.1kbits/s speed=0.0202x
+Composite: frame=   34 fps=0.5 q=29.0 size=    1024kB time=00:00:01.40 bitrate=5958.1kbits/s speed=0.02x
+Composite: frame=   35 fps=0.5 q=29.0 size=    1024kB time=00:00:01.40 bitrate=5958.1kbits/s speed=0.0197x
+Composite: frame=   35 fps=0.5 q=29.0 size=    1024kB time=00:00:01.45 bitrate=5782.9kbits/s speed=0.0201x
+Composite: frame=   35 fps=0.5 q=29.0 size=    1024kB time=00:00:01.45 bitrate=5782.9kbits/s speed=0.0199x
+Composite: frame=   35 fps=0.5 q=29.0 size=    1024kB time=00:00:01.45 bitrate=5782.9kbits/s speed=0.0198x
+Composite: frame=   36 fps=0.5 q=29.0 size=    1024kB time=00:00:01.45 bitrate=5782.9kbits/s speed=0.0196x
+Composite: frame=   36 fps=0.5 q=29.0 size=    1024kB time=00:00:01.47 bitrate=5699.0kbits/s speed=0.0197x
+Composite: frame=   37 fps=0.5 q=29.0 size=    1024kB time=00:00:01.47 bitrate=5699.0kbits/s speed=0.0195x
+Composite: frame=   37 fps=0.5 q=29.0 size=    1024kB time=00:00:01.51 bitrate=5538.5kbits/s speed=0.0199x
+Composite: frame=   37 fps=0.5 q=29.0 size=    1024kB time=00:00:01.51 bitrate=5538.5kbits/s speed=0.0197x
+Composite: frame=   38 fps=0.5 q=29.0 size=    1024kB time=00:00:01.51 bitrate=5538.5kbits/s speed=0.0194x
+Composite: frame=   38 fps=0.5 q=29.0 size=    1280kB time=00:00:01.53 bitrate=6826.9kbits/s speed=0.0195x
+Composite: frame=   38 fps=0.5 q=29.0 size=    1280kB time=00:00:01.53 bitrate=6826.9kbits/s speed=0.0194x
+Composite: frame=   39 fps=0.5 q=29.0 size=    1280kB time=00:00:01.53 bitrate=6826.9kbits/s speed=0.0191x
+Composite: frame=   39 fps=0.5 q=29.0 size=    1280kB time=00:00:01.57 bitrate=6642.4kbits/s speed=0.0195x
+Composite: frame=   39 fps=0.5 q=29.0 size=    1280kB time=00:00:01.57 bitrate=6642.4kbits/s speed=0.0193x
+Composite: frame=   40 fps=0.5 q=29.0 size=    1280kB time=00:00:01.57 bitrate=6642.4kbits/s speed=0.0191x
+Composite: frame=   40 fps=0.5 q=29.0 size=    1280kB time=00:00:01.62 bitrate=6467.6kbits/s speed=0.0195x
+Composite: frame=   41 fps=0.5 q=29.0 size=    1280kB time=00:00:01.62 bitrate=6467.6kbits/s speed=0.0194x
+Composite: frame=   41 fps=0.5 q=29.0 size=    1280kB time=00:00:01.64 bitrate=6383.6kbits/s speed=0.0195x
+Composite: frame=   41 fps=0.5 q=29.0 size=    1280kB time=00:00:01.64 bitrate=6383.6kbits/s speed=0.0194x
+Composite: frame=   41 fps=0.5 q=29.0 size=    1280kB time=00:00:01.64 bitrate=6383.6kbits/s speed=0.0192x
+Composite: frame=   42 fps=0.5 q=29.0 size=    1280kB time=00:00:01.64 bitrate=6383.6kbits/s speed=0.019x
+Composite: frame=   42 fps=0.5 q=29.0 size=    1280kB time=00:00:01.68 bitrate=6222.0kbits/s speed=0.0194x
+Composite: frame=   42 fps=0.5 q=29.0 size=    1280kB time=00:00:01.68 bitrate=6222.0kbits/s speed=0.0192x
+Composite: frame=   43 fps=0.5 q=29.0 size=    1280kB time=00:00:01.68 bitrate=6222.0kbits/s speed=0.0191x
+Composite: frame=   43 fps=0.5 q=29.0 size=    1280kB time=00:00:01.68 bitrate=6222.0kbits/s speed=0.0189x
+Composite: frame=   43 fps=0.5 q=29.0 size=    1280kB time=00:00:01.70 bitrate=6144.2kbits/s speed=0.019x
+Composite: frame=   43 fps=0.5 q=29.0 size=    1280kB time=00:00:01.70 bitrate=6144.2kbits/s speed=0.0189x
+Composite: frame=   43 fps=0.5 q=29.0 size=    1280kB time=00:00:01.70 bitrate=6144.2kbits/s speed=0.0188x
+Composite: frame=   44 fps=0.5 q=29.0 size=    1280kB time=00:00:01.70 bitrate=6144.2kbits/s speed=0.0187x
+Composite: frame=   44 fps=0.5 q=29.0 size=    1280kB time=00:00:01.74 bitrate=5994.4kbits/s speed=0.019x
+Composite: frame=   44 fps=0.5 q=29.0 size=    1280kB time=00:00:01.74 bitrate=5994.4kbits/s speed=0.0189x
+Composite: frame=   45 fps=0.5 q=29.0 size=    1280kB time=00:00:01.74 bitrate=5994.4kbits/s speed=0.0187x
+Composite: frame=   45 fps=0.5 q=29.0 size=    1280kB time=00:00:01.77 bitrate=5922.1kbits/s speed=0.0189x
+Composite: frame=   45 fps=0.5 q=29.0 size=    1280kB time=00:00:01.77 bitrate=5922.1kbits/s speed=0.0187x
+Composite: frame=   46 fps=0.5 q=29.0 size=    1280kB time=00:00:01.77 bitrate=5922.1kbits/s speed=0.0184x
+Composite: frame=   46 fps=0.5 q=29.0 size=    1536kB time=00:00:01.81 bitrate=6939.3kbits/s speed=0.0188x
+Composite: frame=   46 fps=0.5 q=29.0 size=    1536kB time=00:00:01.81 bitrate=6939.3kbits/s speed=0.0186x
+Composite: frame=   47 fps=0.5 q=29.0 size=    1536kB time=00:00:01.81 bitrate=6939.3kbits/s speed=0.0185x
+Composite: frame=   47 fps=0.5 q=29.0 size=    1536kB time=00:00:01.81 bitrate=6939.3kbits/s speed=0.0183x
+Composite: frame=   47 fps=0.5 q=29.0 size=    1536kB time=00:00:01.85 bitrate=6779.8kbits/s speed=0.0186x
+Composite: frame=   47 fps=0.5 q=29.0 size=    1536kB time=00:00:01.85 bitrate=6779.8kbits/s speed=0.0185x
+Composite: frame=   47 fps=0.5 q=29.0 size=    1536kB time=00:00:01.85 bitrate=6779.8kbits/s speed=0.0184x
+Composite: frame=   48 fps=0.5 q=29.0 size=    1536kB time=00:00:01.85 bitrate=6779.8kbits/s speed=0.0183x
+Composite: frame=   48 fps=0.5 q=29.0 size=    1536kB time=00:00:01.87 bitrate=6702.8kbits/s speed=0.0185x
+Composite: frame=   48 fps=0.5 q=29.0 size=    1536kB time=00:00:01.87 bitrate=6702.8kbits/s speed=0.0184x
+Composite: frame=   49 fps=0.5 q=29.0 size=    1536kB time=00:00:01.92 bitrate=6553.8kbits/s speed=0.0187x
+Composite: frame=   50 fps=0.5 q=29.0 size=    1536kB time=00:00:01.92 bitrate=6553.8kbits/s speed=0.0185x
+Composite: frame=   50 fps=0.5 q=29.0 size=    1536kB time=00:00:01.94 bitrate=6481.8kbits/s speed=0.0186x
+Composite: frame=   50 fps=0.5 q=29.0 size=    1536kB time=00:00:01.94 bitrate=6481.8kbits/s speed=0.0185x
+Composite: frame=   51 fps=0.5 q=29.0 size=    1536kB time=00:00:01.94 bitrate=6481.8kbits/s speed=0.0183x
+Composite: frame=   51 fps=0.5 q=29.0 size=    1536kB time=00:00:01.98 bitrate=6342.4kbits/s speed=0.0186x
+Composite: frame=   51 fps=0.5 q=29.0 size=    1536kB time=00:00:01.98 bitrate=6342.4kbits/s speed=0.0185x
+Composite: frame=   51 fps=0.5 q=29.0 size=    1536kB time=00:00:01.98 bitrate=6342.4kbits/s speed=0.0184x
+Composite: frame=   52 fps=0.5 q=29.0 size=    1536kB time=00:00:01.98 bitrate=6342.4kbits/s speed=0.0183x
+Composite: frame=   52 fps=0.5 q=29.0 size=    1536kB time=00:00:02.00 bitrate=6274.9kbits/s speed=0.0184x
+Composite: frame=   52 fps=0.5 q=29.0 size=    1536kB time=00:00:02.00 bitrate=6274.9kbits/s speed=0.0183x
+Composite: frame=   52 fps=0.5 q=29.0 size=    1536kB time=00:00:02.00 bitrate=6274.9kbits/s speed=0.0182x
+Composite: frame=   53 fps=0.5 q=29.0 size=    1536kB time=00:00:02.00 bitrate=6274.9kbits/s speed=0.0179x
+Composite: frame=   53 fps=0.5 q=29.0 size=    1536kB time=00:00:02.04 bitrate=6144.2kbits/s speed=0.0182x
+Composite: frame=   53 fps=0.5 q=29.0 size=    1536kB time=00:00:02.04 bitrate=6144.2kbits/s speed=0.0181x
+Composite: frame=   54 fps=0.5 q=29.0 size=    1536kB time=00:00:02.04 bitrate=6144.2kbits/s speed=0.0179x
+Composite: frame=   54 fps=0.5 q=29.0 size=    1536kB time=00:00:02.06 bitrate=6080.8kbits/s speed=0.018x
+Composite: frame=   54 fps=0.5 q=29.0 size=    1536kB time=00:00:02.06 bitrate=6080.8kbits/s speed=0.0179x
+Composite: frame=   55 fps=0.5 q=29.0 size=    1536kB time=00:00:02.06 bitrate=6080.8kbits/s speed=0.0178x
+Composite: frame=   55 fps=0.5 q=29.0 size=    1536kB time=00:00:02.11 bitrate=5958.0kbits/s speed=0.018x
+Composite: frame=   55 fps=0.5 q=29.0 size=    1536kB time=00:00:02.11 bitrate=5958.0kbits/s speed=0.018x
+Composite: frame=   55 fps=0.5 q=29.0 size=    1536kB time=00:00:02.11 bitrate=5958.0kbits/s speed=0.0179x
+Composite: frame=   56 fps=0.5 q=29.0 size=    1536kB time=00:00:02.11 bitrate=5958.0kbits/s speed=0.0178x
+Composite: frame=   56 fps=0.5 q=29.0 size=    1536kB time=00:00:02.15 bitrate=5840.0kbits/s speed=0.018x
+Composite: frame=   56 fps=0.5 q=29.0 size=    1536kB time=00:00:02.15 bitrate=5840.0kbits/s speed=0.018x
+Composite: frame=   57 fps=0.5 q=29.0 size=    1536kB time=00:00:02.15 bitrate=5840.0kbits/s speed=0.0178x
+Composite: frame=   57 fps=0.5 q=29.0 size=    1536kB time=00:00:02.17 bitrate=5782.8kbits/s speed=0.0179x
+Composite: frame=   57 fps=0.5 q=29.0 size=    1536kB time=00:00:02.17 bitrate=5782.8kbits/s speed=0.0178x
+Composite: frame=   58 fps=0.5 q=29.0 size=    1536kB time=00:00:02.17 bitrate=5782.8kbits/s speed=0.0176x
+Composite: frame=   58 fps=0.5 q=29.0 size=    1792kB time=00:00:02.21 bitrate=6616.8kbits/s speed=0.0179x
+Composite: frame=   58 fps=0.5 q=29.0 size=    1792kB time=00:00:02.21 bitrate=6616.8kbits/s speed=0.0178x
+Composite: frame=   59 fps=0.5 q=29.0 size=    1792kB time=00:00:02.21 bitrate=6616.8kbits/s speed=0.0177x
+Composite: frame=   59 fps=0.5 q=29.0 size=    1792kB time=00:00:02.24 bitrate=6553.8kbits/s speed=0.0178x
+Composite: frame=   59 fps=0.5 q=29.0 size=    1792kB time=00:00:02.24 bitrate=6553.8kbits/s speed=0.0177x
+Composite: frame=   59 fps=0.5 q=29.0 size=    1792kB time=00:00:02.24 bitrate=6553.8kbits/s speed=0.0176x
+Composite: frame=   60 fps=0.5 q=29.0 size=    1792kB time=00:00:02.24 bitrate=6553.8kbits/s speed=0.0175x
+Composite: frame=   60 fps=0.5 q=29.0 size=    1792kB time=00:00:02.28 bitrate=6431.3kbits/s speed=0.0178x
+Composite: frame=   60 fps=0.5 q=29.0 size=    1792kB time=00:00:02.28 bitrate=6431.3kbits/s speed=0.0177x
+Composite: frame=   60 fps=0.5 q=29.0 size=    1792kB time=00:00:02.28 bitrate=6431.3kbits/s speed=0.0176x
+Composite: frame=   61 fps=0.5 q=29.0 size=    1792kB time=00:00:02.28 bitrate=6431.3kbits/s speed=0.0175x
+Composite: frame=   61 fps=0.5 q=29.0 size=    1792kB time=00:00:02.30 bitrate=6371.7kbits/s speed=0.0176x
+Composite: frame=   61 fps=0.5 q=29.0 size=    1792kB time=00:00:02.30 bitrate=6371.7kbits/s speed=0.0175x
+Composite: frame=   62 fps=0.5 q=29.0 size=    1792kB time=00:00:02.30 bitrate=6371.7kbits/s speed=0.0173x
+Composite: frame=   62 fps=0.5 q=29.0 size=    1792kB time=00:00:02.34 bitrate=6255.9kbits/s speed=0.0176x
+Composite: frame=   63 fps=0.5 q=29.0 size=    1792kB time=00:00:02.34 bitrate=6255.9kbits/s speed=0.0175x    frame=   63 fps=0.5 q=29.0 size=    1792kB time=00:00:02.34 bitrate=6255.9kbits/s speed=0.0174x
+Composite: frame=   63 fps=0.5 q=29.0 size=    1792kB time=00:00:02.38 bitrate=6144.2kbits/s speed=0.0177x
+Composite: frame=   63 fps=0.5 q=29.0 size=    1792kB time=00:00:02.38 bitrate=6144.2kbits/s speed=0.0176x
+Composite: frame=   63 fps=0.5 q=29.0 size=    1792kB time=00:00:02.38 bitrate=6144.2kbits/s speed=0.0175x
+Composite: frame=   64 fps=0.5 q=29.0 size=    1792kB time=00:00:02.38 bitrate=6144.2kbits/s speed=0.0174x
+Composite: frame=   64 fps=0.5 q=29.0 size=    1792kB time=00:00:02.41 bitrate=6089.8kbits/s speed=0.0175x
+Composite: frame=   64 fps=0.5 q=29.0 size=    1792kB time=00:00:02.41 bitrate=6089.8kbits/s speed=0.0174x
+Composite: frame=   64 fps=0.5 q=29.0 size=    1792kB time=00:00:02.41 bitrate=6089.8kbits/s speed=0.0174x
+Composite: frame=   65 fps=0.5 q=29.0 size=    1792kB time=00:00:02.41 bitrate=6089.8kbits/s speed=0.0172x
+Composite: frame=   65 fps=0.5 q=29.0 size=    1792kB time=00:00:02.45 bitrate=5983.9kbits/s speed=0.0175x
+Composite: frame=   65 fps=0.5 q=29.0 size=    1792kB time=00:00:02.45 bitrate=5983.9kbits/s speed=0.0174x
+Composite: frame=   66 fps=0.5 q=29.0 size=    1792kB time=00:00:02.45 bitrate=5983.9kbits/s speed=0.0172x
+Composite: frame=   66 fps=0.5 q=29.0 size=    1792kB time=00:00:02.47 bitrate=5932.3kbits/s speed=0.0173x
+Composite: frame=   67 fps=0.5 q=29.0 size=    1792kB time=00:00:02.47 bitrate=5932.3kbits/s speed=0.0172x
+Composite: frame=   67 fps=0.5 q=29.0 size=    1792kB time=00:00:02.47 bitrate=5932.3kbits/s speed=0.0171x
+Composite: frame=   67 fps=0.5 q=29.0 size=    2048kB time=00:00:02.51 bitrate=6664.8kbits/s speed=0.0174x
+Composite: frame=   67 fps=0.5 q=29.0 size=    2048kB time=00:00:02.51 bitrate=6664.8kbits/s speed=0.0173x
+Composite: frame=   67 fps=0.5 q=29.0 size=    2048kB time=00:00:02.51 bitrate=6664.8kbits/s speed=0.0172x
+Composite: frame=   68 fps=0.5 q=29.0 size=    2048kB time=00:00:02.51 bitrate=6664.8kbits/s speed=0.0171x
+Composite: frame=   68 fps=0.5 q=29.0 size=    2048kB time=00:00:02.53 bitrate=6608.8kbits/s speed=0.0172x
+Composite: frame=   68 fps=0.5 q=29.0 size=    2048kB time=00:00:02.53 bitrate=6608.8kbits/s speed=0.0171x
+Composite: frame=   68 fps=0.5 q=29.0 size=    2048kB time=00:00:02.53 bitrate=6608.8kbits/s speed=0.017x
+Composite: frame=   68 fps=0.5 q=29.0 size=    2048kB time=00:00:02.53 bitrate=6608.8kbits/s speed=0.017x
+Composite: frame=   69 fps=0.5 q=29.0 size=    2048kB time=00:00:02.53 bitrate=6608.8kbits/s speed=0.0167x
+Composite: frame=   69 fps=0.5 q=29.0 size=    2048kB time=00:00:02.58 bitrate=6499.6kbits/s speed=0.0169x
+Composite: frame=   69 fps=0.5 q=29.0 size=    2048kB time=00:00:02.58 bitrate=6499.6kbits/s speed=0.0168x
+Composite: frame=   69 fps=0.4 q=29.0 size=    2048kB time=00:00:02.58 bitrate=6499.6kbits/s speed=0.0168x
+Composite: frame=   70 fps=0.4 q=29.0 size=    2048kB time=00:00:02.58 bitrate=6499.6kbits/s speed=0.0166x
+Composite: frame=   70 fps=0.4 q=29.0 size=    2048kB time=00:00:02.60 bitrate=6446.3kbits/s speed=0.0167x
+Composite: frame=   70 fps=0.4 q=29.0 size=    2048kB time=00:00:02.60 bitrate=6446.3kbits/s speed=0.0166x
+Composite: frame=   71 fps=0.4 q=29.0 size=    2048kB time=00:00:02.60 bitrate=6446.3kbits/s speed=0.0165x
+Composite: frame=   71 fps=0.4 q=29.0 size=    2048kB time=00:00:02.64 bitrate=6342.3kbits/s speed=0.0167x
+Composite: frame=   71 fps=0.4 q=29.0 size=    2048kB time=00:00:02.64 bitrate=6342.3kbits/s speed=0.0166x
+Composite: frame=   71 fps=0.4 q=29.0 size=    2048kB time=00:00:02.64 bitrate=6342.3kbits/s speed=0.0166x
+Composite: frame=   72 fps=0.4 q=29.0 size=    2048kB time=00:00:02.64 bitrate=6342.3kbits/s speed=0.0165x
+Composite: frame=   72 fps=0.4 q=29.0 size=    2048kB time=00:00:02.68 bitrate=6241.7kbits/s speed=0.0167x
+Composite: frame=   72 fps=0.4 q=29.0 size=    2048kB time=00:00:02.68 bitrate=6241.7kbits/s speed=0.0166x
+Composite: frame=   72 fps=0.4 q=29.0 size=    2048kB time=00:00:02.68 bitrate=6241.7kbits/s speed=0.0166x
+Composite: frame=   72 fps=0.4 q=29.0 size=    2048kB time=00:00:02.68 bitrate=6241.7kbits/s speed=0.0165x
+Composite: frame=   72 fps=0.4 q=29.0 size=    2048kB time=00:00:02.68 bitrate=6241.7kbits/s speed=0.0164x
+Composite: frame=   73 fps=0.4 q=29.0 size=    2048kB time=00:00:02.68 bitrate=6241.7kbits/s speed=0.0163x
+Composite: frame=   73 fps=0.4 q=29.0 size=    2048kB time=00:00:02.70 bitrate=6192.5kbits/s speed=0.0164x
+Composite: frame=   73 fps=0.4 q=29.0 size=    2048kB time=00:00:02.70 bitrate=6192.5kbits/s speed=0.0163x
+Composite: frame=   73 fps=0.4 q=29.0 size=    2048kB time=00:00:02.70 bitrate=6192.5kbits/s speed=0.0162x
+Composite: frame=   74 fps=0.4 q=29.0 size=    2048kB time=00:00:02.70 bitrate=6192.5kbits/s speed=0.0161x
+Composite: frame=   74 fps=0.4 q=29.0 size=    2048kB time=00:00:02.75 bitrate=6096.5kbits/s speed=0.0163x
+Composite: frame=   74 fps=0.4 q=29.0 size=    2048kB time=00:00:02.75 bitrate=6096.5kbits/s speed=0.0162x
+Composite: frame=   75 fps=0.4 q=29.0 size=    2048kB time=00:00:02.75 bitrate=6096.5kbits/s speed=0.0161x
+Composite: frame=   75 fps=0.4 q=29.0 size=    2048kB time=00:00:02.77 bitrate=6049.6kbits/s speed=0.0161x
+Composite: frame=   75 fps=0.4 q=29.0 size=    2048kB time=00:00:02.77 bitrate=6049.6kbits/s speed=0.0161x
+Composite: frame=   75 fps=0.4 q=29.0 size=    2048kB time=00:00:02.77 bitrate=6049.6kbits/s speed=0.016x
+Composite: frame=   76 fps=0.4 q=29.0 size=    2048kB time=00:00:02.77 bitrate=6049.6kbits/s speed=0.016x
+Composite: frame=   76 fps=0.4 q=29.0 size=    2048kB time=00:00:02.81 bitrate=5958.0kbits/s speed=0.0162x
+Composite: frame=   76 fps=0.4 q=29.0 size=    2048kB time=00:00:02.81 bitrate=5958.0kbits/s speed=0.0161x
+Composite: frame=   76 fps=0.4 q=29.0 size=    2048kB time=00:00:02.81 bitrate=5958.0kbits/s speed=0.0161x
+Composite: frame=   77 fps=0.4 q=29.0 size=    2048kB time=00:00:02.81 bitrate=5958.0kbits/s speed=0.016x
+Composite: frame=   77 fps=0.4 q=29.0 size=    2048kB time=00:00:02.83 bitrate=5913.2kbits/s speed=0.016x
+Composite: frame=   77 fps=0.4 q=29.0 size=    2048kB time=00:00:02.83 bitrate=5913.2kbits/s speed=0.016x
+Composite: frame=   78 fps=0.4 q=29.0 size=    2048kB time=00:00:02.83 bitrate=5913.2kbits/s speed=0.0159x
+Composite: frame=   78 fps=0.4 q=29.0 size=    2048kB time=00:00:02.83 bitrate=5913.2kbits/s speed=0.0158x
+Composite: frame=   78 fps=0.4 q=29.0 size=    2048kB time=00:00:02.88 bitrate=5825.6kbits/s speed=0.016x
+Composite: frame=   78 fps=0.4 q=29.0 size=    2048kB time=00:00:02.88 bitrate=5825.6kbits/s speed=0.0159x
+Composite: frame=   79 fps=0.4 q=29.0 size=    2048kB time=00:00:02.88 bitrate=5825.6kbits/s speed=0.0158x
+Composite: frame=   79 fps=0.4 q=29.0 size=    2048kB time=00:00:02.92 bitrate=5740.5kbits/s speed=0.016x
+Composite: frame=   80 fps=0.4 q=29.0 size=    2048kB time=00:00:02.92 bitrate=5740.5kbits/s speed=0.0159x
+Composite: frame=   80 fps=0.4 q=29.0 size=    2048kB time=00:00:02.94 bitrate=5698.9kbits/s speed=0.016x
+Composite: frame=   80 fps=0.4 q=29.0 size=    2048kB time=00:00:02.94 bitrate=5698.9kbits/s speed=0.016x
+Composite: frame=   81 fps=0.4 q=29.0 size=    2048kB time=00:00:02.94 bitrate=5698.9kbits/s speed=0.0159x
+Composite: frame=   81 fps=0.4 q=29.0 size=    2048kB time=00:00:02.98 bitrate=5617.5kbits/s speed=0.0161x
+Composite: frame=   81 fps=0.4 q=29.0 size=    2048kB time=00:00:02.98 bitrate=5617.5kbits/s speed=0.016x
+Composite: frame=   81 fps=0.4 q=29.0 size=    2048kB time=00:00:02.98 bitrate=5617.5kbits/s speed=0.016x
+Composite: frame=   82 fps=0.4 q=29.0 size=    2048kB time=00:00:02.98 bitrate=5617.5kbits/s speed=0.0158x
+Composite: frame=   82 fps=0.4 q=29.0 size=    2304kB time=00:00:03.00 bitrate=6274.9kbits/s speed=0.0159x
+Composite: frame=   82 fps=0.4 q=29.0 size=    2304kB time=00:00:03.00 bitrate=6274.9kbits/s speed=0.0158x
+Composite: frame=   82 fps=0.4 q=29.0 size=    2304kB time=00:00:03.00 bitrate=6274.9kbits/s speed=0.0158x
+Composite: frame=   82 fps=0.4 q=29.0 size=    2304kB time=00:00:03.00 bitrate=6274.9kbits/s speed=0.0157x
+Composite: frame=   83 fps=0.4 q=29.0 size=    2304kB time=00:00:03.00 bitrate=6274.9kbits/s speed=0.0155x
+Composite: frame=   83 fps=0.4 q=29.0 size=    2304kB time=00:00:03.05 bitrate=6187.1kbits/s speed=0.0157x
+Composite: frame=   83 fps=0.4 q=29.0 size=    2304kB time=00:00:03.05 bitrate=6187.1kbits/s speed=0.0157x
+Composite: frame=   83 fps=0.4 q=29.0 size=    2304kB time=00:00:03.05 bitrate=6187.1kbits/s speed=0.0156x
+Composite: frame=   84 fps=0.4 q=29.0 size=    2304kB time=00:00:03.05 bitrate=6187.1kbits/s speed=0.0156x
+Composite: frame=   84 fps=0.4 q=29.0 size=    2304kB time=00:00:03.07 bitrate=6144.1kbits/s speed=0.0156x
+Composite: frame=   84 fps=0.4 q=29.0 size=    2304kB time=00:00:03.07 bitrate=6144.1kbits/s speed=0.0156x
+Composite: frame=   85 fps=0.4 q=29.0 size=    2304kB time=00:00:03.07 bitrate=6144.1kbits/s speed=0.0155x
+Composite: frame=   85 fps=0.4 q=29.0 size=    2304kB time=00:00:03.11 bitrate=6060.0kbits/s speed=0.0157x
+Composite: frame=   85 fps=0.4 q=29.0 size=    2304kB time=00:00:03.11 bitrate=6060.0kbits/s speed=0.0157x
+Composite: frame=   85 fps=0.4 q=29.0 size=    2304kB time=00:00:03.11 bitrate=6060.0kbits/s speed=0.0156x
+Composite: frame=   86 fps=0.4 q=29.0 size=    2304kB time=00:00:03.11 bitrate=6060.0kbits/s speed=0.0154x
+Composite: frame=   86 fps=0.4 q=29.0 size=    2304kB time=00:00:03.13 bitrate=6018.7kbits/s speed=0.0155x
+Composite: frame=   86 fps=0.4 q=29.0 size=    2304kB time=00:00:03.13 bitrate=6018.7kbits/s speed=0.0154x
+Composite: frame=   86 fps=0.4 q=29.0 size=    2304kB time=00:00:03.13 bitrate=6018.7kbits/s speed=0.0154x
+Composite: frame=   86 fps=0.4 q=29.0 size=    2304kB time=00:00:03.13 bitrate=6018.7kbits/s speed=0.0154x
+Composite: frame=   86 fps=0.4 q=29.0 size=    2304kB time=00:00:03.13 bitrate=6018.7kbits/s speed=0.0153x
+Composite: frame=   87 fps=0.4 q=29.0 size=    2304kB time=00:00:03.13 bitrate=6018.7kbits/s speed=0.0152x
+Composite: frame=   87 fps=0.4 q=29.0 size=    2304kB time=00:00:03.17 bitrate=5937.9kbits/s speed=0.0154x
+Composite: frame=   87 fps=0.4 q=29.0 size=    2304kB time=00:00:03.17 bitrate=5937.9kbits/s speed=0.0153x
+Composite: frame=   87 fps=0.4 q=29.0 size=    2304kB time=00:00:03.17 bitrate=5937.9kbits/s speed=0.0153x
+Composite: frame=   88 fps=0.4 q=29.0 size=    2304kB time=00:00:03.17 bitrate=5937.9kbits/s speed=0.0152x
+Composite: frame=   88 fps=0.4 q=29.0 size=    2304kB time=00:00:03.22 bitrate=5859.3kbits/s speed=0.0153x
+Composite: frame=   88 fps=0.4 q=29.0 size=    2304kB time=00:00:03.22 bitrate=5859.3kbits/s speed=0.0153x
+Composite: frame=   88 fps=0.4 q=29.0 size=    2304kB time=00:00:03.22 bitrate=5859.3kbits/s speed=0.0152x
+Composite: frame=   89 fps=0.4 q=29.0 size=    2304kB time=00:00:03.22 bitrate=5859.3kbits/s speed=0.0152x
+Composite: frame=   89 fps=0.4 q=29.0 size=    2304kB time=00:00:03.24 bitrate=5820.7kbits/s speed=0.0152x
+Composite: frame=   89 fps=0.4 q=29.0 size=    2304kB time=00:00:03.24 bitrate=5820.7kbits/s speed=0.0152x
+Composite: frame=   89 fps=0.4 q=29.0 size=    2304kB time=00:00:03.24 bitrate=5820.7kbits/s speed=0.0151x
+Composite: frame=   89 fps=0.4 q=29.0 size=    2304kB time=00:00:03.24 bitrate=5820.7kbits/s speed=0.0151x
+Composite: frame=   90 fps=0.4 q=29.0 size=    2304kB time=00:00:03.24 bitrate=5820.7kbits/s speed=0.0149x
+Composite: frame=   90 fps=0.4 q=29.0 size=    2304kB time=00:00:03.28 bitrate=5745.2kbits/s speed=0.0151x
+Composite: frame=   90 fps=0.4 q=29.0 size=    2304kB time=00:00:03.28 bitrate=5745.2kbits/s speed=0.015x
+Composite: frame=   90 fps=0.4 q=29.0 size=    2304kB time=00:00:03.28 bitrate=5745.2kbits/s speed=0.015x
+Composite: frame=   90 fps=0.4 q=29.0 size=    2304kB time=00:00:03.28 bitrate=5745.2kbits/s speed=0.0149x
+Composite: frame=   90 fps=0.4 q=29.0 size=    2304kB time=00:00:03.28 bitrate=5745.2kbits/s speed=0.0148x
+Composite: frame=   91 fps=0.4 q=29.0 size=    2304kB time=00:00:03.28 bitrate=5745.2kbits/s speed=0.0148x
+Composite: frame=   91 fps=0.4 q=29.0 size=    2304kB time=00:00:03.28 bitrate=5745.2kbits/s speed=0.0147x
+Composite: frame=   91 fps=0.4 q=29.0 size=    2304kB time=00:00:03.30 bitrate=5708.1kbits/s speed=0.0147x
+Composite: frame=   91 fps=0.4 q=29.0 size=    2304kB time=00:00:03.30 bitrate=5708.1kbits/s speed=0.0147x
+Composite: frame=   91 fps=0.4 q=29.0 size=    2304kB time=00:00:03.30 bitrate=5708.1kbits/s speed=0.0147x
+Composite: frame=   91 fps=0.4 q=29.0 size=    2304kB time=00:00:03.30 bitrate=5708.1kbits/s speed=0.0146x
+Composite: frame=   92 fps=0.4 q=29.0 size=    2304kB time=00:00:03.30 bitrate=5708.1kbits/s speed=0.0146x
+Composite: frame=   92 fps=0.4 q=29.0 size=    2304kB time=00:00:03.34 bitrate=5635.4kbits/s speed=0.0147x
+Composite: frame=   92 fps=0.4 q=29.0 size=    2304kB time=00:00:03.34 bitrate=5635.4kbits/s speed=0.0147x
+Composite: frame=   93 fps=0.4 q=29.0 size=    2304kB time=00:00:03.34 bitrate=5635.4kbits/s speed=0.0146x
+Composite: frame=   93 fps=0.4 q=29.0 size=    2304kB time=00:00:03.37 bitrate=5599.7kbits/s speed=0.0147x
+Composite: frame=   93 fps=0.4 q=29.0 size=    2304kB time=00:00:03.37 bitrate=5599.7kbits/s speed=0.0146x
+Composite: frame=   93 fps=0.4 q=29.0 size=    2304kB time=00:00:03.37 bitrate=5599.7kbits/s speed=0.0146x
+Composite: frame=   93 fps=0.4 q=29.0 size=    2304kB time=00:00:03.37 bitrate=5599.7kbits/s speed=0.0146x
+Composite: frame=   94 fps=0.4 q=29.0 size=    2304kB time=00:00:03.37 bitrate=5599.7kbits/s speed=0.0144x
+Composite: frame=   94 fps=0.4 q=29.0 size=    2560kB time=00:00:03.41 bitrate=6144.1kbits/s speed=0.0146x
+Composite: frame=   94 fps=0.4 q=29.0 size=    2560kB time=00:00:03.41 bitrate=6144.1kbits/s speed=0.0145x
+Composite: frame=   94 fps=0.4 q=29.0 size=    2560kB time=00:00:03.41 bitrate=6144.1kbits/s speed=0.0145x
+Composite: frame=   94 fps=0.4 q=29.0 size=    2560kB time=00:00:03.41 bitrate=6144.1kbits/s speed=0.0144x
+Composite: frame=   94 fps=0.4 q=29.0 size=    2560kB time=00:00:03.41 bitrate=6144.1kbits/s speed=0.0144x
+Composite: frame=   95 fps=0.4 q=29.0 size=    2560kB time=00:00:03.41 bitrate=6144.1kbits/s speed=0.0143x
+Composite: frame=   95 fps=0.4 q=29.0 size=    2560kB time=00:00:03.45 bitrate=6068.3kbits/s speed=0.0144x
+Composite: frame=   95 fps=0.4 q=29.0 size=    2560kB time=00:00:03.45 bitrate=6068.3kbits/s speed=0.0144x
+Composite: frame=   95 fps=0.4 q=29.0 size=    2560kB time=00:00:03.45 bitrate=6068.3kbits/s speed=0.0143x
+Composite: frame=   95 fps=0.4 q=29.0 size=    2560kB time=00:00:03.45 bitrate=6068.3kbits/s speed=0.0143x
+Composite: frame=   96 fps=0.4 q=29.0 size=    2560kB time=00:00:03.45 bitrate=6068.3kbits/s speed=0.0143x
+Composite: frame=   96 fps=0.4 q=29.0 size=    2560kB time=00:00:03.47 bitrate=6031.0kbits/s speed=0.0143x
+Composite: frame=   96 fps=0.4 q=29.0 size=    2560kB time=00:00:03.47 bitrate=6031.0kbits/s speed=0.0143x
+Composite: frame=   97 fps=0.4 q=29.0 size=    2560kB time=00:00:03.47 bitrate=6031.0kbits/s speed=0.0142x
+Composite: frame=   97 fps=0.4 q=29.0 size=    2560kB time=00:00:03.52 bitrate=5957.9kbits/s speed=0.0144x
+Composite: frame=   97 fps=0.4 q=29.0 size=    2560kB time=00:00:03.52 bitrate=5957.9kbits/s speed=0.0143x
+Composite: frame=   97 fps=0.4 q=29.0 size=    2560kB time=00:00:03.52 bitrate=5957.9kbits/s speed=0.0143x
+Composite: frame=   98 fps=0.4 q=29.0 size=    2560kB time=00:00:03.52 bitrate=5957.9kbits/s speed=0.0142x
+Composite: frame=   98 fps=0.4 q=29.0 size=    2560kB time=00:00:03.54 bitrate=5922.0kbits/s speed=0.0142x
+Composite: frame=   98 fps=0.4 q=29.0 size=    2560kB time=00:00:03.54 bitrate=5922.0kbits/s speed=0.0142x
+Composite: frame=   98 fps=0.4 q=29.0 size=    2560kB time=00:00:03.54 bitrate=5922.0kbits/s speed=0.0141x
+Composite: frame=   98 fps=0.4 q=29.0 size=    2560kB time=00:00:03.54 bitrate=5922.0kbits/s speed=0.0141x
+Composite: frame=   98 fps=0.4 q=29.0 size=    2560kB time=00:00:03.54 bitrate=5922.0kbits/s speed=0.0141x
+Composite: frame=   99 fps=0.4 q=29.0 size=    2560kB time=00:00:03.54 bitrate=5922.0kbits/s speed=0.0139x
+Composite: frame=   99 fps=0.4 q=29.0 size=    2560kB time=00:00:03.58 bitrate=5851.5kbits/s speed=0.0141x
+Composite: frame=   99 fps=0.4 q=29.0 size=    2560kB time=00:00:03.58 bitrate=5851.5kbits/s speed=0.014x
+Composite: frame=   99 fps=0.4 q=29.0 size=    2560kB time=00:00:03.58 bitrate=5851.5kbits/s speed=0.014x
+Composite: frame=   99 fps=0.4 q=29.0 size=    2560kB time=00:00:03.58 bitrate=5851.5kbits/s speed=0.014x
+Composite: frame=  100 fps=0.4 q=29.0 size=    2560kB time=00:00:03.58 bitrate=5851.5kbits/s speed=0.0139x
+Composite: frame=  100 fps=0.4 q=29.0 size=    2560kB time=00:00:03.60 bitrate=5816.9kbits/s speed=0.014x
+Composite: frame=  100 fps=0.4 q=29.0 size=    2560kB time=00:00:03.60 bitrate=5816.9kbits/s speed=0.014x
+Composite: frame=  101 fps=0.4 q=29.0 size=    2560kB time=00:00:03.60 bitrate=5816.9kbits/s speed=0.0139x
+Composite: frame=  101 fps=0.4 q=29.0 size=    2560kB time=00:00:03.64 bitrate=5748.9kbits/s speed=0.014x
+Composite: frame=  101 fps=0.4 q=29.0 size=    2560kB time=00:00:03.64 bitrate=5748.9kbits/s speed=0.014x
+Composite: frame=  101 fps=0.4 q=29.0 size=    2560kB time=00:00:03.64 bitrate=5748.9kbits/s speed=0.014x
+Composite: frame=  101 fps=0.4 q=29.0 size=    2560kB time=00:00:03.64 bitrate=5748.9kbits/s speed=0.0139x
+Composite: frame=  102 fps=0.4 q=29.0 size=    2560kB time=00:00:03.64 bitrate=5748.9kbits/s speed=0.0139x
+Composite: frame=  102 fps=0.4 q=29.0 size=    2560kB time=00:00:03.66 bitrate=5715.5kbits/s speed=0.0139x
+Composite: frame=  102 fps=0.4 q=29.0 size=    2560kB time=00:00:03.66 bitrate=5715.5kbits/s speed=0.0139x
+Composite: frame=  102 fps=0.4 q=29.0 size=    2560kB time=00:00:03.66 bitrate=5715.5kbits/s speed=0.0139x
+Composite: frame=  102 fps=0.4 q=29.0 size=    2560kB time=00:00:03.66 bitrate=5715.5kbits/s speed=0.0138x
+Composite: frame=  102 fps=0.4 q=29.0 size=    2560kB time=00:00:03.66 bitrate=5715.5kbits/s speed=0.0138x
+Composite: frame=  103 fps=0.4 q=29.0 size=    2560kB time=00:00:03.66 bitrate=5715.5kbits/s speed=0.0136x
+Composite: frame=  103 fps=0.4 q=29.0 size=    2560kB time=00:00:03.71 bitrate=5649.8kbits/s speed=0.0138x
+Composite: frame=  103 fps=0.4 q=29.0 size=    2560kB time=00:00:03.71 bitrate=5649.8kbits/s speed=0.0138x
+Composite: frame=  103 fps=0.4 q=29.0 size=    2560kB time=00:00:03.71 bitrate=5649.8kbits/s speed=0.0137x
+Composite: frame=  103 fps=0.4 q=29.0 size=    2560kB time=00:00:03.71 bitrate=5649.8kbits/s speed=0.0137x
+Composite: frame=  103 fps=0.4 q=29.0 size=    2560kB time=00:00:03.71 bitrate=5649.8kbits/s speed=0.0136x
+Composite: frame=  104 fps=0.4 q=29.0 size=    2560kB time=00:00:03.71 bitrate=5649.8kbits/s speed=0.0136x
+Composite: frame=  104 fps=0.4 q=29.0 size=    2560kB time=00:00:03.75 bitrate=5585.6kbits/s speed=0.0137x
+Composite: frame=  104 fps=0.4 q=29.0 size=    2560kB time=00:00:03.75 bitrate=5585.6kbits/s speed=0.0137x
+Composite: frame=  105 fps=0.4 q=29.0 size=    2560kB time=00:00:03.75 bitrate=5585.6kbits/s speed=0.0136x
+Composite: frame=  105 fps=0.4 q=29.0 size=    2560kB time=00:00:03.77 bitrate=5554.0kbits/s speed=0.0137x
+Composite: frame=  105 fps=0.4 q=29.0 size=    2560kB time=00:00:03.77 bitrate=5554.0kbits/s speed=0.0136x
+Composite: frame=  105 fps=0.4 q=29.0 size=    2560kB time=00:00:03.77 bitrate=5554.0kbits/s speed=0.0136x
+Composite: frame=  105 fps=0.4 q=29.0 size=    2560kB time=00:00:03.77 bitrate=5554.0kbits/s speed=0.0136x
+Composite: frame=  106 fps=0.4 q=29.0 size=    2560kB time=00:00:03.77 bitrate=5554.0kbits/s speed=0.0135x
+Composite: frame=  106 fps=0.4 q=29.0 size=    2816kB time=00:00:03.81 bitrate=6041.1kbits/s speed=0.0136x
+Composite: frame=  106 fps=0.4 q=29.0 size=    2816kB time=00:00:03.81 bitrate=6041.1kbits/s speed=0.0135x
+Composite: frame=  106 fps=0.4 q=29.0 size=    2816kB time=00:00:03.81 bitrate=6041.1kbits/s speed=0.0135x
+Composite: frame=  106 fps=0.4 q=29.0 size=    2816kB time=00:00:03.81 bitrate=6041.1kbits/s speed=0.0134x
+Composite: frame=  106 fps=0.4 q=29.0 size=    2816kB time=00:00:03.81 bitrate=6041.1kbits/s speed=0.0134x
+Composite: frame=  107 fps=0.4 q=29.0 size=    2816kB time=00:00:03.81 bitrate=6041.1kbits/s speed=0.0133x
+Composite: frame=  107 fps=0.4 q=29.0 size=    2816kB time=00:00:03.84 bitrate=6007.6kbits/s speed=0.0134x
+Composite: frame=  107 fps=0.4 q=29.0 size=    2816kB time=00:00:03.84 bitrate=6007.6kbits/s speed=0.0133x
+Composite: frame=  107 fps=0.4 q=29.0 size=    2816kB time=00:00:03.84 bitrate=6007.6kbits/s speed=0.0133x
+Composite: frame=  107 fps=0.4 q=29.0 size=    2816kB time=00:00:03.84 bitrate=6007.6kbits/s speed=0.0133x
+Composite: frame=  108 fps=0.4 q=29.0 size=    2816kB time=00:00:03.84 bitrate=6007.6kbits/s speed=0.0132x
+Composite: frame=  108 fps=0.4 q=29.0 size=    2816kB time=00:00:03.88 bitrate=5941.5kbits/s speed=0.0134x
+Composite: frame=  108 fps=0.4 q=29.0 size=    2816kB time=00:00:03.88 bitrate=5941.5kbits/s speed=0.0133x
+Composite: frame=  109 fps=0.4 q=29.0 size=    2816kB time=00:00:03.88 bitrate=5941.5kbits/s speed=0.0133x
+Composite: frame=  109 fps=0.4 q=29.0 size=    2816kB time=00:00:03.90 bitrate=5909.1kbits/s speed=0.0133x
+Composite: frame=  110 fps=0.4 q=29.0 size=    2816kB time=00:00:03.90 bitrate=5909.1kbits/s speed=0.0133x
+Composite: frame=  110 fps=0.4 q=29.0 size=    2816kB time=00:00:03.94 bitrate=5845.2kbits/s speed=0.0134x
+Composite: frame=  110 fps=0.4 q=29.0 size=    2816kB time=00:00:03.94 bitrate=5845.2kbits/s speed=0.0134x
+Composite: frame=  111 fps=0.4 q=29.0 size=    2816kB time=00:00:03.94 bitrate=5845.2kbits/s speed=0.0133x
+Composite: frame=  111 fps=0.4 q=29.0 size=    2816kB time=00:00:03.98 bitrate=5782.7kbits/s speed=0.0134x
+Composite: frame=  111 fps=0.4 q=29.0 size=    2816kB time=00:00:03.98 bitrate=5782.7kbits/s speed=0.0134x
+Composite: frame=  111 fps=0.4 q=29.0 size=    2816kB time=00:00:03.98 bitrate=5782.7kbits/s speed=0.0134x
+Composite: frame=  111 fps=0.4 q=29.0 size=    2816kB time=00:00:03.98 bitrate=5782.7kbits/s speed=0.0133x
+Composite: frame=  112 fps=0.4 q=29.0 size=    2816kB time=00:00:03.98 bitrate=5782.7kbits/s speed=0.0133x
+Composite: frame=  112 fps=0.4 q=29.0 size=    2816kB time=00:00:04.01 bitrate=5751.9kbits/s speed=0.0133x
+Composite: frame=  112 fps=0.4 q=29.0 size=    2816kB time=00:00:04.01 bitrate=5751.9kbits/s speed=0.0133x
+Composite: frame=  112 fps=0.4 q=29.0 size=    2816kB time=00:00:04.01 bitrate=5751.9kbits/s speed=0.0133x
+Composite: frame=  112 fps=0.4 q=29.0 size=    2816kB time=00:00:04.01 bitrate=5751.9kbits/s speed=0.0132x
+Composite: frame=  113 fps=0.4 q=29.0 size=    2816kB time=00:00:04.01 bitrate=5751.9kbits/s speed=0.0132x
+Composite: frame=  113 fps=0.4 q=29.0 size=    2816kB time=00:00:04.05 bitrate=5691.4kbits/s speed=0.0133x
+Composite: frame=  114 fps=0.4 q=29.0 size=    2816kB time=00:00:04.05 bitrate=5691.4kbits/s speed=0.0132x
+Composite: frame=  114 fps=0.4 q=29.0 size=    2816kB time=00:00:04.07 bitrate=5661.6kbits/s speed=0.0133x
+Composite: frame=  114 fps=0.4 q=29.0 size=    2816kB time=00:00:04.07 bitrate=5661.6kbits/s speed=0.0133x
+Composite: frame=  114 fps=0.4 q=29.0 size=    2816kB time=00:00:04.07 bitrate=5661.6kbits/s speed=0.0132x
+Composite: frame=  115 fps=0.4 q=29.0 size=    2816kB time=00:00:04.07 bitrate=5661.6kbits/s speed=0.0132x
+Composite: frame=  115 fps=0.4 q=29.0 size=    2816kB time=00:00:04.11 bitrate=5602.9kbits/s speed=0.0133x
+Composite: frame=  115 fps=0.4 q=29.0 size=    2816kB time=00:00:04.11 bitrate=5602.9kbits/s speed=0.0133x
+Composite: frame=  115 fps=0.4 q=29.0 size=    2816kB time=00:00:04.11 bitrate=5602.9kbits/s speed=0.0132x
+Composite: frame=  115 fps=0.4 q=29.0 size=    2816kB time=00:00:04.11 bitrate=5602.9kbits/s speed=0.0132x
+Composite: frame=  116 fps=0.4 q=29.0 size=    2816kB time=00:00:04.11 bitrate=5602.9kbits/s speed=0.0132x
+Composite: frame=  116 fps=0.4 q=29.0 size=    2816kB time=00:00:04.13 bitrate=5574.0kbits/s speed=0.0132x
+Composite: frame=  116 fps=0.4 q=29.0 size=    2816kB time=00:00:04.13 bitrate=5574.0kbits/s speed=0.0132x
+Composite: frame=  116 fps=0.4 q=29.0 size=    2816kB time=00:00:04.13 bitrate=5574.0kbits/s speed=0.0132x
+Composite: frame=  117 fps=0.4 q=29.0 size=    2816kB time=00:00:04.13 bitrate=5574.0kbits/s speed=0.0131x
+Composite: frame=  117 fps=0.4 q=29.0 size=    2816kB time=00:00:04.18 bitrate=5517.2kbits/s speed=0.0132x
+Composite: frame=  117 fps=0.4 q=29.0 size=    2816kB time=00:00:04.18 bitrate=5517.2kbits/s speed=0.0132x
+Composite: frame=  117 fps=0.4 q=29.0 size=    2816kB time=00:00:04.18 bitrate=5517.2kbits/s speed=0.0132x
+Composite: frame=  118 fps=0.4 q=29.0 size=    2816kB time=00:00:04.18 bitrate=5517.2kbits/s speed=0.0131x
+Composite: frame=  118 fps=0.4 q=29.0 size=    3072kB time=00:00:04.20 bitrate=5988.2kbits/s speed=0.0131x
+Composite: frame=  118 fps=0.4 q=29.0 size=    3072kB time=00:00:04.20 bitrate=5988.2kbits/s speed=0.0131x
+Composite: frame=  119 fps=0.4 q=29.0 size=    3072kB time=00:00:04.20 bitrate=5988.2kbits/s speed=0.013x
+Composite: frame=  119 fps=0.4 q=29.0 size=    3072kB time=00:00:04.24 bitrate=5928.0kbits/s speed=0.0132x
+Composite: frame=  119 fps=0.4 q=29.0 size=    3072kB time=00:00:04.24 bitrate=5928.0kbits/s speed=0.0131x
+Composite: frame=  119 fps=0.4 q=29.0 size=    3072kB time=00:00:04.24 bitrate=5928.0kbits/s speed=0.0131x
+Composite: frame=  120 fps=0.4 q=29.0 size=    3072kB time=00:00:04.24 bitrate=5928.0kbits/s speed=0.0131x
+Composite: frame=  120 fps=0.4 q=29.0 size=    3072kB time=00:00:04.28 bitrate=5869.0kbits/s speed=0.0132x
+Composite: frame=  120 fps=0.4 q=29.0 size=    3072kB time=00:00:04.28 bitrate=5869.0kbits/s speed=0.0131x
+Composite: frame=  120 fps=0.4 q=29.0 size=    3072kB time=00:00:04.28 bitrate=5869.0kbits/s speed=0.0131x
+Composite: frame=  121 fps=0.4 q=29.0 size=    3072kB time=00:00:04.28 bitrate=5869.0kbits/s speed=0.013x
+Composite: frame=  121 fps=0.4 q=29.0 size=    3072kB time=00:00:04.30 bitrate=5839.9kbits/s speed=0.0131x
+Composite: frame=  121 fps=0.4 q=29.0 size=    3072kB time=00:00:04.30 bitrate=5839.9kbits/s speed=0.0131x
+Composite: frame=  121 fps=0.4 q=29.0 size=    3072kB time=00:00:04.30 bitrate=5839.9kbits/s speed=0.013x
+Composite: frame=  121 fps=0.4 q=29.0 size=    3072kB time=00:00:04.30 bitrate=5839.9kbits/s speed=0.013x
+Composite: frame=  122 fps=0.4 q=29.0 size=    3072kB time=00:00:04.30 bitrate=5839.9kbits/s speed=0.013x    frame=  122 fps=0.4 q=29.0 size=    3072kB time=00:00:04.30 bitrate=5839.9kbits/s speed=0.0129x
+Composite: frame=  122 fps=0.4 q=29.0 size=    3072kB time=00:00:04.35 bitrate=5782.7kbits/s speed=0.013x
+Composite: frame=  122 fps=0.4 q=29.0 size=    3072kB time=00:00:04.35 bitrate=5782.7kbits/s speed=0.013x
+Composite: frame=  123 fps=0.4 q=29.0 size=    3072kB time=00:00:04.35 bitrate=5782.7kbits/s speed=0.0129x
+Composite: frame=  123 fps=0.4 q=29.0 size=    3072kB time=00:00:04.37 bitrate=5754.5kbits/s speed=0.013x
+Composite: frame=  123 fps=0.4 q=29.0 size=    3072kB time=00:00:04.37 bitrate=5754.5kbits/s speed=0.013x
+Composite: frame=  123 fps=0.4 q=29.0 size=    3072kB time=00:00:04.37 bitrate=5754.5kbits/s speed=0.0129x
+Composite: frame=  124 fps=0.4 q=29.0 size=    3072kB time=00:00:04.37 bitrate=5754.5kbits/s speed=0.0129x
+Composite: frame=  124 fps=0.4 q=29.0 size=    3072kB time=00:00:04.37 bitrate=5754.5kbits/s speed=0.0129x
+Composite: frame=  124 fps=0.4 q=29.0 size=    3072kB time=00:00:04.41 bitrate=5698.9kbits/s speed=0.013x
+Composite: frame=  124 fps=0.4 q=29.0 size=    3072kB time=00:00:04.41 bitrate=5698.9kbits/s speed=0.013x
+Composite: frame=  124 fps=0.4 q=29.0 size=    3072kB time=00:00:04.41 bitrate=5698.9kbits/s speed=0.0129x
+Composite: frame=  124 fps=0.4 q=29.0 size=    3072kB time=00:00:04.41 bitrate=5698.9kbits/s speed=0.0129x
+Composite: frame=  125 fps=0.4 q=29.0 size=    3072kB time=00:00:04.41 bitrate=5698.9kbits/s speed=0.0129x
+Composite: frame=  125 fps=0.4 q=29.0 size=    3072kB time=00:00:04.43 bitrate=5671.5kbits/s speed=0.0129x
+Composite: frame=  125 fps=0.4 q=29.0 size=    3072kB time=00:00:04.43 bitrate=5671.5kbits/s speed=0.0129x
+Composite: frame=  125 fps=0.4 q=29.0 size=    3072kB time=00:00:04.43 bitrate=5671.5kbits/s speed=0.0129x
+Composite: frame=  126 fps=0.4 q=29.0 size=    3072kB time=00:00:04.43 bitrate=5671.5kbits/s speed=0.0128x
+Composite: frame=  126 fps=0.4 q=29.0 size=    3072kB time=00:00:04.48 bitrate=5617.5kbits/s speed=0.0129x
+Composite: frame=  126 fps=0.4 q=29.0 size=    3072kB time=00:00:04.48 bitrate=5617.5kbits/s speed=0.0129x
+Composite: frame=  127 fps=0.4 q=29.0 size=    3072kB time=00:00:04.48 bitrate=5617.5kbits/s speed=0.0128x
+Composite: frame=  127 fps=0.4 q=29.0 size=    3072kB time=00:00:04.52 bitrate=5564.5kbits/s speed=0.0129x
+Composite: frame=  127 fps=0.4 q=29.0 size=    3072kB time=00:00:04.52 bitrate=5564.5kbits/s speed=0.0129x
+Composite: frame=  127 fps=0.4 q=29.0 size=    3072kB time=00:00:04.52 bitrate=5564.5kbits/s speed=0.0129x
+Composite: frame=  127 fps=0.4 q=29.0 size=    3072kB time=00:00:04.52 bitrate=5564.5kbits/s speed=0.0129x
+Composite: frame=  128 fps=0.4 q=29.0 size=    3072kB time=00:00:04.52 bitrate=5564.5kbits/s speed=0.0128x
+Composite: frame=  128 fps=0.4 q=29.0 size=    3072kB time=00:00:04.54 bitrate=5538.3kbits/s speed=0.0129x
+Composite: frame=  128 fps=0.4 q=29.0 size=    3072kB time=00:00:04.54 bitrate=5538.3kbits/s speed=0.0128x
+Composite: frame=  128 fps=0.4 q=29.0 size=    3072kB time=00:00:04.54 bitrate=5538.3kbits/s speed=0.0128x
+Composite: frame=  129 fps=0.4 q=29.0 size=    3072kB time=00:00:04.54 bitrate=5538.3kbits/s speed=0.0128x
+Composite: frame=  129 fps=0.4 q=29.0 size=    3072kB time=00:00:04.54 bitrate=5538.3kbits/s speed=0.0128x
+Composite: frame=  129 fps=0.4 q=29.0 size=    3072kB time=00:00:04.58 bitrate=5486.8kbits/s speed=0.0129x
+Composite: frame=  129 fps=0.4 q=29.0 size=    3072kB time=00:00:04.58 bitrate=5486.8kbits/s speed=0.0128x
+Composite: frame=  129 fps=0.4 q=29.0 size=    3072kB time=00:00:04.58 bitrate=5486.8kbits/s speed=0.0128x
+Composite: frame=  130 fps=0.4 q=29.0 size=    3072kB time=00:00:04.58 bitrate=5486.8kbits/s speed=0.0127x
+Composite: frame=  130 fps=0.4 q=29.0 size=    3328kB time=00:00:04.60 bitrate=5916.5kbits/s speed=0.0128x
+Composite: frame=  130 fps=0.4 q=29.0 size=    3328kB time=00:00:04.60 bitrate=5916.5kbits/s speed=0.0128x
+Composite: frame=  131 fps=0.4 q=29.0 size=    3328kB time=00:00:04.60 bitrate=5916.5kbits/s speed=0.0127x
+Composite: frame=  131 fps=0.4 q=29.0 size=    3328kB time=00:00:04.65 bitrate=5862.2kbits/s speed=0.0128x
+Composite: frame=  131 fps=0.4 q=29.0 size=    3328kB time=00:00:04.65 bitrate=5862.2kbits/s speed=0.0128x
+Composite: frame=  131 fps=0.4 q=29.0 size=    3328kB time=00:00:04.65 bitrate=5862.2kbits/s speed=0.0128x
+Composite: frame=  131 fps=0.4 q=29.0 size=    3328kB time=00:00:04.65 bitrate=5862.2kbits/s speed=0.0128x
+Composite: frame=  131 fps=0.4 q=29.0 size=    3328kB time=00:00:04.65 bitrate=5862.2kbits/s speed=0.0127x
+Composite: frame=  132 fps=0.4 q=29.0 size=    3328kB time=00:00:04.65 bitrate=5862.2kbits/s speed=0.0127x
+Composite: frame=  132 fps=0.4 q=29.0 size=    3328kB time=00:00:04.67 bitrate=5835.5kbits/s speed=0.0127x
+Composite: frame=  132 fps=0.4 q=29.0 size=    3328kB time=00:00:04.67 bitrate=5835.5kbits/s speed=0.0127x
+Composite: frame=  132 fps=0.4 q=29.0 size=    3328kB time=00:00:04.67 bitrate=5835.5kbits/s speed=0.0127x
+Composite: frame=  132 fps=0.4 q=29.0 size=    3328kB time=00:00:04.67 bitrate=5835.5kbits/s speed=0.0127x
+Composite: frame=  132 fps=0.4 q=29.0 size=    3328kB time=00:00:04.67 bitrate=5835.5kbits/s speed=0.0127x
+Composite: frame=  133 fps=0.4 q=29.0 size=    3328kB time=00:00:04.67 bitrate=5835.5kbits/s speed=0.0126x
+Composite: frame=  133 fps=0.4 q=29.0 size=    3328kB time=00:00:04.71 bitrate=5782.7kbits/s speed=0.0127x
+Composite: frame=  133 fps=0.4 q=29.0 size=    3328kB time=00:00:04.71 bitrate=5782.7kbits/s speed=0.0127x
+Composite: frame=  133 fps=0.4 q=29.0 size=    3328kB time=00:00:04.71 bitrate=5782.7kbits/s speed=0.0127x
+Composite: frame=  134 fps=0.4 q=29.0 size=    3328kB time=00:00:04.71 bitrate=5782.7kbits/s speed=0.0126x
+Composite: frame=  134 fps=0.4 q=29.0 size=    3328kB time=00:00:04.73 bitrate=5756.6kbits/s speed=0.0127x
+Composite: frame=  134 fps=0.4 q=29.0 size=    3328kB time=00:00:04.73 bitrate=5756.6kbits/s speed=0.0126x
+{"ts":1783882667416,"level":"info","event":"highlight_triggered","session":"CB5A7C","username":"Nemean","clipDuration":30000,"lockMs":18000,"highlightCount":13}
+Composite: frame=  135 fps=0.4 q=29.0 size=    3328kB time=00:00:04.73 bitrate=5756.6kbits/s speed=0.0126x
+Composite: frame=  135 fps=0.4 q=29.0 size=    3328kB time=00:00:04.73 bitrate=5756.6kbits/s speed=0.0126x
+Composite: frame=  135 fps=0.4 q=29.0 size=    3328kB time=00:00:04.77 bitrate=5705.2kbits/s speed=0.0127x
+Composite: frame=  135 fps=0.4 q=29.0 size=    3328kB time=00:00:04.77 bitrate=5705.2kbits/s speed=0.0127x
+Composite: frame=  135 fps=0.4 q=29.0 size=    3328kB time=00:00:04.77 bitrate=5705.2kbits/s speed=0.0126x
+Composite: frame=  135 fps=0.4 q=29.0 size=    3328kB time=00:00:04.77 bitrate=5705.2kbits/s speed=0.0126x
+Composite: frame=  136 fps=0.4 q=29.0 size=    3328kB time=00:00:04.77 bitrate=5705.2kbits/s speed=0.0126x
+Composite: frame=  136 fps=0.4 q=29.0 size=    3328kB time=00:00:04.82 bitrate=5654.7kbits/s speed=0.0127x
+Composite: frame=  136 fps=0.4 q=29.0 size=    3328kB time=00:00:04.82 bitrate=5654.7kbits/s speed=0.0126x
+Composite: frame=  136 fps=0.4 q=29.0 size=    3328kB time=00:00:04.82 bitrate=5654.7kbits/s speed=0.0126x
+Composite: frame=  137 fps=0.4 q=29.0 size=    3328kB time=00:00:04.82 bitrate=5654.7kbits/s speed=0.0126x
+Composite: frame=  137 fps=0.4 q=29.0 size=    3328kB time=00:00:04.82 bitrate=5654.7kbits/s speed=0.0126x
+Composite: frame=  137 fps=0.4 q=29.0 size=    3328kB time=00:00:04.84 bitrate=5629.8kbits/s speed=0.0126x
+Composite: frame=  137 fps=0.4 q=29.0 size=    3328kB time=00:00:04.84 bitrate=5629.8kbits/s speed=0.0126x
+Composite: frame=  137 fps=0.4 q=29.0 size=    3328kB time=00:00:04.84 bitrate=5629.8kbits/s speed=0.0126x
+Composite: frame=  138 fps=0.4 q=29.0 size=    3328kB time=00:00:04.84 bitrate=5629.8kbits/s speed=0.0125x
+Composite: frame=  138 fps=0.4 q=29.0 size=    3328kB time=00:00:04.88 bitrate=5580.7kbits/s speed=0.0126x
+Composite: frame=  138 fps=0.4 q=29.0 size=    3328kB time=00:00:04.88 bitrate=5580.7kbits/s speed=0.0126x
+Composite: frame=  139 fps=0.4 q=29.0 size=    3328kB time=00:00:04.88 bitrate=5580.7kbits/s speed=0.0125x
+Composite: frame=  139 fps=0.4 q=29.0 size=    3328kB time=00:00:04.90 bitrate=5556.4kbits/s speed=0.0126x
+Composite: frame=  140 fps=0.4 q=29.0 size=    3328kB time=00:00:04.90 bitrate=5556.4kbits/s speed=0.0125x
+Composite: frame=  140 fps=0.4 q=29.0 size=    3328kB time=00:00:04.94 bitrate=5508.5kbits/s speed=0.0126x
+Composite: frame=  140 fps=0.4 q=29.0 size=    3328kB time=00:00:04.94 bitrate=5508.5kbits/s speed=0.0126x
+Composite: frame=  140 fps=0.4 q=29.0 size=    3328kB time=00:00:04.94 bitrate=5508.5kbits/s speed=0.0126x
+Composite: frame=  141 fps=0.4 q=29.0 size=    3328kB time=00:00:04.94 bitrate=5508.5kbits/s speed=0.0125x
+Composite: frame=  141 fps=0.4 q=29.0 size=    3328kB time=00:00:04.97 bitrate=5484.8kbits/s speed=0.0126x
+Composite: frame=  141 fps=0.4 q=29.0 size=    3328kB time=00:00:04.97 bitrate=5484.8kbits/s speed=0.0126x
+Composite: frame=  141 fps=0.4 q=29.0 size=    3328kB time=00:00:04.97 bitrate=5484.8kbits/s speed=0.0125x
+Composite: frame=  141 fps=0.4 q=29.0 size=    3328kB time=00:00:04.97 bitrate=5484.8kbits/s speed=0.0125x
+Composite: frame=  142 fps=0.4 q=29.0 size=    3328kB time=00:00:04.97 bitrate=5484.8kbits/s speed=0.0125x
+Composite: frame=  142 fps=0.4 q=29.0 size=    3584kB time=00:00:05.01 bitrate=5856.5kbits/s speed=0.0125x
+Composite: frame=  142 fps=0.4 q=29.0 size=    3584kB time=00:00:05.01 bitrate=5856.5kbits/s speed=0.0125x
+Composite: frame=  142 fps=0.4 q=29.0 size=    3584kB time=00:00:05.01 bitrate=5856.5kbits/s speed=0.0125x
+Composite: frame=  142 fps=0.4 q=29.0 size=    3584kB time=00:00:05.01 bitrate=5856.5kbits/s speed=0.0125x
+Composite: frame=  142 fps=0.4 q=29.0 size=    3584kB time=00:00:05.01 bitrate=5856.5kbits/s speed=0.0124x
+Composite: frame=  143 fps=0.4 q=29.0 size=    3584kB time=00:00:05.01 bitrate=5856.5kbits/s speed=0.0124x
+Composite: frame=  143 fps=0.4 q=29.0 size=    3584kB time=00:00:05.05 bitrate=5807.1kbits/s speed=0.0125x
+Composite: frame=  143 fps=0.4 q=29.0 size=    3584kB time=00:00:05.05 bitrate=5807.1kbits/s speed=0.0125x
+Composite: frame=  143 fps=0.4 q=29.0 size=    3584kB time=00:00:05.05 bitrate=5807.1kbits/s speed=0.0124x
+Composite: frame=  143 fps=0.4 q=29.0 size=    3584kB time=00:00:05.05 bitrate=5807.1kbits/s speed=0.0124x
+Composite: frame=  144 fps=0.4 q=29.0 size=    3584kB time=00:00:05.05 bitrate=5807.1kbits/s speed=0.0124x
+Composite: frame=  144 fps=0.4 q=29.0 size=    3584kB time=00:00:05.07 bitrate=5782.7kbits/s speed=0.0124x
+Composite: frame=  144 fps=0.4 q=29.0 size=    3584kB time=00:00:05.07 bitrate=5782.7kbits/s speed=0.0124x
+Composite: frame=  145 fps=0.4 q=29.0 size=    3584kB time=00:00:05.07 bitrate=5782.7kbits/s speed=0.0124x
+Composite: frame=  145 fps=0.4 q=29.0 size=    3584kB time=00:00:05.12 bitrate=5734.5kbits/s speed=0.0125x
+Composite: frame=  145 fps=0.4 q=29.0 size=    3584kB time=00:00:05.12 bitrate=5734.5kbits/s speed=0.0125x
+Composite: frame=  145 fps=0.4 q=29.0 size=    3584kB time=00:00:05.12 bitrate=5734.5kbits/s speed=0.0124x
+Composite: frame=  145 fps=0.4 q=29.0 size=    3584kB time=00:00:05.12 bitrate=5734.5kbits/s speed=0.0124x
+Composite: frame=  146 fps=0.4 q=29.0 size=    3584kB time=00:00:05.12 bitrate=5734.5kbits/s speed=0.0124x
+Composite: frame=  146 fps=0.4 q=29.0 size=    3584kB time=00:00:05.12 bitrate=5734.5kbits/s speed=0.0123x
+Composite: frame=  146 fps=0.4 q=29.0 size=    3584kB time=00:00:05.14 bitrate=5710.7kbits/s speed=0.0124x
+Composite: frame=  146 fps=0.4 q=29.0 size=    3584kB time=00:00:05.14 bitrate=5710.7kbits/s speed=0.0124x
+Composite: frame=  146 fps=0.4 q=29.0 size=    3584kB time=00:00:05.14 bitrate=5710.7kbits/s speed=0.0123x
+Composite: frame=  146 fps=0.3 q=29.0 size=    3584kB time=00:00:05.14 bitrate=5710.7kbits/s speed=0.0123x
+Composite: frame=  147 fps=0.4 q=29.0 size=    3584kB time=00:00:05.14 bitrate=5710.7kbits/s speed=0.0123x
+Composite: frame=  147 fps=0.3 q=29.0 size=    3584kB time=00:00:05.18 bitrate=5663.7kbits/s speed=0.0123x
+Composite: frame=  147 fps=0.3 q=29.0 size=    3584kB time=00:00:05.18 bitrate=5663.7kbits/s speed=0.0123x
+Composite: frame=  147 fps=0.3 q=29.0 size=    3584kB time=00:00:05.18 bitrate=5663.7kbits/s speed=0.0123x
+Composite: frame=  148 fps=0.4 q=29.0 size=    3584kB time=00:00:05.18 bitrate=5663.7kbits/s speed=0.0123x
+Composite: frame=  148 fps=0.4 q=29.0 size=    3584kB time=00:00:05.20 bitrate=5640.5kbits/s speed=0.0123x
+Composite: frame=  148 fps=0.3 q=29.0 size=    3584kB time=00:00:05.20 bitrate=5640.5kbits/s speed=0.0123x
+Composite: frame=  149 fps=0.4 q=29.0 size=    3584kB time=00:00:05.20 bitrate=5640.5kbits/s speed=0.0123x    frame=  149 fps=0.4 q=29.0 size=    3584kB time=00:00:05.20 bitrate=5640.5kbits/s speed=0.0123x
+Composite: frame=  149 fps=0.4 q=29.0 size=    3584kB time=00:00:05.24 bitrate=5594.6kbits/s speed=0.0123x
+Composite: frame=  149 fps=0.3 q=29.0 size=    3584kB time=00:00:05.24 bitrate=5594.6kbits/s speed=0.0123x
+Composite: frame=  149 fps=0.3 q=29.0 size=    3584kB time=00:00:05.24 bitrate=5594.6kbits/s speed=0.0123x
+Composite: frame=  149 fps=0.3 q=29.0 size=    3584kB time=00:00:05.24 bitrate=5594.6kbits/s speed=0.0123x
+Composite: frame=  150 fps=0.3 q=29.0 size=    3584kB time=00:00:05.24 bitrate=5594.6kbits/s speed=0.0122x
+Composite: frame=  150 fps=0.3 q=29.0 size=    3584kB time=00:00:05.26 bitrate=5572.0kbits/s speed=0.0123x
+Composite: frame=  150 fps=0.3 q=29.0 size=    3584kB time=00:00:05.26 bitrate=5572.0kbits/s speed=0.0122x
+Composite: frame=  150 fps=0.3 q=29.0 size=    3584kB time=00:00:05.26 bitrate=5572.0kbits/s speed=0.0122x
+Composite: frame=  150 fps=0.3 q=29.0 size=    3584kB time=00:00:05.26 bitrate=5572.0kbits/s speed=0.0122x
+Composite: frame=  150 fps=0.3 q=29.0 size=    3584kB time=00:00:05.26 bitrate=5572.0kbits/s speed=0.0122x
+Composite: frame=  151 fps=0.3 q=29.0 size=    3584kB time=00:00:05.26 bitrate=5572.0kbits/s speed=0.0121x
+Composite: frame=  151 fps=0.3 q=29.0 size=    3584kB time=00:00:05.31 bitrate=5527.2kbits/s speed=0.0122x
+Composite: frame=  151 fps=0.3 q=29.0 size=    3584kB time=00:00:05.31 bitrate=5527.2kbits/s speed=0.0122x
+Composite: frame=  151 fps=0.3 q=29.0 size=    3584kB time=00:00:05.31 bitrate=5527.2kbits/s speed=0.0122x
+Composite: frame=  151 fps=0.3 q=29.0 size=    3584kB time=00:00:05.31 bitrate=5527.2kbits/s speed=0.0121x
+Composite: frame=  152 fps=0.3 q=29.0 size=    3584kB time=00:00:05.31 bitrate=5527.2kbits/s speed=0.0121x
+Composite: frame=  152 fps=0.3 q=29.0 size=    3584kB time=00:00:05.35 bitrate=5483.2kbits/s speed=0.0122x
+Composite: frame=  152 fps=0.3 q=29.0 size=    3584kB time=00:00:05.35 bitrate=5483.2kbits/s speed=0.0122x
+Composite: frame=  153 fps=0.3 q=29.0 size=    3584kB time=00:00:05.35 bitrate=5483.2kbits/s speed=0.0121x
+Composite: frame=  153 fps=0.3 q=29.0 size=    3584kB time=00:00:05.37 bitrate=5461.4kbits/s speed=0.0122x
+Composite: frame=  153 fps=0.3 q=29.0 size=    3584kB time=00:00:05.37 bitrate=5461.4kbits/s speed=0.0122x
+Composite: frame=  153 fps=0.3 q=29.0 size=    3584kB time=00:00:05.37 bitrate=5461.4kbits/s speed=0.0121x
+Composite: frame=  153 fps=0.3 q=29.0 size=    3584kB time=00:00:05.37 bitrate=5461.4kbits/s speed=0.0121x
+Composite: frame=  153 fps=0.3 q=29.0 size=    3584kB time=00:00:05.37 bitrate=5461.4kbits/s speed=0.0121x
+Composite: frame=  154 fps=0.3 q=29.0 size=    3584kB time=00:00:05.37 bitrate=5461.4kbits/s speed=0.0121x
+Composite: frame=  154 fps=0.3 q=29.0 size=    3584kB time=00:00:05.41 bitrate=5418.4kbits/s speed=0.0121x
+Composite: frame=  154 fps=0.3 q=29.0 size=    3584kB time=00:00:05.41 bitrate=5418.4kbits/s speed=0.0121x
+Composite: frame=  154 fps=0.3 q=29.0 size=    3584kB time=00:00:05.41 bitrate=5418.4kbits/s speed=0.0121x
+Composite: frame=  154 fps=0.3 q=29.0 size=    3584kB time=00:00:05.41 bitrate=5418.4kbits/s speed=0.0121x
+Composite: frame=  154 fps=0.3 q=29.0 size=    3584kB time=00:00:05.41 bitrate=5418.4kbits/s speed=0.0121x
+Composite: frame=  154 fps=0.3 q=29.0 size=    3584kB time=00:00:05.41 bitrate=5418.4kbits/s speed=0.0121x
+Composite: frame=  155 fps=0.3 q=29.0 size=    3584kB time=00:00:05.41 bitrate=5418.4kbits/s speed=0.012x
+Composite: frame=  155 fps=0.3 q=29.0 size=    3584kB time=00:00:05.44 bitrate=5397.2kbits/s speed=0.012x
+Composite: frame=  155 fps=0.3 q=29.0 size=    3584kB time=00:00:05.44 bitrate=5397.2kbits/s speed=0.012x
+Composite: frame=  155 fps=0.3 q=29.0 size=    3584kB time=00:00:05.44 bitrate=5397.2kbits/s speed=0.012x
+Composite: frame=  155 fps=0.3 q=29.0 size=    3584kB time=00:00:05.44 bitrate=5397.2kbits/s speed=0.012x
+Composite: frame=  155 fps=0.3 q=29.0 size=    3584kB time=00:00:05.44 bitrate=5397.2kbits/s speed=0.0119x
+Composite: frame=  156 fps=0.3 q=29.0 size=    3584kB time=00:00:05.44 bitrate=5397.2kbits/s speed=0.0119x
+Composite: frame=  156 fps=0.3 q=29.0 size=    3584kB time=00:00:05.48 bitrate=5355.2kbits/s speed=0.012x
+Composite: frame=  156 fps=0.3 q=29.0 size=    3584kB time=00:00:05.48 bitrate=5355.2kbits/s speed=0.012x
+Composite: frame=  157 fps=0.3 q=29.0 size=    3584kB time=00:00:05.48 bitrate=5355.2kbits/s speed=0.012x
+Composite: frame=  157 fps=0.3 q=29.0 size=    3584kB time=00:00:05.48 bitrate=5355.2kbits/s speed=0.0119x
+Composite: frame=  157 fps=0.3 q=29.0 size=    3840kB time=00:00:05.50 bitrate=5715.4kbits/s speed=0.012x
+Composite: frame=  157 fps=0.3 q=29.0 size=    3840kB time=00:00:05.50 bitrate=5715.4kbits/s speed=0.012x
+Composite: frame=  157 fps=0.3 q=29.0 size=    3840kB time=00:00:05.50 bitrate=5715.4kbits/s speed=0.0119x
+Composite: frame=  157 fps=0.3 q=29.0 size=    3840kB time=00:00:05.50 bitrate=5715.4kbits/s speed=0.0119x
+Composite: frame=  158 fps=0.3 q=29.0 size=    3840kB time=00:00:05.50 bitrate=5715.4kbits/s speed=0.0119x
+Composite: frame=  158 fps=0.3 q=29.0 size=    3840kB time=00:00:05.54 bitrate=5671.5kbits/s speed=0.0119x
+Composite: frame=  158 fps=0.3 q=29.0 size=    3840kB time=00:00:05.54 bitrate=5671.5kbits/s speed=0.0119x
+Composite: frame=  158 fps=0.3 q=29.0 size=    3840kB time=00:00:05.54 bitrate=5671.5kbits/s speed=0.0119x
+Composite: frame=  158 fps=0.3 q=29.0 size=    3840kB time=00:00:05.54 bitrate=5671.5kbits/s speed=0.0119x
+Composite: frame=  158 fps=0.3 q=29.0 size=    3840kB time=00:00:05.54 bitrate=5671.5kbits/s speed=0.0119x
+Composite: frame=  158 fps=0.3 q=29.0 size=    3840kB time=00:00:05.54 bitrate=5671.5kbits/s speed=0.0118x
+Composite: frame=  159 fps=0.3 q=29.0 size=    3840kB time=00:00:05.54 bitrate=5671.5kbits/s speed=0.0118x
+Composite: frame=  159 fps=0.3 q=29.0 size=    3840kB time=00:00:05.58 bitrate=5628.2kbits/s speed=0.0119x
+Composite: frame=  159 fps=0.3 q=29.0 size=    3840kB time=00:00:05.58 bitrate=5628.2kbits/s speed=0.0118x
+Composite: frame=  159 fps=0.3 q=29.0 size=    3840kB time=00:00:05.58 bitrate=5628.2kbits/s speed=0.0118x
+Composite: frame=  159 fps=0.3 q=29.0 size=    3840kB time=00:00:05.58 bitrate=5628.2kbits/s speed=0.0118x
+Composite: frame=  160 fps=0.3 q=29.0 size=    3840kB time=00:00:05.58 bitrate=5628.2kbits/s speed=0.0118x
+Composite: frame=  160 fps=0.3 q=29.0 size=    3840kB time=00:00:05.58 bitrate=5628.2kbits/s speed=0.0118x
+Composite: frame=  160 fps=0.3 q=29.0 size=    3840kB time=00:00:05.61 bitrate=5606.8kbits/s speed=0.0118x
+Composite: frame=  160 fps=0.3 q=29.0 size=    3840kB time=00:00:05.61 bitrate=5606.8kbits/s speed=0.0118x
+Composite: frame=  161 fps=0.3 q=29.0 size=    3840kB time=00:00:05.61 bitrate=5606.8kbits/s speed=0.0118x
+Composite: frame=  161 fps=0.3 q=29.0 size=    3840kB time=00:00:05.65 bitrate=5564.4kbits/s speed=0.0118x
+Composite: frame=  161 fps=0.3 q=29.0 size=    3840kB time=00:00:05.65 bitrate=5564.4kbits/s speed=0.0118x
+Composite: frame=  161 fps=0.3 q=29.0 size=    3840kB time=00:00:05.65 bitrate=5564.4kbits/s speed=0.0118x
+Composite: frame=  161 fps=0.3 q=29.0 size=    3840kB time=00:00:05.65 bitrate=5564.4kbits/s speed=0.0118x
+Composite: frame=  161 fps=0.3 q=29.0 size=    3840kB time=00:00:05.65 bitrate=5564.4kbits/s speed=0.0118x
+Composite: frame=  162 fps=0.3 q=29.0 size=    3840kB time=00:00:05.65 bitrate=5564.4kbits/s speed=0.0117x
+Composite: frame=  162 fps=0.3 q=29.0 size=    3840kB time=00:00:05.67 bitrate=5543.5kbits/s speed=0.0117x
+Composite: frame=  162 fps=0.3 q=29.0 size=    3840kB time=00:00:05.67 bitrate=5543.5kbits/s speed=0.0117x
+Composite: frame=  162 fps=0.3 q=29.0 size=    3840kB time=00:00:05.67 bitrate=5543.5kbits/s speed=0.0117x
+Composite: frame=  162 fps=0.3 q=29.0 size=    3840kB time=00:00:05.67 bitrate=5543.5kbits/s speed=0.0117x
+Composite: frame=  162 fps=0.3 q=29.0 size=    3840kB time=00:00:05.67 bitrate=5543.5kbits/s speed=0.0117x
+Composite: frame=  163 fps=0.3 q=29.0 size=    3840kB time=00:00:05.67 bitrate=5543.5kbits/s speed=0.0116x
+Composite: frame=  163 fps=0.3 q=29.0 size=    3840kB time=00:00:05.67 bitrate=5543.5kbits/s speed=0.0116x
+Composite: frame=  163 fps=0.3 q=29.0 size=    3840kB time=00:00:05.71 bitrate=5502.2kbits/s speed=0.0117x
+Composite: frame=  163 fps=0.3 q=29.0 size=    3840kB time=00:00:05.71 bitrate=5502.2kbits/s speed=0.0117x
+Composite: frame=  163 fps=0.3 q=29.0 size=    3840kB time=00:00:05.71 bitrate=5502.2kbits/s speed=0.0116x
+Composite: frame=  163 fps=0.3 q=29.0 size=    3840kB time=00:00:05.71 bitrate=5502.2kbits/s speed=0.0116x
+Composite: frame=  164 fps=0.3 q=29.0 size=    3840kB time=00:00:05.71 bitrate=5502.2kbits/s speed=0.0116x
+Composite: frame=  164 fps=0.3 q=29.0 size=    3840kB time=00:00:05.73 bitrate=5481.7kbits/s speed=0.0116x
+Composite: frame=  164 fps=0.3 q=29.0 size=    3840kB time=00:00:05.73 bitrate=5481.7kbits/s speed=0.0116x
+Composite: frame=  164 fps=0.3 q=29.0 size=    3840kB time=00:00:05.73 bitrate=5481.7kbits/s speed=0.0116x
+Composite: frame=  165 fps=0.3 q=29.0 size=    3840kB time=00:00:05.73 bitrate=5481.7kbits/s speed=0.0116x
+Composite: frame=  165 fps=0.3 q=29.0 size=    3840kB time=00:00:05.78 bitrate=5441.2kbits/s speed=0.0116x
+Composite: frame=  165 fps=0.3 q=29.0 size=    3840kB time=00:00:05.78 bitrate=5441.2kbits/s speed=0.0116x
+Composite: frame=  165 fps=0.3 q=29.0 size=    3840kB time=00:00:05.78 bitrate=5441.2kbits/s speed=0.0116x
+Composite: frame=  166 fps=0.3 q=29.0 size=    3840kB time=00:00:05.78 bitrate=5441.2kbits/s speed=0.0116x
+Composite: frame=  166 fps=0.3 q=29.0 size=    3840kB time=00:00:05.80 bitrate=5421.2kbits/s speed=0.0116x
+Composite: frame=  166 fps=0.3 q=29.0 size=    3840kB time=00:00:05.80 bitrate=5421.2kbits/s speed=0.0116x
+Composite: frame=  166 fps=0.3 q=29.0 size=    3840kB time=00:00:05.80 bitrate=5421.2kbits/s speed=0.0116x
+Composite: frame=  166 fps=0.3 q=29.0 size=    3840kB time=00:00:05.80 bitrate=5421.2kbits/s speed=0.0115x
+Composite: frame=  167 fps=0.3 q=29.0 size=    3840kB time=00:00:05.80 bitrate=5421.2kbits/s speed=0.0115x
+Composite: frame=  167 fps=0.3 q=29.0 size=    3840kB time=00:00:05.84 bitrate=5381.7kbits/s speed=0.0116x
+Composite: frame=  167 fps=0.3 q=29.0 size=    3840kB time=00:00:05.84 bitrate=5381.7kbits/s speed=0.0115x
+Composite: frame=  167 fps=0.3 q=29.0 size=    3840kB time=00:00:05.84 bitrate=5381.7kbits/s speed=0.0115x
+Composite: frame=  168 fps=0.3 q=29.0 size=    3840kB time=00:00:05.84 bitrate=5381.7kbits/s speed=0.0115x
+Composite: frame=  168 fps=0.3 q=29.0 size=    3840kB time=00:00:05.88 bitrate=5342.7kbits/s speed=0.0116x
+Composite: frame=  168 fps=0.3 q=29.0 size=    3840kB time=00:00:05.88 bitrate=5342.7kbits/s speed=0.0116x
+Composite: frame=  169 fps=0.3 q=29.0 size=    3840kB time=00:00:05.90 bitrate=5323.4kbits/s speed=0.0116x
+Composite: frame=  169 fps=0.3 q=29.0 size=    3840kB time=00:00:05.90 bitrate=5323.4kbits/s speed=0.0116x
+Composite: frame=  170 fps=0.3 q=29.0 size=    3840kB time=00:00:05.90 bitrate=5323.4kbits/s speed=0.0115x
+Composite: frame=  170 fps=0.3 q=29.0 size=    3840kB time=00:00:05.95 bitrate=5285.2kbits/s speed=0.0116x
+Composite: frame=  170 fps=0.3 q=29.0 size=    3840kB time=00:00:05.95 bitrate=5285.2kbits/s speed=0.0116x
+Composite: frame=  170 fps=0.3 q=29.0 size=    3840kB time=00:00:05.95 bitrate=5285.2kbits/s speed=0.0116x
+Composite: frame=  171 fps=0.3 q=29.0 size=    3840kB time=00:00:05.95 bitrate=5285.2kbits/s speed=0.0115x
+Composite: frame=  171 fps=0.3 q=29.0 size=    3840kB time=00:00:05.95 bitrate=5285.2kbits/s speed=0.0115x
+Composite: frame=  171 fps=0.3 q=29.0 size=    4096kB time=00:00:05.97 bitrate=5617.4kbits/s speed=0.0115x
+Composite: frame=  171 fps=0.3 q=29.0 size=    4096kB time=00:00:05.97 bitrate=5617.4kbits/s speed=0.0115x
+Composite: frame=  171 fps=0.3 q=29.0 size=    4096kB time=00:00:05.97 bitrate=5617.4kbits/s speed=0.0115x
+Composite: frame=  171 fps=0.3 q=29.0 size=    4096kB time=00:00:05.97 bitrate=5617.4kbits/s speed=0.0115x
+Composite: frame=  172 fps=0.3 q=29.0 size=    4096kB time=00:00:05.97 bitrate=5617.4kbits/s speed=0.0115x
+Composite: frame=  172 fps=0.3 q=29.0 size=    4096kB time=00:00:06.01 bitrate=5577.6kbits/s speed=0.0115x
+Composite: frame=  172 fps=0.3 q=29.0 size=    4096kB time=00:00:06.01 bitrate=5577.6kbits/s speed=0.0115x
+Composite: frame=  172 fps=0.3 q=29.0 size=    4096kB time=00:00:06.01 bitrate=5577.6kbits/s speed=0.0115x
+Composite: frame=  172 fps=0.3 q=29.0 size=    4096kB time=00:00:06.01 bitrate=5577.6kbits/s speed=0.0115x
+Composite: frame=  172 fps=0.3 q=29.0 size=    4096kB time=00:00:06.01 bitrate=5577.6kbits/s speed=0.0115x
+Composite: frame=  173 fps=0.3 q=29.0 size=    4096kB time=00:00:06.01 bitrate=5577.6kbits/s speed=0.0114x
+Composite: frame=  173 fps=0.3 q=29.0 size=    4096kB time=00:00:06.03 bitrate=5557.9kbits/s speed=0.0114x
+Composite: frame=  173 fps=0.3 q=29.0 size=    4096kB time=00:00:06.03 bitrate=5557.9kbits/s speed=0.0114x
+Composite: frame=  173 fps=0.3 q=29.0 size=    4096kB time=00:00:06.03 bitrate=5557.9kbits/s speed=0.0114x
+Composite: frame=  173 fps=0.3 q=29.0 size=    4096kB time=00:00:06.03 bitrate=5557.9kbits/s speed=0.0114x
+Composite: frame=  173 fps=0.3 q=29.0 size=    4096kB time=00:00:06.03 bitrate=5557.9kbits/s speed=0.0114x
+Composite: frame=  174 fps=0.3 q=29.0 size=    4096kB time=00:00:06.03 bitrate=5557.9kbits/s speed=0.0113x
+Composite: frame=  174 fps=0.3 q=29.0 size=    4096kB time=00:00:06.08 bitrate=5518.9kbits/s speed=0.0114x
+Composite: frame=  174 fps=0.3 q=29.0 size=    4096kB time=00:00:06.08 bitrate=5518.9kbits/s speed=0.0113x
+Composite: frame=  174 fps=0.3 q=29.0 size=    4096kB time=00:00:06.08 bitrate=5518.9kbits/s speed=0.0113x
+Composite: frame=  175 fps=0.3 q=29.0 size=    4096kB time=00:00:06.08 bitrate=5518.9kbits/s speed=0.0113x
+Composite: frame=  175 fps=0.3 q=29.0 size=    4096kB time=00:00:06.08 bitrate=5518.9kbits/s speed=0.0113x
+Composite: frame=  175 fps=0.3 q=29.0 size=    4096kB time=00:00:06.12 bitrate=5480.4kbits/s speed=0.0114x
+Composite: frame=  175 fps=0.3 q=29.0 size=    4096kB time=00:00:06.12 bitrate=5480.4kbits/s speed=0.0114x
+Composite: frame=  175 fps=0.3 q=29.0 size=    4096kB time=00:00:06.12 bitrate=5480.4kbits/s speed=0.0113x
+Composite: frame=  176 fps=0.3 q=29.0 size=    4096kB time=00:00:06.12 bitrate=5480.4kbits/s speed=0.0113x
+Composite: frame=  176 fps=0.3 q=29.0 size=    4096kB time=00:00:06.14 bitrate=5461.4kbits/s speed=0.0113x
+Composite: frame=  176 fps=0.3 q=29.0 size=    4096kB time=00:00:06.14 bitrate=5461.4kbits/s speed=0.0113x
+Composite: frame=  176 fps=0.3 q=29.0 size=    4096kB time=00:00:06.14 bitrate=5461.4kbits/s speed=0.0113x
+Composite: frame=  177 fps=0.3 q=29.0 size=    4096kB time=00:00:06.14 bitrate=5461.4kbits/s speed=0.0113x
+Composite: frame=  177 fps=0.3 q=29.0 size=    4096kB time=00:00:06.14 bitrate=5461.4kbits/s speed=0.0113x
+Composite: frame=  177 fps=0.3 q=29.0 size=    4096kB time=00:00:06.18 bitrate=5423.7kbits/s speed=0.0113x
+Composite: frame=  177 fps=0.3 q=29.0 size=    4096kB time=00:00:06.18 bitrate=5423.7kbits/s speed=0.0113x
+Composite: frame=  177 fps=0.3 q=29.0 size=    4096kB time=00:00:06.18 bitrate=5423.7kbits/s speed=0.0113x
+Composite: frame=  178 fps=0.3 q=29.0 size=    4096kB time=00:00:06.18 bitrate=5423.7kbits/s speed=0.0113x
+Composite: frame=  178 fps=0.3 q=29.0 size=    4096kB time=00:00:06.18 bitrate=5423.7kbits/s speed=0.0113x
+Composite: frame=  178 fps=0.3 q=29.0 size=    4096kB time=00:00:06.20 bitrate=5405.1kbits/s speed=0.0113x
+Composite: frame=  178 fps=0.3 q=29.0 size=    4096kB time=00:00:06.20 bitrate=5405.1kbits/s speed=0.0113x
+Composite: frame=  179 fps=0.3 q=29.0 size=    4096kB time=00:00:06.20 bitrate=5405.1kbits/s speed=0.0112x
+Composite: frame=  179 fps=0.3 q=29.0 size=    4096kB time=00:00:06.25 bitrate=5368.2kbits/s speed=0.0113x
+Composite: frame=  179 fps=0.3 q=29.0 size=    4096kB time=00:00:06.25 bitrate=5368.2kbits/s speed=0.0113x
+Composite: frame=  179 fps=0.3 q=29.0 size=    4096kB time=00:00:06.25 bitrate=5368.2kbits/s speed=0.0113x
+Composite: frame=  179 fps=0.3 q=29.0 size=    4096kB time=00:00:06.25 bitrate=5368.2kbits/s speed=0.0113x
+Composite: frame=  179 fps=0.3 q=29.0 size=    4096kB time=00:00:06.25 bitrate=5368.2kbits/s speed=0.0113x
+Composite: frame=  180 fps=0.3 q=29.0 size=    4096kB time=00:00:06.25 bitrate=5368.2kbits/s speed=0.0112x
+Composite: frame=  180 fps=0.3 q=29.0 size=    4096kB time=00:00:06.27 bitrate=5349.9kbits/s speed=0.0112x
+Composite: frame=  180 fps=0.3 q=29.0 size=    4096kB time=00:00:06.27 bitrate=5349.9kbits/s speed=0.0112x
+Composite: frame=  180 fps=0.3 q=29.0 size=    4096kB time=00:00:06.27 bitrate=5349.9kbits/s speed=0.0112x
+Composite: frame=  180 fps=0.3 q=29.0 size=    4096kB time=00:00:06.27 bitrate=5349.9kbits/s speed=0.0112x
+Composite: frame=  181 fps=0.3 q=29.0 size=    4096kB time=00:00:06.27 bitrate=5349.9kbits/s speed=0.0112x
+Composite: frame=  181 fps=0.3 q=29.0 size=    4096kB time=00:00:06.31 bitrate=5313.8kbits/s speed=0.0112x
+Composite: frame=  181 fps=0.3 q=29.0 size=    4096kB time=00:00:06.31 bitrate=5313.8kbits/s speed=0.0112x
+Composite: frame=  181 fps=0.3 q=29.0 size=    4096kB time=00:00:06.31 bitrate=5313.8kbits/s speed=0.0112x
+Composite: frame=  182 fps=0.3 q=29.0 size=    4096kB time=00:00:06.31 bitrate=5313.8kbits/s speed=0.0112x
+Composite: frame=  182 fps=0.3 q=29.0 size=    4096kB time=00:00:06.33 bitrate=5295.9kbits/s speed=0.0112x
+Composite: frame=  182 fps=0.3 q=29.0 size=    4096kB time=00:00:06.33 bitrate=5295.9kbits/s speed=0.0112x
+Composite: frame=  183 fps=0.3 q=29.0 size=    4096kB time=00:00:06.33 bitrate=5295.9kbits/s speed=0.0112x
+Composite: frame=  183 fps=0.3 q=29.0 size=    4096kB time=00:00:06.33 bitrate=5295.9kbits/s speed=0.0112x
+Composite: frame=  183 fps=0.3 q=29.0 size=    4096kB time=00:00:06.37 bitrate=5260.5kbits/s speed=0.0112x
+Composite: frame=  183 fps=0.3 q=29.0 size=    4096kB time=00:00:06.37 bitrate=5260.5kbits/s speed=0.0112x
+Composite: frame=  183 fps=0.3 q=29.0 size=    4096kB time=00:00:06.37 bitrate=5260.5kbits/s speed=0.0112x
+Composite: frame=  183 fps=0.3 q=29.0 size=    4096kB time=00:00:06.37 bitrate=5260.5kbits/s speed=0.0112x
+Composite: frame=  183 fps=0.3 q=29.0 size=    4096kB time=00:00:06.37 bitrate=5260.5kbits/s speed=0.0112x
+Composite: frame=  184 fps=0.3 q=29.0 size=    4096kB time=00:00:06.37 bitrate=5260.5kbits/s speed=0.0112x
+Composite: frame=  184 fps=0.3 q=29.0 size=    4096kB time=00:00:06.37 bitrate=5260.5kbits/s speed=0.0111x
+Composite: frame=  184 fps=0.3 q=29.0 size=    4352kB time=00:00:06.42 bitrate=5552.1kbits/s speed=0.0112x
+Composite: frame=  184 fps=0.3 q=29.0 size=    4352kB time=00:00:06.42 bitrate=5552.1kbits/s speed=0.0112x
+Composite: frame=  184 fps=0.3 q=29.0 size=    4352kB time=00:00:06.42 bitrate=5552.1kbits/s speed=0.0112x
+Composite: frame=  184 fps=0.3 q=29.0 size=    4352kB time=00:00:06.42 bitrate=5552.1kbits/s speed=0.0112x
+Composite: frame=  184 fps=0.3 q=29.0 size=    4352kB time=00:00:06.42 bitrate=5552.1kbits/s speed=0.0111x
+Composite: frame=  185 fps=0.3 q=29.0 size=    4352kB time=00:00:06.42 bitrate=5552.1kbits/s speed=0.0111x
+Composite: frame=  185 fps=0.3 q=29.0 size=    4352kB time=00:00:06.44 bitrate=5533.7kbits/s speed=0.0111x
+Composite: frame=  185 fps=0.3 q=29.0 size=    4352kB time=00:00:06.44 bitrate=5533.7kbits/s speed=0.0111x
+Composite: frame=  185 fps=0.3 q=29.0 size=    4352kB time=00:00:06.44 bitrate=5533.7kbits/s speed=0.0111x
+Composite: frame=  186 fps=0.3 q=29.0 size=    4352kB time=00:00:06.44 bitrate=5533.7kbits/s speed=0.0111x
+Composite: frame=  186 fps=0.3 q=29.0 size=    4352kB time=00:00:06.48 bitrate=5497.3kbits/s speed=0.0111x
+Composite: frame=  186 fps=0.3 q=29.0 size=    4352kB time=00:00:06.48 bitrate=5497.3kbits/s speed=0.0111x
+Composite: frame=  187 fps=0.3 q=29.0 size=    4352kB time=00:00:06.48 bitrate=5497.3kbits/s speed=0.0111x
+Composite: frame=  187 fps=0.3 q=29.0 size=    4352kB time=00:00:06.48 bitrate=5497.3kbits/s speed=0.0111x
+Composite: frame=  187 fps=0.3 q=29.0 size=    4352kB time=00:00:06.50 bitrate=5479.3kbits/s speed=0.0111x
+Composite: frame=  187 fps=0.3 q=29.0 size=    4352kB time=00:00:06.50 bitrate=5479.3kbits/s speed=0.0111x
+Composite: frame=  187 fps=0.3 q=29.0 size=    4352kB time=00:00:06.50 bitrate=5479.3kbits/s speed=0.0111x
+Composite: frame=  187 fps=0.3 q=29.0 size=    4352kB time=00:00:06.50 bitrate=5479.3kbits/s speed=0.0111x
+Composite: frame=  187 fps=0.3 q=29.0 size=    4352kB time=00:00:06.50 bitrate=5479.3kbits/s speed=0.0111x
+Composite: frame=  188 fps=0.3 q=29.0 size=    4352kB time=00:00:06.50 bitrate=5479.3kbits/s speed=0.011x
+Composite: frame=  188 fps=0.3 q=29.0 size=    4352kB time=00:00:06.54 bitrate=5443.6kbits/s speed=0.0111x
+Composite: frame=  188 fps=0.3 q=29.0 size=    4352kB time=00:00:06.54 bitrate=5443.6kbits/s speed=0.0111x
+Composite: frame=  188 fps=0.3 q=29.0 size=    4352kB time=00:00:06.54 bitrate=5443.6kbits/s speed=0.0111x
+Composite: frame=  188 fps=0.3 q=29.0 size=    4352kB time=00:00:06.54 bitrate=5443.6kbits/s speed=0.0111x
+Composite: frame=  189 fps=0.3 q=29.0 size=    4352kB time=00:00:06.54 bitrate=5443.6kbits/s speed=0.0111x
+Composite: frame=  189 fps=0.3 q=29.0 size=    4352kB time=00:00:06.54 bitrate=5443.6kbits/s speed=0.011x
+Composite: frame=  189 fps=0.3 q=29.0 size=    4352kB time=00:00:06.57 bitrate=5425.9kbits/s speed=0.011x
+Composite: frame=  189 fps=0.3 q=29.0 size=    4352kB time=00:00:06.57 bitrate=5425.9kbits/s speed=0.011x
+Composite: frame=  189 fps=0.3 q=29.0 size=    4352kB time=00:00:06.57 bitrate=5425.9kbits/s speed=0.011x
+Composite: frame=  189 fps=0.3 q=29.0 size=    4352kB time=00:00:06.57 bitrate=5425.9kbits/s speed=0.011x
+Composite: frame=  190 fps=0.3 q=29.0 size=    4352kB time=00:00:06.57 bitrate=5425.9kbits/s speed=0.011x
+Composite: frame=  190 fps=0.3 q=29.0 size=    4352kB time=00:00:06.61 bitrate=5390.9kbits/s speed=0.011x
+Composite: frame=  190 fps=0.3 q=29.0 size=    4352kB time=00:00:06.61 bitrate=5390.9kbits/s speed=0.011x
+Composite: frame=  190 fps=0.3 q=29.0 size=    4352kB time=00:00:06.61 bitrate=5390.9kbits/s speed=0.011x
+Composite: frame=  191 fps=0.3 q=29.0 size=    4352kB time=00:00:06.61 bitrate=5390.9kbits/s speed=0.011x
+Composite: frame=  191 fps=0.3 q=29.0 size=    4352kB time=00:00:06.65 bitrate=5356.4kbits/s speed=0.0111x
+Composite: frame=  191 fps=0.3 q=29.0 size=    4352kB time=00:00:06.65 bitrate=5356.4kbits/s speed=0.011x
+Composite: frame=  191 fps=0.3 q=29.0 size=    4352kB time=00:00:06.65 bitrate=5356.4kbits/s speed=0.011x
+Composite: frame=  191 fps=0.3 q=29.0 size=    4352kB time=00:00:06.65 bitrate=5356.4kbits/s speed=0.011x
+Composite: frame=  192 fps=0.3 q=29.0 size=    4352kB time=00:00:06.65 bitrate=5356.4kbits/s speed=0.011x
+Composite: frame=  192 fps=0.3 q=29.0 size=    4352kB time=00:00:06.65 bitrate=5356.4kbits/s speed=0.011x
+Composite: frame=  192 fps=0.3 q=29.0 size=    4352kB time=00:00:06.67 bitrate=5339.3kbits/s speed=0.011x
+Composite: frame=  192 fps=0.3 q=29.0 size=    4352kB time=00:00:06.67 bitrate=5339.3kbits/s speed=0.011x
+Composite: frame=  192 fps=0.3 q=29.0 size=    4352kB time=00:00:06.67 bitrate=5339.3kbits/s speed=0.011x
+Composite: frame=  192 fps=0.3 q=29.0 size=    4352kB time=00:00:06.67 bitrate=5339.3kbits/s speed=0.011x
+Composite: frame=  193 fps=0.3 q=29.0 size=    4352kB time=00:00:06.67 bitrate=5339.3kbits/s speed=0.011x
+Composite: frame=  193 fps=0.3 q=29.0 size=    4608kB time=00:00:06.72 bitrate=5617.4kbits/s speed=0.011x
+Composite: frame=  193 fps=0.3 q=29.0 size=    4608kB time=00:00:06.72 bitrate=5617.4kbits/s speed=0.011x
+Composite: frame=  193 fps=0.3 q=29.0 size=    4608kB time=00:00:06.72 bitrate=5617.4kbits/s speed=0.011x
+Composite: frame=  193 fps=0.3 q=29.0 size=    4608kB time=00:00:06.72 bitrate=5617.4kbits/s speed=0.011x
+Composite: frame=  194 fps=0.3 q=29.0 size=    4608kB time=00:00:06.72 bitrate=5617.4kbits/s speed=0.011x
+Composite: frame=  194 fps=0.3 q=29.0 size=    4608kB time=00:00:06.74 bitrate=5599.7kbits/s speed=0.011x
+Composite: frame=  194 fps=0.3 q=29.0 size=    4608kB time=00:00:06.74 bitrate=5599.7kbits/s speed=0.011x
+Composite: frame=  194 fps=0.3 q=29.0 size=    4608kB time=00:00:06.74 bitrate=5599.7kbits/s speed=0.011x
+Composite: frame=  194 fps=0.3 q=29.0 size=    4608kB time=00:00:06.74 bitrate=5599.7kbits/s speed=0.0109x
+Composite: frame=  195 fps=0.3 q=29.0 size=    4608kB time=00:00:06.78 bitrate=5564.4kbits/s speed=0.011x
+Composite: frame=  195 fps=0.3 q=29.0 size=    4608kB time=00:00:06.78 bitrate=5564.4kbits/s speed=0.011x
+Composite: frame=  195 fps=0.3 q=29.0 size=    4608kB time=00:00:06.78 bitrate=5564.4kbits/s speed=0.011x
+Composite: frame=  195 fps=0.3 q=29.0 size=    4608kB time=00:00:06.78 bitrate=5564.4kbits/s speed=0.011x
+Composite: frame=  196 fps=0.3 q=29.0 size=    4608kB time=00:00:06.78 bitrate=5564.4kbits/s speed=0.0109x
+Composite: frame=  196 fps=0.3 q=29.0 size=    4608kB time=00:00:06.80 bitrate=5547.0kbits/s speed=0.011x
+Composite: frame=  196 fps=0.3 q=29.0 size=    4608kB time=00:00:06.80 bitrate=5547.0kbits/s speed=0.011x
+Composite: frame=  196 fps=0.3 q=29.0 size=    4608kB time=00:00:06.80 bitrate=5547.0kbits/s speed=0.0109x
+Composite: frame=  196 fps=0.3 q=29.0 size=    4608kB time=00:00:06.80 bitrate=5547.0kbits/s speed=0.0109x
+Composite: frame=  197 fps=0.3 q=29.0 size=    4608kB time=00:00:06.80 bitrate=5547.0kbits/s speed=0.0109x
+Composite: frame=  197 fps=0.3 q=29.0 size=    4608kB time=00:00:06.84 bitrate=5512.4kbits/s speed=0.011x
+Composite: frame=  197 fps=0.3 q=29.0 size=    4608kB time=00:00:06.84 bitrate=5512.4kbits/s speed=0.011x
+Composite: frame=  197 fps=0.3 q=29.0 size=    4608kB time=00:00:06.84 bitrate=5512.4kbits/s speed=0.0109x
+Composite: frame=  198 fps=0.3 q=29.0 size=    4608kB time=00:00:06.84 bitrate=5512.4kbits/s speed=0.0109x
+Composite: frame=  198 fps=0.3 q=29.0 size=    4608kB time=00:00:06.86 bitrate=5495.3kbits/s speed=0.0109x
+Composite: frame=  198 fps=0.3 q=29.0 size=    4608kB time=00:00:06.86 bitrate=5495.3kbits/s speed=0.0109x
+Composite: frame=  199 fps=0.3 q=29.0 size=    4608kB time=00:00:06.86 bitrate=5495.3kbits/s speed=0.0109x
+Composite: frame=  199 fps=0.3 q=29.0 size=    4608kB time=00:00:06.91 bitrate=5461.4kbits/s speed=0.011x
+Composite: frame=  200 fps=0.3 q=29.0 size=    4608kB time=00:00:06.91 bitrate=5461.4kbits/s speed=0.0109x
+Composite: frame=  200 fps=0.3 q=29.0 size=    4608kB time=00:00:06.95 bitrate=5427.9kbits/s speed=0.011x
+Composite: frame=  200 fps=0.3 q=29.0 size=    4608kB time=00:00:06.95 bitrate=5427.9kbits/s speed=0.011x
+Composite: frame=  201 fps=0.3 q=29.0 size=    4608kB time=00:00:06.95 bitrate=5427.9kbits/s speed=0.011x
+Composite: frame=  201 fps=0.3 q=29.0 size=    4608kB time=00:00:06.97 bitrate=5411.3kbits/s speed=0.011x
+Composite: frame=  201 fps=0.3 q=29.0 size=    4608kB time=00:00:06.97 bitrate=5411.3kbits/s speed=0.011x
+Composite: frame=  201 fps=0.3 q=29.0 size=    4608kB time=00:00:06.97 bitrate=5411.3kbits/s speed=0.011x
+Composite: frame=  201 fps=0.3 q=29.0 size=    4608kB time=00:00:06.97 bitrate=5411.3kbits/s speed=0.011x
+Composite: frame=  202 fps=0.3 q=29.0 size=    4608kB time=00:00:06.97 bitrate=5411.3kbits/s speed=0.0109x
+Composite: frame=  202 fps=0.3 q=29.0 size=    4864kB time=00:00:07.01 bitrate=5677.2kbits/s speed=0.011x
+Composite: frame=  202 fps=0.3 q=29.0 size=    4864kB time=00:00:07.01 bitrate=5677.2kbits/s speed=0.011x
+Composite: frame=  202 fps=0.3 q=29.0 size=    4864kB time=00:00:07.01 bitrate=5677.2kbits/s speed=0.011x
+Composite: frame=  202 fps=0.3 q=29.0 size=    4864kB time=00:00:07.01 bitrate=5677.2kbits/s speed=0.011x
+Composite: frame=  202 fps=0.3 q=29.0 size=    4864kB time=00:00:07.01 bitrate=5677.2kbits/s speed=0.0109x
+Composite: frame=  203 fps=0.3 q=29.0 size=    4864kB time=00:00:07.01 bitrate=5677.2kbits/s speed=0.0109x
+Composite: frame=  203 fps=0.3 q=29.0 size=    4864kB time=00:00:07.04 bitrate=5660.0kbits/s speed=0.0109x
+Composite: frame=  203 fps=0.3 q=29.0 size=    4864kB time=00:00:07.04 bitrate=5660.0kbits/s speed=0.0109x
+Composite: frame=  203 fps=0.3 q=29.0 size=    4864kB time=00:00:07.04 bitrate=5660.0kbits/s speed=0.0109x
+Composite: frame=  203 fps=0.3 q=29.0 size=    4864kB time=00:00:07.04 bitrate=5660.0kbits/s speed=0.0109x
+Composite: frame=  204 fps=0.3 q=29.0 size=    4864kB time=00:00:07.04 bitrate=5660.0kbits/s speed=0.0109x
+Composite: frame=  204 fps=0.3 q=29.0 size=    4864kB time=00:00:07.08 bitrate=5625.9kbits/s speed=0.0109x
+Composite: frame=  204 fps=0.3 q=29.0 size=    4864kB time=00:00:07.08 bitrate=5625.9kbits/s speed=0.0109x
+Composite: frame=  205 fps=0.3 q=29.0 size=    4864kB time=00:00:07.08 bitrate=5625.9kbits/s speed=0.0109x
+Composite: frame=  205 fps=0.3 q=29.0 size=    4864kB time=00:00:07.10 bitrate=5609.0kbits/s speed=0.0109x
+Composite: frame=  205 fps=0.3 q=29.0 size=    4864kB time=00:00:07.10 bitrate=5609.0kbits/s speed=0.0109x
+Composite: frame=  205 fps=0.3 q=29.0 size=    4864kB time=00:00:07.10 bitrate=5609.0kbits/s speed=0.0109x
+Composite: frame=  205 fps=0.3 q=29.0 size=    4864kB time=00:00:07.10 bitrate=5609.0kbits/s speed=0.0109x
+Composite: frame=  206 fps=0.3 q=29.0 size=    4864kB time=00:00:07.10 bitrate=5609.0kbits/s speed=0.0109x
+Composite: frame=  206 fps=0.3 q=29.0 size=    4864kB time=00:00:07.14 bitrate=5575.5kbits/s speed=0.0109x
+Composite: frame=  206 fps=0.3 q=29.0 size=    4864kB time=00:00:07.14 bitrate=5575.5kbits/s speed=0.0109x
+Composite: frame=  206 fps=0.3 q=29.0 size=    4864kB time=00:00:07.14 bitrate=5575.5kbits/s speed=0.0109x
+Composite: frame=  206 fps=0.3 q=29.0 size=    4864kB time=00:00:07.14 bitrate=5575.5kbits/s speed=0.0109x
+Composite: frame=  206 fps=0.3 q=29.0 size=    4864kB time=00:00:07.14 bitrate=5575.5kbits/s speed=0.0109x
+Composite: frame=  207 fps=0.3 q=29.0 size=    4864kB time=00:00:07.14 bitrate=5575.5kbits/s speed=0.0108x
+Composite: frame=  207 fps=0.3 q=29.0 size=    4864kB time=00:00:07.18 bitrate=5542.4kbits/s speed=0.0109x
+Composite: frame=  207 fps=0.3 q=29.0 size=    4864kB time=00:00:07.18 bitrate=5542.4kbits/s speed=0.0109x
+Composite: frame=  207 fps=0.3 q=29.0 size=    4864kB time=00:00:07.18 bitrate=5542.4kbits/s speed=0.0109x
+Composite: frame=  207 fps=0.3 q=29.0 size=    4864kB time=00:00:07.18 bitrate=5542.4kbits/s speed=0.0109x
+Composite: frame=  207 fps=0.3 q=29.0 size=    4864kB time=00:00:07.18 bitrate=5542.4kbits/s speed=0.0108x
+Composite: frame=  208 fps=0.3 q=29.0 size=    4864kB time=00:00:07.18 bitrate=5542.4kbits/s speed=0.0108x
+Composite: frame=  208 fps=0.3 q=29.0 size=    4864kB time=00:00:07.21 bitrate=5526.0kbits/s speed=0.0109x
+Composite: frame=  208 fps=0.3 q=29.0 size=    4864kB time=00:00:07.21 bitrate=5526.0kbits/s speed=0.0109x
+Composite: frame=  209 fps=0.3 q=29.0 size=    4864kB time=00:00:07.21 bitrate=5526.0kbits/s speed=0.0108x
+Composite: frame=  209 fps=0.3 q=29.0 size=    4864kB time=00:00:07.25 bitrate=5493.5kbits/s speed=0.0109x
+Composite: frame=  209 fps=0.3 q=29.0 size=    4864kB time=00:00:07.25 bitrate=5493.5kbits/s speed=0.0109x
+Composite: frame=  209 fps=0.3 q=29.0 size=    4864kB time=00:00:07.25 bitrate=5493.5kbits/s speed=0.0109x
+Composite: frame=  210 fps=0.3 q=29.0 size=    4864kB time=00:00:07.25 bitrate=5493.5kbits/s speed=0.0109x
+Composite: frame=  210 fps=0.3 q=29.0 size=    4864kB time=00:00:07.25 bitrate=5493.5kbits/s speed=0.0108x
+Composite: frame=  210 fps=0.3 q=29.0 size=    4864kB time=00:00:07.27 bitrate=5477.4kbits/s speed=0.0109x
+Composite: frame=  210 fps=0.3 q=29.0 size=    4864kB time=00:00:07.27 bitrate=5477.4kbits/s speed=0.0108x
+Composite: frame=  210 fps=0.3 q=29.0 size=    4864kB time=00:00:07.27 bitrate=5477.4kbits/s speed=0.0108x
+Composite: frame=  210 fps=0.3 q=29.0 size=    4864kB time=00:00:07.27 bitrate=5477.4kbits/s speed=0.0108x
+Composite: frame=  211 fps=0.3 q=29.0 size=    4864kB time=00:00:07.27 bitrate=5477.4kbits/s speed=0.0108x
+Composite: frame=  211 fps=0.3 q=29.0 size=    4864kB time=00:00:07.31 bitrate=5445.5kbits/s speed=0.0108x
+Composite: frame=  211 fps=0.3 q=29.0 size=    4864kB time=00:00:07.31 bitrate=5445.5kbits/s speed=0.0108x
+Composite: frame=  211 fps=0.3 q=29.0 size=    4864kB time=00:00:07.31 bitrate=5445.5kbits/s speed=0.0108x
+Composite: frame=  211 fps=0.3 q=29.0 size=    4864kB time=00:00:07.31 bitrate=5445.5kbits/s speed=0.0108x
+Composite: frame=  211 fps=0.3 q=29.0 size=    4864kB time=00:00:07.31 bitrate=5445.5kbits/s speed=0.0108x
+Composite: frame=  212 fps=0.3 q=29.0 size=    4864kB time=00:00:07.31 bitrate=5445.5kbits/s speed=0.0108x
+Composite: frame=  212 fps=0.3 q=29.0 size=    4864kB time=00:00:07.33 bitrate=5429.6kbits/s speed=0.0108x
+Composite: frame=  213 fps=0.3 q=29.0 size=    4864kB time=00:00:07.33 bitrate=5429.6kbits/s speed=0.0108x
+Composite: frame=  213 fps=0.3 q=29.0 size=    4864kB time=00:00:07.33 bitrate=5429.6kbits/s speed=0.0108x
+Composite: frame=  213 fps=0.3 q=29.0 size=    4864kB time=00:00:07.38 bitrate=5398.2kbits/s speed=0.0109x
+Composite: frame=  213 fps=0.3 q=29.0 size=    4864kB time=00:00:07.38 bitrate=5398.2kbits/s speed=0.0108x
+Composite: frame=  213 fps=0.3 q=29.0 size=    4864kB time=00:00:07.38 bitrate=5398.2kbits/s speed=0.0108x
+Composite: frame=  214 fps=0.3 q=29.0 size=    4864kB time=00:00:07.38 bitrate=5398.2kbits/s speed=0.0108x
+Composite: frame=  214 fps=0.3 q=29.0 size=    5120kB time=00:00:07.40 bitrate=5666.0kbits/s speed=0.0108x
+Composite: frame=  214 fps=0.3 q=29.0 size=    5120kB time=00:00:07.40 bitrate=5666.0kbits/s speed=0.0108x
+Composite: frame=  214 fps=0.3 q=29.0 size=    5120kB time=00:00:07.40 bitrate=5666.0kbits/s speed=0.0108x
+Composite: frame=  214 fps=0.3 q=29.0 size=    5120kB time=00:00:07.40 bitrate=5666.0kbits/s speed=0.0108x
+Composite: frame=  214 fps=0.3 q=29.0 size=    5120kB time=00:00:07.40 bitrate=5666.0kbits/s speed=0.0108x
+Composite: frame=  215 fps=0.3 q=29.0 size=    5120kB time=00:00:07.40 bitrate=5666.0kbits/s speed=0.0107x
+Composite: frame=  215 fps=0.3 q=29.0 size=    5120kB time=00:00:07.44 bitrate=5633.5kbits/s speed=0.0108x
+Composite: frame=  215 fps=0.3 q=29.0 size=    5120kB time=00:00:07.44 bitrate=5633.5kbits/s speed=0.0108x
+Composite: frame=  215 fps=0.3 q=29.0 size=    5120kB time=00:00:07.44 bitrate=5633.5kbits/s speed=0.0108x
+Composite: frame=  215 fps=0.3 q=29.0 size=    5120kB time=00:00:07.44 bitrate=5633.5kbits/s speed=0.0108x
+Composite: frame=  216 fps=0.3 q=29.0 size=    5120kB time=00:00:07.44 bitrate=5633.5kbits/s speed=0.0108x
+Composite: frame=  216 fps=0.3 q=29.0 size=    5120kB time=00:00:07.44 bitrate=5633.5kbits/s speed=0.0107x
+Composite: frame=  216 fps=0.3 q=29.0 size=    5120kB time=00:00:07.48 bitrate=5601.4kbits/s speed=0.0108x
+Composite: frame=  216 fps=0.3 q=29.0 size=    5120kB time=00:00:07.48 bitrate=5601.4kbits/s speed=0.0108x
+Composite: frame=  217 fps=0.3 q=29.0 size=    5120kB time=00:00:07.48 bitrate=5601.4kbits/s speed=0.0108x
+Composite: frame=  217 fps=0.3 q=29.0 size=    5120kB time=00:00:07.50 bitrate=5585.5kbits/s speed=0.0108x
+Composite: frame=  217 fps=0.3 q=29.0 size=    5120kB time=00:00:07.50 bitrate=5585.5kbits/s speed=0.0108x
+Composite: frame=  217 fps=0.3 q=29.0 size=    5120kB time=00:00:07.50 bitrate=5585.5kbits/s speed=0.0108x
+Composite: frame=  218 fps=0.3 q=29.0 size=    5120kB time=00:00:07.50 bitrate=5585.5kbits/s speed=0.0107x
+Composite: frame=  218 fps=0.3 q=29.0 size=    5120kB time=00:00:07.55 bitrate=5553.9kbits/s speed=0.0108x
+Composite: frame=  218 fps=0.3 q=29.0 size=    5120kB time=00:00:07.55 bitrate=5553.9kbits/s speed=0.0108x
+Composite: frame=  218 fps=0.3 q=29.0 size=    5120kB time=00:00:07.55 bitrate=5553.9kbits/s speed=0.0108x
+Composite: frame=  218 fps=0.3 q=29.0 size=    5120kB time=00:00:07.55 bitrate=5553.9kbits/s speed=0.0108x
+Composite: frame=  219 fps=0.3 q=29.0 size=    5120kB time=00:00:07.55 bitrate=5553.9kbits/s speed=0.0107x
+Composite: frame=  219 fps=0.3 q=29.0 size=    5120kB time=00:00:07.57 bitrate=5538.3kbits/s speed=0.0108x
+Composite: frame=  219 fps=0.3 q=29.0 size=    5120kB time=00:00:07.57 bitrate=5538.3kbits/s speed=0.0108x
+Composite: frame=  219 fps=0.3 q=29.0 size=    5120kB time=00:00:07.57 bitrate=5538.3kbits/s speed=0.0107x
+Composite: frame=  219 fps=0.3 q=29.0 size=    5120kB time=00:00:07.57 bitrate=5538.3kbits/s speed=0.0107x
+Composite: frame=  219 fps=0.3 q=29.0 size=    5120kB time=00:00:07.57 bitrate=5538.3kbits/s speed=0.0107x
+Composite: frame=  220 fps=0.3 q=29.0 size=    5120kB time=00:00:07.57 bitrate=5538.3kbits/s speed=0.0107x
+Composite: frame=  220 fps=0.3 q=29.0 size=    5120kB time=00:00:07.61 bitrate=5507.3kbits/s speed=0.0108x
+Composite: frame=  220 fps=0.3 q=29.0 size=    5120kB time=00:00:07.61 bitrate=5507.3kbits/s speed=0.0108x
+Composite: frame=  221 fps=0.3 q=29.0 size=    5120kB time=00:00:07.61 bitrate=5507.3kbits/s speed=0.0107x
+Composite: frame=  221 fps=0.3 q=29.0 size=    5120kB time=00:00:07.63 bitrate=5491.9kbits/s speed=0.0108x
+Composite: frame=  221 fps=0.3 q=29.0 size=    5120kB time=00:00:07.63 bitrate=5491.9kbits/s speed=0.0108x
+Composite: frame=  221 fps=0.3 q=29.0 size=    5120kB time=00:00:07.63 bitrate=5491.9kbits/s speed=0.0107x
+Composite: frame=  221 fps=0.3 q=29.0 size=    5120kB time=00:00:07.63 bitrate=5491.9kbits/s speed=0.0107x
+Composite: frame=  221 fps=0.3 q=29.0 size=    5120kB time=00:00:07.63 bitrate=5491.9kbits/s speed=0.0107x
+Composite: frame=  222 fps=0.3 q=29.0 size=    5120kB time=00:00:07.63 bitrate=5491.9kbits/s speed=0.0107x
+Composite: frame=  222 fps=0.3 q=29.0 size=    5120kB time=00:00:07.68 bitrate=5461.4kbits/s speed=0.0107x
+Composite: frame=  222 fps=0.3 q=29.0 size=    5120kB time=00:00:07.68 bitrate=5461.4kbits/s speed=0.0107x
+Composite: frame=  222 fps=0.3 q=29.0 size=    5120kB time=00:00:07.68 bitrate=5461.4kbits/s speed=0.0107x
+Composite: frame=  222 fps=0.3 q=29.0 size=    5120kB time=00:00:07.68 bitrate=5461.4kbits/s speed=0.0107x
+Composite: frame=  222 fps=0.3 q=29.0 size=    5120kB time=00:00:07.68 bitrate=5461.4kbits/s speed=0.0107x
+Composite: frame=  223 fps=0.3 q=29.0 size=    5120kB time=00:00:07.68 bitrate=5461.4kbits/s speed=0.0107x
+Composite: frame=  223 fps=0.3 q=29.0 size=    5120kB time=00:00:07.72 bitrate=5431.2kbits/s speed=0.0107x
+Composite: frame=  223 fps=0.3 q=29.0 size=    5120kB time=00:00:07.72 bitrate=5431.2kbits/s speed=0.0107x
+Composite: frame=  223 fps=0.3 q=29.0 size=    5120kB time=00:00:07.72 bitrate=5431.2kbits/s speed=0.0107x
+Composite: frame=  223 fps=0.3 q=29.0 size=    5120kB time=00:00:07.72 bitrate=5431.2kbits/s speed=0.0107x
+Composite: frame=  224 fps=0.3 q=29.0 size=    5120kB time=00:00:07.72 bitrate=5431.2kbits/s speed=0.0107x
+Composite: frame=  224 fps=0.3 q=29.0 size=    5120kB time=00:00:07.74 bitrate=5416.2kbits/s speed=0.0107x
+Composite: frame=  224 fps=0.3 q=29.0 size=    5120kB time=00:00:07.74 bitrate=5416.2kbits/s speed=0.0107x
+Composite: frame=  225 fps=0.3 q=29.0 size=    5120kB time=00:00:07.74 bitrate=5416.2kbits/s speed=0.0107x
+Composite: frame=  225 fps=0.3 q=29.0 size=    5120kB time=00:00:07.78 bitrate=5386.6kbits/s speed=0.0107x
+Composite: frame=  225 fps=0.3 q=29.0 size=    5120kB time=00:00:07.78 bitrate=5386.6kbits/s speed=0.0107x
+Composite: frame=  225 fps=0.3 q=29.0 size=    5120kB time=00:00:07.78 bitrate=5386.6kbits/s speed=0.0107x
+Composite: frame=  226 fps=0.3 q=29.0 size=    5120kB time=00:00:07.78 bitrate=5386.6kbits/s speed=0.0107x
+Composite: frame=  226 fps=0.3 q=29.0 size=    5376kB time=00:00:07.80 bitrate=5640.4kbits/s speed=0.0107x
+Composite: frame=  226 fps=0.3 q=29.0 size=    5376kB time=00:00:07.80 bitrate=5640.4kbits/s speed=0.0107x
+Composite: frame=  226 fps=0.3 q=29.0 size=    5376kB time=00:00:07.80 bitrate=5640.4kbits/s speed=0.0107x
+Composite: frame=  226 fps=0.3 q=29.0 size=    5376kB time=00:00:07.80 bitrate=5640.4kbits/s speed=0.0107x
+Composite: frame=  226 fps=0.3 q=29.0 size=    5376kB time=00:00:07.80 bitrate=5640.4kbits/s speed=0.0107x
+Composite: frame=  227 fps=0.3 q=29.0 size=    5376kB time=00:00:07.80 bitrate=5640.4kbits/s speed=0.0106x
+Composite: frame=  227 fps=0.3 q=29.0 size=    5376kB time=00:00:07.85 bitrate=5609.8kbits/s speed=0.0107x
+Composite: frame=  227 fps=0.3 q=29.0 size=    5376kB time=00:00:07.85 bitrate=5609.8kbits/s speed=0.0107x
+Composite: frame=  227 fps=0.3 q=29.0 size=    5376kB time=00:00:07.85 bitrate=5609.8kbits/s speed=0.0107x
+Composite: frame=  227 fps=0.3 q=29.0 size=    5376kB time=00:00:07.85 bitrate=5609.8kbits/s speed=0.0107x
+Composite: frame=  228 fps=0.3 q=29.0 size=    5376kB time=00:00:07.85 bitrate=5609.8kbits/s speed=0.0107x
+Composite: frame=  228 fps=0.3 q=29.0 size=    5376kB time=00:00:07.87 bitrate=5594.6kbits/s speed=0.0107x
+Composite: frame=  229 fps=0.3 q=29.0 size=    5376kB time=00:00:07.87 bitrate=5594.6kbits/s speed=0.0107x
+Composite: frame=  229 fps=0.3 q=29.0 size=    5376kB time=00:00:07.91 bitrate=5564.4kbits/s speed=0.0107x
+Composite: frame=  230 fps=0.3 q=29.0 size=    5376kB time=00:00:07.91 bitrate=5564.4kbits/s speed=0.0107x
+Composite: frame=  230 fps=0.3 q=29.0 size=    5376kB time=00:00:07.93 bitrate=5549.5kbits/s speed=0.0107x
+Composite: frame=  230 fps=0.3 q=29.0 size=    5376kB time=00:00:07.93 bitrate=5549.5kbits/s speed=0.0107x
