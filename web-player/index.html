@@ -782,12 +782,12 @@
 
   <div class="export-bar" id="exportBar" style="display:none;">
     <div class="export-header">
-      <h3>Export Studio</h3>
+      <h3>Export Studio <span id="exportCurrentHl" style="color:#7a9686;font-weight:normal;text-transform:none;letter-spacing:0;"></span></h3>
       <div class="export-actions">
         <button class="btn btn-small btn-secondary" onclick="selectAllClips()">Select All</button>
         <button class="btn btn-small btn-secondary" onclick="deselectAllClips()">Deselect All</button>
-        <button class="btn btn-small btn-secondary" onclick="downloadSelected()">&#11015; Download Individual</button>
-        <button class="btn btn-small" id="compositeBtn" onclick="startComposite()" disabled>&#127916; Export Combined View</button>
+        <button class="btn btn-small" onclick="downloadSelected()">⬇ Download Highlights</button>
+        <button class="btn btn-small btn-secondary" id="compositeBtn" onclick="startComposite()" disabled>&#127916; Export Combined View</button>
       </div>
     </div>
     <div class="export-timeline" id="exportTimeline"></div>
@@ -1839,7 +1839,7 @@
         const btnMinus = document.createElement('button');
         btnMinus.className = 'nudge-btn';
         btnMinus.textContent = '−';
-        btnMinus.title = 'Shift this POV 50ms earlier';
+        btnMinus.title = 'Shift this POV 0.5s earlier (Shift+click for 50ms fine trim)';
 
         const readout = document.createElement('div');
         readout.className = 'nudge-readout' + ((v.nudgeMs || 0) !== 0 ? ' nonzero' : '');
@@ -1849,7 +1849,7 @@
         const btnPlus = document.createElement('button');
         btnPlus.className = 'nudge-btn';
         btnPlus.textContent = '+';
-        btnPlus.title = 'Shift this POV 50ms later';
+        btnPlus.title = 'Shift this POV 0.5s later (Shift+click for 50ms fine trim)';
 
         function applyNudge(deltaMs) {
           const masterTime = getCurrentMasterTime();
@@ -1875,8 +1875,8 @@
           });
         }
 
-        btnMinus.addEventListener('click', function(e) { e.stopPropagation(); applyNudge(-50); });
-        btnPlus.addEventListener('click',  function(e) { e.stopPropagation(); applyNudge(+50); });
+        btnMinus.addEventListener('click', function(e) { e.stopPropagation(); applyNudge(e.shiftKey ? -50 : -500); });
+        btnPlus.addEventListener('click',  function(e) { e.stopPropagation(); applyNudge(e.shiftKey ? +50 : +500); });
 
         nudgeBar.appendChild(btnMinus);
         nudgeBar.appendChild(readout);
@@ -2147,6 +2147,12 @@
       const timeline = document.getElementById('exportTimeline');
       timeline.innerHTML = '';
 
+      // Reflect the currently-viewed highlight number in the Export Studio header
+      const hlIndicator = document.getElementById('exportCurrentHl');
+      if (hlIndicator) {
+        hlIndicator.textContent = highlights.length ? '\u2014 Highlight ' + (currentHighlightIndex + 1) + ' of ' + highlights.length : '';
+      }
+
       const validIds = new Set(allUploads.map(u => u.uploadId));
       for (const id of Array.from(selectedExportClips)) {
         if (!validIds.has(id)) selectedExportClips.delete(id);
@@ -2155,6 +2161,7 @@
       highlights.forEach((hl, hlIdx) => {
         const label = document.createElement('div');
         label.className = 'export-hl-label' + (hlIdx === currentHighlightIndex ? ' current' : '');
+        label.id = 'export-hl-label-' + hlIdx;
         label.textContent = 'H' + (hlIdx + 1);
         label.title = 'Jump to Highlight ' + (hlIdx + 1);
         label.addEventListener('click', () => switchHighlight(hlIdx));
@@ -2187,6 +2194,12 @@
           timeline.appendChild(clip);
         });
       });
+
+      // Scroll the export timeline so the current highlight's section is visible
+      const currentLabel = document.getElementById('export-hl-label-' + currentHighlightIndex);
+      if (currentLabel) {
+        currentLabel.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+      }
     }
 
     function selectAllClips() {
@@ -2205,19 +2218,25 @@
 
     async function downloadSelected() {
       if (selectedExportClips.size === 0) { alert('Select at least one clip to download'); return; }
+
+      // Build a lookup: uploadId → highlight number (1-based)
+      const hlLookup = {};
+      highlights.forEach((hl, idx) => {
+        hl.forEach(u => { hlLookup[u.id] = idx + 1; });
+      });
+
       let n = 0;
       for (const id of selectedExportClips) {
         const u = allUploads.find(x => x.uploadId === id);
         if (!u || u.processing || !u.videoSrc) continue;
         const link = document.createElement('a');
-        // Use original CDN URL for download if available (local blob URLs
-        // work too but the CDN filename is more useful for sharing)
         link.href = (u.originalVideoSrc && !u.originalVideoSrc.startsWith('blob:'))
           ? u.originalVideoSrc : u.videoSrc;
-        link.download = u.username + '_highlight.mp4';
+        const hlNum = hlLookup[id] || (n + 1);
+        link.download = 'H' + hlNum + '_' + u.username + '.mp4';
         document.body.appendChild(link); link.click(); document.body.removeChild(link);
         n++;
-        await new Promise(r => setTimeout(r, 350));
+        if (n < selectedExportClips.size) await new Promise(r => setTimeout(r, 80));
       }
       if (n === 0) alert('Selected clips are not ready to download yet');
     }
@@ -2439,8 +2458,8 @@
     }
 
     function formatNudge(ms) {
-      if (ms === 0) return '+0ms';
-      return (ms > 0 ? '+' : '') + ms + 'ms';
+      if (ms === 0) return '+0.00s';
+      return (ms > 0 ? '+' : '−') + (Math.abs(ms) / 1000).toFixed(2) + 's';
     }
   </script>
 </body>
