@@ -2222,7 +2222,7 @@
       // Build a lookup: uploadId → highlight number (1-based)
       const hlLookup = {};
       highlights.forEach((hl, idx) => {
-        hl.forEach(u => { hlLookup[u.id] = idx + 1; });
+        (hl.clips || []).forEach(u => { hlLookup[u.uploadId] = idx + 1; });
       });
 
       let n = 0;
