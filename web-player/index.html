@@ -717,29 +717,201 @@
     }
     .btn-copy:hover { background: #39d3a0; color: #04140d; }
     .btn-copy.copied { background: #4fe0b0; border-color: #4fe0b0; color: #04140d; }
+
+    /* ========================
+       CONSOLIDATED HEADER
+    ======================== */
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      justify-content: flex-end;
+    }
+    .session-input-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .session-input-wrap input {
+      background: #0c1c14;
+      color: #c8d6cd;
+      border: 1px solid #24402e;
+      border-radius: 6px;
+      padding: 6px 32px 6px 12px;
+      font-size: 13px;
+      width: 140px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      font-family: 'Consolas', 'Courier New', monospace;
+    }
+    .session-input-wrap input:focus { outline: none; border-color: #39d3a0; }
+    .input-icon-btn {
+      position: absolute;
+      right: 4px;
+      background: none;
+      border: none;
+      color: #7a9686;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 4px;
+    }
+    .input-icon-btn:hover { color: #39d3a0; background: rgba(57, 211, 160, 0.1); }
+    .input-icon-btn.pasted { color: #4fe0b0; }
+    .btn-icon {
+      padding: 6px 10px !important;
+      font-size: 14px !important;
+    }
+
+    /* Settings dropdown */
+    .settings-panel {
+      position: absolute;
+      top: 60px;
+      right: 20px;
+      background: #0c1c14;
+      border: 1px solid #24402e;
+      border-radius: 8px;
+      padding: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      z-index: 100;
+    }
+    .settings-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .local-status {
+      font-size: 11px;
+      color: #8fbfa3;
+    }
+    .settings-close {
+      background: none;
+      border: none;
+      color: #7a9686;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .settings-close:hover { color: #ff6b6b; background: rgba(255,107,107,0.1); }
+
+    /* ========================
+       CONTEXTUAL SELECTION BAR
+    ======================== */
+    .selection-bar {
+      position: fixed;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, #12251a, #0c1c14);
+      border: 1px solid #39d3a0;
+      border-radius: 12px;
+      padding: 12px 16px;
+      display: flex !important;
+      align-items: center;
+      gap: 16px;
+      box-shadow: 0 8px 32px rgba(57, 211, 160, 0.15), 0 2px 8px rgba(0,0,0,0.5);
+      z-index: 200;
+      animation: slideUp 0.2s ease-out;
+      max-width: 95vw;
+    }
+    @keyframes slideUp {
+      from { transform: translate(-50%, 100px); opacity: 0; }
+      to { transform: translate(-50%, 0); opacity: 1; }
+    }
+    .selection-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+    .selection-count {
+      font-size: 14px;
+      font-weight: 700;
+      color: #39d3a0;
+    }
+    .selection-detail {
+      font-size: 11px;
+      color: #8fbfa3;
+      max-width: 340px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .selection-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .btn-clear-selection {
+      background: none;
+      border: none;
+      color: #7a9686;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 6px 10px;
+      border-radius: 4px;
+      margin-left: 4px;
+    }
+    .btn-clear-selection:hover { color: #ff6b6b; background: rgba(255,107,107,0.1); }
+
+    /* ========================
+       EXPORT PANEL (composite / AI reel)
+    ======================== */
+    .export-panel {
+      position: fixed;
+      bottom: 90px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #0c1c14;
+      border: 1px solid #24402e;
+      border-radius: 12px;
+      width: min(720px, 95vw);
+      max-height: 60vh;
+      overflow-y: auto;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+      z-index: 199;
+      animation: slideUp 0.2s ease-out;
+    }
+    .export-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid #24402e;
+    }
+    .export-panel-header h3 {
+      margin: 0;
+      font-size: 14px;
+      color: #39d3a0;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
   </style>
 </head>
 <body>
 
   <div class="header">
     <h1>&#x1F648; Peak-Abu Player</h1>
-    <div style="display:flex;align-items:center;gap:8px;flex:1;justify-content:flex-end;">
-      <div class="share-bar" id="shareBar" style="display:none;">
-        <span class="share-url" id="shareUrl"></span>
-        <button class="btn-copy" id="copyBtn" onclick="copyShareLink()">&#x1F4CB; Copy Link</button>
-      </div>
-      <!-- LOCAL CLIPS STATUS -->
-      <div class="local-status-bar" id="localStatusBar">
-        &#x1F4C2; <span class="local-count" id="localMatchCount">0</span> local &middot;
-        <span id="localTotalCount">0</span> scanned
-        <button class="local-dismiss" onclick="clearLocalClips()" title="Clear local clips">&#x2715;</button>
-      </div>
-      <button class="btn-local" id="localBtn" onclick="pickLocalFolder()" title="Load clips from your PeakAbu folder to skip CDN downloads">&#x1F4C2; Use Local Clips</button>
-      <div class="join-bar">
+    <div class="header-actions">
+      <div class="session-input-wrap">
         <input type="text" id="sessionInput" placeholder="Session code" maxlength="6" />
-        <button class="btn-paste" id="pasteBtn" onclick="pasteAndLoad()" title="Paste session code from clipboard">&#x1F4CB; Paste</button>
-        <button class="btn" onclick="loadSession()">Load Session</button>
+        <button class="input-icon-btn" id="pasteBtn" onclick="pasteAndLoad()" title="Paste from clipboard">&#x1F4CB;</button>
       </div>
+      <button class="btn" onclick="loadSession()">Load Session</button>
+      <button class="btn btn-secondary btn-icon" id="shareBtn" onclick="copyShareLink()" title="Copy share link" style="display:none;">&#x1F517;</button>
+      <button class="btn btn-secondary btn-icon" id="settingsBtn" onclick="toggleSettings()" title="Settings">&#x2699;</button>
+    </div>
+  </div>
+
+  <!-- SETTINGS DROPDOWN -->
+  <div id="settingsPanel" class="settings-panel" style="display:none;">
+    <div class="settings-row">
+      <button class="btn btn-small btn-secondary" id="localBtn" onclick="pickLocalFolder()">&#x1F4C2; Use Local Clips</button>
+      <span class="local-status" id="localStatusText"></span>
+      <button class="settings-close" onclick="toggleSettings()" title="Close">&#x2715;</button>
     </div>
   </div>
 
@@ -780,48 +952,63 @@
     </div>
   </div>
 
-  <div class="export-bar" id="exportBar" style="display:none;">
-    <div class="export-header">
-      <h3>Export Studio <span id="exportCurrentHl" style="color:#7a9686;font-weight:normal;text-transform:none;letter-spacing:0;"></span></h3>
-      <div class="export-actions">
-        <button class="btn btn-small btn-secondary" onclick="selectAllClips()">Select All</button>
-        <button class="btn btn-small btn-secondary" onclick="deselectAllClips()">Deselect All</button>
-        <button class="btn btn-small" onclick="downloadSelected()">⬇ Download Highlights</button>
-        <button class="btn btn-small btn-secondary" id="compositeBtn" onclick="startComposite()" disabled>&#127916; Export Combined View</button>
-      </div>
+  <!-- CONTEXTUAL SELECTION BAR — only visible when clips are selected -->
+  <div class="selection-bar" id="selectionBar" style="display:none;">
+    <div class="selection-info">
+      <div class="selection-count"><span id="selCount">0</span> selected</div>
+      <div class="selection-detail" id="selDetail"></div>
     </div>
-    <div class="export-timeline" id="exportTimeline"></div>
+    <div class="selection-actions">
+      <button class="btn btn-small btn-secondary" onclick="selectAllClips()">Select All</button>
+      <button class="btn btn-small" onclick="downloadSelected(event)">&#11015; Download</button>
+      <button class="btn btn-small btn-secondary" id="compositeBtn" onclick="openExportPanel('composite')" disabled>&#127916; Combined View</button>
+      <button class="btn btn-small btn-secondary" onclick="openExportPanel('aireel')">&#129302; AI Reel</button>
+      <button class="btn-clear-selection" onclick="deselectAllClips()" title="Clear selection">&#x2715;</button>
+    </div>
+  </div>
+
+  <!-- EXPANDED EXPORT PANEL — opens only when composite/AI reel job is starting -->
+  <div class="export-panel" id="exportPanel" style="display:none;">
+    <div class="export-panel-header">
+      <h3 id="exportPanelTitle">Export</h3>
+      <button class="settings-close" onclick="closeExportPanel()" title="Close">&#x2715;</button>
+    </div>
     <div class="composite-section" id="compositeSection" style="display:none;">
       <div class="composite-status" id="compositeStatus"></div>
       <div class="progress-bar" id="compositeProgressBar" style="display:none;">
         <div class="progress-fill" id="compositeFill"></div>
       </div>
-      <div class="composite-section" id="aireelSection" style="display:flex;flex-wrap:wrap;gap:8px;padding:8px 16px;">
-       <div style="width:100%;font-size:13px;color:#39d3a0;font-weight:600;">🎞 AI Highlight Reel <span style="color:#7a9686;font-weight:normal;">(T3/T4 — free during beta)</span></div>
-       <div>
-         <label style="font-size:11px;color:#7a9686;display:block;">Length</label>
-         <select id="aireelLength" style="background:#0c1c14;color:#c8d6cd;border:1px solid #24402e;border-radius:4px;padding:4px 8px;">
-           <option value="30">30s</option>
-           <option value="60" selected>60s</option>
-           <option value="90">90s</option>
-           <option value="120">2 min</option>
-         </select>
-       </div>
-       <div>
-         <label style="font-size:11px;color:#7a9686;display:block;">Game</label>
-         <input type="text" id="aireelGame" placeholder="e.g. Apex Legends" style="background:#0c1c14;color:#c8d6cd;border:1px solid #24402e;border-radius:4px;padding:4px 8px;width:160px;" />
-       </div>
-       <div style="flex:1;min-width:220px;">
-         <label style="font-size:11px;color:#7a9686;display:block;">Style notes for the AI editor (saved per game)</label>
-         <input type="text" id="aireelStyle" placeholder="e.g. keep clutches long, cut fast on kills" style="background:#0c1c14;color:#c8d6cd;border:1px solid #24402e;border-radius:4px;padding:4px 8px;width:100%;" />
-       </div>
-       <button class="btn btn-small" id="aireelBtn" onclick="startAiReel()">🤖 Generate AI Reel</button>
-       <div id="aireelStatus" style="width:100%;font-size:12px;color:#7a9686;margin-top:4px;"></div>
-       <div id="aireelReport" style="width:100%;font-size:12px;color:#8fbfa3;background:#0a1611;border-left:2px solid #39d3a0;padding:8px 12px;display:none;white-space:pre-wrap;"></div>
-      </div>
+      <button class="btn btn-small" onclick="startComposite()" style="margin:8px 16px;">Start Combined View Export</button>
     </div>
-
+    <div class="composite-section" id="aireelSection" style="display:none;flex-wrap:wrap;gap:8px;padding:8px 16px;">
+     <div style="width:100%;font-size:13px;color:#39d3a0;font-weight:600;">🎞 AI Highlight Reel <span style="color:#7a9686;font-weight:normal;">(T3/T4 — free during beta)</span></div>
+     <div>
+       <label style="font-size:11px;color:#7a9686;display:block;">Length</label>
+       <select id="aireelLength" style="background:#0c1c14;color:#c8d6cd;border:1px solid #24402e;border-radius:4px;padding:4px 8px;">
+         <option value="30">30s</option>
+         <option value="60" selected>60s</option>
+         <option value="90">90s</option>
+         <option value="120">2 min</option>
+       </select>
+     </div>
+     <div>
+       <label style="font-size:11px;color:#7a9686;display:block;">Game</label>
+       <input type="text" id="aireelGame" placeholder="e.g. Apex Legends" style="background:#0c1c14;color:#c8d6cd;border:1px solid #24402e;border-radius:4px;padding:4px 8px;width:160px;" />
+     </div>
+     <div style="flex:1;min-width:220px;">
+       <label style="font-size:11px;color:#7a9686;display:block;">Style notes for the AI editor (saved per game)</label>
+       <input type="text" id="aireelStyle" placeholder="e.g. keep clutches long, cut fast on kills" style="background:#0c1c14;color:#c8d6cd;border:1px solid #24402e;border-radius:4px;padding:4px 8px;width:100%;" />
+     </div>
+     <button class="btn btn-small" id="aireelBtn" onclick="startAiReel()">🤖 Generate AI Reel</button>
+     <div id="aireelStatus" style="width:100%;font-size:12px;color:#7a9686;margin-top:4px;"></div>
+     <div id="aireelReport" style="width:100%;font-size:12px;color:#8fbfa3;background:#0a1611;border-left:2px solid #39d3a0;padding:8px 12px;display:none;white-space:pre-wrap;"></div>
+    </div>
   </div>
+
+  <!-- Legacy no-op targets kept so old rendering code doesn't crash -->
+  <div id="exportBar" style="display:none;"></div>
+  <div id="exportTimeline" style="display:none;"></div>
+  <span id="exportCurrentHl" style="display:none;"></span>
 
   <script>
     window.addEventListener('DOMContentLoaded', function() {
@@ -1006,19 +1193,16 @@
     }
 
     function updateLocalStatusBar() {
-      const bar = document.getElementById('localStatusBar');
-      document.getElementById('localTotalCount').textContent = localClipMap.size;
-      // Match count is updated after applyLocalMatches
-      if (localClipMap.size > 0) {
-        bar.classList.add('active');
-      }
+      const txt = document.getElementById('localStatusText');
+      if (txt) txt.textContent = localClipMap.size > 0 ? localClipMap.size + ' clips scanned' : '';
     }
 
     function clearLocalClips() {
       localClipMap.clear();
       localBlobUrls.forEach(url => { try { URL.revokeObjectURL(url); } catch(e) {} });
       localBlobUrls = [];
-      document.getElementById('localStatusBar').classList.remove('active');
+      const txt = document.getElementById('localStatusText');
+      if (txt) txt.textContent = '';
       document.getElementById('localBtn').classList.remove('loaded');
       document.getElementById('localBtn').textContent = '\u{1F4C2} Use Local Clips';
 
@@ -1083,7 +1267,10 @@
         matched++;
       }
 
-      document.getElementById('localMatchCount').textContent = matched;
+      const txt = document.getElementById('localStatusText');
+      if (txt && localClipMap.size > 0) {
+        txt.textContent = matched + ' / ' + localClipMap.size + ' matched';
+      }
       console.log('Local match: ' + matched + '/' + allUploads.length + ' uploads resolved locally');
 
       // Refresh the current view
@@ -1505,7 +1692,6 @@
 
         document.getElementById('sessionTimeline').style.display = 'flex';
         document.getElementById('rightPanel').style.display = 'flex';
-        document.getElementById('exportBar').style.display = 'flex';
 
         if (refreshInterval) clearInterval(refreshInterval);
         refreshInterval = setInterval(refreshUploads, hasProcessing ? 10000 : 45000);
@@ -1527,8 +1713,9 @@
 
       document.getElementById('sessionTimeline').style.display = 'none';
       document.getElementById('rightPanel').style.display = 'none';
-      document.getElementById('exportBar').style.display = 'none';
-      document.getElementById('shareBar').style.display = 'none';
+      document.getElementById('selectionBar').style.display = 'none';
+      const shareBtn = document.getElementById('shareBtn');
+      if (shareBtn) shareBtn.style.display = 'none';
     }
 
     // ========================
@@ -2141,79 +2328,74 @@
           box.title = isSel ? 'Remove from export' : 'Add to export';
         }
       }
+
+      updateSelectionBar();
     }
 
-    function renderExportTimeline() {
-      const timeline = document.getElementById('exportTimeline');
-      timeline.innerHTML = '';
+    // Shows the floating selection bar with count, players, and highlight numbers
+    function updateSelectionBar() {
+      const bar = document.getElementById('selectionBar');
+      const countEl = document.getElementById('selCount');
+      const detailEl = document.getElementById('selDetail');
+      if (!bar) return;
 
-      // Reflect the currently-viewed highlight number in the Export Studio header
-      const hlIndicator = document.getElementById('exportCurrentHl');
-      if (hlIndicator) {
-        hlIndicator.textContent = highlights.length ? '\u2014 Highlight ' + (currentHighlightIndex + 1) + ' of ' + highlights.length : '';
+      const count = selectedExportClips.size;
+      if (count === 0) {
+        bar.style.display = 'none';
+        // Auto-close export panel when selection empties
+        closeExportPanel();
+        return;
       }
 
+      countEl.textContent = count;
+
+      // Collect unique players and highlight numbers from selection
+      const players = new Set();
+      const hlNums = new Set();
+      const hlLookup = {};
+      highlights.forEach((hl, idx) => {
+        (hl.clips || []).forEach(u => { hlLookup[u.uploadId] = idx + 1; });
+      });
+      selectedExportClips.forEach(id => {
+        const u = allUploads.find(x => x.uploadId === id);
+        if (u) players.add(u.username);
+        const hn = hlLookup[id];
+        if (hn) hlNums.add(hn);
+      });
+
+      const playerList = Array.from(players).slice(0, 4).join(', ')
+        + (players.size > 4 ? ' +' + (players.size - 4) : '');
+      const hlList = Array.from(hlNums).sort((a, b) => a - b)
+        .slice(0, 6).map(n => 'H' + n).join(', ')
+        + (hlNums.size > 6 ? ' +' + (hlNums.size - 6) : '');
+
+      detailEl.textContent = playerList + ' \u00b7 ' + hlList;
+      bar.style.display = 'flex';
+    }
+
+    // Legacy — export timeline strip is gone. Kept as a no-op so existing
+    // call sites don't crash. Selection state now flows through updateSelectionBar().
+    function renderExportTimeline() {
+      // Clean up any stale IDs that reference deleted uploads
       const validIds = new Set(allUploads.map(u => u.uploadId));
       for (const id of Array.from(selectedExportClips)) {
         if (!validIds.has(id)) selectedExportClips.delete(id);
       }
-
-      highlights.forEach((hl, hlIdx) => {
-        const label = document.createElement('div');
-        label.className = 'export-hl-label' + (hlIdx === currentHighlightIndex ? ' current' : '');
-        label.id = 'export-hl-label-' + hlIdx;
-        label.textContent = 'H' + (hlIdx + 1);
-        label.title = 'Jump to Highlight ' + (hlIdx + 1);
-        label.addEventListener('click', () => switchHighlight(hlIdx));
-        timeline.appendChild(label);
-
-        hl.clips.forEach(u => {
-          const clip = document.createElement('div');
-          clip.className = 'export-clip'
-            + (selectedExportClips.has(u.uploadId) ? ' selected' : '')
-            + (u.processing ? ' disabled' : '');
-          clip.id = 'export-clip-' + u.uploadId;
-
-          const name = document.createElement('div');
-          name.className = 'export-clip-name';
-          name.textContent = u.username + (u.isLocal ? ' 📂' : '');
-
-          const durMs = u.metadata && u.metadata.durationMs;
-          const duration = document.createElement('div');
-          duration.className = 'export-clip-duration';
-          duration.textContent = u.processing
-            ? 'processing\u2026'
-            : (durMs ? Math.round(durMs / 1000) + 's' : '\u2014');
-
-          clip.appendChild(name); clip.appendChild(duration);
-
-          if (!u.processing) {
-            clip.addEventListener('click', () => toggleExportSelection(u.uploadId));
-          }
-
-          timeline.appendChild(clip);
-        });
-      });
-
-      // Scroll the export timeline so the current highlight's section is visible
-      const currentLabel = document.getElementById('export-hl-label-' + currentHighlightIndex);
-      if (currentLabel) {
-        currentLabel.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
-      }
+      updateSelectionBar();
     }
 
     function selectAllClips() {
       allUploads.forEach(u => {
         if (!u.processing && u.uploadId) selectedExportClips.add(u.uploadId);
       });
-      renderExportTimeline();
       renderVideoGrid();
+      updateSelectionBar();
     }
 
     function deselectAllClips() {
       selectedExportClips.clear();
-      renderExportTimeline();
       renderVideoGrid();
+      updateSelectionBar();
     }
 
     async function downloadSelected() {
@@ -2309,20 +2491,68 @@
     // SHARE LINK
     // ========================
 
+    let currentShareUrl = '';
+
     function showShareLink(code) {
-      const url = window.location.origin + '/player?code=' + code;
-      document.getElementById('shareUrl').textContent = url;
-      document.getElementById('shareBar').style.display = 'flex';
+      currentShareUrl = window.location.origin + '/player?code=' + code;
+      const btn = document.getElementById('shareBtn');
+      if (btn) btn.style.display = '';
     }
 
     function copyShareLink() {
-      const url = document.getElementById('shareUrl').textContent;
-      navigator.clipboard.writeText(url).then(() => {
-        const btn = document.getElementById('copyBtn');
-        btn.textContent = '\u2705 Copied!';
-        btn.classList.add('copied');
-        setTimeout(() => { btn.textContent = '\u{1F4CB} Copy Link'; btn.classList.remove('copied'); }, 2000);
+      if (!currentShareUrl) return;
+      navigator.clipboard.writeText(currentShareUrl).then(() => {
+        const btn = document.getElementById('shareBtn');
+        if (!btn) return;
+        const orig = btn.innerHTML;
+        btn.innerHTML = '\u2705';
+        btn.title = 'Copied!';
+        setTimeout(() => { btn.innerHTML = orig; btn.title = 'Copy share link'; }, 1500);
       });
+    }
+
+    // ========================
+    // SETTINGS PANEL
+    // ========================
+
+    function toggleSettings() {
+      const panel = document.getElementById('settingsPanel');
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    }
+
+    // Close settings on outside click
+    document.addEventListener('click', function(e) {
+      const panel = document.getElementById('settingsPanel');
+      const btn = document.getElementById('settingsBtn');
+      if (!panel || panel.style.display === 'none') return;
+      if (panel.contains(e.target) || (btn && btn.contains(e.target))) return;
+      panel.style.display = 'none';
+    });
+
+    // ========================
+    // EXPORT PANEL (composite / AI reel)
+    // ========================
+
+    function openExportPanel(mode) {
+      const panel = document.getElementById('exportPanel');
+      const title = document.getElementById('exportPanelTitle');
+      const comp = document.getElementById('compositeSection');
+      const ai = document.getElementById('aireelSection');
+
+      if (mode === 'composite') {
+        title.textContent = 'Export Combined View';
+        comp.style.display = 'block';
+        ai.style.display = 'none';
+      } else if (mode === 'aireel') {
+        title.textContent = 'AI Highlight Reel';
+        comp.style.display = 'none';
+        ai.style.display = 'flex';
+      }
+      panel.style.display = 'block';
+    }
+
+    function closeExportPanel() {
+      document.getElementById('exportPanel').style.display = 'none';
     }
 
     // ========================
@@ -2331,13 +2561,14 @@
 
     function updateCompositeButton() {
       const btn = document.getElementById('compositeBtn');
+      if (!btn) return;
       const count = videos.filter(v => !v.missing && !v.processing).length;
       btn.disabled = count < 1;
       btn.textContent = count < 1
-        ? '\u{1F3AC} Export Combined (0/' + expectedClips + ' clips ready)'
+        ? '\u{1F3AC} Combined View (0/' + expectedClips + ')'
         : count < expectedClips
-          ? '\u{1F3AC} Export Combined (' + count + '/' + expectedClips + ' clips)'
-          : '\u{1F3AC} Export Combined View';
+          ? '\u{1F3AC} Combined View (' + count + '/' + expectedClips + ')'
+          : '\u{1F3AC} Combined View';
     }
 
     async function startComposite() {
@@ -2365,7 +2596,7 @@
         status.textContent = '\u274C ' + err.message;
         progressBar.style.display = 'none';
         btn.disabled = false;
-        btn.textContent = '\u{1F3AC} Export Combined View';
+        btn.textContent = '\u{1F3AC} Combined View';
       }
     }
 
@@ -2382,7 +2613,7 @@
             document.getElementById('compositeStatus').textContent = '\u2705 Ready' + (sizeMB ? ' (' + sizeMB + ')' : '') + ' \u2014 downloading...';
             document.getElementById('compositeProgressBar').style.display = 'none';
             document.getElementById('compositeBtn').disabled = false;
-            document.getElementById('compositeBtn').textContent = '\u{1F3AC} Export Combined View';
+            document.getElementById('compositeBtn').textContent = '\u{1F3AC} Combined View';
             const link = document.createElement('a');
             link.href = data.downloadUrl; link.download = 'peak-abu-composite.mp4';
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
@@ -2392,7 +2623,7 @@
             document.getElementById('compositeStatus').textContent = '\u274C Compositing failed \u2014 try again';
             document.getElementById('compositeProgressBar').style.display = 'none';
             document.getElementById('compositeBtn').disabled = false;
-            document.getElementById('compositeBtn').textContent = '\u{1F3AC} Export Combined View';
+            document.getElementById('compositeBtn').textContent = '\u{1F3AC} Combined View';
           }
         } catch (e) { console.log('Poll error:', e); }
       }, 3000);
@@ -2405,7 +2636,7 @@
     async function startAiReel() {
       if (!currentSessionCode) return;
       if (selectedExportClips.size === 0) {
-        alert('Select at least one clip in the Export Studio first');
+        alert('Select at least one clip first (use the + button on any POV tile)');
         return;
       }
       const targetSec = parseInt(document.getElementById('aireelLength').value);
