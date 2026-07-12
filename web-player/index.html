@@ -797,47 +797,40 @@
     .settings-close:hover { color: #ff6b6b; background: rgba(255,107,107,0.1); }
 
     /* ========================
-       CONTEXTUAL SELECTION BAR
+       INLINE SELECTION STRIP — appears below session timeline
     ======================== */
     .selection-bar {
-      position: fixed;
-      bottom: 16px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: linear-gradient(135deg, #12251a, #0c1c14);
-      border: 1px solid #39d3a0;
-      border-radius: 12px;
-      padding: 12px 16px;
-      display: flex !important;
+      background: #0c1c14;
+      border-top: 1px solid #24402e;
+      padding: 8px 16px;
+      display: flex;
       align-items: center;
-      gap: 16px;
-      box-shadow: 0 8px 32px rgba(57, 211, 160, 0.15), 0 2px 8px rgba(0,0,0,0.5);
-      z-index: 200;
-      animation: slideUp 0.2s ease-out;
-      max-width: 95vw;
-    }
-    @keyframes slideUp {
-      from { transform: translate(-50%, 100px); opacity: 0; }
-      to { transform: translate(-50%, 0); opacity: 1; }
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
     }
     .selection-info {
       display: flex;
-      flex-direction: column;
-      gap: 2px;
+      align-items: baseline;
+      gap: 10px;
       min-width: 0;
+      flex: 1;
     }
     .selection-count {
-      font-size: 14px;
+      font-size: 12px;
       font-weight: 700;
       color: #39d3a0;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      white-space: nowrap;
     }
     .selection-detail {
       font-size: 11px;
       color: #8fbfa3;
-      max-width: 340px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      font-family: 'Consolas', 'Courier New', monospace;
     }
     .selection-actions {
       display: flex;
@@ -847,34 +840,35 @@
     }
     .btn-clear-selection {
       background: none;
-      border: none;
+      border: 1px solid transparent;
       color: #7a9686;
-      font-size: 14px;
+      font-size: 13px;
       cursor: pointer;
-      padding: 6px 10px;
+      padding: 4px 8px;
       border-radius: 4px;
-      margin-left: 4px;
+      margin-left: 2px;
     }
-    .btn-clear-selection:hover { color: #ff6b6b; background: rgba(255,107,107,0.1); }
+    .btn-clear-selection:hover { color: #ff6b6b; border-color: #ff6b6b; }
 
     /* ========================
-       EXPORT PANEL (composite / AI reel)
+       EXPORT PANEL (composite / AI reel) — modal-style
     ======================== */
     .export-panel {
       position: fixed;
-      bottom: 90px;
+      top: 50%;
       left: 50%;
-      transform: translateX(-50%);
+      transform: translate(-50%, -50%);
       background: #0c1c14;
       border: 1px solid #24402e;
       border-radius: 12px;
       width: min(720px, 95vw);
-      max-height: 60vh;
+      max-height: 70vh;
       overflow-y: auto;
       box-shadow: 0 12px 40px rgba(0,0,0,0.6);
       z-index: 199;
-      animation: slideUp 0.2s ease-out;
+      animation: fadeIn 0.15s ease-out;
     }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     .export-panel-header {
       display: flex;
       align-items: center;
@@ -900,7 +894,7 @@
         <input type="text" id="sessionInput" placeholder="Session code" maxlength="6" />
         <button class="input-icon-btn" id="pasteBtn" onclick="pasteAndLoad()" title="Paste from clipboard">&#x1F4CB;</button>
       </div>
-      <button class="btn" onclick="loadSession()">Load Session</button>
+      <button class="btn" onclick="loadSession()">Load</button>
       <button class="btn btn-secondary btn-icon" id="shareBtn" onclick="copyShareLink()" title="Copy share link" style="display:none;">&#x1F517;</button>
       <button class="btn btn-secondary btn-icon" id="settingsBtn" onclick="toggleSettings()" title="Settings">&#x2699;</button>
     </div>
@@ -938,6 +932,21 @@
           <div class="time-display" id="timeDisplay">0:00 / 0:00</div>
         </div>
       </div>
+
+      <!-- INLINE SELECTION STRIP — appears below timeline when clips selected -->
+      <div class="selection-bar" id="selectionBar" style="display:none;">
+        <div class="selection-info">
+          <div class="selection-count"><span id="selCount">0</span> selected</div>
+          <div class="selection-detail" id="selDetail"></div>
+        </div>
+        <div class="selection-actions">
+          <button class="btn btn-small btn-secondary" onclick="selectAllClips()">All</button>
+          <button class="btn btn-small" onclick="downloadSelected(event)">&#11015; Download</button>
+          <button class="btn btn-small btn-secondary" id="compositeBtn" onclick="openExportPanel('composite')" disabled>&#127916; Combined</button>
+          <button class="btn btn-small btn-secondary" onclick="openExportPanel('aireel')">&#129302; AI Reel</button>
+          <button class="btn-clear-selection" onclick="deselectAllClips()" title="Clear selection">&#x2715;</button>
+        </div>
+      </div>
     </div>
 
     <div class="right-panel" id="rightPanel" style="display:none;">
@@ -949,21 +958,6 @@
         <h3>Audio</h3>
         <div id="audioControls"></div>
       </div>
-    </div>
-  </div>
-
-  <!-- CONTEXTUAL SELECTION BAR — only visible when clips are selected -->
-  <div class="selection-bar" id="selectionBar" style="display:none;">
-    <div class="selection-info">
-      <div class="selection-count"><span id="selCount">0</span> selected</div>
-      <div class="selection-detail" id="selDetail"></div>
-    </div>
-    <div class="selection-actions">
-      <button class="btn btn-small btn-secondary" onclick="selectAllClips()">Select All</button>
-      <button class="btn btn-small" onclick="downloadSelected(event)">&#11015; Download</button>
-      <button class="btn btn-small btn-secondary" id="compositeBtn" onclick="openExportPanel('composite')" disabled>&#127916; Combined View</button>
-      <button class="btn btn-small btn-secondary" onclick="openExportPanel('aireel')">&#129302; AI Reel</button>
-      <button class="btn-clear-selection" onclick="deselectAllClips()" title="Clear selection">&#x2715;</button>
     </div>
   </div>
 
