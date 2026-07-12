@@ -249,9 +249,9 @@ function reencodeVideo(inputPath, outputPath) {
   return new Promise((resolve) => {
     const ffmpeg = spawn('ffmpeg', [
       '-i', inputPath,
-      '-c:v', 'libsvtav1',
-      '-preset', '6',
-      '-crf', '35',
+      '-c:v', 'libx264',
+      '-preset', 'fast',
+      '-crf', '28',
       '-c:a', 'libopus',
       '-b:a', '128k',
       '-y',
@@ -608,8 +608,8 @@ const sessions = new Map();
 // ================================
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.18',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.18.exe',
+  version: '0.1.19',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.19.exe',
   releaseNotes: 'Full Session Mode toggle now works correctly in both directions.'
 };
 
