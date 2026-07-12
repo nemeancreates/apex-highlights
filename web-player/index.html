@@ -2225,20 +2225,44 @@
         (hl.clips || []).forEach(u => { hlLookup[u.uploadId] = idx + 1; });
       });
 
+      const btn = event && event.target;
+      const originalText = btn ? btn.textContent : null;
       let n = 0;
+      let failed = 0;
+      const total = selectedExportClips.size;
+
       for (const id of selectedExportClips) {
         const u = allUploads.find(x => x.uploadId === id);
         if (!u || u.processing || !u.videoSrc) continue;
-        const link = document.createElement('a');
-        link.href = (u.originalVideoSrc && !u.originalVideoSrc.startsWith('blob:'))
-          ? u.originalVideoSrc : u.videoSrc;
+
         const hlNum = hlLookup[id] || (n + 1);
-        link.download = 'H' + hlNum + '_' + u.username + '.mp4';
-        document.body.appendChild(link); link.click(); document.body.removeChild(link);
-        n++;
-        if (n < selectedExportClips.size) await new Promise(r => setTimeout(r, 80));
+        const filename = 'H' + hlNum + '_' + u.username + '.mp4';
+        if (btn) btn.textContent = 'Downloading ' + (n + 1) + '/' + total + '...';
+
+        try {
+          const url = (u.originalVideoSrc && !u.originalVideoSrc.startsWith('blob:'))
+            ? u.originalVideoSrc : u.videoSrc;
+          // Fetch as blob — forces browser to save instead of navigating to
+          // the .mp4 (which would open fullscreen video player on cross-origin CDN URLs)
+          const res = await fetch(url);
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          const blob = await res.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = filename;
+          document.body.appendChild(link); link.click(); document.body.removeChild(link);
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+          n++;
+        } catch (err) {
+          console.error('Download failed for', filename, err);
+          failed++;
+        }
       }
-      if (n === 0) alert('Selected clips are not ready to download yet');
+
+      if (btn && originalText) btn.textContent = originalText;
+      if (n === 0) alert('No clips downloaded — selected clips may not be ready yet');
+      else if (failed > 0) alert('Downloaded ' + n + ' clips (' + failed + ' failed)');
     }
 
     // ========================
