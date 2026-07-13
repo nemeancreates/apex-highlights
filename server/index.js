@@ -89,7 +89,7 @@ if (process.env.SPACES_KEY && process.env.SPACES_SECRET) {
   });
   console.log('Spaces configured:', SPACES_BUCKET, SPACES_REGION);
 } else {
-  console.log('WARNING: Spaces not configured — SPACES_KEY/SPACES_SECRET missing, uploads will stay local');
+  console.log('WARNING: Spaces not configured â€” SPACES_KEY/SPACES_SECRET missing, uploads will stay local');
 }
 
 // Push a local file to Spaces, return its CDN URL. Deletes the local file on success.
@@ -138,7 +138,7 @@ function log(level, event, data = {}) {
     ...safe
   };
 
-  // Output as JSON — one line per event, easy to grep/parse
+  // Output as JSON â€” one line per event, easy to grep/parse
   console.log(JSON.stringify(entry));
 }
 
@@ -203,7 +203,7 @@ async function processThumbnailQueue() {
   const job = thumbnailQueue.shift();
   try {
     await generateThumbnail(job.videoPath, job.thumbnailPath);
-    // ALWAYS run onDone — the video upload must not depend on thumbnail success
+    // ALWAYS run onDone â€” the video upload must not depend on thumbnail success
     if (typeof job.onDone === 'function') job.onDone();
   } catch (e) {
     log('warn', 'thumbnail_queue_error', { error: e.message });
@@ -609,13 +609,13 @@ const ALLOWED_CLIP_DURATIONS = [15000, 30000, 60000, 180000];
 const sessions = new Map();
 
 // ================================
-// CLIENT VERSION — served at /api/version for the client auto-updater.
+// CLIENT VERSION â€” served at /api/version for the client auto-updater.
 // Update when a new client build is uploaded to the CDN.
 // ================================
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.20',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.20.exe',
+  version: '0.1.21',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.21.exe',
   releaseNotes: 'Full Session Mode toggle now works correctly in both directions.'
 };
 
@@ -678,7 +678,7 @@ function loadSessionsFromDisk() {
     for (const session of data) {
       const age = now - new Date(session.createdAt).getTime();
       if (age > SESSION_TTL) { expired++; continue; }
-      session.members = []; // clear live socket state — members rejoin
+      session.members = []; // clear live socket state â€” members rejoin
       session.highlightLockedUntil = 0; // clear stale lock
       sessions.set(session.code, session);
       loaded++;
@@ -851,10 +851,10 @@ app.post('/sessions', requireAuth, (req, res) => {
     code,
     createdBy: username,
     createdAt: new Date().toISOString(),
-    clipDuration: 30000,        // default 30s — host can change
+    clipDuration: 30000,        // default 30s â€” host can change
     highlightLockedUntil: 0,    // timestamp when session-wide lock expires
     highlightCount: 0,          // coordinated highlight triggers this session (cap: MAX_HIGHLIGHTS_PER_SESSION)
-    pendingHighlights: [],      // triggers that arrived during lock — fired in order when it expires
+    pendingHighlights: [],      // triggers that arrived during lock â€” fired in order when it expires
     members: [],
     uploads: []
   };
@@ -1121,7 +1121,7 @@ io.on('connection', (socket) => {
   log("debug", "client_connected", { socketId: socket.id });
 
   // ================================
-  // TIME SYNC — clients ping to measure their offset from server clock.
+  // TIME SYNC â€” clients ping to measure their offset from server clock.
   // Uses ack callback; doesn't consume the main socket rate budget,
   // but has its own light cap to prevent spam.
   // ================================
@@ -1183,7 +1183,7 @@ io.on('connection', (socket) => {
   });
 
   // ================================
-  // CLIP DURATION — host only
+  // CLIP DURATION â€” host only
   // ================================
   socket.on('set-clip-duration', ({ duration }) => {
     if (!checkSocketRate(socket.id)) return;
@@ -1236,7 +1236,7 @@ io.on('connection', (socket) => {
   });
 
   // ================================
-  // HIGHLIGHT SAVE — session-wide lock
+  // HIGHLIGHT SAVE â€” session-wide lock
   // ================================
   // Fires a coordinated save to all clients, locks the session, and on
   // expiry either drains the next queued trigger (with its original
@@ -1252,7 +1252,7 @@ io.on('connection', (socket) => {
 
     log("info", "highlight_triggered", { session: sessionCode, username, ts: coordinated_timestamp, clipDuration, lockMs: lockDuration, highlightCount: session.highlightCount });
 
-    // Tell every client to save their POV — anchored to the trigger's
+    // Tell every client to save their POV â€” anchored to the trigger's
     // original timestamp (may be in the past for queued triggers)
     io.to(sessionCode).emit('coordinated-save-highlight', {
       username,
@@ -1286,7 +1286,7 @@ io.on('connection', (socket) => {
     }, lockDuration + 100);
   }
 
-  socket.on('broadcast-save-highlight', () => {
+  socket.on('broadcast-save-highlight', (payload) => {
     if (!checkSocketRate(socket.id)) return;
     const sessionCode = socket.sessionCode;
     if (!sessionCode) return;
@@ -1294,22 +1294,31 @@ io.on('connection', (socket) => {
     if (!session) return;
 
     const now = Date.now();
+
+    // Client-stamped press time, already shifted into the server clock domain.
+    // Trusted only inside a sane window (max 3s stale, max 1s ahead) so a bad
+    // clock or hostile client can't anchor a clip somewhere absurd.
+    // Old clients send no payload â†’ falls back to server receive time.
+    let pressTs = (payload && typeof payload.pressTs === 'number' && isFinite(payload.pressTs))
+      ? payload.pressTs : now;
+    if (pressTs > now + 1000 || pressTs < now - 3000) pressTs = now;
+
     const pending = session.pendingHighlights = session.pendingHighlights || [];
 
-    // Session highlight cap — count fired + already-queued triggers
+    // Session highlight cap â€” count fired + already-queued triggers
     if ((session.highlightCount || 0) + pending.length >= MAX_HIGHLIGHTS_PER_SESSION) {
       socket.emit('error-message', { message: 'Highlight limit reached for this session (' + MAX_HIGHLIGHTS_PER_SESSION + ')' });
       return;
     }
 
     // Locked: queue the trigger with its ORIGINAL timestamp instead of
-    // rejecting. It fires when the lock expires — clients cut the clip
+    // rejecting. It fires when the lock expires â€” clients cut the clip
     // anchored to this moment, and their lastHighlightBoundary dedup
     // guarantees zero footage overlap with the previous clip.
     if (session.highlightLockedUntil && now < session.highlightLockedUntil) {
       const MAX_PENDING_HIGHLIGHTS = 3;
       if (pending.length >= MAX_PENDING_HIGHLIGHTS) {
-        socket.emit('error-message', { message: 'Highlight queue full — wait for cooldown' });
+        socket.emit('error-message', { message: 'Highlight queue full â€” wait for cooldown' });
         return;
       }
       pending.push({ username: socket.username, ts: now });
