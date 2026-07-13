@@ -27,8 +27,8 @@ const CHUNK_SECONDS = 10;
 // ================================
 // Update this whenever a new client build is uploaded to the CDN.
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.20',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.20.exe',
+  version: '0.1.21',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.21.exe',
   releaseNotes: 'Auto-updater added. The app now checks for updates on launch.'
 };
 
@@ -639,8 +639,6 @@ function startRecording(monitor) {
   lastHighlightBoundary = 0;
   lastDropCount = 0;
   lowSpeedStreak = 0;
-  audioFirstChunkTime = null;
-  micFirstChunkTime = null;
   let stderrTail = '';
 
   startBufferReadyWatcher();
@@ -755,8 +753,8 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
 
   lastHighlightBoundary = videoFiles[videoFiles.length - 1].time;
 
-  const hasAudio = !!(hlAudioPath && hlAudioChunkCount > 0 && fs.existsSync(hlAudioPath));
-  const hasMic = !!(hlMicPath && hlMicChunkCount > 0 && !micMuted && fs.existsSync(hlMicPath));
+  const hasAudio = !!(hlAudioPath && hlAudioChunkCount > 0 && audioFirstChunkTime && fs.existsSync(hlAudioPath));
+  const hasMic = !!(hlMicPath && hlMicChunkCount > 0 && micFirstChunkTime && !micMuted && fs.existsSync(hlMicPath));
   console.log(`Saving highlight: ${videoFiles.length}/${clipChunks} chunks, audio=${hasAudio} (${hlAudioChunkCount} appends), mic=${hasMic} (${hlMicChunkCount} appends) (clip: ${durationMs / 1000}s)`);
 
   const timestamp = new Date(saveTimeUTC).toISOString().replace(/[:.]/g, '-');
@@ -1166,6 +1164,8 @@ function createWindow() {
     hlMicPath = path.join(BUFFER_DIR, `hl_mic_${recordingSessionTag}.webm`);
     hlAudioChunkCount = 0;
     hlMicChunkCount = 0;
+    audioFirstChunkTime = null;
+    micFirstChunkTime = null;
 
     engineLadder = captureWindowTitle ? ['gdi-window'] : buildEngineLadder();
     engineIndex = 0;

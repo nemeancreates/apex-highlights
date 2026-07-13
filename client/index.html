@@ -564,6 +564,7 @@
       window.sessionClipDuration = 30000;
       window.authToken = null;
       window.authUsername = null;
+      window.serverClockOffsetMs = 0;
 
       // =====================
       // CLOCK SYNC — measures this PC's offset from the Peak-Abu server
@@ -595,6 +596,7 @@
           var offsets = best.map(function(s) { return s.offset; }).sort(function(a, b) { return a - b; });
           var median = offsets[Math.floor(offsets.length / 2)];
           var uncertaintyMs = best[0].rtt / 2;
+          window.serverClockOffsetMs = median;
           ipcRenderer.send('server-clock-offset', { offset: median, uncertaintyMs: uncertaintyMs });
           console.log('Clock sync: offset ' + median.toFixed(1) + 'ms, +/-' + uncertaintyMs.toFixed(1) + 'ms (' + samples.length + ' samples)');
           hudLog('activity', 'Clock synced to server (+/-' + Math.ceil(uncertaintyMs) + 'ms)', 'info');
@@ -1241,12 +1243,15 @@
         if (!window.bufferReady) { hudLog('system','⏳ Buffer not ready yet','error'); return; }
         if (window.socket && window.currentSessionCode) {
           // Always emit, even during cooldown — the server queues the trigger
-          // with its original timestamp and fires it when the lock expires
-          window.socket.emit('broadcast-save-highlight');
+          // with its original timestamp and fires it when the lock expires.
+          // pressTs anchors the clip to the actual keypress in the SERVER clock
+          // domain, so uplink latency never shifts the capture window.
+          window.socket.emit('broadcast-save-highlight', { pressTs: Date.now() + (window.serverClockOffsetMs || 0) });
         } else {
           if (window.highlightCooldownActive) { queueLocalHighlight(); return; }
-          ipcRenderer.send('save-highlight');
+          ipcRenderer.send('save-highlight-at', Date.now());
           startSaveCooldown(15);
+        }
         }
       };
 
