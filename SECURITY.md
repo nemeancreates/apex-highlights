@@ -15,11 +15,11 @@ Instead, email: **greencompassgames@gmail.com** with:
 - Your name / affiliation (optional but appreciated)
 
 We will:
-1. Acknowledge receipt within 48 hours
+1. Acknowledge receipt as soon as possible
 2. Investigate and confirm the issue
 3. Develop and test a fix
 4. Release a patched version
-5. Credit you in the release notes (unless you prefer anonymity)
+
 
 ---
 
@@ -130,7 +130,6 @@ We will:
 
 ### Out of Scope (We Accept Risk)
 - ❌ Malicious actor reverse-engineers Electron binary and extracts FFmpeg filter chains
-- ❌ Droplet owner (Nemean) goes rogue and deletes all clips
 - ❌ DigitalOcean breach (responsibility of cloud provider)
 - ❌ User loses local password manager and forgets Peak-Abu password
 - ❌ User's PC is compromised; attacker reads local clip cache
@@ -185,9 +184,9 @@ Peak-Abu is designed with OWASP Top 10 and Microsoft SDL principles in mind:
 
 ## Contact
 
-- **Security inquiries:** [your-email@example.com]
+- **Security inquiries:** greencompassgames@gmail.com
 - **General support:** GitHub Issues or Discord
-- **Transparency:** We publish a security incident log (coming v0.2)
+
 
 ---
 
