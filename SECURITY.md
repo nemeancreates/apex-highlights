@@ -8,7 +8,7 @@ Peak-Abu takes security seriously. This document outlines our security posture, 
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Instead, email: **[your-email@example.com]** with:
+Instead, email: **greencompassgames@gmail.com** with:
 - Vulnerability description
 - Steps to reproduce
 - Potential impact
