@@ -1,6 +1,6 @@
 # Peak-Abu 🎮
 
-**Synchronized multi-POV gaming highlight capture for squads, content creators, and esports teams.**
+**Synchronized multi-POV gaming highlight capture for squads, content creators, and esports teams, possibly more**
 
 Peak-Abu lets gaming groups record their individual perspectives during a session, coordinate a synchronized save, and replay all POVs together through a web-based player with frame-perfect time sync.
 

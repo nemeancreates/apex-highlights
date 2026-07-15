@@ -27,8 +27,8 @@ const CHUNK_SECONDS = 10;
 // ================================
 // Update this whenever a new client build is uploaded to the CDN.
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.22',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.22.exe',
+  version: '0.1.23',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.23.exe',
   releaseNotes: 'Auto-updater added. The app now checks for updates on launch.'
 };
 
@@ -45,14 +45,13 @@ let customHotkey = 'F9';
 let startupHotkeyRegistered = true;
 let captureHdr = false;      // HDR monitor fix — tonemaps HDR desktop to correct SDR colors
 let captureAdapter = null;
-let captureWindowTitle = null; 
+let captureWindowTitle = null;
 let clockOffset = 0;
 let clockUncertaintyMs = null;
 let ffmpegProcess = null;
 let mainWindow = null;
 let currentSession = null;
 let authToken = null;
-let useCpuEncoder = false;
 let currentMonitor = null;
 let videoStartTime = null;
 let audioFirstChunkTime = null;
@@ -60,6 +59,135 @@ let bufferReadyWatcher = null;
 let recordingStartTime = null;
 let recordingSessionTag = Date.now();  // unique per recording session — chunk filenames never repeat
 let lastHighlightBoundary = 0;
+
+// ================================
+// CPU CLASS DETECTION — x264 settings that respect budget hardware
+// ================================
+// os.cpus() counts LOGICAL cores. A 4c/8t budget chip reports 8; an
+// 8c/16t enthusiast chip reports 16. On <= 8 logical cores, x264
+// 'veryfast' with unlimited threads visibly fights the game for CPU
+// time — drop to 'superfast' and cap threads to roughly half the
+// logical cores so the game always keeps headroom.
+const LOGICAL_CORES = os.cpus().length;
+const X264_PRESET = LOGICAL_CORES <= 8 ? 'superfast' : 'veryfast';
+const X264_THREADS = Math.max(2, Math.floor(LOGICAL_CORES / 2));
+console.log(`CPU class: ${LOGICAL_CORES} logical cores — x264 ${X264_PRESET}, ${X264_THREADS} threads`);
+
+// ================================
+// HARDWARE ENCODER PROBE
+// ================================
+// Probed once at launch with a real 1-second trial encode per encoder —
+// this catches runtime failures (missing driver DLLs, unsupported GPU
+// generation) that a static -encoders list would miss. Recording waits
+// on encoderProbePromise, so hitting Start immediately after launch is
+// safe; the probe itself takes ~1-3s in parallel.
+//
+//   nvenc — NVIDIA (h264_nvenc)
+//   qsv   — Intel iGPU / Arc (h264_qsv)
+//   amf   — AMD dGPU / APU (h264_amf)
+//
+// If an encoder passes the probe but fails during real capture (driver
+// weirdness, session limits), the failure detector below blacklists it
+// in failedEncoders for the rest of the app run and the ladder advances.
+let hwEncoders = { nvenc: false, qsv: false, amf: false };
+let encoderProbePromise = null;
+const failedEncoders = new Set(); // encoders proven broken this app run
+
+function probeEncoder(encName) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (ok) => { if (!settled) { settled = true; resolve(ok); } };
+    try {
+      const p = spawn(getFFmpegPath(), [
+        '-hide_banner', '-loglevel', 'error',
+        '-f', 'lavfi', '-i', 'color=c=black:s=256x256:r=30',
+        '-frames:v', '30', '-c:v', encName, '-f', 'null', '-'
+      ], { windowsHide: true });
+      const timer = setTimeout(() => { try { p.kill(); } catch (e) {} done(false); }, 8000);
+      p.on('close', (code) => { clearTimeout(timer); done(code === 0); });
+      p.on('error', () => { clearTimeout(timer); done(false); });
+    } catch (e) {
+      done(false);
+    }
+  });
+}
+
+async function probeHardwareEncoders() {
+  const [nvenc, qsv, amf] = await Promise.all([
+    probeEncoder('h264_nvenc'),
+    probeEncoder('h264_qsv'),
+    probeEncoder('h264_amf')
+  ]);
+  hwEncoders = { nvenc, qsv, amf };
+  console.log(`Encoder probe: NVENC=${nvenc} QSV=${qsv} AMF=${amf}`);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    const available = ['nvenc', 'qsv', 'amf'].filter(e => hwEncoders[e]);
+    mainWindow.webContents.send('capture-engine',
+      available.length > 0
+        ? `Hardware encoders detected: ${available.map(e => e.toUpperCase()).join(', ')}`
+        : 'No hardware encoder detected — CPU encoding will be used');
+  }
+}
+
+// Ordered list of usable hw encoders (probe-passed, not blacklisted)
+function availableHwEncoders() {
+  return ['nvenc', 'qsv', 'amf'].filter(e => hwEncoders[e] && !failedEncoders.has(e));
+}
+
+function engineEncoderName(engine) {
+  if (engine.includes('nvenc')) return 'nvenc';
+  if (engine.includes('qsv')) return 'qsv';
+  if (engine.includes('amf')) return 'amf';
+  return 'x264';
+}
+
+// Per-encoder output args. Bitrate-driven for hw encoders (consistent,
+// predictable file sizes per chunk); CRF for x264 (best quality-per-cycle
+// when the CPU is doing the work anyway).
+function encoderArgs(enc, bitrate) {
+  switch (enc) {
+    case 'nvenc':
+      return ['-c:v', 'h264_nvenc', '-preset', 'p4', '-tune', 'hq', '-b:v', bitrate];
+    case 'qsv':
+      return ['-c:v', 'h264_qsv', '-preset', 'veryfast', '-b:v', bitrate];
+    case 'amf':
+      return ['-c:v', 'h264_amf', '-quality', 'balanced', '-b:v', bitrate];
+    case 'x264':
+    default:
+      return ['-c:v', 'libx264', '-preset', X264_PRESET, '-crf', '23', '-threads', String(X264_THREADS)];
+  }
+}
+
+// ================================
+// ADAPTIVE BITRATE — scaled to output resolution + framerate
+// ================================
+// A fixed 8M was blocky at 4K60 and wasteful at 480p. Bitrate now tracks
+// pixels-per-second of the actual OUTPUT (post-scale) dimensions.
+function computeBitrate(monitor) {
+  let outHeight;
+  if (recordResolution) {
+    outHeight = recordResolution.height;
+  } else {
+    try {
+      const screen = require('electron').screen;
+      const displays = screen.getAllDisplays();
+      const target = (monitor !== undefined && monitor !== null && displays[monitor]) ? displays[monitor] : displays[0];
+      outHeight = Math.round(target.bounds.height * (target.scaleFactor || 1));
+    } catch (e) {
+      outHeight = 1080; // safe default if display enum fails
+    }
+  }
+
+  let baseMbps;
+  if (outHeight <= 480) baseMbps = 3;
+  else if (outHeight <= 720) baseMbps = 5;
+  else if (outHeight <= 1080) baseMbps = 8;
+  else if (outHeight <= 1440) baseMbps = 14;
+  else baseMbps = 24; // 4K and above
+
+  const fpsMultiplier = recordFps >= 60 ? 1.5 : 1.0;
+  return Math.round(baseMbps * fpsMultiplier) + 'M';
+}
 
 // ================================
 // CONTINUOUS HIGHLIGHT AUDIO
@@ -94,48 +222,58 @@ const DISK_STOP_BYTES = 10 * 1024 * 1024 * 1024;  // 10GB — hard stop
 // ================================
 // Ordered list of capture+encode strategies. On early FFmpeg failure we
 // automatically advance to the next engine, so users always end up with
-// a working recording even on unusual GPU/driver/monitor setups.
+// a working recording on any hardware — NVIDIA, Intel iGPU/Arc, AMD
+// dGPU/APU, or pure CPU.
 //
 //   dda-nvenc      ddagrab -> h264_nvenc, frames never leave the GPU (fastest, lowest game impact)
-//   dda-nvenc-vf   ddagrab -> hwdownload -> scale -> nvenc (used when downscaling to 720/480)
-//   dda-hdr-nvenc  ddagrab 10-bit -> HDR->SDR tonemap -> nvenc (fixes washed-out HDR monitors)
-//   dda-hdr-x264   same tonemap chain, CPU encode
+//   dda-nvenc-vf   ddagrab -> hwdownload -> h264_nvenc (scaled or as CPU-path fallback)
+//   dda-qsv-vf     ddagrab -> hwdownload -> h264_qsv (Intel iGPU / Arc)
+//   dda-amf-vf     ddagrab -> hwdownload -> h264_amf (AMD)
+//   dda-hdr-*      ddagrab 10-bit -> HDR->SDR tonemap -> hw or CPU encode
 //   dda-x264       ddagrab -> hwdownload -> libx264 (DDA capture is still much lighter than gdigrab)
-//   gdi-nvenc      legacy gdigrab -> nvenc (previous default — safety net)
+//   gdi-nvenc/qsv/amf  legacy gdigrab -> hardware encode (safety net for DDA-hostile setups)
 //   gdi-x264       legacy gdigrab -> libx264 (final safety net, works everywhere)
 //
 // Requires an FFmpeg build that includes the ddagrab and zscale filters
-// (gyan.dev "full" build). If the bundled build lacks them, the ladder
-// simply falls through to the gdigrab engines.
+// (gyan.dev "full" build — it also ships h264_qsv and h264_amf). If the
+// bundled build lacks them, the ladder simply falls through.
 let engineLadder = [];
 let engineIndex = 0;
 let stoppingIntentionally = false;
 
 const ENGINE_LABELS = {
-  'dda-nvenc':     'GPU capture + GPU encode (zero-copy)',
-  'dda-nvenc-vf':  'GPU capture + GPU encode (scaled)',
-  'dda-hdr-nvenc': 'GPU capture + HDR tonemap + GPU encode',
+  'dda-nvenc':     'GPU capture + NVIDIA encode (zero-copy)',
+  'dda-nvenc-vf':  'GPU capture + NVIDIA encode (scaled)',
+  'dda-qsv-vf':    'GPU capture + Intel QuickSync encode',
+  'dda-amf-vf':    'GPU capture + AMD encode',
+  'dda-hdr-nvenc': 'GPU capture + HDR tonemap + NVIDIA encode',
+  'dda-hdr-qsv':   'GPU capture + HDR tonemap + Intel encode',
+  'dda-hdr-amf':   'GPU capture + HDR tonemap + AMD encode',
   'dda-hdr-x264':  'GPU capture + HDR tonemap + CPU encode',
   'dda-x264':      'GPU capture + CPU encode',
-  'gdi-nvenc':     'Legacy capture + GPU encode',
+  'gdi-nvenc':     'Legacy capture + NVIDIA encode',
+  'gdi-qsv':       'Legacy capture + Intel encode',
+  'gdi-amf':       'Legacy capture + AMD encode',
   'gdi-x264':      'Legacy capture + CPU encode',
   'gdi-window':    'Window capture (game)',
 };
 
 function buildEngineLadder() {
   const l = [];
+  const hw = availableHwEncoders();
+
   if (captureHdr) {
-    if (!useCpuEncoder) l.push('dda-hdr-nvenc');
+    // Tonemap runs on CPU either way; encoder is the variable.
+    for (const e of hw) l.push(`dda-hdr-${e}`);
     l.push('dda-hdr-x264');
-    if (!useCpuEncoder) l.push('gdi-nvenc');
+    for (const e of hw) l.push(`gdi-${e}`);
     l.push('gdi-x264');
   } else {
-    if (!useCpuEncoder) {
-      if (!recordResolution) l.push('dda-nvenc'); // zero-copy path is native-res only
-      l.push('dda-nvenc-vf');
-      l.push('gdi-nvenc');
-    }
+    // NVENC zero-copy is the crown jewel — native res only.
+    if (hw.includes('nvenc') && !recordResolution) l.push('dda-nvenc');
+    for (const e of hw) l.push(`dda-${e}-vf`);
     l.push('dda-x264');
+    for (const e of hw) l.push(`gdi-${e}`);
     l.push('gdi-x264');
   }
   return l;
@@ -398,9 +536,9 @@ function pruneOldChunks() {
 // FFMPEG ARG BUILDER — per capture engine
 // ================================
 function buildCaptureArgs(engine, monitor) {
-const chunkPattern = path.join(BUFFER_DIR, `chunk_${recordingSessionTag}_%03d.mp4`);  const fpsStr = String(recordFps);
-
-
+  const chunkPattern = path.join(BUFFER_DIR, `chunk_${recordingSessionTag}_%03d.mp4`);
+  const fpsStr = String(recordFps);
+  const bitrate = computeBitrate(monitor);
 
   // gdigrab geometry (legacy engines only)
   const screen = require('electron').screen;
@@ -413,16 +551,19 @@ const chunkPattern = path.join(BUFFER_DIR, `chunk_${recordingSessionTag}_%03d.mp
   let gh = Math.round(target.bounds.height * scale);
   gw -= gw % 2; gh -= gh % 2;
 
-  const bitrate = recordResolution
-    ? (recordResolution.height <= 480 ? '3M' : '5M')
-    : '8M';
+  const enc = engineEncoderName(engine);
+  const encArgs = encoderArgs(enc, bitrate);
 
-  const nvencArgs = ['-c:v', 'h264_nvenc', '-preset', 'p4', '-tune', 'hq', '-b:v', bitrate];
-  const x264Args  = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23'];
-
+  // Output side:
+  //   -r + -fps_mode cfr  => CONSTANT frame rate output. ddagrab delivers
+  //   frames on the desktop-duplication cadence and gdigrab is even less
+  //   regular; without forcing CFR the chunk timestamps wobble slightly and
+  //   browsers render that as micro-stutter even with zero real drops.
+  //   Duplicate/drop-to-grid at the muxer is what Shadowplay-smooth looks like.
   const segmentArgs = [
     '-g', fpsStr, '-keyint_min', fpsStr,
     '-force_key_frames', `expr:gte(t,n_forced*${CHUNK_SECONDS})`,
+    '-r', fpsStr, '-fps_mode', 'cfr',
     '-an',
     '-f', 'segment', '-segment_time', String(CHUNK_SECONDS),
     '-reset_timestamps', '1', '-y', chunkPattern
@@ -460,40 +601,60 @@ const chunkPattern = path.join(BUFFER_DIR, `chunk_${recordingSessionTag}_%03d.mp
     '-offset_x', String(gx), '-offset_y', String(gy),
     '-video_size', `${gw}x${gh}`, '-i', 'desktop'
   ];
-  const gdiScale = recordResolution ? ['-vf', `scale=-2:${recordResolution.height}`] : [];
 
   // Window capture mode — use gdigrab targeting a specific window title.
-  // Overrides monitor/ddagrab engines entirely.
+  // Overrides monitor/ddagrab engines entirely. Uses the best available
+  // hardware encoder, falling back to CPU.
   if (captureWindowTitle) {
     const winInput = [
       '-f', 'gdigrab', '-framerate', fpsStr,
       '-i', `title=${captureWindowTitle}`
     ];
-    const winScale = recordResolution ? ['-vf', `scale=-2:${recordResolution.height}`] : [];
-    // Window capture always uses gdigrab; pick encoder based on availability
-    if (!useCpuEncoder) {
-      return [...winInput, ...winScale, ...nvencArgs, ...segmentArgs];
+    const winHw = availableHwEncoders();
+    const winEnc = winHw.length > 0 ? winHw[0] : 'x264';
+    const winEncArgs = encoderArgs(winEnc, bitrate);
+    const winVfParts = [];
+    if (recordResolution) winVfParts.push(`scale=-2:${recordResolution.height}`);
+    if (winEnc === 'x264') {
+      return [
+        ...winInput,
+        ...(winVfParts.length ? ['-vf', winVfParts.join(',')] : []),
+        ...winEncArgs, '-pix_fmt', 'yuv420p', ...segmentArgs
+      ];
     }
-    return [...winInput, ...winScale, ...x264Args, '-pix_fmt', 'yuv420p', ...segmentArgs];
+    winVfParts.push('format=nv12'); // hw encoders want nv12/yuv, not raw bgra
+    return [...winInput, '-vf', winVfParts.join(','), ...winEncArgs, ...segmentArgs];
   }
 
-  switch (engine) {
-    case 'dda-nvenc':
-      return [...ddaInput(false), ...nvencArgs, ...segmentArgs];
-    case 'dda-nvenc-vf':
-      return [...ddaInput(false), '-vf', ddaCpuVf, ...nvencArgs, ...segmentArgs];
-    case 'dda-hdr-nvenc':
-      return [...ddaInput(true), '-vf', hdrVf, ...nvencArgs, ...segmentArgs];
-    case 'dda-hdr-x264':
-      return [...ddaInput(true), '-vf', hdrVf, ...x264Args, ...segmentArgs];
-    case 'dda-x264':
-      return [...ddaInput(false), '-vf', ddaCpuVf, ...x264Args, ...segmentArgs];
-    case 'gdi-nvenc':
-      return [...gdiInput, ...gdiScale, ...nvencArgs, ...segmentArgs];
-    case 'gdi-x264':
-    default:
-      return [...gdiInput, ...gdiScale, ...x264Args, '-pix_fmt', 'yuv420p', ...segmentArgs];
+  const isGdi = engine.startsWith('gdi');
+  const isHdr = engine.includes('hdr');
+
+  // Zero-copy NVENC — frames never leave the GPU. Native res only.
+  if (engine === 'dda-nvenc') {
+    return [...ddaInput(false), ...encArgs, ...segmentArgs];
   }
+
+  if (!isGdi && isHdr) {
+    return [...ddaInput(true), '-vf', hdrVf, ...encArgs, ...segmentArgs];
+  }
+
+  if (!isGdi) {
+    // dda-nvenc-vf / dda-qsv-vf / dda-amf-vf / dda-x264
+    return [...ddaInput(false), '-vf', ddaCpuVf, ...encArgs, ...segmentArgs];
+  }
+
+  // gdi engines
+  const gdiVfParts = [];
+  if (recordResolution) gdiVfParts.push(`scale=-2:${recordResolution.height}`);
+  if (enc === 'x264') {
+    return [
+      ...gdiInput,
+      ...(gdiVfParts.length ? ['-vf', gdiVfParts.join(',')] : []),
+      ...encArgs, '-pix_fmt', 'yuv420p', ...segmentArgs
+    ];
+  }
+  gdiVfParts.push('format=nv12'); // QSV/AMF reject raw bgra; NVENC is happier too
+  return [...gdiInput, '-vf', gdiVfParts.join(','), ...encArgs, ...segmentArgs];
 }
 
 // Returns free bytes on the volume containing `dir`, or null if it can't be read.
@@ -593,11 +754,11 @@ function startRecording(monitor) {
   ensureFolders();
   currentMonitor = monitor;
 
-  // Skip NVENC engines if the encoder already proved broken this session
+  // Skip engines whose encoder is blacklisted (failed earlier this run)
   while (
     engineIndex < engineLadder.length &&
-    useCpuEncoder &&
-    engineLadder[engineIndex].includes('nvenc')
+    failedEncoders.has(engineEncoderName(engineLadder[engineIndex])) &&
+    engineEncoderName(engineLadder[engineIndex]) !== 'x264'
   ) {
     engineIndex++;
   }
@@ -615,7 +776,7 @@ function startRecording(monitor) {
   const ffmpegArgs = buildCaptureArgs(engine, monitor);
 
   console.log(`Recording monitor ${monitor} with engine [${engine}] — ${ENGINE_LABELS[engine]}`);
-  console.log(`Settings: ${recordFps}fps, resolution: ${recordResolution ? recordResolution.width + 'x' + recordResolution.height : 'native'}, buffer: ${maxChunks * CHUNK_SECONDS}s, HDR fix: ${captureHdr}`);
+  console.log(`Settings: ${recordFps}fps, resolution: ${recordResolution ? recordResolution.width + 'x' + recordResolution.height : 'native'}, bitrate: ${computeBitrate(monitor)}, buffer: ${maxChunks * CHUNK_SECONDS}s, HDR fix: ${captureHdr}`);
   console.log('FFmpeg args:', ffmpegArgs.join(' '));
 
   ffmpegProcess = spawn(getFFmpegPath(), ffmpegArgs, {
@@ -630,6 +791,15 @@ function startRecording(monitor) {
     if (captureHdr && engine.startsWith('gdi')) {
       mainWindow.webContents.send('capture-engine',
         '⚠ HDR tonemap unavailable in this FFmpeg build — colors may look washed out. Bundle the gyan.dev FULL build.');
+    }
+  }
+
+  // The HDR tonemap chain (float zscale + Hable) is genuinely CPU-heavy.
+  // On budget CPUs at 60fps it will not keep real-time — warn up front.
+  if (captureHdr && LOGICAL_CORES <= 8 && recordFps >= 60) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('capture-engine',
+        `⚠ HDR fix at 60fps is heavy for this CPU (${LOGICAL_CORES} threads) — if capture falls behind, drop to 30fps or disable the HDR fix.`);
     }
   }
 
@@ -672,10 +842,22 @@ function startRecording(monitor) {
       fs.appendFileSync(logPath, `\n=== ENGINE [${engine}] FAILED (code ${code}, ${ranForMs}ms) — trying next engine ===\n`);
       console.log(`Engine [${engine}] failed early — advancing ladder. Tail:`, stderrTail.slice(-400));
 
-      if (engine.includes('nvenc') && /nvenc|nvcuda|cuda|Cannot load|does not support the required nvenc/i.test(stderrTail)) {
-        useCpuEncoder = true;
+      // Blacklist the encoder for the rest of this run if stderr points at
+      // an encoder-level failure (not a capture-level one) — this skips ALL
+      // remaining ladder entries using that encoder rather than trying each.
+      const enc = engineEncoderName(engine);
+      const encoderFailurePatterns = {
+        nvenc: /nvenc|nvcuda|cuda|Cannot load|does not support the required nvenc/i,
+        qsv:   /qsv|MFX|mfx session|Error initializing|libmfx|libvpl/i,
+        amf:   /amf|AMF|DXGI_ERROR|Failed to initialize/i
+      };
+      if (enc !== 'x264' && encoderFailurePatterns[enc] && encoderFailurePatterns[enc].test(stderrTail)) {
+        failedEncoders.add(enc);
+        console.log(`Encoder [${enc}] blacklisted for this run`);
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('encoder-fallback', 'CPU');
+          const remaining = availableHwEncoders();
+          mainWindow.webContents.send('encoder-fallback',
+            remaining.length > 0 ? remaining[0].toUpperCase() : 'CPU');
         }
       }
 
@@ -1108,6 +1290,14 @@ function createWindow() {
   ipcMain.handle('get-current-hdr', () => captureHdr);
   ipcMain.handle('get-current-adapter', () => captureAdapter);
 
+  // Encoder probe results — for a future "capture engine" readout in Settings
+  ipcMain.handle('get-hw-encoders', () => ({
+    ...hwEncoders,
+    failed: Array.from(failedEncoders),
+    cpuCores: LOGICAL_CORES,
+    x264Preset: X264_PRESET
+  }));
+
   ipcMain.on('save-highlight', () => saveHighlight());
   // Solo-mode queued save: renderer passes the LOCAL ms timestamp of the
   // original keypress; shift into the server clock domain so the anchored
@@ -1136,6 +1326,13 @@ function createWindow() {
       const dying = ffmpegProcess;
       ffmpegProcess = null;
       await killFFmpegTree(dying);
+    }
+
+    // Make sure the hardware encoder probe has finished — it usually
+    // completes within ~2s of launch, so this only ever waits if the user
+    // hits Start immediately after opening the app.
+    if (encoderProbePromise) {
+      try { await encoderProbePromise; } catch (e) {}
     }
 
     // Set or clear window capture target
@@ -1169,6 +1366,7 @@ function createWindow() {
 
     engineLadder = captureWindowTitle ? ['gdi-window'] : buildEngineLadder();
     engineIndex = 0;
+    console.log('Engine ladder:', engineLadder.join(' -> '));
     startRecording(monitorIndex);
   });
 
@@ -1199,7 +1397,7 @@ function createWindow() {
       console.log(`Buffer cleared on stop: removed ${stale.length} files`);
     } catch (e) { console.log('Buffer clear on stop skipped:', e.message); }
   });
-   
+
 
   ipcMain.on('update-settings', (event, settings) => {
     const bufferMap = { '30': 3, '60': 6, '180': 18, '300': 30, '600': 60 };
@@ -1223,6 +1421,11 @@ function createWindow() {
       prefs.captureHdr = captureHdr;
       saveUserPreferences(prefs);
       console.log(`HDR capture fix ${captureHdr ? 'ENABLED' : 'disabled'}`);
+      // Heads-up on budget CPUs — the tonemap chain is float math on CPU.
+      if (captureHdr && LOGICAL_CORES <= 8 && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('capture-engine',
+          `⚠ HDR fix is CPU-heavy — on this machine (${LOGICAL_CORES} threads) 30fps is recommended.`);
+      }
     }
 
     if ('adapter' in settings) {
@@ -1381,6 +1584,7 @@ app.whenReady().then(async () => {
   ensureFolders();
   sweepOrphanedFFmpeg();
   createWindow();
+  encoderProbePromise = probeHardwareEncoders(); // async — start-recording awaits it
   startupHotkeyRegistered = globalShortcut.register(customHotkey, onHotkeyPressed);
   if (startupHotkeyRegistered) console.log(`${customHotkey} hotkey registered successfully`);
   else console.log(`WARNING: ${customHotkey} hotkey registration FAILED - another app may be using it`);
@@ -1625,7 +1829,7 @@ function archiveFullSession() {
   }
 }
 
-  
+
 
 function stopRecordingInternal() {
   stopBufferReadyWatcher();

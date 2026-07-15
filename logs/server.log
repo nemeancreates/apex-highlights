@@ -616,92 +616,143 @@ Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:01.31 bitrate=  
 Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:01.71 bitrate=   0.2kbits/s speed=0.453x
 Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:02.13 bitrate=   0.2kbits/s speed=0.496x
 Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:02.35 bitrate=   0.2kbits/s speed=0.443x
-Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:02.37 bitrate=   0.2kbits/s speed=0.404x    frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:02.37 bitrate=   0.2kbits/s speed=0.262x
-Composite: frame=    0 fps=0.0 q=7.0 size=       0kB time=00:00:02.41 bitrate=   0.2kbits/s speed=0.244x    frame=    1 fps=0.1 q=7.0 size=       0kB time=00:00:02.41 bitrate=   0.2kbits/s speed=0.221x
-Composite: frame=    1 fps=0.1 q=35.0 size=       0kB time=00:00:02.43 bitrate=   0.2kbits/s speed=0.205x    frame=    2 fps=0.2 q=35.0 size=       0kB time=00:00:02.43 bitrate=   0.2kbits/s speed=0.187x
+Composite: frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:02.37 bitrate=   0.2kbits/s speed=0.404x    
+frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:02.37 bitrate=   0.2kbits/s speed=0.262x
+Composite: frame=    0 fps=0.0 q=7.0 size=       0kB time=00:00:02.41 bitrate=   0.2kbits/s speed=0.244x    
+frame=    1 fps=0.1 q=7.0 size=       0kB time=00:00:02.41 bitrate=   0.2kbits/s speed=0.221x
+Composite: frame=    1 fps=0.1 q=35.0 size=       0kB time=00:00:02.43 bitrate=   0.2kbits/s speed=0.205x    
+frame=    2 fps=0.2 q=35.0 size=       0kB time=00:00:02.43 bitrate=   0.2kbits/s speed=0.187x
 Composite: frame=    2 fps=0.1 q=33.0 size=       0kB time=00:00:02.47 bitrate=   0.2kbits/s speed=0.177x
 Composite: frame=    3 fps=0.2 q=33.0 size=       0kB time=00:00:02.47 bitrate=   0.2kbits/s speed=0.165x
-Composite: frame=    3 fps=0.2 q=35.0 size=       0kB time=00:00:02.49 bitrate=   0.2kbits/s speed=0.154x    frame=    4 fps=0.2 q=35.0 size=       0kB time=00:00:02.49 bitrate=   0.2kbits/s speed=0.147x
+Composite: frame=    3 fps=0.2 q=35.0 size=       0kB time=00:00:02.49 bitrate=   0.2kbits/s speed=0.154x    
+frame=    4 fps=0.2 q=35.0 size=       0kB time=00:00:02.49 bitrate=   0.2kbits/s speed=0.147x
 Composite: frame=    4 fps=0.2 q=30.0 size=       0kB time=00:00:02.55 bitrate=   0.2kbits/s speed=0.14x
 Composite: frame=    5 fps=0.3 q=30.0 size=       0kB time=00:00:02.55 bitrate=   0.2kbits/s speed=0.135x
 Composite: frame=    5 fps=0.3 q=30.0 size=       0kB time=00:00:02.57 bitrate=   0.1kbits/s speed=0.132x
 Composite: frame=    6 fps=0.3 q=35.0 size=       0kB time=00:00:02.57 bitrate=   0.1kbits/s speed=0.123x
-Composite: frame=    6 fps=0.3 q=33.0 size=       0kB time=00:00:02.61 bitrate=   0.1kbits/s speed=0.118x    frame=    7 fps=0.3 q=33.0 size=       0kB time=00:00:02.61 bitrate=   0.1kbits/s speed=0.114x
+Composite: frame=    6 fps=0.3 q=33.0 size=       0kB time=00:00:02.61 bitrate=   0.1kbits/s speed=0.118x    
+frame=    7 fps=0.3 q=33.0 size=       0kB time=00:00:02.61 bitrate=   0.1kbits/s speed=0.114x
 Composite: frame=   20 fps=0.9 q=35.0 size=       0kB time=00:00:03.03 bitrate=   0.1kbits/s speed=0.13x
-Composite: frame=   31 fps=1.2 q=35.0 size=     256kB time=00:00:03.43 bitrate= 610.9kbits/s speed=0.138x    frame=   32 fps=1.2 q=35.0 size=     256kB time=00:00:03.43 bitrate= 610.9kbits/s speed=0.132x
+Composite: frame=   31 fps=1.2 q=35.0 size=     256kB time=00:00:03.43 bitrate= 610.9kbits/s speed=0.138x    
+frame=   32 fps=1.2 q=35.0 size=     256kB time=00:00:03.43 bitrate= 610.9kbits/s speed=0.132x
 Composite: frame=   32 fps=1.2 q=20.0 size=     256kB time=00:00:03.49 bitrate= 600.4kbits/s speed=0.13x
 Composite: frame=   33 fps=1.2 q=20.0 size=     256kB time=00:00:03.49 bitrate= 600.4kbits/s speed=0.125x
 Composite: frame=   33 fps=1.1 q=35.0 size=     256kB time=00:00:03.51 bitrate= 597.0kbits/s speed=0.122x
 Composite: frame=   34 fps=1.1 q=35.0 size=     256kB time=00:00:03.51 bitrate= 597.0kbits/s speed=0.117x
-Composite: frame=   34 fps=1.1 q=34.0 size=     256kB time=00:00:03.55 bitrate= 590.3kbits/s speed=0.115x    frame=   35 fps=1.1 q=34.0 size=     256kB time=00:00:03.55 bitrate= 590.3kbits/s speed=0.112x
+Composite: frame=   34 fps=1.1 q=34.0 size=     256kB time=00:00:03.55 bitrate= 590.3kbits/s speed=0.115x    
+frame=   35 fps=1.1 q=34.0 size=     256kB time=00:00:03.55 bitrate= 590.3kbits/s speed=0.112x
 {"ts":1783829274527,"level":"info","event":"highlight_triggered","session":"RSM668","username":"Nemean","clipDuration":15000,"lockMs":16500}
-Composite: frame=   35 fps=1.1 q=35.0 size=     256kB time=00:00:03.57 bitrate= 587.0kbits/s speed=0.109x    frame=   36 fps=1.1 q=35.0 size=     256kB time=00:00:03.57 bitrate= 587.0kbits/s speed=0.105x
+Composite: frame=   35 fps=1.1 q=35.0 size=     256kB time=00:00:03.57 bitrate= 587.0kbits/s speed=0.109x    
+frame=   36 fps=1.1 q=35.0 size=     256kB time=00:00:03.57 bitrate= 587.0kbits/s speed=0.105x
 Composite: frame=   36 fps=1.0 q=32.0 size=     256kB time=00:00:03.61 bitrate= 580.5kbits/s speed=0.104x
 Composite: frame=   37 fps=1.0 q=32.0 size=     256kB time=00:00:03.61 bitrate= 580.5kbits/s speed=0.101x
-Composite: frame=   37 fps=1.0 q=35.0 size=     256kB time=00:00:03.63 bitrate= 577.3kbits/s speed=0.0984x    frame=   38 fps=1.0 q=35.0 size=     256kB time=00:00:03.63 bitrate= 577.3kbits/s speed=0.0958x
-Composite: frame=   38 fps=1.0 q=34.0 size=     256kB time=00:00:03.67 bitrate= 571.0kbits/s speed=0.095x    frame=   39 fps=1.0 q=34.0 size=     256kB time=00:00:03.67 bitrate= 571.0kbits/s speed=0.0921x
+Composite: frame=   37 fps=1.0 q=35.0 size=     256kB time=00:00:03.63 bitrate= 577.3kbits/s speed=0.0984x    
+frame=   38 fps=1.0 q=35.0 size=     256kB time=00:00:03.63 bitrate= 577.3kbits/s speed=0.0958x
+Composite: frame=   38 fps=1.0 q=34.0 size=     256kB time=00:00:03.67 bitrate= 571.0kbits/s speed=0.095x    
+frame=   39 fps=1.0 q=34.0 size=     256kB time=00:00:03.67 bitrate= 571.0kbits/s speed=0.0921x
 Composite: frame=   41 fps=1.0 q=35.0 size=     256kB time=00:00:03.77 bitrate= 555.9kbits/s speed=0.0933x
 Composite: frame=   46 fps=1.1 q=35.0 size=     256kB time=00:00:03.91 bitrate= 536.0kbits/s speed=0.0955x
 Composite: frame=   53 fps=1.3 q=35.0 size=     256kB time=00:00:04.17 bitrate= 502.6kbits/s speed=0.101x
 Composite: frame=   62 fps=1.5 q=35.0 size=     512kB time=00:00:04.45 bitrate= 941.9kbits/s speed=0.106x
-Composite: frame=   64 fps=1.5 q=23.0 size=     512kB time=00:00:04.55 bitrate= 921.2kbits/s speed=0.107x    frame=   65 fps=1.5 q=23.0 size=     512kB time=00:00:04.55 bitrate= 921.2kbits/s speed=0.104x
-Composite: frame=   65 fps=1.4 q=23.0 size=     512kB time=00:00:04.57 bitrate= 917.2kbits/s speed=0.0996x    frame=   65 fps=1.4 q=23.0 size=     512kB time=00:00:04.57 bitrate= 917.2kbits/s speed=0.0975x
-Composite: frame=   65 fps=1.3 q=35.0 size=     512kB time=00:00:04.61 bitrate= 909.2kbits/s speed=0.0943x    frame=   66 fps=1.3 q=35.0 size=     512kB time=00:00:04.61 bitrate= 909.2kbits/s speed=0.0922x
-Composite: frame=   66 fps=1.3 q=33.0 size=     512kB time=00:00:04.63 bitrate= 905.3kbits/s speed=0.091x    frame=   67 fps=1.3 q=33.0 size=     512kB time=00:00:04.63 bitrate= 905.3kbits/s speed=0.0893x
-Composite: frame=   67 fps=1.2 q=35.0 size=     512kB time=00:00:04.67 bitrate= 897.5kbits/s speed=0.0868x    frame=   68 fps=1.2 q=35.0 size=     512kB time=00:00:04.67 bitrate= 897.5kbits/s speed=0.0852x
+Composite: frame=   64 fps=1.5 q=23.0 size=     512kB time=00:00:04.55 bitrate= 921.2kbits/s speed=0.107x    
+frame=   65 fps=1.5 q=23.0 size=     512kB time=00:00:04.55 bitrate= 921.2kbits/s speed=0.104x
+Composite: frame=   65 fps=1.4 q=23.0 size=     512kB time=00:00:04.57 bitrate= 917.2kbits/s speed=0.0996x    
+frame=   65 fps=1.4 q=23.0 size=     512kB time=00:00:04.57 bitrate= 917.2kbits/s speed=0.0975x
+Composite: frame=   65 fps=1.3 q=35.0 size=     512kB time=00:00:04.61 bitrate= 909.2kbits/s speed=0.0943x    
+frame=   66 fps=1.3 q=35.0 size=     512kB time=00:00:04.61 bitrate= 909.2kbits/s speed=0.0922x
+Composite: frame=   66 fps=1.3 q=33.0 size=     512kB time=00:00:04.63 bitrate= 905.3kbits/s speed=0.091x    
+frame=   67 fps=1.3 q=33.0 size=     512kB time=00:00:04.63 bitrate= 905.3kbits/s speed=0.0893x
+Composite: frame=   67 fps=1.2 q=35.0 size=     512kB time=00:00:04.67 bitrate= 897.5kbits/s speed=0.0868x    
+frame=   68 fps=1.2 q=35.0 size=     512kB time=00:00:04.67 bitrate= 897.5kbits/s speed=0.0852x
 {"ts":"2026-07-12T04:08:18.521Z","level":"info","event":"upload_received","session":"RSM668","username":"Nemean","sizeMB":"20.5"}
-Composite: frame=   68 fps=1.2 q=31.0 size=     512kB time=00:00:04.69 bitrate= 893.7kbits/s speed=0.084x    frame=   69 fps=1.2 q=31.0 size=     512kB time=00:00:04.69 bitrate= 893.7kbits/s speed=0.0825x
-Composite: frame=   69 fps=1.2 q=35.0 size=     512kB time=00:00:04.73 bitrate= 886.2kbits/s speed=0.0818x    frame=   70 fps=1.2 q=35.0 size=     512kB time=00:00:04.73 bitrate= 886.2kbits/s speed=0.0803x
-Composite: frame=   70 fps=1.2 q=33.0 size=     512kB time=00:00:04.77 bitrate= 878.7kbits/s speed=0.0797x    frame=   71 fps=1.2 q=33.0 size=     512kB time=00:00:04.77 bitrate= 878.7kbits/s speed=0.0787x
+Composite: frame=   68 fps=1.2 q=31.0 size=     512kB time=00:00:04.69 bitrate= 893.7kbits/s speed=0.084x    
+frame=   69 fps=1.2 q=31.0 size=     512kB time=00:00:04.69 bitrate= 893.7kbits/s speed=0.0825x
+Composite: frame=   69 fps=1.2 q=35.0 size=     512kB time=00:00:04.73 bitrate= 886.2kbits/s speed=0.0818x    
+frame=   70 fps=1.2 q=35.0 size=     512kB time=00:00:04.73 bitrate= 886.2kbits/s speed=0.0803x
+Composite: frame=   70 fps=1.2 q=33.0 size=     512kB time=00:00:04.77 bitrate= 878.7kbits/s speed=0.0797x    
+frame=   71 fps=1.2 q=33.0 size=     512kB time=00:00:04.77 bitrate= 878.7kbits/s speed=0.0787x
 Composite: frame=   71 fps=1.2 q=35.0 size=     512kB time=00:00:04.81 bitrate= 871.4kbits/s speed=0.0787x
 Composite: frame=   79 fps=1.3 q=35.0 size=     512kB time=00:00:05.09 bitrate= 823.5kbits/s speed=0.0826x
 Composite: frame=   87 fps=1.4 q=35.0 size=     768kB time=00:00:05.33 bitrate=1179.7kbits/s speed=0.0857x
 Composite: frame=   94 fps=1.5 q=33.0 size=     768kB time=00:00:05.57 bitrate=1128.9kbits/s speed=0.0876x
-Composite: frame=   95 fps=1.5 q=35.0 size=     768kB time=00:00:05.61 bitrate=1120.8kbits/s speed=0.0871x    frame=   96 fps=1.5 q=23.0 size=     768kB time=00:00:05.63 bitrate=1116.9kbits/s speed=0.0866x    frame=   97 fps=1.5 q=23.0 size=     768kB time=00:00:05.63 bitrate=1116.9kbits/s speed=0.0849x    frame=   97 fps=1.4 q=23.0 size=     768kB time=00:00:05.67 bitrate=1109.0kbits/s speed=0.0846x    frame=   97 fps=1.4 q=23.0 size=     768kB time=00:00:05.69 bitrate=1105.1kbits/s speed=0.084x    frame=   97 fps=1.4 q=23.0 size=     768kB time=00:00:05.69 bitrate=1105.1kbits/s speed=0.083x    frame=   97 fps=1.4 q=23.0 size=     768kB time=00:00:05.75 bitrate=1093.6kbits/s speed=0.0832x    frame=   97 fps=1.4 q=35.0 size=     768kB time=00:00:05.77 bitrate=1089.8kbits/s speed=0.0828x    frame=   98 fps=1.4 q=34.0 size=     768kB time=00:00:05.81 bitrate=1082.3kbits/s speed=0.0823x    frame=   99 fps=1.4 q=35.0 size=     768kB time=00:00:05.83 bitrate=1078.6kbits/s speed=0.0814x
-Composite: frame=  100 fps=1.3 q=32.0 size=     768kB time=00:00:05.87 bitrate=1071.2kbits/s speed=0.0777x    frame=  101 fps=1.3 q=32.0 size=     768kB time=00:00:05.87 bitrate=1071.2kbits/s speed=0.0765x
+Composite: frame=   95 fps=1.5 q=35.0 size=     768kB time=00:00:05.61 bitrate=1120.8kbits/s speed=0.0871x    
+frame=   96 fps=1.5 q=23.0 size=     768kB time=00:00:05.63 bitrate=1116.9kbits/s speed=0.0866x    
+frame=   97 fps=1.5 q=23.0 size=     768kB time=00:00:05.63 bitrate=1116.9kbits/s speed=0.0849x    
+frame=   97 fps=1.4 q=23.0 size=     768kB time=00:00:05.67 bitrate=1109.0kbits/s speed=0.0846x    
+frame=   97 fps=1.4 q=23.0 size=     768kB time=00:00:05.69 bitrate=1105.1kbits/s speed=0.084x    
+frame=   97 fps=1.4 q=23.0 size=     768kB time=00:00:05.69 bitrate=1105.1kbits/s speed=0.083x    
+frame=   97 fps=1.4 q=23.0 size=     768kB time=00:00:05.75 bitrate=1093.6kbits/s speed=0.0832x    
+frame=   97 fps=1.4 q=35.0 size=     768kB time=00:00:05.77 bitrate=1089.8kbits/s speed=0.0828x    
+frame=   98 fps=1.4 q=34.0 size=     768kB time=00:00:05.81 bitrate=1082.3kbits/s speed=0.0823x    
+frame=   99 fps=1.4 q=35.0 size=     768kB time=00:00:05.83 bitrate=1078.6kbits/s speed=0.0814x
+Composite: frame=  100 fps=1.3 q=32.0 size=     768kB time=00:00:05.87 bitrate=1071.2kbits/s speed=0.0777x    
+frame=  101 fps=1.3 q=32.0 size=     768kB time=00:00:05.87 bitrate=1071.2kbits/s speed=0.0765x
 {"ts":"2026-07-12T04:08:39.537Z","level":"info","event":"thumbnail_generated","file":"thumb_highlight-2026-07-12T04-07-54-527Z_1783829283592.jpg"}
-Composite: frame=  102 fps=1.3 q=35.0 size=     768kB time=00:00:05.91 bitrate=1064.0kbits/s speed=0.0759x    frame=  102 fps=1.3 q=34.0 size=    1024kB time=00:00:05.93 bitrate=1413.8kbits/s speed=0.0752x    frame=  103 fps=1.3 q=34.0 size=    1024kB time=00:00:05.93 bitrate=1413.8kbits/s speed=0.0746x    frame=  104 fps=1.3 q=35.0 size=    1024kB time=00:00:05.97 bitrate=1404.4kbits/s speed=0.0743x    frame=  105 fps=1.3 q=29.0 size=    1024kB time=00:00:05.99 bitrate=1399.7kbits/s speed=0.0735x    frame=  106 fps=1.3 q=35.0 size=    1024kB time=00:00:06.05 bitrate=1385.8kbits/s speed=0.0736x    frame=  114 fps=1.4 q=34.0 size=    1024kB time=00:00:06.33 bitrate=1324.5kbits/s speed=0.0766x    frame=  122 fps=1.5 q=35.0 size=    1024kB time=00:00:06.57 bitrate=1276.2kbits/s speed=0.079x
+Composite: frame=  102 fps=1.3 q=35.0 size=     768kB time=00:00:05.91 bitrate=1064.0kbits/s speed=0.0759x    
+frame=  102 fps=1.3 q=34.0 size=    1024kB time=00:00:05.93 bitrate=1413.8kbits/s speed=0.0752x    
+frame=  103 fps=1.3 q=34.0 size=    1024kB time=00:00:05.93 bitrate=1413.8kbits/s speed=0.0746x    
+frame=  104 fps=1.3 q=35.0 size=    1024kB time=00:00:05.97 bitrate=1404.4kbits/s speed=0.0743x    
+frame=  105 fps=1.3 q=29.0 size=    1024kB time=00:00:05.99 bitrate=1399.7kbits/s speed=0.0735x    
+frame=  106 fps=1.3 q=35.0 size=    1024kB time=00:00:06.05 bitrate=1385.8kbits/s speed=0.0736x    
+frame=  114 fps=1.4 q=34.0 size=    1024kB time=00:00:06.33 bitrate=1324.5kbits/s speed=0.0766x    
+frame=  122 fps=1.5 q=35.0 size=    1024kB time=00:00:06.57 bitrate=1276.2kbits/s speed=0.079x
 Composite: frame=  125 fps=1.5 q=32.0 size=    1024kB time=00:00:06.69 bitrate=1253.3kbits/s speed=0.0785x
 Composite: frame=  125 fps=1.4 q=35.0 size=    1024kB time=00:00:06.71 bitrate=1249.6kbits/s speed=0.0774x
-Composite: frame=  126 fps=1.4 q=34.0 size=    1024kB time=00:00:06.75 bitrate=1242.2kbits/s speed=0.0769x    frame=  127 fps=1.4 q=35.0 size=    1024kB time=00:00:06.77 bitrate=1238.5kbits/s speed=0.0762x    frame=  128 fps=1.4 q=35.0 size=    1024kB time=00:00:06.77 bitrate=1238.5kbits/s speed=0.0756x
+Composite: frame=  126 fps=1.4 q=34.0 size=    1024kB time=00:00:06.75 bitrate=1242.2kbits/s speed=0.0769x    
+frame=  127 fps=1.4 q=35.0 size=    1024kB time=00:00:06.77 bitrate=1238.5kbits/s speed=0.0762x    
+frame=  128 fps=1.4 q=35.0 size=    1024kB time=00:00:06.77 bitrate=1238.5kbits/s speed=0.0756x
 Composite: frame=  129 fps=1.4 q=23.0 size=    1024kB time=00:00:06.81 bitrate=1231.2kbits/s speed=0.0745x
 Composite: frame=  130 fps=1.4 q=35.0 size=    1024kB time=00:00:06.83 bitrate=1227.6kbits/s speed=0.0735x
-Composite: frame=  130 fps=1.4 q=33.0 size=    1280kB time=00:00:06.87 bitrate=1525.6kbits/s speed=0.0728x    frame=  131 fps=1.4 q=33.0 size=    1280kB time=00:00:06.87 bitrate=1525.6kbits/s speed=0.0715x
-Composite: frame=  131 fps=1.4 q=35.0 size=    1280kB time=00:00:06.89 bitrate=1521.2kbits/s speed=0.0711x    frame=  132 fps=1.3 q=35.0 size=    1280kB time=00:00:06.89 bitrate=1521.2kbits/s speed=0.0704x
+Composite: frame=  130 fps=1.4 q=33.0 size=    1280kB time=00:00:06.87 bitrate=1525.6kbits/s speed=0.0728x    
+frame=  131 fps=1.4 q=33.0 size=    1280kB time=00:00:06.87 bitrate=1525.6kbits/s speed=0.0715x
+Composite: frame=  131 fps=1.4 q=35.0 size=    1280kB time=00:00:06.89 bitrate=1521.2kbits/s speed=0.0711x    
+frame=  132 fps=1.3 q=35.0 size=    1280kB time=00:00:06.89 bitrate=1521.2kbits/s speed=0.0704x
 Composite: frame=  132 fps=1.3 q=31.0 size=    1280kB time=00:00:06.93 bitrate=1512.4kbits/s speed=0.0701x
 Composite: frame=  133 fps=1.3 q=31.0 size=    1280kB time=00:00:06.93 bitrate=1512.4kbits/s speed=0.0694x
-Composite: frame=  133 fps=1.3 q=35.0 size=    1280kB time=00:00:06.97 bitrate=1503.7kbits/s speed=0.0686x    frame=  134 fps=1.3 q=33.0 size=    1280kB time=00:00:07.01 bitrate=1495.1kbits/s speed=0.0686x
+Composite: frame=  133 fps=1.3 q=35.0 size=    1280kB time=00:00:06.97 bitrate=1503.7kbits/s speed=0.0686x    
+frame=  134 fps=1.3 q=33.0 size=    1280kB time=00:00:07.01 bitrate=1495.1kbits/s speed=0.0686x
 Composite: frame=  143 fps=1.4 q=35.0 size=    1280kB time=00:00:07.29 bitrate=1437.7kbits/s speed=0.071x
 {"ts":"2026-07-12T04:09:04.547Z","level":"info","event":"spaces_upload_complete","session":"RSM668"}
 Composite: frame=  154 fps=1.5 q=33.0 size=    1536kB time=00:00:07.67 bitrate=1639.8kbits/s speed=0.0743x
-Composite: frame=  157 fps=1.5 q=31.0 size=    1536kB time=00:00:07.75 bitrate=1622.9kbits/s speed=0.0739x    frame=  157 fps=1.5 q=31.0 size=    1536kB time=00:00:07.77 bitrate=1618.7kbits/s speed=0.0727x
+Composite: frame=  157 fps=1.5 q=31.0 size=    1536kB time=00:00:07.75 bitrate=1622.9kbits/s speed=0.0739x    
+frame=  157 fps=1.5 q=31.0 size=    1536kB time=00:00:07.77 bitrate=1618.7kbits/s speed=0.0727x
 Composite: frame=  157 fps=1.5 q=35.0 size=    1536kB time=00:00:07.77 bitrate=1618.7kbits/s speed=0.072x
 Composite: frame=  158 fps=1.4 q=35.0 size=    1536kB time=00:00:07.77 bitrate=1618.7kbits/s speed=0.071x
-Composite: frame=  158 fps=1.4 q=33.0 size=    1536kB time=00:00:07.81 bitrate=1610.5kbits/s speed=0.0704x    frame=  159 fps=1.4 q=33.0 size=    1536kB time=00:00:07.81 bitrate=1610.5kbits/s speed=0.0698x
-Composite: frame=  159 fps=1.4 q=35.0 size=    1536kB time=00:00:07.83 bitrate=1606.3kbits/s speed=0.0693x    frame=  160 fps=1.4 q=35.0 size=    1536kB time=00:00:07.83 bitrate=1606.3kbits/s speed=0.0688x
-Composite: frame=  160 fps=1.4 q=28.0 size=    1536kB time=00:00:07.87 bitrate=1598.2kbits/s speed=0.0685x    frame=  161 fps=1.4 q=28.0 size=    1536kB time=00:00:07.87 bitrate=1598.2kbits/s speed=0.0679x
-Composite: frame=  161 fps=1.4 q=8.0 size=    1536kB time=00:00:07.89 bitrate=1594.1kbits/s speed=0.0675x    frame=  162 fps=1.4 q=8.0 size=    1536kB time=00:00:07.89 bitrate=1594.1kbits/s speed=0.0669x
+Composite: frame=  158 fps=1.4 q=33.0 size=    1536kB time=00:00:07.81 bitrate=1610.5kbits/s speed=0.0704x    
+frame=  159 fps=1.4 q=33.0 size=    1536kB time=00:00:07.81 bitrate=1610.5kbits/s speed=0.0698x
+Composite: frame=  159 fps=1.4 q=35.0 size=    1536kB time=00:00:07.83 bitrate=1606.3kbits/s speed=0.0693x    
+frame=  160 fps=1.4 q=35.0 size=    1536kB time=00:00:07.83 bitrate=1606.3kbits/s speed=0.0688x
+Composite: frame=  160 fps=1.4 q=28.0 size=    1536kB time=00:00:07.87 bitrate=1598.2kbits/s speed=0.0685x    
+frame=  161 fps=1.4 q=28.0 size=    1536kB time=00:00:07.87 bitrate=1598.2kbits/s speed=0.0679x
+Composite: frame=  161 fps=1.4 q=8.0 size=    1536kB time=00:00:07.89 bitrate=1594.1kbits/s speed=0.0675x    
+frame=  162 fps=1.4 q=8.0 size=    1536kB time=00:00:07.89 bitrate=1594.1kbits/s speed=0.0669x
 Composite: frame=  162 fps=1.4 q=35.0 size=    1536kB time=00:00:07.93 bitrate=1586.1kbits/s speed=0.0667x
 Composite: frame=  163 fps=1.4 q=35.0 size=    1536kB time=00:00:07.93 bitrate=1586.1kbits/s speed=0.0661x
 Composite: frame=  163 fps=1.3 q=34.0 size=    1536kB time=00:00:07.97 bitrate=1578.1kbits/s speed=0.0659x
 Composite: frame=  164 fps=1.3 q=34.0 size=    1536kB time=00:00:07.97 bitrate=1578.1kbits/s speed=0.0654x
 Composite: frame=  164 fps=1.3 q=35.0 size=    1536kB time=00:00:08.01 bitrate=1570.3kbits/s speed=0.0652x
 Composite: frame=  165 fps=1.3 q=35.0 size=    1536kB time=00:00:08.01 bitrate=1570.3kbits/s speed=0.0647x
-Composite: frame=  165 fps=1.3 q=32.0 size=    1792kB time=00:00:08.05 bitrate=1822.9kbits/s speed=0.0645x    frame=  166 fps=1.3 q=32.0 size=    1792kB time=00:00:08.05 bitrate=1822.9kbits/s speed=0.064x
+Composite: frame=  165 fps=1.3 q=32.0 size=    1792kB time=00:00:08.05 bitrate=1822.9kbits/s speed=0.0645x    
+frame=  166 fps=1.3 q=32.0 size=    1792kB time=00:00:08.05 bitrate=1822.9kbits/s speed=0.064x
 Composite: frame=  174 fps=1.4 q=32.0 size=    1792kB time=00:00:08.33 bitrate=1761.6kbits/s speed=0.0659x
 Composite: frame=  186 fps=1.5 q=27.0 size=    1792kB time=00:00:08.71 bitrate=1684.8kbits/s speed=0.0686x
 Composite: frame=  188 fps=1.5 q=35.0 size=    1792kB time=00:00:08.81 bitrate=1665.7kbits/s speed=0.0691x
 Composite: frame=  189 fps=1.5 q=35.0 size=    1792kB time=00:00:08.81 bitrate=1665.7kbits/s speed=0.0683x
-Composite: frame=  189 fps=1.4 q=31.0 size=    1792kB time=00:00:08.83 bitrate=1661.9kbits/s speed=0.0677x    frame=  190 fps=1.4 q=31.0 size=    1792kB time=00:00:08.83 bitrate=1661.9kbits/s speed=0.0673x
+Composite: frame=  189 fps=1.4 q=31.0 size=    1792kB time=00:00:08.83 bitrate=1661.9kbits/s speed=0.0677x    
+frame=  190 fps=1.4 q=31.0 size=    1792kB time=00:00:08.83 bitrate=1661.9kbits/s speed=0.0673x
 Composite: frame=  190 fps=1.4 q=35.0 size=    1792kB time=00:00:08.87 bitrate=1654.4kbits/s speed=0.0668x
 Composite: frame=  191 fps=1.4 q=35.0 size=    1792kB time=00:00:08.87 bitrate=1654.4kbits/s speed=0.0657x
 Composite: frame=  191 fps=1.4 q=35.0 size=    2048kB time=00:00:08.89 bitrate=1886.5kbits/s speed=0.0656x
-Composite: frame=  191 fps=1.4 q=33.0 size=    2048kB time=00:00:08.89 bitrate=1886.5kbits/s speed=0.065x    frame=  192 fps=1.4 q=33.0 size=    2048kB time=00:00:08.89 bitrate=1886.5kbits/s speed=0.0644x
-Composite: frame=  192 fps=1.4 q=35.0 size=    2048kB time=00:00:08.95 bitrate=1873.9kbits/s speed=0.0643x    frame=  193 fps=1.4 q=35.0 size=    2048kB time=00:00:08.95 bitrate=1873.9kbits/s speed=0.064x
-Composite: frame=  193 fps=1.4 q=24.0 size=    2048kB time=00:00:08.97 bitrate=1869.7kbits/s speed=0.0635x    frame=  194 fps=1.4 q=24.0 size=    2048kB time=00:00:08.97 bitrate=1869.7kbits/s speed=0.0632x
+Composite: frame=  191 fps=1.4 q=33.0 size=    2048kB time=00:00:08.89 bitrate=1886.5kbits/s speed=0.065x    
+frame=  192 fps=1.4 q=33.0 size=    2048kB time=00:00:08.89 bitrate=1886.5kbits/s speed=0.0644x
+Composite: frame=  192 fps=1.4 q=35.0 size=    2048kB time=00:00:08.95 bitrate=1873.9kbits/s speed=0.0643x    
+frame=  193 fps=1.4 q=35.0 size=    2048kB time=00:00:08.95 bitrate=1873.9kbits/s speed=0.064x
+Composite: frame=  193 fps=1.4 q=24.0 size=    2048kB time=00:00:08.97 bitrate=1869.7kbits/s speed=0.0635x    
+frame=  194 fps=1.4 q=24.0 size=    2048kB time=00:00:08.97 bitrate=1869.7kbits/s speed=0.0632x
 Composite: frame=  194 fps=1.4 q=35.0 size=    2048kB time=00:00:09.01 bitrate=1861.4kbits/s speed=0.0631x
 Composite: frame=  195 fps=1.4 q=35.0 size=    2048kB time=00:00:09.01 bitrate=1861.4kbits/s speed=0.0626x
-Composite: frame=  195 fps=1.3 q=33.0 size=    2048kB time=00:00:09.03 bitrate=1857.3kbits/s speed=0.0624x    frame=  196 fps=1.3 q=33.0 size=    2048kB time=00:00:09.03 bitrate=1857.3kbits/s speed=0.0619x
+Composite: frame=  195 fps=1.3 q=33.0 size=    2048kB time=00:00:09.03 bitrate=1857.3kbits/s speed=0.0624x    
+frame=  196 fps=1.3 q=33.0 size=    2048kB time=00:00:09.03 bitrate=1857.3kbits/s speed=0.0619x
 Composite: frame=  200 fps=1.4 q=33.0 size=    2048kB time=00:00:09.17 bitrate=1828.9kbits/s speed=0.0626x
 Composite: frame=  209 fps=1.4 q=35.0 size=    2048kB time=00:00:09.47 bitrate=1771.0kbits/s speed=0.0645x
 Composite: frame=  220 fps=1.5 q=35.0 size=    2304kB time=00:00:09.89 bitrate=1907.8kbits/s speed=0.0658x
@@ -710,24 +761,29 @@ Composite: frame=  221 fps=1.5 q=32.0 size=    2304kB time=00:00:09.91 bitrate=1
 Composite: frame=  222 fps=1.5 q=32.0 size=    2304kB time=00:00:09.91 bitrate=1903.9kbits/s speed=0.0648x
 Composite: frame=  222 fps=1.4 q=35.0 size=    2304kB time=00:00:09.95 bitrate=1896.3kbits/s speed=0.0647x
 Composite: frame=  223 fps=1.4 q=35.0 size=    2304kB time=00:00:09.95 bitrate=1896.3kbits/s speed=0.0643x
-Composite: frame=  223 fps=1.4 q=34.0 size=    2304kB time=00:00:09.97 bitrate=1892.5kbits/s speed=0.0639x    frame=  224 fps=1.4 q=34.0 size=    2304kB time=00:00:09.97 bitrate=1892.5kbits/s speed=0.0636x
+Composite: frame=  223 fps=1.4 q=34.0 size=    2304kB time=00:00:09.97 bitrate=1892.5kbits/s speed=0.0639x    
+frame=  224 fps=1.4 q=34.0 size=    2304kB time=00:00:09.97 bitrate=1892.5kbits/s speed=0.0636x
 Composite: frame=  224 fps=1.4 q=35.0 size=    2304kB time=00:00:10.01 bitrate=1884.9kbits/s speed=0.0634x
 Composite: frame=  225 fps=1.4 q=35.0 size=    2304kB time=00:00:10.01 bitrate=1884.9kbits/s speed=0.063x
-Composite: frame=  225 fps=1.4 q=23.0 size=    2304kB time=00:00:10.03 bitrate=1881.2kbits/s speed=0.0627x    frame=  226 fps=1.4 q=23.0 size=    2304kB time=00:00:10.03 bitrate=1881.2kbits/s speed=0.0624x
+Composite: frame=  225 fps=1.4 q=23.0 size=    2304kB time=00:00:10.03 bitrate=1881.2kbits/s speed=0.0627x    
+frame=  226 fps=1.4 q=23.0 size=    2304kB time=00:00:10.03 bitrate=1881.2kbits/s speed=0.0624x
 Composite: frame=  226 fps=1.4 q=35.0 size=    2304kB time=00:00:10.07 bitrate=1873.7kbits/s speed=0.0622x
 Composite: frame=  227 fps=1.4 q=35.0 size=    2304kB time=00:00:10.07 bitrate=1873.7kbits/s speed=0.0618x
 Composite: frame=  227 fps=1.4 q=35.0 size=    2304kB time=00:00:10.09 bitrate=1870.0kbits/s speed=0.0618x
-Composite: frame=  227 fps=1.4 q=34.0 size=    2304kB time=00:00:10.09 bitrate=1870.0kbits/s speed=0.0612x    frame=  228 fps=1.4 q=34.0 size=    2304kB time=00:00:10.09 bitrate=1870.0kbits/s speed=0.0608x
+Composite: frame=  227 fps=1.4 q=34.0 size=    2304kB time=00:00:10.09 bitrate=1870.0kbits/s speed=0.0612x    
+frame=  228 fps=1.4 q=34.0 size=    2304kB time=00:00:10.09 bitrate=1870.0kbits/s speed=0.0608x
 Composite: frame=  228 fps=1.4 q=35.0 size=    2304kB time=00:00:10.13 bitrate=1862.6kbits/s speed=0.0607x
 Composite: frame=  237 fps=1.4 q=32.0 size=    2560kB time=00:00:10.43 bitrate=2010.1kbits/s speed=0.0623x
 Composite: frame=  248 fps=1.5 q=33.0 size=    2560kB time=00:00:10.77 bitrate=1946.6kbits/s speed=0.0641x
-Composite: frame=  252 fps=1.5 q=35.0 size=    2560kB time=00:00:10.95 bitrate=1914.6kbits/s speed=0.0645x    frame=  253 fps=1.5 q=35.0 size=    2560kB time=00:00:10.95 bitrate=1914.6kbits/s speed=0.0641x
+Composite: frame=  252 fps=1.5 q=35.0 size=    2560kB time=00:00:10.95 bitrate=1914.6kbits/s speed=0.0645x    
+frame=  253 fps=1.5 q=35.0 size=    2560kB time=00:00:10.95 bitrate=1914.6kbits/s speed=0.0641x
 Composite: frame=  253 fps=1.5 q=31.0 size=    2560kB time=00:00:10.97 bitrate=1911.1kbits/s speed=0.0638x
 Composite: frame=  254 fps=1.5 q=31.0 size=    2560kB time=00:00:10.97 bitrate=1911.1kbits/s speed=0.0635x
 Composite: frame=  254 fps=1.5 q=31.0 size=    2560kB time=00:00:10.99 bitrate=1907.7kbits/s speed=0.0631x
 Composite: frame=  254 fps=1.5 q=35.0 size=    2560kB time=00:00:11.01 bitrate=1904.2kbits/s speed=0.063x
 Composite: frame=  255 fps=1.4 q=35.0 size=    2560kB time=00:00:11.01 bitrate=1904.2kbits/s speed=0.0626x
-Composite: frame=  255 fps=1.4 q=33.0 size=    2560kB time=00:00:11.03 bitrate=1900.7kbits/s speed=0.0624x    frame=  256 fps=1.4 q=33.0 size=    2560kB time=00:00:11.03 bitrate=1900.7kbits/s speed=0.062x
+Composite: frame=  255 fps=1.4 q=33.0 size=    2560kB time=00:00:11.03 bitrate=1900.7kbits/s speed=0.0624x    
+frame=  256 fps=1.4 q=33.0 size=    2560kB time=00:00:11.03 bitrate=1900.7kbits/s speed=0.062x
 Composite: frame=  256 fps=1.4 q=33.0 size=    2560kB time=00:00:11.07 bitrate=1893.9kbits/s speed=0.0618x
 Composite: frame=  256 fps=1.4 q=35.0 size=    2560kB time=00:00:11.07 bitrate=1893.9kbits/s speed=0.0615x
 Composite: frame=  257 fps=1.4 q=35.0 size=    2560kB time=00:00:11.07 bitrate=1893.9kbits/s speed=0.0611x
@@ -739,38 +795,51 @@ Composite: frame=  258 fps=1.4 q=35.0 size=    2816kB time=00:00:11.13 bitrate=2
 Composite: frame=  270 fps=1.4 q=32.0 size=    2816kB time=00:00:11.51 bitrate=2003.7kbits/s speed=0.0617x
 Composite: frame=  281 fps=1.5 q=28.0 size=    3072kB time=00:00:11.91 bitrate=2112.4kbits/s speed=0.0636x
 Composite: frame=  285 fps=1.5 q=31.0 size=    3072kB time=00:00:12.03 bitrate=2091.3kbits/s speed=0.0636x
-Composite: frame=  286 fps=1.5 q=31.0 size=    3072kB time=00:00:12.03 bitrate=2091.3kbits/s speed=0.0632x    frame=  286 fps=1.5 q=31.0 size=    3072kB time=00:00:12.05 bitrate=2087.9kbits/s speed=0.0631x
-Composite: frame=  286 fps=1.5 q=35.0 size=    3072kB time=00:00:12.07 bitrate=2084.4kbits/s speed=0.0629x    frame=  287 fps=1.5 q=35.0 size=    3072kB time=00:00:12.07 bitrate=2084.4kbits/s speed=0.0626x
-Composite: frame=  287 fps=1.5 q=33.0 size=    3072kB time=00:00:12.09 bitrate=2081.0kbits/s speed=0.0623x    frame=  288 fps=1.5 q=33.0 size=    3072kB time=00:00:12.09 bitrate=2081.0kbits/s speed=0.062x    frame=  288 fps=1.5 q=33.0 size=    3072kB time=00:00:12.13 bitrate=2074.1kbits/s speed=0.062x
+Composite: frame=  286 fps=1.5 q=31.0 size=    3072kB time=00:00:12.03 bitrate=2091.3kbits/s speed=0.0632x    
+frame=  286 fps=1.5 q=31.0 size=    3072kB time=00:00:12.05 bitrate=2087.9kbits/s speed=0.0631x
+Composite: frame=  286 fps=1.5 q=35.0 size=    3072kB time=00:00:12.07 bitrate=2084.4kbits/s speed=0.0629x    
+frame=  287 fps=1.5 q=35.0 size=    3072kB time=00:00:12.07 bitrate=2084.4kbits/s speed=0.0626x
+Composite: frame=  287 fps=1.5 q=33.0 size=    3072kB time=00:00:12.09 bitrate=2081.0kbits/s speed=0.0623x    
+frame=  288 fps=1.5 q=33.0 size=    3072kB time=00:00:12.09 bitrate=2081.0kbits/s speed=0.062x    
+frame=  288 fps=1.5 q=33.0 size=    3072kB time=00:00:12.13 bitrate=2074.1kbits/s speed=0.062x
 Composite: frame=  289 fps=1.5 q=35.0 size=    3072kB time=00:00:12.15 bitrate=2070.7kbits/s speed=0.0617x
 Composite: frame=  289 fps=1.5 q=23.0 size=    3072kB time=00:00:12.17 bitrate=2067.3kbits/s speed=0.0615x
 Composite: frame=  290 fps=1.5 q=23.0 size=    3072kB time=00:00:12.17 bitrate=2067.3kbits/s speed=0.0611x
 Composite: frame=  290 fps=1.4 q=23.0 size=    3072kB time=00:00:12.21 bitrate=2060.5kbits/s speed=0.061x
-Composite: frame=  290 fps=1.4 q=35.0 size=    3072kB time=00:00:12.21 bitrate=2060.5kbits/s speed=0.0607x    frame=  291 fps=1.4 q=35.0 size=    3072kB time=00:00:12.21 bitrate=2060.5kbits/s speed=0.0604x
-Composite: frame=  291 fps=1.4 q=34.0 size=    3072kB time=00:00:12.23 bitrate=2057.2kbits/s speed=0.0603x    frame=  292 fps=1.4 q=34.0 size=    3072kB time=00:00:12.23 bitrate=2057.2kbits/s speed=0.06x
+Composite: frame=  290 fps=1.4 q=35.0 size=    3072kB time=00:00:12.21 bitrate=2060.5kbits/s speed=0.0607x    
+frame=  291 fps=1.4 q=35.0 size=    3072kB time=00:00:12.21 bitrate=2060.5kbits/s speed=0.0604x
+Composite: frame=  291 fps=1.4 q=34.0 size=    3072kB time=00:00:12.23 bitrate=2057.2kbits/s speed=0.0603x    
+frame=  292 fps=1.4 q=34.0 size=    3072kB time=00:00:12.23 bitrate=2057.2kbits/s speed=0.06x
 Composite: frame=  292 fps=1.4 q=35.0 size=    3072kB time=00:00:12.27 bitrate=2050.5kbits/s speed=0.0598x
 Composite: frame=  293 fps=1.4 q=32.0 size=    3328kB time=00:00:12.31 bitrate=2214.1kbits/s speed=0.0598x
 Composite: frame=  308 fps=1.5 q=34.0 size=    3328kB time=00:00:12.77 bitrate=2134.4kbits/s speed=0.0619x
 Composite: frame=  317 fps=1.5 q=32.0 size=    3328kB time=00:00:13.11 bitrate=2079.0kbits/s speed=0.0631x
 Composite: frame=  318 fps=1.5 q=35.0 size=    3328kB time=00:00:13.15 bitrate=2072.7kbits/s speed=0.0628x
-Composite: frame=  319 fps=1.5 q=35.0 size=    3328kB time=00:00:13.15 bitrate=2072.7kbits/s speed=0.0622x    frame=  319 fps=1.5 q=35.0 size=    3328kB time=00:00:13.17 bitrate=2069.6kbits/s speed=0.062x
-Composite: frame=  319 fps=1.5 q=34.0 size=    3584kB time=00:00:13.17 bitrate=2228.8kbits/s speed=0.0618x    frame=  320 fps=1.5 q=34.0 size=    3584kB time=00:00:13.17 bitrate=2228.8kbits/s speed=0.0615x
+Composite: frame=  319 fps=1.5 q=35.0 size=    3328kB time=00:00:13.15 bitrate=2072.7kbits/s speed=0.0622x    
+frame=  319 fps=1.5 q=35.0 size=    3328kB time=00:00:13.17 bitrate=2069.6kbits/s speed=0.062x
+Composite: frame=  319 fps=1.5 q=34.0 size=    3584kB time=00:00:13.17 bitrate=2228.8kbits/s speed=0.0618x    
+frame=  320 fps=1.5 q=34.0 size=    3584kB time=00:00:13.17 bitrate=2228.8kbits/s speed=0.0615x
 Composite: frame=  320 fps=1.5 q=35.0 size=    3584kB time=00:00:13.21 bitrate=2222.0kbits/s speed=0.0615x
 Composite: frame=  321 fps=1.5 q=35.0 size=    3584kB time=00:00:13.21 bitrate=2222.0kbits/s speed=0.0612x
 Composite: frame=  321 fps=1.5 q=35.0 size=    3584kB time=00:00:13.23 bitrate=2218.7kbits/s speed=0.061x
 Composite: frame=  321 fps=1.5 q=35.0 size=    3584kB time=00:00:13.23 bitrate=2218.7kbits/s speed=0.0606x
 Composite: frame=  321 fps=1.5 q=28.0 size=    3584kB time=00:00:13.23 bitrate=2218.7kbits/s speed=0.0605x
-Composite: frame=  322 fps=1.5 q=28.0 size=    3584kB time=00:00:13.23 bitrate=2218.7kbits/s speed=0.0602x    frame=  322 fps=1.5 q=28.0 size=    3584kB time=00:00:13.25 bitrate=2215.3kbits/s speed=0.06x
+Composite: frame=  322 fps=1.5 q=28.0 size=    3584kB time=00:00:13.23 bitrate=2218.7kbits/s speed=0.0602x    
+frame=  322 fps=1.5 q=28.0 size=    3584kB time=00:00:13.25 bitrate=2215.3kbits/s speed=0.06x
 Composite: frame=  322 fps=1.4 q=8.0 size=    3584kB time=00:00:13.27 bitrate=2212.0kbits/s speed=0.0598x
 Composite: frame=  323 fps=1.4 q=8.0 size=    3584kB time=00:00:13.27 bitrate=2212.0kbits/s speed=0.0595x
 Composite: frame=  323 fps=1.4 q=8.0 size=    3584kB time=00:00:13.29 bitrate=2208.6kbits/s speed=0.0593x
 Composite: frame=  323 fps=1.4 q=8.0 size=    3584kB time=00:00:13.29 bitrate=2208.6kbits/s speed=0.059x
-Composite: frame=  323 fps=1.4 q=35.0 size=    3584kB time=00:00:13.29 bitrate=2208.6kbits/s speed=0.0588x    frame=  324 fps=1.4 q=35.0 size=    3584kB time=00:00:13.29 bitrate=2208.6kbits/s speed=0.0583x
+Composite: frame=  323 fps=1.4 q=35.0 size=    3584kB time=00:00:13.29 bitrate=2208.6kbits/s speed=0.0588x    
+frame=  324 fps=1.4 q=35.0 size=    3584kB time=00:00:13.29 bitrate=2208.6kbits/s speed=0.0583x
 Composite: frame=  325 fps=1.4 q=34.0 size=    3584kB time=00:00:13.33 bitrate=2202.0kbits/s speed=0.0583x
 Composite: frame=  339 fps=1.5 q=27.0 size=    3840kB time=00:00:13.81 bitrate=2277.3kbits/s speed=0.0603x
 Composite: frame=  349 fps=1.5 q=35.0 size=    3840kB time=00:00:14.17 bitrate=2219.5kbits/s speed=0.0614x
-Composite: frame=  350 fps=1.5 q=35.0 size=    3840kB time=00:00:14.17 bitrate=2219.5kbits/s speed=0.0611x    frame=  350 fps=1.5 q=35.0 size=    3840kB time=00:00:14.19 bitrate=2216.3kbits/s speed=0.0609x
-Composite: frame=  350 fps=1.5 q=32.0 size=    3840kB time=00:00:14.21 bitrate=2213.2kbits/s speed=0.0607x    frame=  351 fps=1.5 q=32.0 size=    3840kB time=00:00:14.21 bitrate=2213.2kbits/s speed=0.0604x    frame=  351 fps=1.5 q=32.0 size=    3840kB time=00:00:14.23 bitrate=2210.1kbits/s speed=0.0604x
+Composite: frame=  350 fps=1.5 q=35.0 size=    3840kB time=00:00:14.17 bitrate=2219.5kbits/s speed=0.0611x    
+frame=  350 fps=1.5 q=35.0 size=    3840kB time=00:00:14.19 bitrate=2216.3kbits/s speed=0.0609x
+Composite: frame=  350 fps=1.5 q=32.0 size=    3840kB time=00:00:14.21 bitrate=2213.2kbits/s speed=0.0607x    
+frame=  351 fps=1.5 q=32.0 size=    3840kB time=00:00:14.21 bitrate=2213.2kbits/s speed=0.0604x    
+frame=  351 fps=1.5 q=32.0 size=    3840kB time=00:00:14.23 bitrate=2210.1kbits/s speed=0.0604x
 Composite: frame=  352 fps=1.5 q=35.0 size=    3840kB time=00:00:14.23 bitrate=2210.1kbits/s speed=0.0601x
 Composite: frame=  352 fps=1.5 q=34.0 size=    3840kB time=00:00:14.27 bitrate=2203.9kbits/s speed=0.0599x
 Composite: frame=  353 fps=1.5 q=34.0 size=    3840kB time=00:00:14.27 bitrate=2203.9kbits/s speed=0.0597x
@@ -778,10 +847,13 @@ Composite: frame=  353 fps=1.5 q=34.0 size=    3840kB time=00:00:14.29 bitrate=2
 Composite: frame=  353 fps=1.5 q=34.0 size=    3840kB time=00:00:14.29 bitrate=2200.8kbits/s speed=0.0593x
 Composite: frame=  353 fps=1.5 q=35.0 size=    3840kB time=00:00:14.29 bitrate=2200.8kbits/s speed=0.059x
 Composite: frame=  354 fps=1.5 q=35.0 size=    3840kB time=00:00:14.29 bitrate=2200.8kbits/s speed=0.0588x
-Composite: frame=  354 fps=1.5 q=35.0 size=    3840kB time=00:00:14.31 bitrate=2197.8kbits/s speed=0.0586x    frame=  354 fps=1.4 q=35.0 size=    3840kB time=00:00:14.31 bitrate=2197.8kbits/s speed=0.0584x
-Composite: frame=  354 fps=1.4 q=22.0 size=    3840kB time=00:00:14.33 bitrate=2194.7kbits/s speed=0.0583x    frame=  355 fps=1.4 q=22.0 size=    3840kB time=00:00:14.33 bitrate=2194.7kbits/s speed=0.0581x
+Composite: frame=  354 fps=1.5 q=35.0 size=    3840kB time=00:00:14.31 bitrate=2197.8kbits/s speed=0.0586x    
+frame=  354 fps=1.4 q=35.0 size=    3840kB time=00:00:14.31 bitrate=2197.8kbits/s speed=0.0584x
+Composite: frame=  354 fps=1.4 q=22.0 size=    3840kB time=00:00:14.33 bitrate=2194.7kbits/s speed=0.0583x    
+frame=  355 fps=1.4 q=22.0 size=    3840kB time=00:00:14.33 bitrate=2194.7kbits/s speed=0.0581x
 Composite: frame=  369 fps=1.5 q=33.0 size=    4096kB time=00:00:14.81 bitrate=2265.2kbits/s speed=0.0599x
-Composite: frame=  381 fps=1.5 q=35.0 size=    4352kB time=00:00:15.23 bitrate=2340.4kbits/s speed=0.0612x    frame=  382 fps=1.5 q=35.0 size=    4352kB time=00:00:15.23 bitrate=2340.4kbits/s speed=0.0607x
+Composite: frame=  381 fps=1.5 q=35.0 size=    4352kB time=00:00:15.23 bitrate=2340.4kbits/s speed=0.0612x    
+frame=  382 fps=1.5 q=35.0 size=    4352kB time=00:00:15.23 bitrate=2340.4kbits/s speed=0.0607x
 Composite: frame=  382 fps=1.5 q=30.0 size=    4352kB time=00:00:15.27 bitrate=2334.2kbits/s speed=0.0606x
 Composite: frame=  383 fps=1.5 q=30.0 size=    4352kB time=00:00:15.27 bitrate=2334.2kbits/s speed=0.0604x
 Composite: frame=  383 fps=1.5 q=30.0 size=    4352kB time=00:00:15.29 bitrate=2331.2kbits/s speed=0.0602x
@@ -795,10 +867,12 @@ Composite: frame=  384 fps=1.5 q=33.0 size=    4352kB time=00:00:15.35 bitrate=2
 Composite: frame=  385 fps=1.5 q=33.0 size=    4352kB time=00:00:15.35 bitrate=2322.1kbits/s speed=0.0586x
 Composite: frame=  385 fps=1.5 q=33.0 size=    4352kB time=00:00:15.37 bitrate=2319.1kbits/s speed=0.0585x
 Composite: frame=  385 fps=1.5 q=33.0 size=    4352kB time=00:00:15.37 bitrate=2319.1kbits/s speed=0.0583x
-Composite: frame=  385 fps=1.5 q=35.0 size=    4352kB time=00:00:15.37 bitrate=2319.1kbits/s speed=0.0579x    frame=  386 fps=1.5 q=35.0 size=    4352kB time=00:00:15.37 bitrate=2319.1kbits/s speed=0.0578x
+Composite: frame=  385 fps=1.5 q=35.0 size=    4352kB time=00:00:15.37 bitrate=2319.1kbits/s speed=0.0579x    
+frame=  386 fps=1.5 q=35.0 size=    4352kB time=00:00:15.37 bitrate=2319.1kbits/s speed=0.0578x
 Composite: frame=  400 fps=1.5 q=35.0 size=    4352kB time=00:00:15.83 bitrate=2251.7kbits/s speed=0.0594x
 Composite: frame=  413 fps=1.5 q=33.0 size=    4608kB time=00:00:16.31 bitrate=2314.0kbits/s speed=0.0611x
-Composite: frame=  413 fps=1.5 q=35.0 size=    4608kB time=00:00:16.31 bitrate=2314.0kbits/s speed=0.0606x    frame=  414 fps=1.5 q=35.0 size=    4608kB time=00:00:16.31 bitrate=2314.0kbits/s speed=0.0604x
+Composite: frame=  413 fps=1.5 q=35.0 size=    4608kB time=00:00:16.31 bitrate=2314.0kbits/s speed=0.0606x    
+frame=  414 fps=1.5 q=35.0 size=    4608kB time=00:00:16.31 bitrate=2314.0kbits/s speed=0.0604x
 Composite: frame=  414 fps=1.5 q=35.0 size=    4608kB time=00:00:16.35 bitrate=2308.3kbits/s speed=0.0604x
 Composite: frame=  414 fps=1.5 q=31.0 size=    4608kB time=00:00:16.35 bitrate=2308.3kbits/s speed=0.0601x
 Composite: frame=  415 fps=1.5 q=31.0 size=    4608kB time=00:00:16.35 bitrate=2308.3kbits/s speed=0.0599x
@@ -830,12 +904,15 @@ Composite: frame=  449 fps=1.5 q=33.0 size=    4864kB time=00:00:17.49 bitrate=2
 Composite: frame=  449 fps=1.5 q=33.0 size=    4864kB time=00:00:17.49 bitrate=2277.8kbits/s speed=0.0585x
 Composite: frame=  449 fps=1.5 q=35.0 size=    4864kB time=00:00:17.49 bitrate=2277.8kbits/s speed=0.0583x
 Composite: frame=  450 fps=1.5 q=35.0 size=    4864kB time=00:00:17.49 bitrate=2277.8kbits/s speed=0.0581x
-Composite: frame=  450 fps=1.5 q=35.0 size=    4864kB time=00:00:17.51 bitrate=2275.2kbits/s speed=0.058x    frame=  450 fps=1.5 q=35.0 size=    4864kB time=00:00:17.51 bitrate=2275.2kbits/s speed=0.0578x
+Composite: frame=  450 fps=1.5 q=35.0 size=    4864kB time=00:00:17.51 bitrate=2275.2kbits/s speed=0.058x    
+frame=  450 fps=1.5 q=35.0 size=    4864kB time=00:00:17.51 bitrate=2275.2kbits/s speed=0.0578x
 Composite: frame=  452 fps=1.5 q=33.0 size=    5120kB time=00:00:17.61 bitrate=2381.3kbits/s speed=0.058x
 Composite: frame=  466 fps=1.5 q=35.0 size=    5120kB time=00:00:18.03 bitrate=2325.9kbits/s speed=0.0593x
 Composite: frame=  478 fps=1.6 q=35.0 size=    5376kB time=00:00:18.45 bitrate=2386.6kbits/s speed=0.0605x
-Composite: frame=  478 fps=1.6 q=32.0 size=    5376kB time=00:00:18.47 bitrate=2384.0kbits/s speed=0.0604x    frame=  479 fps=1.6 q=32.0 size=    5376kB time=00:00:18.47 bitrate=2384.0kbits/s speed=0.0602x
-Composite: frame=  479 fps=1.6 q=35.0 size=    5376kB time=00:00:18.49 bitrate=2381.4kbits/s speed=0.0601x    frame=  480 fps=1.6 q=35.0 size=    5376kB time=00:00:18.49 bitrate=2381.4kbits/s speed=0.0598x
+Composite: frame=  478 fps=1.6 q=32.0 size=    5376kB time=00:00:18.47 bitrate=2384.0kbits/s speed=0.0604x    
+frame=  479 fps=1.6 q=32.0 size=    5376kB time=00:00:18.47 bitrate=2384.0kbits/s speed=0.0602x
+Composite: frame=  479 fps=1.6 q=35.0 size=    5376kB time=00:00:18.49 bitrate=2381.4kbits/s speed=0.0601x    
+frame=  480 fps=1.6 q=35.0 size=    5376kB time=00:00:18.49 bitrate=2381.4kbits/s speed=0.0598x
 Composite: frame=  480 fps=1.5 q=35.0 size=    5376kB time=00:00:18.53 bitrate=2376.3kbits/s speed=0.0598x
 Composite: frame=  480 fps=1.5 q=34.0 size=    5376kB time=00:00:18.55 bitrate=2373.7kbits/s speed=0.0597x
 Composite: frame=  481 fps=1.5 q=34.0 size=    5376kB time=00:00:18.55 bitrate=2373.7kbits/s speed=0.0595x
@@ -843,14 +920,16 @@ Composite: frame=  481 fps=1.5 q=34.0 size=    5376kB time=00:00:18.57 bitrate=2
 Composite: frame=  481 fps=1.5 q=34.0 size=    5376kB time=00:00:18.57 bitrate=2371.2kbits/s speed=0.0591x
 Composite: frame=  481 fps=1.5 q=35.0 size=    5376kB time=00:00:18.57 bitrate=2371.2kbits/s speed=0.059x
 Composite: frame=  482 fps=1.5 q=35.0 size=    5376kB time=00:00:18.57 bitrate=2371.2kbits/s speed=0.0588x
-Composite: frame=  482 fps=1.5 q=35.0 size=    5376kB time=00:00:18.59 bitrate=2368.6kbits/s speed=0.0586x    frame=  482 fps=1.5 q=35.0 size=    5376kB time=00:00:18.59 bitrate=2368.6kbits/s speed=0.0584x
+Composite: frame=  482 fps=1.5 q=35.0 size=    5376kB time=00:00:18.59 bitrate=2368.6kbits/s speed=0.0586x    
+frame=  482 fps=1.5 q=35.0 size=    5376kB time=00:00:18.59 bitrate=2368.6kbits/s speed=0.0584x
 Composite: frame=  482 fps=1.5 q=30.0 size=    5376kB time=00:00:18.61 bitrate=2366.1kbits/s speed=0.0582x
 Composite: frame=  483 fps=1.5 q=30.0 size=    5376kB time=00:00:18.61 bitrate=2366.1kbits/s speed=0.0581x
 Composite: frame=  483 fps=1.5 q=30.0 size=    5376kB time=00:00:18.63 bitrate=2363.5kbits/s speed=0.0581x
 Composite: frame=  483 fps=1.5 q=30.0 size=    5376kB time=00:00:18.63 bitrate=2363.5kbits/s speed=0.0579x
 Composite: frame=  483 fps=1.5 q=8.0 size=    5376kB time=00:00:18.63 bitrate=2363.5kbits/s speed=0.0577x
 Composite: frame=  484 fps=1.5 q=8.0 size=    5376kB time=00:00:18.63 bitrate=2363.5kbits/s speed=0.0575x
-Composite: frame=  484 fps=1.5 q=8.0 size=    5376kB time=00:00:18.65 bitrate=2361.0kbits/s speed=0.0574x    frame=  484 fps=1.5 q=8.0 size=    5376kB time=00:00:18.65 bitrate=2361.0kbits/s speed=0.0572x
+Composite: frame=  484 fps=1.5 q=8.0 size=    5376kB time=00:00:18.65 bitrate=2361.0kbits/s speed=0.0574x    
+frame=  484 fps=1.5 q=8.0 size=    5376kB time=00:00:18.65 bitrate=2361.0kbits/s speed=0.0572x
 Composite: frame=  499 fps=1.5 q=35.0 size=    5632kB time=00:00:19.13 bitrate=2411.4kbits/s speed=0.0586x
 Composite: frame=  510 fps=1.6 q=33.0 size=    5888kB time=00:00:19.53 bitrate=2469.3kbits/s speed=0.0596x
 Composite: frame=  510 fps=1.5 q=33.0 size=    5888kB time=00:00:19.55 bitrate=2466.8kbits/s speed=0.0594x
@@ -859,7 +938,8 @@ Composite: frame=  511 fps=1.5 q=35.0 size=    5888kB time=00:00:19.55 bitrate=2
 Composite: frame=  511 fps=1.5 q=35.0 size=    5888kB time=00:00:19.57 bitrate=2464.3kbits/s speed=0.0589x
 Composite: frame=  511 fps=1.5 q=35.0 size=    5888kB time=00:00:19.57 bitrate=2464.3kbits/s speed=0.0587x
 Composite: frame=  511 fps=1.5 q=31.0 size=    5888kB time=00:00:19.57 bitrate=2464.3kbits/s speed=0.0586x
-Composite: frame=  512 fps=1.5 q=31.0 size=    5888kB time=00:00:19.57 bitrate=2464.3kbits/s speed=0.0584x    frame=  512 fps=1.5 q=31.0 size=    5888kB time=00:00:19.59 bitrate=2461.8kbits/s speed=0.0583x
+Composite: frame=  512 fps=1.5 q=31.0 size=    5888kB time=00:00:19.57 bitrate=2464.3kbits/s speed=0.0584x    
+frame=  512 fps=1.5 q=31.0 size=    5888kB time=00:00:19.59 bitrate=2461.8kbits/s speed=0.0583x
 Composite: frame=  512 fps=1.5 q=35.0 size=    5888kB time=00:00:19.61 bitrate=2459.3kbits/s speed=0.0582x
 Composite: frame=  513 fps=1.5 q=35.0 size=    5888kB time=00:00:19.61 bitrate=2459.3kbits/s speed=0.058x
 Composite: frame=  513 fps=1.5 q=35.0 size=    5888kB time=00:00:19.63 bitrate=2456.8kbits/s speed=0.0579x
@@ -1456,7 +1536,8 @@ Composite: frame=   61 fps=0.5 q=29.0 size=    1792kB time=00:00:02.30 bitrate=6
 Composite: frame=   61 fps=0.5 q=29.0 size=    1792kB time=00:00:02.30 bitrate=6371.7kbits/s speed=0.0175x
 Composite: frame=   62 fps=0.5 q=29.0 size=    1792kB time=00:00:02.30 bitrate=6371.7kbits/s speed=0.0173x
 Composite: frame=   62 fps=0.5 q=29.0 size=    1792kB time=00:00:02.34 bitrate=6255.9kbits/s speed=0.0176x
-Composite: frame=   63 fps=0.5 q=29.0 size=    1792kB time=00:00:02.34 bitrate=6255.9kbits/s speed=0.0175x    frame=   63 fps=0.5 q=29.0 size=    1792kB time=00:00:02.34 bitrate=6255.9kbits/s speed=0.0174x
+Composite: frame=   63 fps=0.5 q=29.0 size=    1792kB time=00:00:02.34 bitrate=6255.9kbits/s speed=0.0175x    
+frame=   63 fps=0.5 q=29.0 size=    1792kB time=00:00:02.34 bitrate=6255.9kbits/s speed=0.0174x
 Composite: frame=   63 fps=0.5 q=29.0 size=    1792kB time=00:00:02.38 bitrate=6144.2kbits/s speed=0.0177x
 Composite: frame=   63 fps=0.5 q=29.0 size=    1792kB time=00:00:02.38 bitrate=6144.2kbits/s speed=0.0176x
 Composite: frame=   63 fps=0.5 q=29.0 size=    1792kB time=00:00:02.38 bitrate=6144.2kbits/s speed=0.0175x
@@ -1703,7 +1784,8 @@ Composite: frame=  121 fps=0.4 q=29.0 size=    3072kB time=00:00:04.30 bitrate=5
 Composite: frame=  121 fps=0.4 q=29.0 size=    3072kB time=00:00:04.30 bitrate=5839.9kbits/s speed=0.0131x
 Composite: frame=  121 fps=0.4 q=29.0 size=    3072kB time=00:00:04.30 bitrate=5839.9kbits/s speed=0.013x
 Composite: frame=  121 fps=0.4 q=29.0 size=    3072kB time=00:00:04.30 bitrate=5839.9kbits/s speed=0.013x
-Composite: frame=  122 fps=0.4 q=29.0 size=    3072kB time=00:00:04.30 bitrate=5839.9kbits/s speed=0.013x    frame=  122 fps=0.4 q=29.0 size=    3072kB time=00:00:04.30 bitrate=5839.9kbits/s speed=0.0129x
+Composite: frame=  122 fps=0.4 q=29.0 size=    3072kB time=00:00:04.30 bitrate=5839.9kbits/s speed=0.013x    
+frame=  122 fps=0.4 q=29.0 size=    3072kB time=00:00:04.30 bitrate=5839.9kbits/s speed=0.0129x
 Composite: frame=  122 fps=0.4 q=29.0 size=    3072kB time=00:00:04.35 bitrate=5782.7kbits/s speed=0.013x
 Composite: frame=  122 fps=0.4 q=29.0 size=    3072kB time=00:00:04.35 bitrate=5782.7kbits/s speed=0.013x
 Composite: frame=  123 fps=0.4 q=29.0 size=    3072kB time=00:00:04.35 bitrate=5782.7kbits/s speed=0.0129x
@@ -1821,7 +1903,8 @@ Composite: frame=  147 fps=0.3 q=29.0 size=    3584kB time=00:00:05.18 bitrate=5
 Composite: frame=  148 fps=0.4 q=29.0 size=    3584kB time=00:00:05.18 bitrate=5663.7kbits/s speed=0.0123x
 Composite: frame=  148 fps=0.4 q=29.0 size=    3584kB time=00:00:05.20 bitrate=5640.5kbits/s speed=0.0123x
 Composite: frame=  148 fps=0.3 q=29.0 size=    3584kB time=00:00:05.20 bitrate=5640.5kbits/s speed=0.0123x
-Composite: frame=  149 fps=0.4 q=29.0 size=    3584kB time=00:00:05.20 bitrate=5640.5kbits/s speed=0.0123x    frame=  149 fps=0.4 q=29.0 size=    3584kB time=00:00:05.20 bitrate=5640.5kbits/s speed=0.0123x
+Composite: frame=  149 fps=0.4 q=29.0 size=    3584kB time=00:00:05.20 bitrate=5640.5kbits/s speed=0.0123x    
+frame=  149 fps=0.4 q=29.0 size=    3584kB time=00:00:05.20 bitrate=5640.5kbits/s speed=0.0123x
 Composite: frame=  149 fps=0.4 q=29.0 size=    3584kB time=00:00:05.24 bitrate=5594.6kbits/s speed=0.0123x
 Composite: frame=  149 fps=0.3 q=29.0 size=    3584kB time=00:00:05.24 bitrate=5594.6kbits/s speed=0.0123x
 Composite: frame=  149 fps=0.3 q=29.0 size=    3584kB time=00:00:05.24 bitrate=5594.6kbits/s speed=0.0123x
