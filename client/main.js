@@ -23,6 +23,25 @@ const CHUNK_SECONDS = 10;
 
 
 // ================================
+// GAMEPAD — OS-level XInput polling (works while game is focused)
+// ================================
+const XINPUT_BUTTON_MAP = [
+  0x1000, 0x2000, 0x4000, 0x8000, // A B X Y
+  0x0100, 0x0200,                   // LB RB
+  -1, -2,                           // LT RT (analog)
+  0x0020, 0x0010,                   // Back Start
+  0x0040, 0x0080,                   // L-Stick R-Stick
+  0x0001, 0x0002, 0x0004, 0x0008,  // DPad U D L R
+  0                                 // Xbox/Home (not available via XInput)
+];
+
+let xinputProcess = null;
+let gamepadPrefs = { buttonIndex: null, triggerMode: 'double' };
+let gpState = { lastPressTime: 0, isHeld: false, holdStart: 0, fired: false };
+let xinputConnected = false;
+
+
+// ================================
 // CLIENT VERSION CONFIG
 // ================================
 // Update this whenever a new client build is uploaded to the CDN.
@@ -1195,6 +1214,132 @@ function uploadHighlight(videoPath, metadataPath) {
 
 app.commandLine.appendSwitch('enable-features', 'WebRtcAllowInputVolumeAdjustment');
 
+function startXInputPoll() {
+  if (xinputProcess) return;
+
+  const script = [
+    'Add-Type @"',
+    'using System; using System.Runtime.InteropServices;',
+    'public class XI {',
+    '  [DllImport("xinput1_4.dll")] public static extern int XInputGetState(int i, ref XIS s);',
+    '  [StructLayout(LayoutKind.Sequential)] public struct XIS { public int P; public XGP G; }',
+    '  [StructLayout(LayoutKind.Sequential)] public struct XGP {',
+    '    public ushort B; public byte LT; public byte RT;',
+    '    public short LX; public short LY; public short RX; public short RY;',
+    '  }',
+    '}',
+    '"@',
+    '$s = New-Object XI+XIS',
+    'while($true) {',
+    '  $r = [XI]::XInputGetState(0,[ref]$s)',
+    '  if($r -eq 0) { [Console]::WriteLine("$($s.G.B),$($s.G.LT),$($s.G.RT)") }',
+    '  else { [Console]::WriteLine("-1,0,0") }',
+    '  Start-Sleep -Milliseconds 50',
+    '}'
+  ].join('\n');
+
+  xinputProcess = spawn('powershell.exe', [
+    '-NoProfile', '-Command', script
+  ], { windowsHide: true });
+
+  let lineBuffer = '';
+  xinputProcess.stdout.on('data', (data) => {
+    lineBuffer += data.toString();
+    const lines = lineBuffer.split(/\r?\n/);
+    lineBuffer = lines.pop();
+    for (const line of lines) {
+      if (line.trim()) processXInputLine(line.trim());
+    }
+  });
+
+  xinputProcess.stderr.on('data', (d) => {
+    console.log('XInput poll error:', d.toString().slice(0, 200));
+  });
+
+  xinputProcess.on('close', () => {
+    xinputProcess = null;
+    console.log('XInput poll process exited');
+  });
+
+  xinputProcess.on('error', (e) => {
+    console.log('XInput poll spawn failed:', e.message);
+    xinputProcess = null;
+  });
+
+  console.log('XInput OS-level gamepad polling started');
+}
+
+function stopXInputPoll() {
+  if (xinputProcess) {
+    try { xinputProcess.kill(); } catch (e) {}
+    xinputProcess = null;
+  }
+}
+
+function processXInputLine(line) {
+  const parts = line.split(',');
+  if (parts.length < 3) return;
+
+  const buttons = parseInt(parts[0]);
+  const lt = parseInt(parts[1]);
+  const rt = parseInt(parts[2]);
+
+  // Track connection state for renderer UI
+  const connected = buttons !== -1;
+  if (connected !== xinputConnected) {
+    xinputConnected = connected;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('xinput-connection', connected);
+    }
+    console.log(`XInput controller ${connected ? 'connected' : 'disconnected'}`);
+  }
+
+  if (!connected) return;
+  if (gamepadPrefs.buttonIndex === null) return;
+
+  const btnIdx = gamepadPrefs.buttonIndex;
+  if (btnIdx >= XINPUT_BUTTON_MAP.length) return;
+  const mask = XINPUT_BUTTON_MAP[btnIdx];
+
+  let pressed = false;
+  if (mask === -1) pressed = lt > 200;       // LT analog threshold
+  else if (mask === -2) pressed = rt > 200;  // RT analog threshold
+  else if (mask > 0) pressed = (buttons & mask) !== 0;
+
+  const now = Date.now();
+  const st = gpState;
+
+  if (gamepadPrefs.triggerMode === 'long') {
+    if (pressed) {
+      if (!st.isHeld) { st.isHeld = true; st.holdStart = now; st.fired = false; }
+      else if (!st.fired && (now - st.holdStart) >= 800) {
+        st.fired = true;
+        console.log('Gamepad long-press save triggered');
+        onHotkeyPressed();
+      }
+    } else {
+      st.isHeld = false;
+      st.fired = false;
+    }
+  } else {
+    if (pressed) {
+      if (!st.isHeld) {
+        st.isHeld = true;
+        if (now - st.lastPressTime < 400) {
+          st.lastPressTime = 0;
+          st.fired = true;
+          console.log('Gamepad double-press save triggered');
+          onHotkeyPressed();
+        } else {
+          st.lastPressTime = now;
+        }
+      }
+    } else {
+      st.isHeld = false;
+    }
+  }
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 900, height: 700,
@@ -1582,6 +1727,15 @@ function createWindow() {
     const prefs = loadUserPreferences();
     prefs[key] = value;
     saveUserPreferences(prefs);
+    // Live-update gamepad config in main process
+    if (key === 'gamepadButton') {
+      gamepadPrefs.buttonIndex = (value === null || value === undefined) ? null : parseInt(value);
+      gpState = { lastPressTime: 0, isHeld: false, holdStart: 0, fired: false };
+    }
+    if (key === 'gamepadTriggerMode') {
+      gamepadPrefs.triggerMode = value || 'double';
+      gpState = { lastPressTime: 0, isHeld: false, holdStart: 0, fired: false };
+    }
   });
 
   ipcMain.handle('get-user-pref', (event, key) => {
@@ -1591,7 +1745,10 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
-  loadUserPreferences();
+  const prefs = loadUserPreferences();
+  gamepadPrefs.buttonIndex = (prefs.gamepadButton !== null && prefs.gamepadButton !== undefined) ? parseInt(prefs.gamepadButton) : null;
+  gamepadPrefs.triggerMode = prefs.gamepadTriggerMode || 'double';
+  startXInputPoll();
   ensureFolders();
   sweepOrphanedFFmpeg();
   createWindow();
@@ -1611,6 +1768,7 @@ app.on('before-quit', async (event) => {
     isCleaningUp = true;
     stoppingIntentionally = true;
     stopBufferReadyWatcher();
+    stopXInputPoll();
     const dying = ffmpegProcess;
     ffmpegProcess = null;
     await killFFmpegTree(dying);
@@ -1619,6 +1777,7 @@ app.on('before-quit', async (event) => {
   } else {
     stopBufferReadyWatcher();
     globalShortcut.unregisterAll();
+    stopXInputPoll();
   }
 });
 

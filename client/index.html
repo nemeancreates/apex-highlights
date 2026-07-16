@@ -903,6 +903,18 @@
         }
       };
 
+      // Main process XInput connection status (works even when game is focused)
+      ipcRenderer.on('xinput-connection', function(ev, connected) {
+        if (connected) {
+          document.getElementById('gamepadStatus').textContent = '✓ Connected';
+          document.getElementById('gamepadStatus').className = 'gamepad-status connected';
+        } else {
+          document.getElementById('gamepadStatus').textContent = 'No controller';
+          document.getElementById('gamepadStatus').className = 'gamepad-status disconnected';
+        }
+      });
+
+
       function updateHotkeyDisplay(hk) {
         document.getElementById('hotkeyDisplay').textContent = hk;
         var span = document.getElementById('saveBtnHotkey');
@@ -1033,27 +1045,6 @@
       function stopMicCapture() {
         if (window.micRecorder && window.micRecorder.state !== 'inactive') { window.micRecorder.stop(); window.micRecorder = null; }
       }
-
-      async function loadAudioOutputDevices() {
-       try {
-         var devices = await navigator.mediaDevices.enumerateDevices();
-         var outputs = devices.filter(function(d) { return d.kind === 'audiooutput'; });
-         var sel = document.getElementById('audioOutputSelect');
-         sel.innerHTML = '<option value="default">Default</option>';
-         outputs.forEach(function(d) {
-           var opt = document.createElement('option');
-           opt.value = d.deviceId;
-           opt.textContent = d.label || ('Output ' + sel.children.length);
-           sel.appendChild(opt);
-         });
-       } catch(e) { console.log('Audio output enum failed:', e); }
-      }
-
-      window.onAudioOutputChange = function() {
-        var deviceId = document.getElementById('audioOutputSelect').value;
-        ipcRenderer.send('update-audio-output', { deviceId: deviceId });
-        hudLog('system', '🔊 Desktop audio source changed', 'info');
-     };
 
      loadMicDevices();
      loadAudioOutputDevices();
