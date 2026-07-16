@@ -909,7 +909,7 @@
         if (span) span.textContent = hk;
       }
 
-      document.getElementById('hotkeyCapture').addEventListener('keydown', function(e) {
+      document.addEventListener('keydown', function(e) {
         if (!window.capturingHotkey) return;
         e.preventDefault(); e.stopPropagation();
         if (['Control','Alt','Shift','Meta'].includes(e.key)) return;
@@ -1407,7 +1407,11 @@
       }
 
       // Detect gamepad connect / disconnect
+      window.gamepadDetected = false;
+
       window.addEventListener('gamepadconnected', function(e) {
+        if (window.gamepadDetected) return;
+        window.gamepadDetected = true;
         hudLog('system', '🎮 Controller connected: ' + e.gamepad.id, 'success');
         document.getElementById('gamepadStatus').textContent = '✓ Connected';
         document.getElementById('gamepadStatus').className = 'gamepad-status connected';
@@ -1416,11 +1420,37 @@
       });
 
       window.addEventListener('gamepaddisconnected', function(e) {
-        hudLog('system', '🎮 Controller disconnected', 'info');
-        document.getElementById('gamepadStatus').textContent = 'No controller';
-        document.getElementById('gamepadStatus').className = 'gamepad-status disconnected';
-        stopGamepadPoll();
+        // Check if ANY gamepad is still connected
+        var gamepads = navigator.getGamepads();
+        var anyLeft = false;
+        for (var i = 0; i < gamepads.length; i++) { if (gamepads[i]) { anyLeft = true; break; } }
+        if (!anyLeft) {
+          window.gamepadDetected = false;
+          hudLog('system', '🎮 Controller disconnected', 'info');
+          document.getElementById('gamepadStatus').textContent = 'No controller';
+          document.getElementById('gamepadStatus').className = 'gamepad-status disconnected';
+          stopGamepadPoll();
+        }
       });
+
+      // Fallback: Electron often won't fire gamepadconnected if the
+      // controller was plugged in before launch or if no button has been
+      // pressed yet. Poll every 2s until we find one.
+      window.gamepadScanInterval = setInterval(function() {
+        if (window.gamepadDetected) return;
+        var gamepads = navigator.getGamepads();
+        for (var i = 0; i < gamepads.length; i++) {
+          if (gamepads[i] && gamepads[i].connected) {
+            window.gamepadDetected = true;
+            hudLog('system', '🎮 Controller found: ' + gamepads[i].id, 'success');
+            document.getElementById('gamepadStatus').textContent = '✓ Connected';
+            document.getElementById('gamepadStatus').className = 'gamepad-status connected';
+            populateGamepadButtons(gamepads[i]);
+            startGamepadPoll();
+            break;
+          }
+        }
+      }, 2000);
 
       function populateGamepadButtons(gamepad) {
         var sel = document.getElementById('gamepadButtonSelect');
