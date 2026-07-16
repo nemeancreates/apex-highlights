@@ -15,6 +15,9 @@
         align-items: center;
         padding: 24px 20px;
         margin: 0;
+        .cap-mode-btn { background: #0c1c14; border: 1px solid #1e3527; color: #5f7a6a; font-weight: 500; transition: all 0.15s; }
+        .cap-mode-btn.active { background: #14291d; border-color: #39d3a0; color: #39d3a0; }
+        .cap-mode-btn:hover { border-color: #39d3a0; }
       }
       h1 { color: #e8f5ec; margin: 0; font-size: 24px; font-weight: 500; }
       h3 { margin-top: 0; color: #39d3a0; font-size: 17px; font-weight: 500; }
@@ -461,10 +464,29 @@
               </select>
             </div>
 
-            <label>Source</label>
-            <select id="monitorSelect" style="margin-bottom:11px;">
-              <option>Loading monitors...</option>
-            </select>
+            <label>Capture Mode</label>
+            <div style="display:flex;gap:4px;margin-bottom:8px;">
+              <button type="button" id="capModeMonitor" class="cap-mode-btn active" onclick="setCaptureMode('monitor')" style="flex:1;padding:6px 0;font-size:12px;">🖥 Monitor</button>
+              <button type="button" id="capModeWindow" class="cap-mode-btn" onclick="setCaptureMode('window')" style="flex:1;padding:6px 0;font-size:12px;">🎮 Game Window</button>
+            </div>
+
+            <div id="monitorSourceRow">
+              <label>Monitor</label>
+              <select id="monitorSelect" style="margin-bottom:11px;">
+                <option>Loading monitors...</option>
+              </select>
+            </div>
+
+            <div id="windowSourceRow" style="display:none;">
+              <label>Game Window</label>
+              <div style="display:flex;gap:4px;margin-bottom:11px;">
+                <select id="windowSelect" style="flex:1;">
+                  <option value="">Click refresh →</option>
+                </select>
+                <button type="button" onclick="refreshWindowList()" style="width:auto;padding:4px 10px;font-size:12px;" title="Refresh window list">↻</button>
+              </div>
+            </div>
+
             <div class="monitor-active" id="monitorActive" style="display:none;">Recording: <span id="monitorActiveName">—</span></div>
 
             <div class="row" style="margin-top:11px;">
@@ -1176,17 +1198,63 @@
         } catch(err) { console.log('Audio capture failed:', err.name, err.message); }
       }
 
+      window.captureMode = 'monitor';
+
+      window.setCaptureMode = function(mode) {
+        window.captureMode = mode;
+        document.getElementById('capModeMonitor').classList.toggle('active', mode === 'monitor');
+        document.getElementById('capModeWindow').classList.toggle('active', mode === 'window');
+        document.getElementById('monitorSourceRow').style.display = mode === 'monitor' ? '' : 'none';
+        document.getElementById('windowSourceRow').style.display = mode === 'window' ? '' : 'none';
+        if (mode === 'window') refreshWindowList();
+      };
+
+      window.refreshWindowList = async function() {
+        var sel = document.getElementById('windowSelect');
+        sel.innerHTML = '<option value="">Scanning...</option>';
+        try {
+          var windows = await ipcRenderer.invoke('get-windows');
+          sel.innerHTML = '';
+          if (windows.length === 0) {
+            sel.innerHTML = '<option value="">No windows found</option>';
+            return;
+          }
+          windows.forEach(function(w) {
+            var opt = document.createElement('option');
+            opt.value = w.title;
+            opt.textContent = w.title + ' (' + w.processName + ')';
+            sel.appendChild(opt);
+          });
+        } catch(e) {
+          sel.innerHTML = '<option value="">Scan failed</option>';
+        }
+      };
+
       window.startRecording = async function() {
         var monitorIndex = parseInt(document.getElementById('monitorSelect').value);
-        var monitorText = document.getElementById('monitorSelect').options[document.getElementById('monitorSelect').selectedIndex].textContent;
-        ipcRenderer.send('start-recording', { monitorIndex: monitorIndex });
+        var sourceLabel, ipcPayload;
+
+        if (window.captureMode === 'window') {
+          var windowTitle = document.getElementById('windowSelect').value;
+          if (!windowTitle) {
+            hudLog('system', '⚠ Select a game window first', 'error');
+            return;
+          }
+          sourceLabel = windowTitle;
+          ipcPayload = { monitorIndex: monitorIndex, windowTitle: windowTitle };
+        } else {
+          sourceLabel = document.getElementById('monitorSelect').options[document.getElementById('monitorSelect').selectedIndex].textContent;
+          ipcPayload = { monitorIndex: monitorIndex };
+        }
+
+        ipcRenderer.send('start-recording', ipcPayload);
         window.isRecordingActive = true;
         window.bufferReady = false;
 
-        document.getElementById('startBtn').textContent = '↺ Switch Monitor';
+        document.getElementById('startBtn').textContent = '↺ Switch Source';
         document.getElementById('stopBtn').disabled = false;
         document.getElementById('monitorActive').style.display = 'block';
-        document.getElementById('monitorActiveName').textContent = monitorText;
+        document.getElementById('monitorActiveName').textContent = sourceLabel;
         document.getElementById('statusText').textContent = '● Buffering gameplay...';
         document.getElementById('statusText').className = 'status-bar buffering';
         document.getElementById('statusHelp').textContent = 'Building up a clip buffer — highlights will be available in ~15 seconds';
