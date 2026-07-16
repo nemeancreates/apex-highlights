@@ -1108,7 +1108,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
           mergeArgs.push('-map', '0:v:0', '-map', '1:a:0', '-af', 'aresample=async=1000');
         }
 
-        mergeArgs.push('-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', '-y', outputPath);
+        mergeArgs.push('-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-shortest', '-y', outputPath);
 
         const merge = spawn(getFFmpegPath(), mergeArgs);
         merge.stderr.on('data', d => console.log('Merge:', d.toString()));
@@ -1126,7 +1126,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   } else {
     const concat = spawn(getFFmpegPath(), [
       '-f', 'concat', '-safe', '0', '-i', videoListPath,
-      '-c', 'copy', '-y', outputPath
+      '-c', 'copy', '-movflags', '+faststart', '-y', outputPath
     ]);
     concat.stderr.on('data', d => console.log('Concat:', d.toString()));
     concat.on('close', (code) => {
