@@ -15,10 +15,15 @@
         align-items: center;
         padding: 24px 20px;
         margin: 0;
-        .cap-mode-btn { background: #0c1c14; border: 1px solid #1e3527; color: #5f7a6a; font-weight: 500; transition: all 0.15s; }
-        .cap-mode-btn.active { background: #14291d; border-color: #39d3a0; color: #39d3a0; }
-        .cap-mode-btn:hover { border-color: #39d3a0; }
       }
+      .cap-mode-btn { background: #0c1c14; border: 1px solid #1e3527; color: #5f7a6a; font-weight: 500; transition: all 0.15s; }
+      .cap-mode-btn.active { background: #14291d; border-color: #39d3a0; color: #39d3a0; }
+      .cap-mode-btn:hover { border-color: #39d3a0; }
+      .gamepad-status { font-size: 11px; padding: 3px 8px; border-radius: 4px; display: inline-block; margin-top: 4px; }
+      .gamepad-status.connected { background: #1a3323; color: #39d3a0; }
+      .gamepad-status.disconnected { background: #1a1a1a; color: #5f7a6a; }
+
+
       h1 { color: #e8f5ec; margin: 0; font-size: 24px; font-weight: 500; }
       h3 { margin-top: 0; color: #39d3a0; font-size: 17px; font-weight: 500; }
       label { font-size: 11px; color: #5f7a6a; display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.7px; }
@@ -406,6 +411,28 @@
               </div>
               <button class="btn-icon" id="hotkeyBtn" title="Change highlight hotkey" onclick="toggleHotkeyCapture()"
                       style="width:40px;height:40px;font-size:18px;flex-shrink:0;">⌨</button>
+            </div>
+
+            <!-- GAMEPAD BINDING -->
+            <div style="margin-top:10px;padding-top:10px;border-top:1px solid #1e3527;">
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <label style="margin:0;">🎮 Controller Save</label>
+                <span class="gamepad-status disconnected" id="gamepadStatus">No controller</span>
+              </div>
+              <div class="row" style="margin-top:6px;">
+                <div>
+                  <select id="gamepadButtonSelect" style="font-size:12px;">
+                    <option value="">Disabled</option>
+                  </select>
+                </div>
+                <div>
+                  <select id="gamepadTriggerMode" onchange="onGamepadSettingsChange()" style="font-size:12px;">
+                    <option value="double">Double-press</option>
+                    <option value="long">Long-press</option>
+                  </select>
+                </div>
+              </div>
+              <div style="font-size:11px;color:#3a5244;margin-top:4px;" id="gamepadBindHint">Select a button, then choose trigger mode</div>
             </div>
 
             <input type="text" id="hotkeyCapture" readonly />
@@ -1350,6 +1377,181 @@
       }
 
       ipcRenderer.on('hotkey-save-pressed', function() { window.saveHighlight(); });
+      // =====================
+      // GAMEPAD CONTROLLER SUPPORT
+      // =====================
+      window.gamepadState = {
+        enabled: false,
+        buttonIndex: null,
+        triggerMode: 'double', // 'double' or 'long'
+        // internal tracking
+        lastPressTime: 0,
+        isHeld: false,
+        holdStart: 0,
+        fired: false,
+        pollInterval: null
+      };
+
+      // Standard gamepad button names (Xbox layout — covers most controllers)
+      var GAMEPAD_BUTTON_NAMES = [
+        'A', 'B', 'X', 'Y',
+        'LB', 'RB', 'LT', 'RT',
+        'Back/Select', 'Start/Menu',
+        'L-Stick Press', 'R-Stick Press',
+        'D-Pad Up', 'D-Pad Down', 'D-Pad Left', 'D-Pad Right',
+        'Xbox/Home'
+      ];
+
+      function getButtonName(index) {
+        return GAMEPAD_BUTTON_NAMES[index] || ('Button ' + index);
+      }
+
+      // Detect gamepad connect / disconnect
+      window.addEventListener('gamepadconnected', function(e) {
+        hudLog('system', '🎮 Controller connected: ' + e.gamepad.id, 'success');
+        document.getElementById('gamepadStatus').textContent = '✓ Connected';
+        document.getElementById('gamepadStatus').className = 'gamepad-status connected';
+        populateGamepadButtons(e.gamepad);
+        startGamepadPoll();
+      });
+
+      window.addEventListener('gamepaddisconnected', function(e) {
+        hudLog('system', '🎮 Controller disconnected', 'info');
+        document.getElementById('gamepadStatus').textContent = 'No controller';
+        document.getElementById('gamepadStatus').className = 'gamepad-status disconnected';
+        stopGamepadPoll();
+      });
+
+      function populateGamepadButtons(gamepad) {
+        var sel = document.getElementById('gamepadButtonSelect');
+        var prevVal = sel.value;
+        sel.innerHTML = '<option value="">Disabled</option>';
+        for (var i = 0; i < gamepad.buttons.length; i++) {
+          var opt = document.createElement('option');
+          opt.value = i;
+          opt.textContent = getButtonName(i);
+          sel.appendChild(opt);
+        }
+        // Restore previous selection if still valid
+        if (prevVal && parseInt(prevVal) < gamepad.buttons.length) {
+          sel.value = prevVal;
+        }
+        // Restore from saved prefs
+        if (window.gamepadState.buttonIndex !== null) {
+          sel.value = window.gamepadState.buttonIndex;
+        }
+      }
+
+      document.getElementById('gamepadButtonSelect').addEventListener('change', function() {
+        onGamepadSettingsChange();
+      });
+
+      window.onGamepadSettingsChange = function() {
+        var btnVal = document.getElementById('gamepadButtonSelect').value;
+        var mode = document.getElementById('gamepadTriggerMode').value;
+        window.gamepadState.buttonIndex = btnVal === '' ? null : parseInt(btnVal);
+        window.gamepadState.enabled = window.gamepadState.buttonIndex !== null;
+        window.gamepadState.triggerMode = mode;
+        // Reset tracking state
+        window.gamepadState.lastPressTime = 0;
+        window.gamepadState.isHeld = false;
+        window.gamepadState.holdStart = 0;
+        window.gamepadState.fired = false;
+
+        if (window.gamepadState.enabled) {
+          var btnName = getButtonName(window.gamepadState.buttonIndex);
+          var modeLabel = mode === 'double' ? 'double-press' : 'long-press (~1s)';
+          document.getElementById('gamepadBindHint').textContent = btnName + ' — ' + modeLabel + ' to save';
+          startGamepadPoll();
+        } else {
+          document.getElementById('gamepadBindHint').textContent = 'Select a button, then choose trigger mode';
+        }
+
+        // Persist
+        ipcRenderer.invoke('set-user-pref', 'gamepadButton', btnVal === '' ? null : parseInt(btnVal));
+        ipcRenderer.invoke('set-user-pref', 'gamepadTriggerMode', mode);
+      };
+
+      function startGamepadPoll() {
+        if (window.gamepadState.pollInterval) return;
+        window.gamepadState.pollInterval = setInterval(pollGamepad, 16); // ~60Hz
+      }
+
+      function stopGamepadPoll() {
+        if (window.gamepadState.pollInterval) {
+          clearInterval(window.gamepadState.pollInterval);
+          window.gamepadState.pollInterval = null;
+        }
+      }
+
+      function pollGamepad() {
+        if (!window.gamepadState.enabled) return;
+
+        var gamepads = navigator.getGamepads();
+        var gp = null;
+        for (var i = 0; i < gamepads.length; i++) {
+          if (gamepads[i]) { gp = gamepads[i]; break; }
+        }
+        if (!gp) return;
+
+        var btnIdx = window.gamepadState.buttonIndex;
+        if (btnIdx === null || btnIdx >= gp.buttons.length) return;
+
+        var pressed = gp.buttons[btnIdx].pressed;
+        var now = Date.now();
+        var st = window.gamepadState;
+
+        if (st.triggerMode === 'long') {
+          // LONG PRESS: held for 800ms
+          if (pressed) {
+            if (!st.isHeld) {
+              st.isHeld = true;
+              st.holdStart = now;
+              st.fired = false;
+            } else if (!st.fired && (now - st.holdStart) >= 800) {
+              st.fired = true;
+              window.saveHighlight();
+              hudLog('system', '🎮 Long-press save triggered', 'success');
+            }
+          } else {
+            st.isHeld = false;
+            st.fired = false;
+          }
+        } else {
+          // DOUBLE PRESS: two presses within 400ms
+          if (pressed) {
+            if (!st.isHeld) {
+              st.isHeld = true;
+              if (now - st.lastPressTime < 400) {
+                // Second press within window — fire!
+                st.lastPressTime = 0;
+                st.fired = true;
+                window.saveHighlight();
+                hudLog('system', '🎮 Double-press save triggered', 'success');
+              } else {
+                st.lastPressTime = now;
+              }
+            }
+          } else {
+            st.isHeld = false;
+          }
+        }
+      }
+
+      // Load saved gamepad prefs
+      ipcRenderer.invoke('get-user-pref', 'gamepadButton').then(function(val) {
+        if (val !== null && val !== undefined) {
+          window.gamepadState.buttonIndex = parseInt(val);
+          window.gamepadState.enabled = true;
+          document.getElementById('gamepadButtonSelect').value = val;
+        }
+      });
+      ipcRenderer.invoke('get-user-pref', 'gamepadTriggerMode').then(function(val) {
+        if (val) {
+          window.gamepadState.triggerMode = val;
+          document.getElementById('gamepadTriggerMode').value = val;
+        }
+      });
       ipcRenderer.on('post-capture-started', function(ev, d) { hudLog('activity','📹 Capturing post-highlight footage ('+((d.postDelay)/1000).toFixed(1)+'s)...','info'); });
       ipcRenderer.on('encoder-fallback', function(ev, enc) { hudLog('system','⚙ GPU unavailable — switched to '+enc+' encoding','info'); });
       ipcRenderer.on('capture-engine', function(ev, label) {

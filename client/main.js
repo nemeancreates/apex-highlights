@@ -27,8 +27,8 @@ const CHUNK_SECONDS = 10;
 // ================================
 // Update this whenever a new client build is uploaded to the CDN.
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.24',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.24.exe',
+  version: '0.1.25',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.25.exe',
   releaseNotes: 'Auto-updater added. The app now checks for updates on launch.'
 };
 
@@ -1577,6 +1577,17 @@ function createWindow() {
 
   ipcMain.handle('get-current-hotkey', () => customHotkey);
   ipcMain.handle('get-hotkey-registered', () => startupHotkeyRegistered);
+
+  ipcMain.handle('set-user-pref', (event, key, value) => {
+    const prefs = loadUserPreferences();
+    prefs[key] = value;
+    saveUserPreferences(prefs);
+  });
+
+  ipcMain.handle('get-user-pref', (event, key) => {
+    const prefs = loadUserPreferences();
+    return prefs[key] !== undefined ? prefs[key] : null;
+  });
 }
 
 app.whenReady().then(async () => {
