@@ -16,9 +16,7 @@
         padding: 24px 20px;
         margin: 0;
       }
-      .cap-mode-btn { background: #0c1c14; border: 1px solid #1e3527; color: #5f7a6a; font-weight: 500; transition: all 0.15s; }
-      .cap-mode-btn.active { background: #14291d; border-color: #39d3a0; color: #39d3a0; }
-      .cap-mode-btn:hover { border-color: #39d3a0; }
+      
       .gamepad-status { font-size: 11px; padding: 3px 8px; border-radius: 4px; display: inline-block; margin-top: 4px; }
       .gamepad-status.connected { background: #1a3323; color: #39d3a0; }
       .gamepad-status.disconnected { background: #1a1a1a; color: #5f7a6a; }
@@ -491,28 +489,10 @@
               </select>
             </div>
 
-            <label>Capture Mode</label>
-            <div style="display:flex;gap:4px;margin-bottom:8px;">
-              <button type="button" id="capModeMonitor" class="cap-mode-btn active" onclick="setCaptureMode('monitor')" style="flex:1;padding:6px 0;font-size:12px;">🖥 Monitor</button>
-              <button type="button" id="capModeWindow" class="cap-mode-btn" onclick="setCaptureMode('window')" style="flex:1;padding:6px 0;font-size:12px;">🎮 Game Window</button>
-            </div>
-
-            <div id="monitorSourceRow">
-              <label>Monitor</label>
-              <select id="monitorSelect" style="margin-bottom:11px;">
-                <option>Loading monitors...</option>
-              </select>
-            </div>
-
-            <div id="windowSourceRow" style="display:none;">
-              <label>Game Window</label>
-              <div style="display:flex;gap:4px;margin-bottom:11px;">
-                <select id="windowSelect" style="flex:1;">
-                  <option value="">Click refresh →</option>
-                </select>
-                <button type="button" onclick="refreshWindowList()" style="width:auto;padding:4px 10px;font-size:12px;" title="Refresh window list">↻</button>
-              </div>
-            </div>
+            <label>Monitor</label>
+            <select id="monitorSelect" style="margin-bottom:11px;">
+              <option>Loading monitors...</option>
+            </select>
 
             <div class="monitor-active" id="monitorActive" style="display:none;">Recording: <span id="monitorActiveName">—</span></div>
 
@@ -1216,60 +1196,15 @@
         } catch(err) { console.log('Audio capture failed:', err.name, err.message); }
       }
 
-      window.captureMode = 'monitor';
-
-      window.setCaptureMode = function(mode) {
-        window.captureMode = mode;
-        document.getElementById('capModeMonitor').classList.toggle('active', mode === 'monitor');
-        document.getElementById('capModeWindow').classList.toggle('active', mode === 'window');
-        document.getElementById('monitorSourceRow').style.display = mode === 'monitor' ? '' : 'none';
-        document.getElementById('windowSourceRow').style.display = mode === 'window' ? '' : 'none';
-        if (mode === 'window') refreshWindowList();
-      };
-
-      window.refreshWindowList = async function() {
-        var sel = document.getElementById('windowSelect');
-        sel.innerHTML = '<option value="">Scanning...</option>';
-        try {
-          var windows = await ipcRenderer.invoke('get-windows');
-          sel.innerHTML = '';
-          if (windows.length === 0) {
-            sel.innerHTML = '<option value="">No windows found</option>';
-            return;
-          }
-          windows.forEach(function(w) {
-            var opt = document.createElement('option');
-            opt.value = w.title;
-            opt.textContent = w.title + ' (' + w.processName + ')';
-            sel.appendChild(opt);
-          });
-        } catch(e) {
-          sel.innerHTML = '<option value="">Scan failed</option>';
-        }
-      };
-
       window.startRecording = async function() {
         var monitorIndex = parseInt(document.getElementById('monitorSelect').value);
-        var sourceLabel, ipcPayload;
+        var sourceLabel = document.getElementById('monitorSelect').options[document.getElementById('monitorSelect').selectedIndex].textContent;
 
-        if (window.captureMode === 'window') {
-          var windowTitle = document.getElementById('windowSelect').value;
-          if (!windowTitle) {
-            hudLog('system', '⚠ Select a game window first', 'error');
-            return;
-          }
-          sourceLabel = windowTitle;
-          ipcPayload = { monitorIndex: monitorIndex, windowTitle: windowTitle };
-        } else {
-          sourceLabel = document.getElementById('monitorSelect').options[document.getElementById('monitorSelect').selectedIndex].textContent;
-          ipcPayload = { monitorIndex: monitorIndex };
-        }
-
-        ipcRenderer.send('start-recording', ipcPayload);
+        ipcRenderer.send('start-recording', { monitorIndex: monitorIndex });
         window.isRecordingActive = true;
         window.bufferReady = false;
 
-        document.getElementById('startBtn').textContent = '↺ Switch Source';
+        document.getElementById('startBtn').textContent = '↺ Switch Monitor';
         document.getElementById('stopBtn').disabled = false;
         document.getElementById('monitorActive').style.display = 'block';
         document.getElementById('monitorActiveName').textContent = sourceLabel;
@@ -1317,6 +1252,68 @@
       document.getElementById('statusHelp').textContent = 'Start recording to begin buffering gameplay';
       if (window.socket) window.socket.emit('recording-status', { isRecording: false });
     };
+
+    // =====================
+      // FULL SESSION MODE
+      // =====================
+      window.toggleFullSession = function() {
+        var enabled = document.getElementById('fullSessionToggle').checked;
+        document.getElementById('fsOptions').style.display = enabled ? 'block' : 'none';
+        ipcRenderer.send('set-full-session-mode', enabled);
+        hudLog('system', enabled
+          ? '🎥 Full Session Mode ON — entire recording will be saved locally on End Session'
+          : 'Full Session Mode off — only highlights are saved', enabled ? 'success' : 'info');
+      };
+
+      window.pickFullSessionDir = async function() {
+        try {
+          var result = await ipcRenderer.invoke('pick-fullsession-directory');
+          if (result && result.success) {
+            document.getElementById('fsLocPath').textContent = result.path;
+            hudLog('system', '📁 Full session archive location set', 'info');
+          }
+        } catch (e) {
+          hudLog('system', '⚠ Could not set archive location', 'error');
+        }
+      };
+
+      window.resetFullSessionDir = async function() {
+        try {
+          await ipcRenderer.invoke('clear-fullsession-directory');
+          document.getElementById('fsLocPath').textContent = 'default (next to highlights)';
+          hudLog('system', 'Archive location reset to default', 'info');
+        } catch (e) {}
+      };
+
+      // Restore saved state on launch
+      ipcRenderer.invoke('get-full-session-mode').then(function(enabled) {
+        if (enabled) {
+          document.getElementById('fullSessionToggle').checked = true;
+          document.getElementById('fsOptions').style.display = 'block';
+        }
+      });
+      ipcRenderer.invoke('get-fullsession-directory').then(function(p) {
+        if (p) document.getElementById('fsLocPath').textContent = p;
+      }).catch(function() {});
+
+      // Archive / disk feedback from main process
+      ipcRenderer.on('archive-complete', function(ev, d) {
+        hudLog('activity', '✅ Full session saved (' + d.sizeMB + ' MB): ' + d.path, 'success');
+      });
+      ipcRenderer.on('archive-failed', function(ev, d) {
+        hudLog('system', '⚠ Full session save failed — temp files kept in ' + d.path, 'error');
+      });
+      ipcRenderer.on('archive-started', function(ev, d) {
+        hudLog('activity', '💾 Saving full session (' + d.chunks + ' segments)...', 'info');
+      });
+      ipcRenderer.on('disk-warning', function(ev, d) {
+        var banner = document.getElementById('diskBanner');
+        if (banner) { banner.textContent = '⚠ Low disk: ' + d.freeGB + 'GB free'; banner.style.display = 'block'; }
+        hudLog('system', '⚠ Low disk space: ' + d.freeGB + 'GB free', 'error');
+      });
+      ipcRenderer.on('disk-critical', function(ev, d) {
+        hudLog('system', '🛑 Disk critical (' + d.freeGB + 'GB) — recording auto-stopped', 'error');
+      });
 
       // =====================
       // SAVE HIGHLIGHT

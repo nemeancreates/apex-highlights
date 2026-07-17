@@ -614,8 +614,8 @@ const sessions = new Map();
 // ================================
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.25',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.25.exe',
+  version: '0.1.26',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.26.exe',
   releaseNotes: 'Full Session Mode toggle now works correctly in both directions.'
 };
 
