@@ -17,6 +17,19 @@
         margin: 0;
       }
       
+      /* ===== Update banner ===== */
+      .update-banner {
+        display: none; width: 100%; background: #1a2f22; border: 1px solid #39d3a0;
+        border-radius: 8px; padding: 10px 14px; margin-bottom: 12px;
+        font-size: 13px; color: #c8d6cd;
+      }
+      .update-banner.show { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      .update-banner .update-msg { flex: 1; }
+      .update-banner .update-bar-wrap { width: 100%; background: #0c1c14; border-radius: 4px; height: 6px; margin-top: 6px; display: none; }
+      .update-banner .update-bar-fill { height: 100%; width: 0%; background: #39d3a0; border-radius: 4px; transition: width 0.3s ease; }
+      .update-banner .update-actions { display: flex; gap: 6px; flex-shrink: 0; }
+      .update-banner .update-actions button { width: auto; padding: 4px 12px; font-size: 12px; }
+
       .gamepad-status { font-size: 11px; padding: 3px 8px; border-radius: 4px; display: inline-block; margin-top: 4px; }
       .gamepad-status.connected { background: #1a3323; color: #39d3a0; }
       .gamepad-status.disconnected { background: #1a1a1a; color: #5f7a6a; }
@@ -340,6 +353,21 @@
           <button class="btn-secondary" style="width:100%;margin:8px 0;" onclick="pickStorageFirstLaunch()">📁 Choose Video Storage Folder</button>
           <p style="font-size:11px;color:#3a5244;text-align:center;margin:6px 0 12px;">You can change this anytime in Settings.</p>
           <button class="btn-save" onclick="completeFirstLaunch()" style="width:100%;">🚀 Get Started</button>
+        </div>
+      </div>
+
+      <!-- UPDATE BANNER -->
+      <div class="update-banner" id="updateBanner">
+        <div class="update-msg">
+          <strong id="updateTitle">Update available</strong>
+          <span id="updateSubtitle"> — downloading in background…</span>
+          <div class="update-bar-wrap" id="updateBarWrap">
+            <div class="update-bar-fill" id="updateBarFill"></div>
+          </div>
+        </div>
+        <div class="update-actions" id="updateActions" style="display:none;">
+          <button class="btn-save" onclick="installUpdate()" style="font-size:12px;padding:5px 14px;">🚀 Restart &amp; Update</button>
+          <button onclick="dismissUpdate()" style="font-size:12px;padding:5px 10px;">Later</button>
         </div>
       </div>
 

@@ -1,11 +1,11 @@
 // client/updater.js
 // Silent-until-needed auto-updater for Peak-Abu.
 // On app launch, checks server /api/version. If a newer version exists,
-// prompts the user, downloads the installer to temp, runs it, and quits.
+// prompts the user via an in-app banner, downloads in the background,
+// then asks if they're ready to restart before launching the installer.
 
-const { app, dialog, shell, BrowserWindow } = require('electron');
+const { app, dialog } = require('electron');
 const https = require('https');
-const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -66,7 +66,7 @@ function downloadInstaller(url, onProgress) {
     const filePath = path.join(os.tmpdir(), filename);
 
     const request = (targetUrl, redirectsLeft) => {
-      https.get(targetUrl, { timeout: 30000 }, (res) => {
+      https.get(targetUrl, { timeout: 60000 }, (res) => {
         // Follow redirects (CDN often 302s)
         if ([301, 302, 303, 307, 308].includes(res.statusCode)) {
           res.resume();
@@ -105,12 +105,10 @@ function downloadInstaller(url, onProgress) {
           resolve(null);
         });
 
-        // Pipe AFTER attaching listeners
         res.pipe(file);
 
         file.on('finish', () => {
           file.close(() => {
-            // Verify the file is real before claiming success
             try {
               const stats = fs.statSync(filePath);
               if (stats.size < 1024 * 1024) {
@@ -145,60 +143,20 @@ function downloadInstaller(url, onProgress) {
   });
 }
 
-// Small progress window shown after user consents to update
-function showProgressWindow(parent) {
-  const win = new BrowserWindow({
-    width: 380,
-    height: 140,
-    parent,
-    modal: true,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    autoHideMenuBar: true,
-    title: 'Updating Peak-Abu',
-    webPreferences: { nodeIntegration: false, contextIsolation: true }
-  });
-  const html = `
-    <html><head><style>
-      body { font-family: Segoe UI, sans-serif; background: #1a1a1a; color: #eee;
-             margin: 0; padding: 20px; user-select: none; }
-      h3 { margin: 0 0 12px 0; font-weight: 500; font-size: 14px; }
-      .bar { background: #333; border-radius: 4px; height: 8px; overflow: hidden; }
-      .fill { background: linear-gradient(90deg,#4a9eff,#6bb6ff); height: 100%; width: 0%;
-              transition: width 0.2s ease; }
-      .pct { margin-top: 8px; font-size: 12px; color: #aaa; text-align: right; }
-    </style></head>
-    <body>
-      <h3>Downloading update…</h3>
-      <div class="bar"><div class="fill" id="fill"></div></div>
-      <div class="pct" id="pct">0%</div>
-      <script>
-        const { ipcRenderer } = { ipcRenderer: null };
-        window.addEventListener('message', e => {
-          const pct = Math.max(0, Math.min(100, e.data.pct || 0));
-          document.getElementById('fill').style.width = pct + '%';
-          document.getElementById('pct').textContent = pct.toFixed(0) + '%';
-        });
-      </script>
-    </body></html>`;
-  win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
-  return win;
-}
-
-// Launch the installer detached and quit the current app
+// Launch the installer detached and quit the current app.
+// --updated flag tells NSIS to skip the "welcome" page and go straight to install.
 function runInstallerAndQuit(installerPath) {
   try {
-    const child = spawn(installerPath, ['--updated'], {
+    const child = spawn(installerPath, ['/SILENT', '/CLOSEAPPLICATIONS'], {
       detached: true,
       stdio: 'ignore'
     });
     child.unref();
-    // Small delay so the child is fully handed off before we exit
     setTimeout(() => app.quit(), 500);
   } catch (err) {
     console.error('Failed to launch installer:', err.message);
-    dialog.showErrorBox('Update Failed', 'Could not launch the installer. Please download the update manually from peakabu.app.');
+    dialog.showErrorBox('Update Failed',
+      'Could not launch the installer. Please download the update manually from peakabu.app.');
   }
 }
 
@@ -227,51 +185,47 @@ async function checkForUpdates(mainWindow) {
 
   console.log(`[updater] Update available: v${info.version}`);
 
-  // Prompt the user
-  const notes = info.releaseNotes ? `\n\nWhat's new:\n${String(info.releaseNotes).slice(0, 500)}` : '';
-  const { response } = await dialog.showMessageBox(mainWindow, {
-    type: 'info',
-    title: 'Update Available',
-    message: `Peak-Abu v${info.version} is available.`,
-    detail: `You're currently on v${currentVersion}.${notes}`,
-    buttons: ['Update Now', 'Later'],
-    defaultId: 0,
-    cancelId: 1,
-    noLink: true
-  });
-
-  if (response !== 0) {
-    console.log('[updater] User deferred update');
-    return;
-  }
-
   if (!info.downloadUrl) {
-    dialog.showErrorBox('Update Unavailable',
-      'No download URL was provided. Please visit peakabu.app to download manually.');
+    console.log('[updater] No download URL — skipping');
     return;
   }
 
-  // Show progress window
-  const progressWin = showProgressWindow(mainWindow);
+  // Tell the renderer to show the update banner
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-available', {
+      version: info.version,
+      releaseNotes: info.releaseNotes || ''
+    });
+  }
+
+  // Download silently in the background while user keeps using the app
+  console.log('[updater] Downloading update in background…');
   const installerPath = await downloadInstaller(info.downloadUrl, (dl, total) => {
-    const pct = (dl / total) * 100;
-    if (progressWin && !progressWin.isDestroyed()) {
-      progressWin.webContents.executeJavaScript(
-        `window.postMessage({ pct: ${pct.toFixed(1)} }, '*');`
-      ).catch(() => {});
+    const pct = Math.round((dl / total) * 100);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-progress', { pct });
     }
   });
 
-  if (progressWin && !progressWin.isDestroyed()) progressWin.close();
-
   if (!installerPath) {
-    dialog.showErrorBox('Download Failed',
-      'The update could not be downloaded. Please check your connection and try again, or download manually from peakabu.app.');
+    console.log('[updater] Download failed — notifying renderer');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-failed');
+    }
     return;
   }
 
-  console.log(`[updater] Downloaded to ${installerPath}, launching installer…`);
-  runInstallerAndQuit(installerPath);
+  // Download complete — tell renderer to show "ready to install" state
+  console.log(`[updater] Download complete: ${installerPath}`);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-ready', { installerPath });
+  }
+
+  // Listen for user confirming they want to install now
+  const { ipcMain } = require('electron');
+  ipcMain.once('install-update', () => {
+    runInstallerAndQuit(installerPath);
+  });
 }
 
 module.exports = { checkForUpdates };
