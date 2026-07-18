@@ -1,0 +1,61 @@
+{
+  "games": {
+    "apex legends": {
+      "name": "Apex LEgends",
+      "notes": [
+        {
+          "text": "Keep video to active moments of gunplay. Both Shooting and being shot at",
+          "at": "2026-07-13T14:21:44.148Z"
+        },
+        {
+          "text": "Keep video to active moments of gunplay. Both Shooting and being shot at",
+          "at": "2026-07-13T14:30:18.141Z"
+        },
+        {
+          "text": "stick to active gun play happening and abilities being used by players",
+          "at": "2026-07-15T01:25:27.117Z"
+        },
+        {
+          "text": "really accentuate and display the 3 PoV ability. Have all 3 showing side by side, and swap between the players PoV with other windows getting smaller",
+          "at": "2026-07-17T04:48:37.682Z"
+        }
+      ],
+      "lastReport": "Heuristic editor report (Apex Legends):\nScanned 9 POV(s) for loudness spikes and on-screen chaos. Selected 15 moments totaling ~120s against your 120s target. 4 moment(s) were captured by multiple squad members at the same real time and were cut side-by-side with the more intense POV leading and carrying the audio; 7 played solo full-frame. Segments are ordered chronologically. Tip: add style notes (\"faster cuts\", \"hold on clutches longer\") — they're saved per game and shape future edits.",
+      "runs": 4
+    },
+    "the bazaar": {
+      "name": "The Bazaar",
+      "notes": [
+        {
+          "text": "try to edit the clips so it shows the last 5 or so seconds and the win or defeat sign showing before moving to the next clip, theres a clip with gold spraying everywhere, have fun with that and putting it intermittently throughtout the vid for a second or two",
+          "at": "2026-07-16T22:26:58.016Z"
+        }
+      ],
+      "lastReport": "Heuristic editor report (The Bazaar):\nScanned 13 POV(s) for loudness spikes and on-screen chaos. Selected 15 moments totaling ~120s against your 120s target. 0 moment(s) were captured by multiple squad members at the same real time and were cut side-by-side with the more intense POV leading and carrying the audio; 15 played solo full-frame. Segments are ordered chronologically. Tip: add style notes (\"faster cuts\", \"hold on clutches longer\") — they're saved per game and shape future edits.",
+      "runs": 1
+    },
+    "surroundead": {
+      "name": "SurrounDead",
+      "notes": [
+        {
+          "text": "Cut out the parts with dead air: little to no sound being made and have a focus on making sure all of the talking moments are put into place as you can",
+          "at": "2026-07-18T15:46:40.778Z"
+        },
+        {
+          "text": "Cut out the parts with dead air: little to no sound being made and have a focus on making sure all of the talking moments are put into place as you can. Lets cut out the parts of me clearing my throat if able",
+          "at": "2026-07-18T16:13:12.770Z"
+        },
+        {
+          "text": "Cut out the parts with dead air: little to no sound being made and have a focus on making sure all of the talking moments are put into place as you can. Lets cut out the parts of me clearing my throat. Have video start off with a quick .5 sec clip of each engagement/fighting/combat and then proceed video as normal with most of the encounters happening throughout the video with of course, how the journey ended at the end",
+          "at": "2026-07-18T16:39:12.308Z"
+        },
+        {
+          "text": "Cut out the parts with dead air: little to no sound being made and have a focus on making sure all of the talking moments are put into place as you can. Lets cut out the parts of me clearing my throat. Have video start off with a quick .5 sec clip of each engagement/fighting/combat and then proceed video as normal with most of the encounters happening throughout the video with of course, how the journey ended at the ended. The last clip include all of the ending with any vocals can catch. Can go",
+          "at": "2026-07-18T16:48:04.308Z"
+        }
+      ],
+      "lastReport": "Heuristic editor report (SurrounDead):\nScanned 13 POV(s) for loudness spikes and on-screen chaos. Selected 15 moments totaling ~120s against your 120s target. 0 moment(s) were captured by multiple squad members at the same real time and were cut side-by-side with the more intense POV leading and carrying the audio; 15 played solo full-frame. Segments are ordered chronologically. Tip: add style notes (\"faster cuts\", \"hold on clutches longer\") — they're saved per game and shape future edits.",
+      "runs": 4
+    }
+  }
+}
