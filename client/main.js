@@ -27,8 +27,8 @@ const CHUNK_SECONDS = 10;
 // ================================
 // Update this whenever a new client build is uploaded to the CDN.
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.26',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.26.exe',
+  version: '0.1.27',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.27.exe',
   releaseNotes: 'Auto-updater added. The app now checks for updates on launch.'
 };
 
@@ -254,6 +254,8 @@ function processXInputLine(line) {
 let engineLadder = [];
 let engineIndex = 0;
 let stoppingIntentionally = false;
+let midSessionRestarts = 0;        // crash-recovery restarts this recording session
+const MAX_MID_SESSION_RESTARTS = 3;
 
 const ENGINE_LABELS = {
   'dda-nvenc':     'GPU capture + GPU encode (zero-copy)',
@@ -827,6 +829,43 @@ function startRecording(monitor) {
 
       engineIndex++;
       startRecording(currentMonitor);
+      return;
+    }
+
+    // MID-SESSION DEATH: FFmpeg ran fine, then died while we still think we're
+    // recording. Previously this was silently ignored — capture stopped, no new
+    // chunks were ever written, and every later save failed with "Buffer not
+    // ready" until the user manually restarted. Recover automatically: restart
+    // the SAME engine (it already proved it works on this machine), bounded so
+    // a hard-broken setup can't loop forever.
+    ffmpegProcess = null;
+    const logPath = path.join(os.tmpdir(), 'peakabu-ffmpeg.log');
+    fs.appendFileSync(logPath, `\n=== ENGINE [${engine}] DIED MID-SESSION (code ${code}, after ${(ranForMs/1000).toFixed(0)}s) ===\n${stderrTail.slice(-800)}\n`);
+    console.log(`Capture died mid-session [${engine}] code ${code} after ${(ranForMs/1000).toFixed(0)}s — tail:`, stderrTail.slice(-400));
+
+    if (midSessionRestarts < MAX_MID_SESSION_RESTARTS) {
+      midSessionRestarts++;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('capture-engine',
+          `⚠ Capture process died — auto-restarting (${midSessionRestarts}/${MAX_MID_SESSION_RESTARTS})`);
+      }
+      // Small delay lets file handles + the DDA session release cleanly.
+      // Fresh session tag: restarted FFmpeg numbers chunks from _000 again, so
+      // reusing the old tag would overwrite existing chunk files. A new tag also
+      // keeps the highlight audio-skip math correct (chunk number is counted
+      // from the new videoStartTime that startRecording sets).
+      setTimeout(() => {
+        if (!stoppingIntentionally) {
+          recordingSessionTag = Date.now();
+          startRecording(currentMonitor);
+        }
+      }, 1500);
+    } else {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('highlight-error',
+          'Recording stopped — capture crashed repeatedly. Check peakabu-ffmpeg.log in your temp folder, then press Start again.');
+        mainWindow.webContents.send('recording-stopped');
+      }
     }
   });
 }
@@ -851,7 +890,7 @@ function saveHighlight(coordinatedTimestamp = null, clipDurationMs = null) {
   }
 }
 
-function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = null) {
+function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = null, retryCount = 0) {
   const allVideoFiles = fs.readdirSync(BUFFER_DIR)
     .filter(f => f.endsWith('.mp4') && !f.startsWith('temp_'))
     .map(f => {
@@ -873,9 +912,30 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   const videoFiles = newSinceLastSave.slice(-clipChunks);
 
   if (videoFiles.length === 0) {
-    console.log('No completed chunks yet');
+    // Diagnostic census — if this fires, the log tells us WHY (no files at all,
+    // everything older than the last-save boundary, or capture process dead).
+    const newest = allVideoFiles.length ? allVideoFiles[allVideoFiles.length - 1] : null;
+    console.log('No eligible chunks: ' +
+      `total=${allVideoFiles.length}, boundary=${lastHighlightBoundary}, ` +
+      `recStart=${recordingStartTime}, newestMtime=${newest ? newest.time : 'n/a'}, ` +
+      `captureAlive=${!!(ffmpegProcess && ffmpegProcess.exitCode === null)}, retry=${retryCount}`);
+
+    // A fresh chunk completes every CHUNK_SECONDS. Instead of failing the save
+    // (common right at cooldown end), wait for the next chunk and retry.
+    if (retryCount < 4) {
+      if (retryCount === 0 && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('post-capture-started', { postDelay: 3000 });
+      }
+      setTimeout(() => doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs, retryCount + 1), 3000);
+      return;
+    }
+
+    console.log('No completed chunks after retries');
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('highlight-error', 'Buffer not ready yet, wait a few more seconds');
+      const dead = !(ffmpegProcess && ffmpegProcess.exitCode === null);
+      mainWindow.webContents.send('highlight-error', dead
+        ? 'Capture is not running — press Start to restart recording'
+        : 'Buffer not ready yet, wait a few more seconds');
     }
     return;
   }
@@ -1279,6 +1339,7 @@ function createWindow() {
     } catch (e) { console.log('Buffer clean skipped:', e.message); }
 
     stoppingIntentionally = false;
+    midSessionRestarts = 0;
     recordingSessionTag = Date.now();
 
     // Fresh continuous audio files for this recording session. The renderer
@@ -1663,8 +1724,44 @@ function archiveFullSession() {
       return;
     }
 
+    // The concatenated video track is the source of truth for length: it can be
+    // SHORTER than the continuous audio (dropped final chunk, imperfect chunk/
+    // audio boundary alignment). Probe its real duration and trim audio to match,
+    // or the whole-session audio overhangs the video and drifts progressively
+    // out of sync — fine in short per-clip saves, broken across a full session.
+    const { spawnSync } = require('child_process');
+    let videoDurationSec = 0;
+
+    // Preferred: ffprobe (clean numeric output).
+    try {
+      const probe = spawnSync(getFFmpegPath().replace(/ffmpeg(\.exe)?$/i, 'ffprobe$1'), [
+        '-v', 'error', '-show_entries', 'format=duration',
+        '-of', 'default=noprint_wrappers=1:nokey=1', tempVideoPath
+      ], { windowsHide: true, encoding: 'utf8' });
+      videoDurationSec = parseFloat((probe.stdout || '').trim()) || 0;
+    } catch (e) { videoDurationSec = 0; }
+
+    // Fallback: parse ffmpeg's own stderr "Duration: HH:MM:SS.ss" line. ffmpeg
+    // is always bundled, so this works even when ffprobe.exe isn't shipped.
+    if (videoDurationSec <= 0) {
+      try {
+        const info = spawnSync(getFFmpegPath(), ['-i', tempVideoPath], {
+          windowsHide: true, encoding: 'utf8'
+        });
+        const errOut = (info.stderr || '') + (info.stdout || '');
+        const m = errOut.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+        if (m) {
+          videoDurationSec = (+m[1]) * 3600 + (+m[2]) * 60 + parseFloat(m[3]);
+        }
+      } catch (e) { videoDurationSec = 0; }
+      if (videoDurationSec > 0) console.log('Archive: duration via ffmpeg stderr fallback');
+    }
+
+    console.log(`Archive: concatenated video duration = ${videoDurationSec.toFixed(3)}s`);
+
     // Audio is already one continuous appended webm — just re-encode it to m4a
-    // (decode fixes the appended-fragment stream), no concat needed.
+    // (decode fixes the appended-fragment stream), no concat needed. Trim to the
+    // video's real duration with -t so lengths match exactly.
     const audioSrc = fullSessionAudioChunks[0];
     const tempAudioReenc = path.join(BUFFER_DIR, `fs_temp_audio_${Date.now()}.m4a`);
     const concatAudio = spawn(getFFmpegPath(), [
@@ -1672,6 +1769,7 @@ function archiveFullSession() {
       '-err_detect', 'ignore_err',
       '-i', audioSrc,
       '-af', 'aresample=async=1000:first_pts=0',
+      ...(videoDurationSec > 0 ? ['-t', videoDurationSec.toFixed(3)] : []),
       '-c:a', 'aac', '-b:a', '192k', '-y', tempAudioReenc
     ], { windowsHide: true });
 
@@ -1693,12 +1791,12 @@ function archiveFullSession() {
 
       if (hasMic) {
         tempMicPath = path.join(BUFFER_DIR, `fs_temp_mic_${Date.now()}.m4a`);
-        const { spawnSync } = require('child_process');
         const micResult = spawnSync(getFFmpegPath(), [
           '-fflags', '+genpts+igndts',
           '-err_detect', 'ignore_err',
           '-i', fullSessionMicChunks[0],
           '-af', 'aresample=async=1000:first_pts=0',
+          ...(videoDurationSec > 0 ? ['-t', videoDurationSec.toFixed(3)] : []),
           '-c:a', 'aac', '-b:a', '192k', '-y', tempMicPath
         ], { windowsHide: true });
         if (micResult.status !== 0 || !fs.existsSync(tempMicPath)) {
@@ -1720,7 +1818,7 @@ function archiveFullSession() {
       }
 
       mergeArgs.push('-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
-        '-movflags', '+faststart', '-y', outputPath);
+        '-shortest', '-movflags', '+faststart', '-y', outputPath);
 
       const merge = spawn(getFFmpegPath(), mergeArgs, { windowsHide: true });
 

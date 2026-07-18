@@ -1617,6 +1617,50 @@
       });
 
       ipcRenderer.on('upload-complete', function(ev, id) { hudLog('activity','☁️ Upload complete: '+id,'success'); });
+
+      // =====================
+      // AUTO-UPDATER BANNER
+      // main.js updater sends: update-available, update-progress,
+      // update-ready, update-failed. Banner HTML already exists — this
+      // wiring was missing, so updates silently never surfaced.
+      // =====================
+      ipcRenderer.on('update-available', function(ev, d) {
+        document.getElementById('updateTitle').textContent = 'Update v' + d.version + ' available';
+        document.getElementById('updateSubtitle').textContent = ' — downloading in background…';
+        document.getElementById('updateBarWrap').style.display = 'block';
+        document.getElementById('updateBarFill').style.width = '0%';
+        document.getElementById('updateActions').style.display = 'none';
+        document.getElementById('updateBanner').classList.add('show');
+        hudLog('system', '⬇ Update v' + d.version + ' found — downloading…', 'info');
+      });
+
+      ipcRenderer.on('update-progress', function(ev, d) {
+        document.getElementById('updateBarFill').style.width = (d.pct || 0) + '%';
+      });
+
+      ipcRenderer.on('update-ready', function(ev, d) {
+        document.getElementById('updateSubtitle').textContent = ' — ready to install';
+        document.getElementById('updateBarWrap').style.display = 'none';
+        document.getElementById('updateActions').style.display = 'flex';
+        document.getElementById('updateBanner').classList.add('show');
+        hudLog('system', '✅ Update downloaded — restart when ready', 'success');
+      });
+
+      ipcRenderer.on('update-failed', function() {
+        document.getElementById('updateBanner').classList.remove('show');
+        hudLog('system', '⚠ Update download failed — will retry next launch', 'error');
+      });
+
+      window.installUpdate = function() {
+        ipcRenderer.send('install-update');
+        document.getElementById('updateSubtitle').textContent = ' — installing…';
+        document.getElementById('updateActions').style.display = 'none';
+      };
+
+      window.dismissUpdate = function() {
+        document.getElementById('updateBanner').classList.remove('show');
+        hudLog('system', 'Update postponed — it will install next launch', 'info');
+      };
       ipcRenderer.on('upload-error', function(ev, msg) {
         hudLog('activity','⚠ Upload failed: '+msg,'error');
         if (typeof msg === 'string' && /invalid or expired token|authentication required/i.test(msg)) {
