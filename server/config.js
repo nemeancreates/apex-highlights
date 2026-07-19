@@ -62,9 +62,9 @@ const MAX_PENDING_HIGHLIGHTS = 3;    // queued triggers during cooldown lock
 // Update when a new client build is uploaded to the CDN.
 // ================================
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.28',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.28.exe',
-  releaseNotes: 'Internal restructuring for stability and faster future updates.'
+  version: '0.1.29',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.29.exe',
+  releaseNotes: 'Database upgrade for improved reliability at scale.'
 };
 
 module.exports = {

@@ -1,72 +1,155 @@
 // ================================
-// STORES — users + sessions in-memory state and JSON persistence.
+// STORES — users + sessions state, backed by SQLite (v0.1.29).
 //
-// v0.1.28: identical JSON-file persistence, just relocated. Every other
-// module talks to state through this file, which means the planned SQLite
-// swap (v0.1.29) only ever touches THIS file — nothing else changes.
+// Same exported function names as the JSON version, so auth.js, the routes,
+// and the sockets are UNCHANGED. Internals:
+//   - users: SQLite is the source of truth; an in-memory Map mirrors it for
+//     fast synchronous auth lookups. saveUsersToDisk() writes the Map through
+//     to SQLite (idempotent upsert), so auth.js's existing call site works.
+//   - sessions: stay an in-memory Map because they carry live socket state
+//     (members, pendingHighlights, highlightLockedUntil) with no meaning on
+//     disk. Durable parts (session row + uploads) are written through to
+//     SQLite; transient fields reset on load.
 // ================================
 const fs = require('fs');
 const path = require('path');
 const { log } = require('./logger');
-const { USERS_FILE, SESSIONS_FILE, SESSION_TTL, UPLOADS_DIR } = require('./config');
+const { SESSION_TTL, UPLOADS_DIR } = require('./config');
 const { deleteFromSpaces, uploadToSpaces, isSpacesEnabled } = require('./spaces');
 const { enqueueThumbnail } = require('./media');
+const db = require('./db');
 
 const users = new Map();
 const sessions = new Map();
 
-// --- Users persistence ---
+// --- Prepared statements (compiled once, reused) ---
+const stmt = {
+  upsertUser: db.prepare(`
+    INSERT INTO users (username_lower, username, passwordHash, createdAt)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(username_lower) DO UPDATE SET
+      passwordHash = excluded.passwordHash
+  `),
+  allUsers: db.prepare(`SELECT * FROM users`),
+
+  upsertSession: db.prepare(`
+    INSERT INTO sessions (code, id, createdBy, createdAt, clipDuration, highlightCount)
+    VALUES (@code, @id, @createdBy, @createdAt, @clipDuration, @highlightCount)
+    ON CONFLICT(code) DO UPDATE SET
+      clipDuration = excluded.clipDuration,
+      highlightCount = excluded.highlightCount
+  `),
+  deleteSession: db.prepare(`DELETE FROM sessions WHERE code = ?`),
+  allSessions: db.prepare(`SELECT * FROM sessions`),
+
+  upsertUpload: db.prepare(`
+    INSERT INTO uploads (id, sessionCode, username, videoFile, metadataFile, thumbnailFile,
+      videoUrl, thumbnailUrl, metadataUrl, videoKey, thumbnailKey, metadataKey, uploadedAt, fileSize)
+    VALUES (@id, @sessionCode, @username, @videoFile, @metadataFile, @thumbnailFile,
+      @videoUrl, @thumbnailUrl, @metadataUrl, @videoKey, @thumbnailKey, @metadataKey, @uploadedAt, @fileSize)
+    ON CONFLICT(id) DO UPDATE SET
+      videoUrl = excluded.videoUrl, thumbnailUrl = excluded.thumbnailUrl, metadataUrl = excluded.metadataUrl,
+      videoKey = excluded.videoKey, thumbnailKey = excluded.thumbnailKey, metadataKey = excluded.metadataKey,
+      thumbnailFile = excluded.thumbnailFile
+  `),
+  uploadsForSession: db.prepare(`SELECT * FROM uploads WHERE sessionCode = ?`)
+};
+
+// ================================
+// USERS
+// ================================
 function loadUsersFromDisk() {
-  try {
-    if (!fs.existsSync(USERS_FILE)) return;
-    const data = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-    for (const user of data) {
-      users.set(user.username.toLowerCase(), user);
-    }
-    log('info', 'users_loaded', { count: users.size });
-  } catch (err) {
-    log('warn', 'users_load_failed', { error: err.message });
+  for (const row of stmt.allUsers.all()) {
+    users.set(row.username_lower, {
+      username: row.username,
+      passwordHash: row.passwordHash,
+      createdAt: row.createdAt
+    });
   }
+  log('info', 'users_loaded', { count: users.size });
 }
 
+// auth.js calls this right after users.set(...) on register. Writes the whole
+// Map through to SQLite; upsert makes it idempotent so re-writing costs nothing.
 function saveUsersToDisk() {
+  const persist = db.transaction(() => {
+    for (const [lower, u] of users) {
+      stmt.upsertUser.run(lower, u.username, u.passwordHash, u.createdAt);
+    }
+  });
   try {
-    fs.writeFileSync(USERS_FILE, JSON.stringify(Array.from(users.values()), null, 2));
+    persist();
   } catch (err) {
     log('warn', 'users_save_failed', { error: err.message });
   }
 }
 
-// --- Sessions persistence ---
+// ================================
+// SESSIONS
+// ================================
 function loadSessionsFromDisk() {
-  try {
-    if (!fs.existsSync(SESSIONS_FILE)) return;
-    const data = JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8'));
-    const now = Date.now();
-    let loaded = 0;
-    let expired = 0;
-    for (const session of data) {
-      const age = now - new Date(session.createdAt).getTime();
-      if (age > SESSION_TTL) { expired++; continue; }
-      session.members = []; // clear live socket state — members rejoin
-      session.highlightLockedUntil = 0; // clear stale lock
-      sessions.set(session.code, session);
-      loaded++;
+  const now = Date.now();
+  let loaded = 0, expired = 0;
+  for (const row of stmt.allSessions.all()) {
+    const age = now - new Date(row.createdAt).getTime();
+    if (age > SESSION_TTL) {
+      stmt.deleteSession.run(row.code); // cascade drops uploads
+      expired++;
+      continue;
     }
-    log('info', 'sessions_loaded', { loaded, expired });
-  } catch (err) {
-    log('warn', 'sessions_load_failed', { error: err.message });
+    const uploads = stmt.uploadsForSession.all(row.code);
+    sessions.set(row.code, {
+      id: row.id,
+      code: row.code,
+      createdBy: row.createdBy,
+      createdAt: row.createdAt,
+      clipDuration: row.clipDuration,
+      highlightCount: row.highlightCount,
+      highlightLockedUntil: 0,   // transient — rebuilt live
+      pendingHighlights: [],     // transient
+      members: [],               // transient
+      uploads
+    });
+    loaded++;
   }
+  log('info', 'sessions_loaded', { loaded, expired });
 }
 
+// Write-through: persist durable parts of every in-memory session.
+// Called from the same places the old JSON saveSessionsToDisk() was.
 function saveSessionsToDisk() {
+  const persist = db.transaction(() => {
+    for (const s of sessions.values()) {
+      stmt.upsertSession.run({
+        code: s.code,
+        id: s.id,
+        createdBy: s.createdBy,
+        createdAt: s.createdAt,
+        clipDuration: s.clipDuration,
+        highlightCount: s.highlightCount || 0
+      });
+      for (const u of s.uploads) {
+        stmt.upsertUpload.run({
+          id: u.id,
+          sessionCode: s.code,
+          username: u.username,
+          videoFile: u.videoFile ?? null,
+          metadataFile: u.metadataFile ?? null,
+          thumbnailFile: u.thumbnailFile ?? null,
+          videoUrl: u.videoUrl ?? null,
+          thumbnailUrl: u.thumbnailUrl ?? null,
+          metadataUrl: u.metadataUrl ?? null,
+          videoKey: u.videoKey ?? null,
+          thumbnailKey: u.thumbnailKey ?? null,
+          metadataKey: u.metadataKey ?? null,
+          uploadedAt: u.uploadedAt ?? null,
+          fileSize: u.fileSize ?? null
+        });
+      }
+    }
+  });
   try {
-    const data = Array.from(sessions.values()).map(s => {
-      // Don't persist transient lock state
-      const { highlightLockedUntil, ...rest } = s;
-      return rest;
-    });
-    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(data, null, 2));
+    persist();
   } catch (err) {
     log('warn', 'sessions_save_failed', { error: err.message });
   }
@@ -79,9 +162,9 @@ function retryPendingSpacesUploads() {
   for (const [code, session] of sessions) {
     const sessionDir = path.join(UPLOADS_DIR, code);
     for (const rec of session.uploads) {
-      if (rec.videoKey) continue; // already on CDN
+      if (rec.videoKey) continue;
       const localPath = path.join(sessionDir, rec.videoFile);
-      if (!fs.existsSync(localPath)) continue; // file gone, nothing to do
+      if (!fs.existsSync(localPath)) continue;
 
       const thumbName = `thumb_${path.basename(rec.videoFile, '.mp4')}.jpg`;
       const thumbPath = path.join(sessionDir, thumbName);
@@ -116,7 +199,7 @@ function retryPendingSpacesUploads() {
   if (retried > 0) log('info', 'spaces_retry_queued', { count: retried });
 }
 
-// --- Daily purge of expired sessions (deletes their Spaces objects too) ---
+// --- Daily purge of expired sessions (Spaces objects + DB rows) ---
 function startSessionPurge() {
   setInterval(async () => {
     const now = Date.now();
@@ -129,13 +212,11 @@ function startSessionPurge() {
           if (up.metadataKey) await deleteFromSpaces(up.metadataKey);
         }
         sessions.delete(code);
+        stmt.deleteSession.run(code); // cascade drops uploads
         purged++;
       }
     }
-    if (purged > 0) {
-      log('info', 'sessions_purged', { purged });
-      saveSessionsToDisk();
-    }
+    if (purged > 0) log('info', 'sessions_purged', { purged });
   }, 24 * 60 * 60 * 1000);
 }
 
