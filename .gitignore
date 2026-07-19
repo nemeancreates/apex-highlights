@@ -7,3 +7,9 @@ dist/
 "@ | Out-File -FilePath .gitignore -Encoding utf8server/sessions.json
 server/users.json
 server/.env
+
+server/peakabu.db
+server/peakabu.db-shm
+server/peakabu.db-wal
+logs/server.log
+logs/usage.log
