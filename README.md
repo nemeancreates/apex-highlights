@@ -9,7 +9,7 @@ Peak-Abu lets gaming groups record their individual perspectives during a sessio
 ## Why Peak-Abu?
 
 - **Multi-POV replay** — capture 3–5+ player perspectives simultaneously and watch them sync'd in a single player
-- **Squad-friendly** — designed for gaming squads, not solo streamers
+- **Squad-friendly** — designed for gaming squads
 - **Smart tier structure** — free users participate (local clips only); paid tiers unlock cloud storage and export
 - **Low infrastructure cost** — inverts the SquadOV failure mode (unlimited free tier → unsustainable). Our free tier is intentionally limited, keeping ops costs sustainable
 - **Lean codebase** — single developer, clean architecture, heavily commented for readability

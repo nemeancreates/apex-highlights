@@ -27,8 +27,8 @@ const CHUNK_SECONDS = 10;
 // ================================
 // Update this whenever a new client build is uploaded to the CDN.
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.29',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.29.exe',
+  version: '0.1.30',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.30.exe',
   releaseNotes: 'Auto-updater added. The app now checks for updates on launch.'
 };
 
@@ -86,6 +86,19 @@ let fullSessionAudioIndex = 0;     // counter for filenames
 
 const DISK_WARN_BYTES = 20 * 1024 * 1024 * 1024;  // 20GB — warn
 const DISK_STOP_BYTES = 10 * 1024 * 1024 * 1024;  // 10GB — hard stop
+
+// ================================
+// WGC (WINDOW GRAPHICS CAPTURE) STATE
+// ================================
+let wgcCaptureMode = false;         // true = Game Window mode; false = Monitor (default)
+let wgcSourceId = null;             // Chromium desktopCapturer source id for the target window
+let wgcLastWindowTitle = null;      // persisted for auto-rematch next session
+let wgcFileStreams = {};            // { fileId: fs.WriteStream }
+let wgcFiles = [];                 // [{ fileId, path, startUTC, finalized }] — newest last
+let wgcRolloverTimer = null;
+let wgcSaveInFlight = false;       // defer rollover + deletion while a save reads buffer files
+let wgcMidSessionRestarts = 0;
+const WGC_MAX_RESTARTS = 3;
 
 // ================================
 // GAMEPAD — OS-level XInput polling (works while game is focused)
@@ -429,6 +442,15 @@ function loadUserPreferences() {
         console.log(`Loaded full session archive dir: ${fullSessionDir}`);
       }
 
+      if (typeof prefs.wgcCaptureMode === 'boolean') {
+        wgcCaptureMode = prefs.wgcCaptureMode;
+        console.log(`Loaded capture mode preference: ${wgcCaptureMode ? 'Window' : 'Monitor'}`);
+      }
+      if (prefs.wgcLastWindowTitle) {
+        wgcLastWindowTitle = prefs.wgcLastWindowTitle;
+        console.log(`Loaded last window title: ${wgcLastWindowTitle}`);
+      }
+
       console.log(`Loaded preferences: storageDir=${CLIPS_DIR}`);
       return prefs;
     }
@@ -650,6 +672,140 @@ function getFreeBytes(dir) {
   } catch (e) {
     return null; // statfsSync unavailable or path bad — fail open
   }
+}
+
+// ================================
+// WGC BUFFER MANAGER
+// ================================
+
+function getWgcSpanSeconds() {
+  // SPAN = max(120, 3 × clipDuration in seconds)
+  const clipDurationSec = maxChunks * CHUNK_SECONDS;
+  return Math.max(120, 3 * clipDurationSec);
+}
+
+function wgcFileTag() {
+  return `wgc_${recordingSessionTag}`;
+}
+
+function wgcStartNewFile(fileId) {
+  const filePath = path.join(BUFFER_DIR, `${fileId}.webm`);
+  const ws = fs.createWriteStream(filePath, { flags: 'w' });
+  ws.on('error', err => console.log(`WGC write stream error [${fileId}]:`, err.message));
+  wgcFileStreams[fileId] = ws;
+  wgcFiles.push({ fileId, path: filePath, startUTC: null, finalized: false });
+  console.log(`WGC buffer file created: ${fileId}`);
+  return fileId;
+}
+
+function wgcAppendChunk(fileId, buffer) {
+  const ws = wgcFileStreams[fileId];
+  if (!ws || ws.destroyed) {
+    console.log(`WGC chunk dropped — no stream for ${fileId}`);
+    return;
+  }
+  ws.write(Buffer.from(buffer));
+}
+
+function wgcSetFileStartUTC(fileId, utc) {
+  const entry = wgcFiles.find(f => f.fileId === fileId);
+  if (entry) entry.startUTC = utc;
+}
+
+function wgcFinalizeFile(fileId) {
+  const ws = wgcFileStreams[fileId];
+  if (ws && !ws.destroyed) {
+    ws.end();
+  }
+  delete wgcFileStreams[fileId];
+  const entry = wgcFiles.find(f => f.fileId === fileId);
+  if (entry) entry.finalized = true;
+  console.log(`WGC buffer file finalized: ${fileId}`);
+}
+
+function wgcCleanupOldFiles() {
+  // Keep at most 2 files (current + previous). Delete anything older.
+  while (wgcFiles.length > 2) {
+    const old = wgcFiles.shift();
+    if (wgcFileStreams[old.fileId]) {
+      wgcFileStreams[old.fileId].end();
+      delete wgcFileStreams[old.fileId];
+    }
+    try { fs.unlinkSync(old.path); } catch (e) {}
+    console.log(`WGC buffer file deleted: ${old.fileId}`);
+  }
+}
+
+function wgcStartRolloverSchedule() {
+  wgcStopRolloverSchedule();
+  const spanMs = getWgcSpanSeconds() * 1000;
+  // Rollover 1s before the span expires — new recorder starts before old stops (1s overlap)
+  wgcRolloverTimer = setInterval(() => {
+    if (wgcSaveInFlight) {
+      console.log('WGC rollover deferred — save in flight');
+      return;
+    }
+    const newFileId = `${wgcFileTag()}_${Date.now() % 100000}`;
+    wgcStartNewFile(newFileId);
+    // Tell renderer to swap recorders — it starts the new one, waits ~1s, stops the old
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('wgc-rollover-request', { newFileId });
+    }
+    // Clean up files older than the 2 we need
+    setTimeout(() => wgcCleanupOldFiles(), 2000);
+  }, spanMs - 1000);
+  console.log(`WGC rollover schedule started: every ${getWgcSpanSeconds()}s`);
+}
+
+function wgcStopRolloverSchedule() {
+  if (wgcRolloverTimer) {
+    clearInterval(wgcRolloverTimer);
+    wgcRolloverTimer = null;
+  }
+}
+
+function wgcCleanupAll() {
+  wgcStopRolloverSchedule();
+  for (const fileId of Object.keys(wgcFileStreams)) {
+    try { wgcFileStreams[fileId].end(); } catch (e) {}
+  }
+  wgcFileStreams = {};
+  for (const f of wgcFiles) {
+    try { fs.unlinkSync(f.path); } catch (e) {}
+  }
+  wgcFiles = [];
+  wgcSaveInFlight = false;
+  wgcMidSessionRestarts = 0;
+  console.log('WGC buffer cleaned up');
+}
+
+// Find which buffer file(s) cover the time window [startUTC, endUTC]
+function wgcFindCoveringFiles(startUTC, endUTC) {
+  // Only consider files that have a known start time
+  const candidates = wgcFiles.filter(f => f.startUTC && fs.existsSync(f.path));
+  if (candidates.length === 0) return null;
+
+  // Sort oldest first
+  candidates.sort((a, b) => a.startUTC - b.startUTC);
+
+  // Single file covers the whole window?
+  for (const f of candidates) {
+    if (f.startUTC <= startUTC) {
+      return { mode: 'single', files: [f] };
+    }
+  }
+
+  // Boundary straddle: older file has the start, newer file has the end
+  if (candidates.length >= 2) {
+    const older = candidates[candidates.length - 2];
+    const newer = candidates[candidates.length - 1];
+    if (older.startUTC <= startUTC && newer.startUTC <= endUTC) {
+      return { mode: 'straddle', files: [older, newer] };
+    }
+  }
+
+  // Best effort: use the newest file
+  return { mode: 'single', files: [candidates[candidates.length - 1]] };
 }
 
 function startDiskWatcher() {
