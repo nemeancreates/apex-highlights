@@ -517,6 +517,31 @@
               </select>
             </div>
 
+            <label>Capture Mode</label>
+            <select id="captureModeSelect" onchange="onCaptureModeChange()" style="margin-bottom:11px;">
+              <option value="monitor" selected>Monitor (recommended)</option>
+              <option value="window">Game Window (Beta)</option>
+            </select>
+
+            <div id="wgcPickRow" style="display:none;margin-bottom:11px;">
+              <button class="btn-secondary" onclick="openWindowPicker()" style="width:100%;padding:9px;">🪟 Pick Window</button>
+              <div id="wgcPickedName" style="font-size:12px;color:#39d3a0;text-align:center;margin-top:6px;">No window selected</div>
+              <div style="font-size:11px;color:#5f7a6a;margin-top:4px;">Works with borderless/windowed games. Exclusive fullscreen isn't capturable — use Monitor mode. Windows 10 draws a yellow border around captured windows.</div>
+            </div>
+
+            <div id="wgcPickerModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:100;">
+              <div style="max-width:640px;margin:60px auto;background:#0f2318;border:1px solid #2f4a3a;border-radius:10px;padding:16px;max-height:75vh;overflow-y:auto;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                  <h3 style="margin:0;color:#39d3a0;">Pick a Window</h3>
+                  <div>
+                    <button class="btn-secondary btn-sm" onclick="refreshWindowPicker()" style="margin-right:8px;">↺ Refresh</button>
+                    <button class="btn-secondary btn-sm" onclick="closeWindowPicker()">✕</button>
+                  </div>
+                </div>
+                <div id="wgcPickerGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;"></div>
+              </div>
+            </div>
+
             <label>Monitor</label>
             <select id="monitorSelect" style="margin-bottom:11px;">
               <option>Loading monitors...</option>
@@ -1228,7 +1253,17 @@
         var monitorIndex = parseInt(document.getElementById('monitorSelect').value);
         var sourceLabel = document.getElementById('monitorSelect').options[document.getElementById('monitorSelect').selectedIndex].textContent;
 
-        ipcRenderer.send('start-recording', { monitorIndex: monitorIndex });
+        if (window.wgcMode === 'window') {
+          if (!window.wgcSourceId) {
+            hudLog('system', '⚠ Pick a game window first', 'error');
+            openWindowPicker();
+            return;
+          }
+          sourceLabel = window.wgcWindowName || 'Game Window';
+          ipcRenderer.send('start-recording', { monitorIndex: monitorIndex, windowTitle: window.wgcSourceId });
+        } else {
+          ipcRenderer.send('start-recording', { monitorIndex: monitorIndex });
+        }
         window.isRecordingActive = true;
         window.bufferReady = false;
 
@@ -1270,6 +1305,7 @@
       window.isRecordingActive = false;
       window.bufferReady = false;
       if (window.mediaRecorder && window.mediaRecorder.state !== 'inactive') { window.mediaRecorder.stop(); window.mediaRecorder = null; }
+      wgcStopAll();
       stopMicCapture();
       document.getElementById('startBtn').textContent = '▶ Start Highlight Session';
       document.getElementById('stopBtn').disabled = true;
@@ -1282,6 +1318,209 @@
     };
 
     // =====================
+      // WGC — GAME WINDOW CAPTURE (Beta)
+      // =====================
+      window.wgcMode = 'monitor';
+      window.wgcSourceId = null;
+      window.wgcWindowName = null;
+      window.wgcStream = null;
+      window.wgcRecorders = {};
+      window.wgcLastChunkTime = 0;
+      window.wgcHealthTimer = null;
+      window.wgcCfg = null;
+
+      window.onCaptureModeChange = function() {
+        var mode = document.getElementById('captureModeSelect').value;
+        window.wgcMode = mode;
+        document.getElementById('wgcPickRow').style.display = (mode === 'window') ? 'block' : 'none';
+        var fsToggle = document.getElementById('fullSessionToggle');
+        if (mode === 'window') {
+          if (fsToggle.checked) { fsToggle.checked = false; window.toggleFullSession(); }
+          fsToggle.disabled = true;
+          hudLog('system', 'Full Session recording requires Monitor mode', 'info');
+        } else {
+          fsToggle.disabled = false;
+        }
+        ipcRenderer.invoke('wgc-set-capture-mode', { mode: mode, windowTitle: window.wgcWindowName });
+      };
+
+      window.openWindowPicker = function() {
+        document.getElementById('wgcPickerModal').style.display = 'block';
+        window.refreshWindowPicker();
+      };
+      window.closeWindowPicker = function() {
+        document.getElementById('wgcPickerModal').style.display = 'none';
+      };
+      window.refreshWindowPicker = async function() {
+        var grid = document.getElementById('wgcPickerGrid');
+        grid.innerHTML = '<div style="color:#5f7a6a;">Loading windows...</div>';
+        try {
+          var sources = await ipcRenderer.invoke('wgc-list-windows');
+          grid.innerHTML = '';
+          sources.forEach(function(s) {
+            var card = document.createElement('div');
+            card.style.cssText = 'background:#12251a;border:1px solid #24402e;border-radius:7px;padding:8px;cursor:pointer;';
+            card.onmouseenter = function(){ card.style.borderColor = '#39d3a0'; };
+            card.onmouseleave = function(){ card.style.borderColor = '#24402e'; };
+            var thumb = document.createElement('img');
+            thumb.src = s.thumbnailDataUrl || '';
+            thumb.style.cssText = 'width:100%;border-radius:4px;background:#04140d;min-height:90px;object-fit:contain;';
+            var name = document.createElement('div');
+            name.textContent = s.name;
+            name.style.cssText = 'font-size:12px;color:#c8d6cd;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+            card.appendChild(thumb); card.appendChild(name);
+            card.onclick = function() {
+              window.wgcSourceId = s.id;
+              window.wgcWindowName = s.name;
+              document.getElementById('wgcPickedName').textContent = '✓ ' + s.name;
+              ipcRenderer.invoke('wgc-set-capture-mode', { mode: 'window', windowTitle: s.name });
+              window.closeWindowPicker();
+              hudLog('system', '🪟 Window selected: ' + s.name, 'success');
+            };
+            grid.appendChild(card);
+          });
+          if (!sources.length) grid.innerHTML = '<div style="color:#5f7a6a;">No capturable windows found</div>';
+        } catch (e) {
+          grid.innerHTML = '<div style="color:#f0857a;">Failed to list windows: ' + e.message + '</div>';
+        }
+      };
+
+      function wgcPickCodec() {
+        var prefs = ['video/webm;codecs=h264', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+        for (var i = 0; i < prefs.length; i++) {
+          if (MediaRecorder.isTypeSupported(prefs[i])) return prefs[i];
+        }
+        return 'video/webm';
+      }
+
+      function wgcCreateRecorder(fileId, cfg) {
+        var rec = new MediaRecorder(window.wgcStream, {
+          mimeType: wgcPickCodec(),
+          videoBitsPerSecond: cfg.bitrate || 8000000
+        });
+        rec.ondataavailable = async function(ev) {
+          if (ev.data && ev.data.size > 0) {
+            window.wgcLastChunkTime = Date.now();
+            ipcRenderer.send('wgc-chunk', { fileId: fileId, buf: await ev.data.arrayBuffer() });
+          }
+        };
+        rec.onstart = function() {
+          ipcRenderer.send('wgc-recorder-started', { fileId: fileId, fileStartUTC: Date.now() });
+        };
+        rec.onerror = function(e) {
+          console.log('WGC recorder error:', e);
+          ipcRenderer.send('wgc-capture-failed', { reason: 'MediaRecorder error' });
+        };
+        rec.start(1000);
+        window.wgcRecorders[fileId] = rec;
+        return rec;
+      }
+
+      async function wgcStartCapture(cfg) {
+        window.wgcCfg = cfg;
+        try {
+          var videoConstraints = {
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: cfg.sourceId,
+              maxFrameRate: cfg.fps || 30
+            }
+          };
+          if (cfg.resolution && cfg.resolution.height) {
+            videoConstraints.mandatory.maxHeight = cfg.resolution.height;
+          }
+          window.wgcStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints });
+
+          var track = window.wgcStream.getVideoTracks()[0];
+          if (track) track.onended = function() {
+            ipcRenderer.send('wgc-capture-failed', { reason: 'Window closed' });
+          };
+
+          var init = await ipcRenderer.invoke('wgc-init-buffer');
+          wgcCreateRecorder(init.fileId, cfg);
+          window.wgcLastChunkTime = Date.now();
+
+          if (window.wgcHealthTimer) clearInterval(window.wgcHealthTimer);
+          window.wgcHealthTimer = setInterval(function() {
+            if (!window.wgcStream) return;
+            if (Date.now() - window.wgcLastChunkTime > 5000) {
+              window.wgcLastChunkTime = Date.now();
+              ipcRenderer.send('wgc-capture-failed', { reason: 'Chunk starvation' });
+            }
+          }, 2500);
+
+          hudLog('system', '🎥 Capture: Window capture (Game Window Beta)', 'info');
+        } catch (err) {
+          console.log('WGC start failed:', err.name, err.message);
+          ipcRenderer.send('wgc-capture-failed', { reason: err.message });
+        }
+      }
+
+      function wgcStopAll() {
+        if (window.wgcHealthTimer) { clearInterval(window.wgcHealthTimer); window.wgcHealthTimer = null; }
+        Object.keys(window.wgcRecorders).forEach(function(fileId) {
+          var rec = window.wgcRecorders[fileId];
+          try { if (rec.state !== 'inactive') rec.stop(); } catch(e) {}
+          setTimeout(function() { ipcRenderer.send('wgc-recorder-stopped', { fileId: fileId }); }, 500);
+        });
+        window.wgcRecorders = {};
+        if (window.wgcStream) {
+          window.wgcStream.getTracks().forEach(function(t){ t.stop(); });
+          window.wgcStream = null;
+        }
+      }
+
+      ipcRenderer.on('wgc-start-capture', function(ev, cfg) { wgcStartCapture(cfg); });
+      ipcRenderer.on('wgc-stop-capture', function() { wgcStopAll(); });
+
+      ipcRenderer.on('wgc-rollover-request', function(ev, d) {
+        if (!window.wgcStream || !window.wgcCfg) return;
+        var oldIds = Object.keys(window.wgcRecorders);
+        wgcCreateRecorder(d.newFileId, window.wgcCfg);
+        setTimeout(function() {
+          oldIds.forEach(function(fileId) {
+            var rec = window.wgcRecorders[fileId];
+            if (rec) {
+              try { if (rec.state !== 'inactive') rec.stop(); } catch(e) {}
+              delete window.wgcRecorders[fileId];
+              setTimeout(function() { ipcRenderer.send('wgc-recorder-stopped', { fileId: fileId }); }, 500);
+            }
+          });
+        }, 1000);
+      });
+
+      ipcRenderer.on('wgc-restart-capture', function(ev, d) {
+        hudLog('system', '⚠ Window capture died — auto-restarting (' + d.attempt + '/' + d.maxAttempts + ')', 'error');
+        wgcStopAll();
+        setTimeout(function() {
+          if (window.isRecordingActive && window.wgcCfg) wgcStartCapture(window.wgcCfg);
+        }, 1500);
+      });
+
+      ipcRenderer.on('wgc-fallback-to-monitor', function(ev, d) {
+        hudLog('system', '⚠ ' + d.reason, 'error');
+        wgcStopAll();
+        window.wgcMode = 'monitor';
+        document.getElementById('captureModeSelect').value = 'monitor';
+        document.getElementById('wgcPickRow').style.display = 'none';
+        document.getElementById('fullSessionToggle').disabled = false;
+      });
+
+      // Restore capture mode on launch
+      ipcRenderer.invoke('wgc-get-capture-mode').then(function(state) {
+        if (state && state.mode === 'window') {
+          document.getElementById('captureModeSelect').value = 'window';
+          window.wgcMode = 'window';
+          document.getElementById('wgcPickRow').style.display = 'block';
+          document.getElementById('fullSessionToggle').disabled = true;
+          if (state.lastWindowTitle) {
+            window.wgcWindowName = state.lastWindowTitle;
+            document.getElementById('wgcPickedName').textContent = 'Last used: ' + state.lastWindowTitle + ' — pick again to confirm';
+          }
+        }
+      }).catch(function() {});
+
+      // =====================
       // FULL SESSION MODE
       // =====================
       window.toggleFullSession = function() {

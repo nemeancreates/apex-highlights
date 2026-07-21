@@ -15,35 +15,26 @@ function getFFmpegPath() {
   return path.join(__dirname, 'ffmpeg', 'ffmpeg.exe');
 }
 
-// Default paths (will be overridden by user preferences)
 const DEFAULT_BUFFER_DIR = path.join(os.tmpdir(), 'apex-highlights-buffer');
 const DEFAULT_CLIPS_DIR = path.join(app.getPath('videos'), 'PeakAbu');
 const USER_PREFS_PATH = path.join(app.getPath('userData'), 'user-preferences.json');
 const CHUNK_SECONDS = 10;
 
-
-// ================================
-// CLIENT VERSION CONFIG
-// ================================
-// Update this whenever a new client build is uploaded to the CDN.
 const LATEST_CLIENT_VERSION = {
   version: '0.1.30',
   downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.30.exe',
-  releaseNotes: 'Auto-updater added. The app now checks for updates on launch.'
+  releaseNotes: 'Game Window Capture (Beta) added — record a specific game window instead of your whole monitor.'
 };
 
-
-// User-configurable paths (loaded from preferences)
 let BUFFER_DIR = DEFAULT_BUFFER_DIR;
 let CLIPS_DIR = DEFAULT_CLIPS_DIR;
 
-// Settings (adjustable from UI)
 let maxChunks = 18;
 let recordFps = 30;
-let recordResolution = null; // null = native, or { width, height }
+let recordResolution = null;
 let customHotkey = 'F9';
 let startupHotkeyRegistered = true;
-let captureHdr = false;      // HDR monitor fix — tonemaps HDR desktop to correct SDR colors
+let captureHdr = false;
 let captureAdapter = null;
 let captureWindowTitle = null; 
 let clockOffset = 0;
@@ -58,59 +49,46 @@ let videoStartTime = null;
 let audioFirstChunkTime = null;
 let bufferReadyWatcher = null;
 let recordingStartTime = null;
-let recordingSessionTag = Date.now();  // unique per recording session — chunk filenames never repeat
+let recordingSessionTag = Date.now();
 let lastHighlightBoundary = 0;
 
-// ================================
-// CONTINUOUS HIGHLIGHT AUDIO
-// ================================
-// MediaRecorder webm headers only exist in the FIRST blob — buffered audio
-// must live in ONE growing file per recording session, never a pruned array
-// of chunks. Pruning middles broke the stream and made every highlight after
-// the first reuse the same audio (the "repeating audio" bug).
-let hlAudioPath = null;        // desktop audio, appended continuously
-let hlMicPath = null;          // mic audio, appended continuously
+let hlAudioPath = null;
+let hlMicPath = null;
 let hlAudioChunkCount = 0;
 let hlMicChunkCount = 0;
 
-// ================================
-// FULL SESSION MODE
-// ================================
-let fullSessionMode = false;           // when true: never prune, archive whole session on stop
-let fullSessionDir = null;             // optional override location for archives; null = use CLIPS_DIR
-let sessionArchiveActive = false;      // guards concat-on-stop
-let diskWatchTimer = null;             // interval that watches free space during recording
-let fullSessionAudioChunks = [];   // paths of audio webm files written to disk
-let fullSessionMicChunks = [];     // paths of mic webm files written to disk
-let fullSessionAudioIndex = 0;     // counter for filenames
+let fullSessionMode = false;
+let fullSessionDir = null;
+let sessionArchiveActive = false;
+let diskWatchTimer = null;
+let fullSessionAudioChunks = [];
+let fullSessionMicChunks = [];
+let fullSessionAudioIndex = 0;
 
-const DISK_WARN_BYTES = 20 * 1024 * 1024 * 1024;  // 20GB — warn
-const DISK_STOP_BYTES = 10 * 1024 * 1024 * 1024;  // 10GB — hard stop
+const DISK_WARN_BYTES = 20 * 1024 * 1024 * 1024;
+const DISK_STOP_BYTES = 10 * 1024 * 1024 * 1024;
 
 // ================================
 // WGC (WINDOW GRAPHICS CAPTURE) STATE
 // ================================
-let wgcCaptureMode = false;         // true = Game Window mode; false = Monitor (default)
-let wgcSourceId = null;             // Chromium desktopCapturer source id for the target window
-let wgcLastWindowTitle = null;      // persisted for auto-rematch next session
-let wgcFileStreams = {};            // { fileId: fs.WriteStream }
-let wgcFiles = [];                 // [{ fileId, path, startUTC, finalized }] — newest last
+let wgcCaptureMode = false;
+let wgcSourceId = null;
+let wgcLastWindowTitle = null;
+let wgcFileStreams = {};
+let wgcFiles = [];
 let wgcRolloverTimer = null;
-let wgcSaveInFlight = false;       // defer rollover + deletion while a save reads buffer files
+let wgcSaveInFlight = false;
 let wgcMidSessionRestarts = 0;
 const WGC_MAX_RESTARTS = 3;
 
-// ================================
-// GAMEPAD — OS-level XInput polling (works while game is focused)
-// ================================
 const XINPUT_BUTTON_MAP = [
-  0x1000, 0x2000, 0x4000, 0x8000, // A B X Y
-  0x0100, 0x0200,                   // LB RB
-  -1, -2,                           // LT RT (analog)
-  0x0020, 0x0010,                   // Back Start
-  0x0040, 0x0080,                   // L-Stick R-Stick
-  0x0001, 0x0002, 0x0004, 0x0008,  // DPad U D L R
-  0                                 // Xbox/Home (not available via XInput)
+  0x1000, 0x2000, 0x4000, 0x8000,
+  0x0100, 0x0200,
+  -1, -2,
+  0x0020, 0x0010,
+  0x0040, 0x0080,
+  0x0001, 0x0002, 0x0004, 0x0008,
+  0
 ];
 
 let xinputProcess = null;
@@ -188,7 +166,6 @@ function processXInputLine(line) {
   const lt = parseInt(parts[1]);
   const rt = parseInt(parts[2]);
 
-  // Track connection state for renderer UI
   const connected = buttons !== -1;
   if (connected !== xinputConnected) {
     xinputConnected = connected;
@@ -206,8 +183,8 @@ function processXInputLine(line) {
   const mask = XINPUT_BUTTON_MAP[btnIdx];
 
   let pressed = false;
-  if (mask === -1) pressed = lt > 200;       // LT analog threshold
-  else if (mask === -2) pressed = rt > 200;  // RT analog threshold
+  if (mask === -1) pressed = lt > 200;
+  else if (mask === -2) pressed = rt > 200;
   else if (mask > 0) pressed = (buttons & mask) !== 0;
 
   const now = Date.now();
@@ -244,30 +221,10 @@ function processXInputLine(line) {
   }
 }
 
-
-
-// ================================
-// CAPTURE ENGINE LADDER
-// ================================
-// Ordered list of capture+encode strategies. On early FFmpeg failure we
-// automatically advance to the next engine, so users always end up with
-// a working recording even on unusual GPU/driver/monitor setups.
-//
-//   dda-nvenc      ddagrab -> h264_nvenc, frames never leave the GPU (fastest, lowest game impact)
-//   dda-nvenc-vf   ddagrab -> hwdownload -> scale -> nvenc (used when downscaling to 720/480)
-//   dda-hdr-nvenc  ddagrab 10-bit -> HDR->SDR tonemap -> nvenc (fixes washed-out HDR monitors)
-//   dda-hdr-x264   same tonemap chain, CPU encode
-//   dda-x264       ddagrab -> hwdownload -> libx264 (DDA capture is still much lighter than gdigrab)
-//   gdi-nvenc      legacy gdigrab -> nvenc (previous default — safety net)
-//   gdi-x264       legacy gdigrab -> libx264 (final safety net, works everywhere)
-//
-// Requires an FFmpeg build that includes the ddagrab and zscale filters
-// (gyan.dev "full" build). If the bundled build lacks them, the ladder
-// simply falls through to the gdigrab engines.
 let engineLadder = [];
 let engineIndex = 0;
 let stoppingIntentionally = false;
-let midSessionRestarts = 0;        // crash-recovery restarts this recording session
+let midSessionRestarts = 0;
 const MAX_MID_SESSION_RESTARTS = 3;
 
 const ENGINE_LABELS = {
@@ -278,7 +235,7 @@ const ENGINE_LABELS = {
   'dda-x264':      'GPU capture + CPU encode',
   'gdi-nvenc':     'Legacy capture + GPU encode',
   'gdi-x264':      'Legacy capture + CPU encode',
-  'gdi-window':    'Window capture (game)',
+  'wgc-window':    'Window capture (Game Window Beta)',
 };
 
 function buildEngineLadder() {
@@ -290,7 +247,7 @@ function buildEngineLadder() {
     l.push('gdi-x264');
   } else {
     if (!useCpuEncoder) {
-      if (!recordResolution) l.push('dda-nvenc'); // zero-copy path is native-res only
+      if (!recordResolution) l.push('dda-nvenc');
       l.push('dda-nvenc-vf');
       l.push('gdi-nvenc');
     }
@@ -300,8 +257,6 @@ function buildEngineLadder() {
   return l;
 }
 
-// Nudge FFmpeg below normal priority so a capture spike never steals frame
-// time from the game. (wmic is deprecated on Win11 — use PowerShell instead.)
 function setBelowNormalPriority(pid) {
   try {
     spawn('powershell.exe', [
@@ -313,16 +268,6 @@ function setBelowNormalPriority(pid) {
   }
 }
 
-// ================================
-// PROCESS SHUTDOWN — graceful FFmpeg quit + hard tree-kill
-// ================================
-// FFmpeg capturing via ddagrab/gdigrab does not reliably die on a plain
-// .kill() (SIGTERM). On Windows it can survive as a detached ffmpeg.exe still
-// holding the Desktop Duplication handle and still encoding — invisible because
-// we spawn with windowsHide. That orphan is what keeps dropping frames after
-// the client is closed. This kills the whole tree, gracefully first.
-//
-// Returns a promise that resolves once the process is gone (or ~1.5s elapsed).
 function killFFmpegTree(proc) {
   return new Promise((resolve) => {
     if (!proc || proc.killed || proc.exitCode !== null) {
@@ -333,7 +278,6 @@ function killFFmpegTree(proc) {
     let settled = false;
     const done = () => { if (!settled) { settled = true; resolve(); } };
 
-    // Ensure the tree is force-killed even if graceful quit is ignored.
     const forceKill = setTimeout(() => {
       try {
         spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true });
@@ -347,7 +291,6 @@ function killFFmpegTree(proc) {
     proc.once('close', () => { clearTimeout(forceKill); done(); });
     proc.once('exit',  () => { clearTimeout(forceKill); done(); });
 
-    // Graceful: FFmpeg quits cleanly and releases the DDA handle on 'q'.
     try {
       if (proc.stdin && proc.stdin.writable) {
         proc.stdin.write('q');
@@ -358,14 +301,10 @@ function killFFmpegTree(proc) {
   });
 }
 
-// One-time sweep on launch: kill any orphaned ffmpeg.exe left over from a
-// previous crash or hard-close. Scoped to processes whose command line
-// references our buffer directory, so we never touch an unrelated ffmpeg.
 function sweepOrphanedFFmpeg() {
   if (process.platform !== 'win32') return;
   try {
     const marker = 'apex-highlights-buffer';
-    // WMIC is deprecated on Win11; use PowerShell CIM to match on command line.
     const ps = [
       '-NoProfile', '-Command',
       `Get-CimInstance Win32_Process -Filter "Name='ffmpeg.exe'" | ` +
@@ -380,15 +319,10 @@ function sweepOrphanedFFmpeg() {
   }
 }
 
-// ================================
-// MIC STATE
-// ================================
 let micFirstChunkTime = null;
 let micVolume = 80;
 let micMuted = false;
 
-
-// Where full-session archives are written. Falls back to the clips dir.
 function getArchiveBaseDir() {
   const base = (fullSessionDir && fs.existsSync(fullSessionDir))
     ? fullSessionDir
@@ -396,7 +330,6 @@ function getArchiveBaseDir() {
   return path.join(base, 'archives');
 }
 
-// Which directory to check for free space (the one we're writing chunks + archive into)
 function getActiveStorageRoot() {
   if (fullSessionMode && fullSessionDir && fs.existsSync(fullSessionDir)) return fullSessionDir;
   return CLIPS_DIR;
@@ -524,12 +457,7 @@ function stopBufferReadyWatcher() {
   }
 }
 
-// clockOffset = Peak-Abu server clock minus this PC's clock.
-// Measured by the renderer via socket ping-pong (min-RTT sampling)
-// and pushed here. All squad clips are timestamped in the SAME
-// server clock domain, so cross-machine offsets cancel out.
 ipcMain.on('server-clock-offset', (event, payload) => {
-  // v0.1.17+ renderer sends { offset, uncertaintyMs }; older builds sent a bare number.
   const offset = (payload && typeof payload === 'object') ? payload.offset : payload;
   const uncertainty = (payload && typeof payload === 'object') ? payload.uncertaintyMs : null;
   if (typeof offset === 'number' && isFinite(offset) && Math.abs(offset) < 24 * 3600 * 1000) {
@@ -544,7 +472,6 @@ ipcMain.on('server-clock-offset', (event, payload) => {
 function getPreciseUTC() { return Date.now() + clockOffset; }
 
 function pruneOldChunks() {
-  // In full session mode we keep every chunk for the whole session — no pruning.
   if (fullSessionMode) return;
 
   const files = fs.readdirSync(BUFFER_DIR)
@@ -562,15 +489,9 @@ function pruneOldChunks() {
   }
 }
 
-// ================================
-// FFMPEG ARG BUILDER — per capture engine
-// ================================
 function buildCaptureArgs(engine, monitor) {
 const chunkPattern = path.join(BUFFER_DIR, `chunk_${recordingSessionTag}_%03d.mp4`);  const fpsStr = String(recordFps);
 
-
-
-  // gdigrab geometry (legacy engines only)
   const screen = require('electron').screen;
   const displays = screen.getAllDisplays();
   const target = monitor !== undefined && displays[monitor] ? displays[monitor] : displays[0];
@@ -598,11 +519,6 @@ const chunkPattern = path.join(BUFFER_DIR, `chunk_${recordingSessionTag}_%03d.mp
 
   const scaleTail = recordResolution ? `,scale=-2:${recordResolution.height}` : '';
 
-  // Desktop Duplication input — GPU capture, no BitBlt, no DWM slow path.
-  // On hybrid systems (Intel iGPU + discrete GPU) the display may be driven by
-  // one adapter while ddagrab defaults to another — that mismatch forces a
-  // cross-adapter GPU->GPU copy every frame and wrecks pacing. captureAdapter
-  // lets us pin capture to the GPU the monitor actually lives on.
   const adapterOpt = (captureAdapter !== null && captureAdapter !== undefined)
     ? `:adapter=${captureAdapter}` : '';
   const ddaInput = (tenBit) => [
@@ -612,9 +528,6 @@ const chunkPattern = path.join(BUFFER_DIR, `chunk_${recordingSessionTag}_%03d.mp
 
   const ddaCpuVf = `hwdownload,format=bgra${scaleTail},format=yuv420p`;
 
-  // HDR -> SDR tonemap chain. HDR desktop hands us PQ / BT.2020 pixels;
-  // encoding as-is => washed out & gamma-lifted (Cabbam's bug).
-  // Tag colors -> linearize -> Hable tonemap -> BT.709 SDR.
   const hdrVf =
     'hwdownload,format=x2bgr10le,' +
     'setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,' +
@@ -629,21 +542,6 @@ const chunkPattern = path.join(BUFFER_DIR, `chunk_${recordingSessionTag}_%03d.mp
     '-video_size', `${gw}x${gh}`, '-i', 'desktop'
   ];
   const gdiScale = recordResolution ? ['-vf', `scale=-2:${recordResolution.height}`] : [];
-
-  // Window capture mode — use gdigrab targeting a specific window title.
-  // Overrides monitor/ddagrab engines entirely.
-  if (captureWindowTitle) {
-    const winInput = [
-      '-f', 'gdigrab', '-framerate', fpsStr,
-      '-i', `title=${captureWindowTitle}`
-    ];
-    const winScale = recordResolution ? ['-vf', `scale=-2:${recordResolution.height}`] : [];
-    // Window capture always uses gdigrab; pick encoder based on availability
-    if (!useCpuEncoder) {
-      return [...winInput, ...winScale, ...nvencArgs, ...segmentArgs];
-    }
-    return [...winInput, ...winScale, ...x264Args, '-pix_fmt', 'yuv420p', ...segmentArgs];
-  }
 
   switch (engine) {
     case 'dda-nvenc':
@@ -664,13 +562,12 @@ const chunkPattern = path.join(BUFFER_DIR, `chunk_${recordingSessionTag}_%03d.mp
   }
 }
 
-// Returns free bytes on the volume containing `dir`, or null if it can't be read.
 function getFreeBytes(dir) {
   try {
-    const stats = fs.statfsSync(dir); // Node 18.15+ / 20+
+    const stats = fs.statfsSync(dir);
     return stats.bavail * stats.bsize;
   } catch (e) {
-    return null; // statfsSync unavailable or path bad — fail open
+    return null;
   }
 }
 
@@ -679,7 +576,6 @@ function getFreeBytes(dir) {
 // ================================
 
 function getWgcSpanSeconds() {
-  // SPAN = max(120, 3 × clipDuration in seconds)
   const clipDurationSec = maxChunks * CHUNK_SECONDS;
   return Math.max(120, 3 * clipDurationSec);
 }
@@ -724,7 +620,6 @@ function wgcFinalizeFile(fileId) {
 }
 
 function wgcCleanupOldFiles() {
-  // Keep at most 2 files (current + previous). Delete anything older.
   while (wgcFiles.length > 2) {
     const old = wgcFiles.shift();
     if (wgcFileStreams[old.fileId]) {
@@ -739,7 +634,6 @@ function wgcCleanupOldFiles() {
 function wgcStartRolloverSchedule() {
   wgcStopRolloverSchedule();
   const spanMs = getWgcSpanSeconds() * 1000;
-  // Rollover 1s before the span expires — new recorder starts before old stops (1s overlap)
   wgcRolloverTimer = setInterval(() => {
     if (wgcSaveInFlight) {
       console.log('WGC rollover deferred — save in flight');
@@ -747,11 +641,9 @@ function wgcStartRolloverSchedule() {
     }
     const newFileId = `${wgcFileTag()}_${Date.now() % 100000}`;
     wgcStartNewFile(newFileId);
-    // Tell renderer to swap recorders — it starts the new one, waits ~1s, stops the old
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('wgc-rollover-request', { newFileId });
     }
-    // Clean up files older than the 2 we need
     setTimeout(() => wgcCleanupOldFiles(), 2000);
   }, spanMs - 1000);
   console.log(`WGC rollover schedule started: every ${getWgcSpanSeconds()}s`);
@@ -779,23 +671,18 @@ function wgcCleanupAll() {
   console.log('WGC buffer cleaned up');
 }
 
-// Find which buffer file(s) cover the time window [startUTC, endUTC]
 function wgcFindCoveringFiles(startUTC, endUTC) {
-  // Only consider files that have a known start time
   const candidates = wgcFiles.filter(f => f.startUTC && fs.existsSync(f.path));
   if (candidates.length === 0) return null;
 
-  // Sort oldest first
   candidates.sort((a, b) => a.startUTC - b.startUTC);
 
-  // Single file covers the whole window?
   for (const f of candidates) {
     if (f.startUTC <= startUTC) {
       return { mode: 'single', files: [f] };
     }
   }
 
-  // Boundary straddle: older file has the start, newer file has the end
   if (candidates.length >= 2) {
     const older = candidates[candidates.length - 2];
     const newer = candidates[candidates.length - 1];
@@ -804,7 +691,6 @@ function wgcFindCoveringFiles(startUTC, endUTC) {
     }
   }
 
-  // Best effort: use the newest file
   return { mode: 'single', files: [candidates[candidates.length - 1]] };
 }
 
@@ -824,7 +710,7 @@ function startDiskWatcher() {
           path: root
         });
       }
-      stopRecordingInternal();     // triggers archive concat + halt
+      stopRecordingInternal();
     } else if (free <= DISK_WARN_BYTES && !warned) {
       warned = true;
       console.log(`Disk low: ${(free / 1e9).toFixed(1)}GB free — warning user`);
@@ -835,21 +721,13 @@ function startDiskWatcher() {
         });
       }
     }
-  }, 30000); // check every 30s
+  }, 30000);
 }
 
 function stopDiskWatcher() {
   if (diskWatchTimer) { clearInterval(diskWatchTimer); diskWatchTimer = null; }
 }
 
-// ================================
-// CAPTURE HEALTH TELEMETRY
-// ================================
-// FFmpeg emits progress lines like:
-//   frame= 1234 fps= 59 q=23.0 size=... time=... bitrate=... speed=1.01x drop=0
-// speed < ~0.95x or a climbing drop count means capture can't keep up — the
-// objective signal behind "the app tanked my FPS". We surface it so testers
-// report "engine X, speed 0.7x, 400 drops" instead of a vibe.
 let lastDropCount = 0;
 let lowSpeedStreak = 0;
 
@@ -872,8 +750,6 @@ function parseCaptureHealth(text, engine) {
   if (speed !== null) {
     if (speed < 0.95) {
       lowSpeedStreak++;
-      // Only warn after a sustained dip (3 consecutive reads) to avoid noise
-      // from the first second of startup.
       if (lowSpeedStreak === 3 && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('capture-health', {
           status: 'behind', engine, speed, drop, fps,
@@ -890,12 +766,44 @@ function parseCaptureHealth(text, engine) {
   }
 }
 
-
 function startRecording(monitor) {
   ensureFolders();
   currentMonitor = monitor;
 
-  // Skip NVENC engines if the encoder already proved broken this session
+  if (wgcCaptureMode && wgcSourceId) {
+    try {
+      const staleWgc = fs.readdirSync(BUFFER_DIR).filter(f => f.startsWith('wgc_'));
+      for (const f of staleWgc) { try { fs.unlinkSync(path.join(BUFFER_DIR, f)); } catch (e) {} }
+      if (staleWgc.length) console.log(`Cleaned ${staleWgc.length} stale WGC files`);
+    } catch (e) {}
+
+    wgcFiles = [];
+    wgcFileStreams = {};
+    wgcMidSessionRestarts = 0;
+    wgcSaveInFlight = false;
+
+    console.log(`Recording window via WGC — sourceId: ${wgcSourceId}`);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('capture-engine', ENGINE_LABELS['wgc-window']);
+      mainWindow.webContents.send('wgc-start-capture', {
+        sourceId: wgcSourceId,
+        fps: recordFps,
+        resolution: recordResolution,
+        bitrate: recordResolution
+          ? (recordResolution.height <= 480 ? 3000000 : 5000000)
+          : 8000000
+      });
+      mainWindow.webContents.send('buffer-ready');
+    }
+    recordingStartTime = Date.now();
+    videoStartTime = recordingStartTime;
+    lastHighlightBoundary = 0;
+    audioFirstChunkTime = null;
+    micFirstChunkTime = null;
+    if (fullSessionMode) startDiskWatcher();
+    return;
+  }
+
   while (
     engineIndex < engineLadder.length &&
     useCpuEncoder &&
@@ -922,7 +830,7 @@ function startRecording(monitor) {
 
   ffmpegProcess = spawn(getFFmpegPath(), ffmpegArgs, {
     windowsHide: true,
-    stdio: ['pipe', 'pipe', 'pipe']  // stdin pipe lets us send 'q' for graceful quit
+    stdio: ['pipe', 'pipe', 'pipe']
   });
 
   if (ffmpegProcess.pid) setBelowNormalPriority(ffmpegProcess.pid);
@@ -988,12 +896,6 @@ function startRecording(monitor) {
       return;
     }
 
-    // MID-SESSION DEATH: FFmpeg ran fine, then died while we still think we're
-    // recording. Previously this was silently ignored — capture stopped, no new
-    // chunks were ever written, and every later save failed with "Buffer not
-    // ready" until the user manually restarted. Recover automatically: restart
-    // the SAME engine (it already proved it works on this machine), bounded so
-    // a hard-broken setup can't loop forever.
     ffmpegProcess = null;
     const logPath = path.join(os.tmpdir(), 'peakabu-ffmpeg.log');
     fs.appendFileSync(logPath, `\n=== ENGINE [${engine}] DIED MID-SESSION (code ${code}, after ${(ranForMs/1000).toFixed(0)}s) ===\n${stderrTail.slice(-800)}\n`);
@@ -1005,11 +907,6 @@ function startRecording(monitor) {
         mainWindow.webContents.send('capture-engine',
           `⚠ Capture process died — auto-restarting (${midSessionRestarts}/${MAX_MID_SESSION_RESTARTS})`);
       }
-      // Small delay lets file handles + the DDA session release cleanly.
-      // Fresh session tag: restarted FFmpeg numbers chunks from _000 again, so
-      // reusing the old tag would overwrite existing chunk files. A new tag also
-      // keeps the highlight audio-skip math correct (chunk number is counted
-      // from the new videoStartTime that startRecording sets).
       setTimeout(() => {
         if (!stoppingIntentionally) {
           recordingSessionTag = Date.now();
@@ -1026,9 +923,6 @@ function startRecording(monitor) {
   });
 }
 
-// ================================
-// SAVE HIGHLIGHT
-// ================================
 function saveHighlight(coordinatedTimestamp = null, clipDurationMs = null) {
   const duration = clipDurationMs || 30000;
   const postDelay = Math.ceil(duration * 0.1);
@@ -1047,14 +941,173 @@ function saveHighlight(coordinatedTimestamp = null, clipDurationMs = null) {
 }
 
 function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = null, retryCount = 0) {
+  if (wgcCaptureMode && wgcFiles.length > 0) {
+    wgcSaveInFlight = true;
+
+    const durationSec = durationMs / 1000;
+    const windowStartLocal = (saveTimeUTC - clockOffset) - (0.9 * durationMs);
+    const windowEndLocal = (saveTimeUTC - clockOffset) + (0.1 * durationMs);
+
+    const covering = wgcFindCoveringFiles(windowStartLocal, windowEndLocal);
+    if (!covering) {
+      wgcSaveInFlight = false;
+      console.log(`WGC save: no covering buffer files, retry=${retryCount}`);
+      if (retryCount < 4) {
+        if (retryCount === 0 && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('post-capture-started', { postDelay: 3000 });
+        }
+        setTimeout(() => doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs, retryCount + 1), 3000);
+        return;
+      }
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('highlight-error', 'Window capture buffer not ready yet');
+      }
+      return;
+    }
+
+    const timestamp = new Date(saveTimeUTC).toISOString().replace(/[:.]/g, '-');
+    const outputPath = path.join(CLIPS_DIR, `highlight-${timestamp}.mp4`);
+    const metadataPath = path.join(CLIPS_DIR, `highlight-${timestamp}.json`);
+
+    const metadata = {
+      clipId: crypto.randomUUID(),
+      version: 2,
+      saveTimeUTC,
+      startTimeUTC: Math.round(windowStartLocal + clockOffset),
+      endTimeUTC: Math.round(windowEndLocal + clockOffset),
+      durationMs: durationMs,
+      clipDurationMs: durationMs,
+      frameRate: recordFps,
+      clockOffsetMs: clockOffset,
+      syncUncertaintyMs: clockUncertaintyMs,
+      captureEngine: 'wgc-window',
+      userId: null,
+      sessionId: currentSession ? currentSession.code : null,
+      coordinated_timestamp: coordinatedTs || null
+    };
+
+    const encoderArgs = useCpuEncoder
+      ? ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23']
+      : ['-c:v', 'h264_nvenc', '-preset', 'p4', '-tune', 'hq', '-b:v',
+         recordResolution ? (recordResolution.height <= 480 ? '3M' : '5M') : '8M'];
+
+    function wgcExtractFail(msg) {
+      wgcSaveInFlight = false;
+      console.log('WGC save failed:', msg);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('highlight-error', msg);
+      }
+    }
+
+    if (covering.mode === 'single') {
+      const file = covering.files[0];
+      const ssOffset = Math.max(0, (windowStartLocal - file.startUTC) / 1000);
+
+      console.log(`WGC save: single file extract — ss=${ssOffset.toFixed(3)}s, t=${durationSec}s from ${file.fileId}`);
+
+      const extract = spawn(getFFmpegPath(), [
+        '-fflags', '+genpts+igndts',
+        '-ss', ssOffset.toFixed(3),
+        '-t', durationSec.toFixed(3),
+        '-i', file.path,
+        ...encoderArgs,
+        '-fps_mode', 'cfr', '-r', String(recordFps),
+        '-movflags', '+faststart',
+        '-y', outputPath
+      ], { windowsHide: true });
+
+      extract.stderr.on('data', d => console.log('WGC extract:', d.toString()));
+      extract.on('close', (code) => {
+        wgcSaveInFlight = false;
+        if (code === 0 && fs.existsSync(outputPath)) {
+          wgcFinishSave(outputPath, metadataPath, metadata, durationMs, windowStartLocal);
+        } else {
+          wgcExtractFail('Failed to extract window capture clip');
+        }
+      });
+    } else {
+      const older = covering.files[0];
+      const newer = covering.files[1];
+      const olderSs = Math.max(0, (windowStartLocal - older.startUTC) / 1000);
+      const splitPoint = Math.max(0.1, (newer.startUTC - windowStartLocal) / 1000);
+      const newerDur = Math.max(0.1, durationSec - splitPoint);
+
+      const tempId = Date.now();
+      const tempA = path.join(BUFFER_DIR, `wgc_temp_a_${tempId}.mp4`);
+      const tempB = path.join(BUFFER_DIR, `wgc_temp_b_${tempId}.mp4`);
+      const concatList = path.join(BUFFER_DIR, `wgc_concat_${tempId}.txt`);
+      const cleanupParts = () => [tempA, tempB, concatList].forEach(p => { try { fs.unlinkSync(p); } catch(e) {} });
+
+      console.log(`WGC save: straddle — older ss=${olderSs.toFixed(3)}s dur=${splitPoint.toFixed(3)}s, newer dur=${newerDur.toFixed(3)}s`);
+
+      const extractA = spawn(getFFmpegPath(), [
+        '-fflags', '+genpts+igndts',
+        '-ss', olderSs.toFixed(3),
+        '-t', splitPoint.toFixed(3),
+        '-i', older.path,
+        ...encoderArgs,
+        '-fps_mode', 'cfr', '-r', String(recordFps),
+        '-movflags', '+faststart',
+        '-y', tempA
+      ], { windowsHide: true });
+
+      extractA.stderr.on('data', d => console.log('WGC extractA:', d.toString()));
+      extractA.on('close', (codeA) => {
+        if (codeA !== 0) {
+          cleanupParts();
+          wgcExtractFail('Failed to extract window capture clip (part A)');
+          return;
+        }
+
+        const extractB = spawn(getFFmpegPath(), [
+          '-fflags', '+genpts+igndts',
+          '-t', newerDur.toFixed(3),
+          '-i', newer.path,
+          ...encoderArgs,
+          '-fps_mode', 'cfr', '-r', String(recordFps),
+          '-movflags', '+faststart',
+          '-y', tempB
+        ], { windowsHide: true });
+
+        extractB.stderr.on('data', d => console.log('WGC extractB:', d.toString()));
+        extractB.on('close', (codeB) => {
+          if (codeB !== 0) {
+            cleanupParts();
+            wgcExtractFail('Failed to extract window capture clip (part B)');
+            return;
+          }
+
+          fs.writeFileSync(concatList, `file '${tempA.replace(/\\/g, '/')}'\nfile '${tempB.replace(/\\/g, '/')}'`);
+          const concat = spawn(getFFmpegPath(), [
+            '-f', 'concat', '-safe', '0', '-i', concatList,
+            '-c', 'copy', '-movflags', '+faststart',
+            '-y', outputPath
+          ], { windowsHide: true });
+
+          concat.stderr.on('data', d => console.log('WGC concat:', d.toString()));
+          concat.on('close', (codeC) => {
+            wgcSaveInFlight = false;
+            cleanupParts();
+            if (codeC === 0 && fs.existsSync(outputPath)) {
+              wgcFinishSave(outputPath, metadataPath, metadata, durationMs, windowStartLocal);
+            } else {
+              wgcExtractFail('Failed to join window capture clip parts');
+            }
+          });
+        });
+      });
+    }
+    return;
+  }
+
   const allVideoFiles = fs.readdirSync(BUFFER_DIR)
     .filter(f => f.endsWith('.mp4') && !f.startsWith('temp_'))
     .map(f => {
       const st = fs.statSync(path.join(BUFFER_DIR, f));
       return {
         name: f, path: path.join(BUFFER_DIR, f),
-        time: st.mtimeMs,        // when the chunk FINISHED writing (footage end)
-        birth: st.birthtimeMs,   // when the chunk was CREATED (footage start)
+        time: st.mtimeMs,
+        birth: st.birthtimeMs,
         size: st.size
       };
     })
@@ -1068,16 +1121,12 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   const videoFiles = newSinceLastSave.slice(-clipChunks);
 
   if (videoFiles.length === 0) {
-    // Diagnostic census — if this fires, the log tells us WHY (no files at all,
-    // everything older than the last-save boundary, or capture process dead).
     const newest = allVideoFiles.length ? allVideoFiles[allVideoFiles.length - 1] : null;
     console.log('No eligible chunks: ' +
       `total=${allVideoFiles.length}, boundary=${lastHighlightBoundary}, ` +
       `recStart=${recordingStartTime}, newestMtime=${newest ? newest.time : 'n/a'}, ` +
       `captureAlive=${!!(ffmpegProcess && ffmpegProcess.exitCode === null)}, retry=${retryCount}`);
 
-    // A fresh chunk completes every CHUNK_SECONDS. Instead of failing the save
-    // (common right at cooldown end), wait for the next chunk and retry.
     if (retryCount < 4) {
       if (retryCount === 0 && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('post-capture-started', { postDelay: 3000 });
@@ -1106,9 +1155,6 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   const outputPath = path.join(CLIPS_DIR, `highlight-${timestamp}.mp4`);
   const metadataPath = path.join(CLIPS_DIR, `highlight-${timestamp}.json`);
 
-  // v2 timestamps: footage start = birthtime of the first chunk (created the
-  // moment FFmpeg muxed its first frame); footage end = mtime of the last
-  // chunk (its final write). Both shifted into the shared server clock domain.
   const startTimeUTC = Math.round(videoFiles[0].birth + clockOffset);
   const endTimeUTC = Math.round(videoFiles[videoFiles.length - 1].time + clockOffset);
   const realDurationMs = Math.max(0, endTimeUTC - startTimeUTC);
@@ -1135,10 +1181,6 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     const tempAudioPath = path.join(BUFFER_DIR, 'temp_audio_' + tempId + '.m4a');
     const tempMicPath = hasMic ? path.join(BUFFER_DIR, 'temp_mic_' + tempId + '.m4a') : null;
 
-    // Where this clip starts relative to the CONTINUOUS audio stream.
-    // The continuous file's timeline begins at audioFirstChunkTime (recorder
-    // start), so wall-clock deltas map 1:1 onto stream time — the math that
-    // was broken when middle chunks were being pruned from the old array.
     const firstChunkNum = parseInt((videoFiles[0].name.match(/chunk_(?:\d+_)?(\d+)\.mp4/) || [])[1] || '0', 10);
     const clipVideoStartMs = videoStartTime + (firstChunkNum * CHUNK_SECONDS * 1000) + 250;
     const clipSpanSec = ((videoFiles[videoFiles.length - 1].time - videoFiles[0].birth) / 1000) + 2;
@@ -1152,7 +1194,6 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     const micDelaySec = Math.max(0, -micDeltaSec);
 
     function cleanupTemps() {
-      // NEVER delete hlAudioPath / hlMicPath here — future saves need them.
       [tempAudioPath, tempVideoPath, videoListPath, tempMicPath].forEach(p => {
         if (p) try { fs.unlinkSync(p); } catch (e) {}
       });
@@ -1195,10 +1236,6 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
         return;
       }
 
-      // Extract this clip's slice from the continuous desktop-audio file.
-      // genpts+igndts + aresample(first_pts=0) heals the appended-fragment
-      // stream (same recipe as the full-session archive), then output-side
-      // -ss/-t trims to just the clip window.
       console.log(`Audio sync: skip=${audioSkipSec.toFixed(3)}s delay=${audioDelaySec.toFixed(3)}s span=${clipSpanSec.toFixed(1)}s`);
       const repairAudio = spawn(getFFmpegPath(), [
         '-fflags', '+genpts+igndts', '-err_detect', 'ignore_err',
@@ -1233,9 +1270,6 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
       });
 
       function runMerge(includeMic) {
-        // The audio temp is already trimmed to start exactly at the clip's
-        // first video frame, so no -ss here — only itsoffset for the rare
-        // case where audio capture started AFTER the video.
         const mergeArgs = ['-i', tempVideoPath];
         mergeArgs.push('-itsoffset', audioDelaySec.toFixed(3), '-i', tempAudioPath);
 
@@ -1291,9 +1325,102 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   }
 }
 
-// ================================
-// UPLOAD HIGHLIGHT
-// ================================
+function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVideoStartMs) {
+  const hasAudio = !!(hlAudioPath && hlAudioChunkCount > 0 && fs.existsSync(hlAudioPath));
+  const hasMic = !!(hlMicPath && hlMicChunkCount > 0 && !micMuted && fs.existsSync(hlMicPath));
+
+  function finish(finalPath) {
+    fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
+    console.log('WGC highlight saved to', finalPath);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('highlight-saved', finalPath);
+    }
+    uploadHighlight(finalPath, metadataPath);
+  }
+
+  if (!hasAudio) { finish(videoOnlyPath); return; }
+
+  const durationSec = durationMs / 1000;
+  const clipSpanSec = durationSec + 2;
+  const audioDeltaSec = audioFirstChunkTime ? (clipVideoStartMs - audioFirstChunkTime) / 1000 : 0;
+  const audioSkipSec = Math.max(0, audioDeltaSec);
+  const audioDelaySec = Math.max(0, -audioDeltaSec);
+  const micDeltaSec = micFirstChunkTime ? (clipVideoStartMs - micFirstChunkTime) / 1000 : 0;
+  const micSkipSec = Math.max(0, micDeltaSec);
+  const micDelaySec = Math.max(0, -micDeltaSec);
+
+  const tempId = Date.now();
+  const tempAudioPath = path.join(BUFFER_DIR, `wgc_temp_audio_${tempId}.m4a`);
+  const tempMicPath = hasMic ? path.join(BUFFER_DIR, `wgc_temp_mic_${tempId}.m4a`) : null;
+  const tempMerged = path.join(BUFFER_DIR, `wgc_temp_merged_${tempId}.mp4`);
+
+  console.log(`WGC audio sync: skip=${audioSkipSec.toFixed(3)}s delay=${audioDelaySec.toFixed(3)}s span=${clipSpanSec.toFixed(1)}s`);
+
+  const repairAudio = spawn(getFFmpegPath(), [
+    '-fflags', '+genpts+igndts', '-err_detect', 'ignore_err',
+    '-i', hlAudioPath,
+    '-af', 'aresample=async=1000:first_pts=0',
+    '-ss', audioSkipSec.toFixed(3), '-t', clipSpanSec.toFixed(3),
+    '-c:a', 'aac', '-b:a', '192k', '-y', tempAudioPath
+  ], { windowsHide: true });
+
+  repairAudio.stderr.on('data', d => console.log('WGC RepairAudio:', d.toString()));
+  repairAudio.on('close', (repairCode) => {
+    if (repairCode !== 0 || !fs.existsSync(tempAudioPath)) {
+      try { fs.unlinkSync(tempAudioPath); } catch(e) {}
+      finish(videoOnlyPath);
+      return;
+    }
+
+    function doMerge(includeMic) {
+      const mergeArgs = ['-i', videoOnlyPath];
+      mergeArgs.push('-itsoffset', audioDelaySec.toFixed(3), '-i', tempAudioPath);
+
+      if (includeMic && tempMicPath) {
+        mergeArgs.push('-itsoffset', micDelaySec.toFixed(3), '-i', tempMicPath);
+        const vol = (micVolume / 100).toFixed(2);
+        mergeArgs.push(
+          '-map', '0:v:0',
+          '-filter_complex',
+          `[1:a]aresample=async=1000,volume=1.0[desk];[2:a]aresample=async=1000,volume=${vol}[mic];[desk][mic]amix=inputs=2:normalize=0[aout]`,
+          '-map', '[aout]'
+        );
+      } else {
+        mergeArgs.push('-map', '0:v:0', '-map', '1:a:0', '-af', 'aresample=async=1000');
+      }
+
+      mergeArgs.push('-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-shortest', '-y', tempMerged);
+
+      const merge = spawn(getFFmpegPath(), mergeArgs, { windowsHide: true });
+      merge.stderr.on('data', d => console.log('WGC Merge:', d.toString()));
+      merge.on('close', (mergeCode) => {
+        [tempAudioPath, tempMicPath].forEach(p => { if (p) try { fs.unlinkSync(p); } catch(e) {} });
+        if (mergeCode === 0 && fs.existsSync(tempMerged)) {
+          try { fs.unlinkSync(videoOnlyPath); } catch(e) {}
+          try { fs.renameSync(tempMerged, videoOnlyPath); } catch(e) {}
+        } else {
+          try { fs.unlinkSync(tempMerged); } catch(e) {}
+        }
+        finish(videoOnlyPath);
+      });
+    }
+
+    if (hasMic && tempMicPath) {
+      const repairMic = spawn(getFFmpegPath(), [
+        '-fflags', '+genpts+igndts', '-err_detect', 'ignore_err',
+        '-i', hlMicPath,
+        '-af', 'aresample=async=1000:first_pts=0',
+        '-ss', micSkipSec.toFixed(3), '-t', clipSpanSec.toFixed(3),
+        '-c:a', 'aac', '-b:a', '192k', '-y', tempMicPath
+      ], { windowsHide: true });
+      repairMic.stderr.on('data', d => console.log('WGC RepairMic:', d.toString()));
+      repairMic.on('close', (micCode) => doMerge(micCode === 0 && fs.existsSync(tempMicPath)));
+    } else {
+      doMerge(false);
+    }
+  });
+}
+
 function uploadHighlight(videoPath, metadataPath) {
   if (!currentSession) { console.log('No active session, skipping upload'); return; }
 
@@ -1410,7 +1537,88 @@ function createWindow() {
     return { success: false };
   });
 
-  // Enumerate open windows with visible titles (on-demand, no polling)
+  ipcMain.handle('wgc-list-windows', async () => {
+    const { desktopCapturer } = require('electron');
+    const sources = await desktopCapturer.getSources({
+      types: ['window'],
+      thumbnailSize: { width: 320, height: 180 },
+      fetchWindowIcons: true
+    });
+    return sources
+      .filter(s => s.name && s.name.trim() !== '' && s.name !== 'Peak-Abu')
+      .map(s => ({
+        id: s.id,
+        name: s.name,
+        thumbnailDataUrl: s.thumbnail ? s.thumbnail.toDataURL() : null,
+        appIconDataUrl: s.appIcon ? s.appIcon.toDataURL() : null
+      }));
+  });
+
+  ipcMain.handle('wgc-get-capture-mode', () => ({
+    mode: wgcCaptureMode ? 'window' : 'monitor',
+    lastWindowTitle: wgcLastWindowTitle
+  }));
+
+  ipcMain.handle('wgc-set-capture-mode', (event, { mode, windowTitle }) => {
+    wgcCaptureMode = (mode === 'window');
+    if (windowTitle !== undefined) wgcLastWindowTitle = windowTitle || null;
+    const prefs = loadUserPreferences();
+    prefs.wgcCaptureMode = wgcCaptureMode;
+    prefs.wgcLastWindowTitle = wgcLastWindowTitle;
+    saveUserPreferences(prefs);
+    console.log(`Capture mode set to: ${wgcCaptureMode ? 'Window' : 'Monitor'}, title: ${wgcLastWindowTitle}`);
+    return { success: true };
+  });
+
+  ipcMain.handle('wgc-init-buffer', () => {
+    const fileId = `${wgcFileTag()}_${Date.now() % 100000}`;
+    wgcStartNewFile(fileId);
+    wgcStartRolloverSchedule();
+    return { fileId };
+  });
+
+  ipcMain.on('wgc-recorder-started', (event, { fileId, fileStartUTC }) => {
+    wgcSetFileStartUTC(fileId, fileStartUTC);
+    console.log(`WGC recorder started: ${fileId} at UTC ${fileStartUTC}`);
+  });
+
+  ipcMain.on('wgc-chunk', (event, { fileId, buf }) => {
+    wgcAppendChunk(fileId, buf);
+  });
+
+  ipcMain.on('wgc-recorder-stopped', (event, { fileId }) => {
+    wgcFinalizeFile(fileId);
+  });
+
+  ipcMain.on('wgc-capture-failed', (event, { reason }) => {
+    console.log(`WGC capture failed: ${reason}`);
+    if (wgcMidSessionRestarts < WGC_MAX_RESTARTS) {
+      wgcMidSessionRestarts++;
+      console.log(`WGC auto-restart ${wgcMidSessionRestarts}/${WGC_MAX_RESTARTS}`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('wgc-restart-capture', {
+          attempt: wgcMidSessionRestarts,
+          maxAttempts: WGC_MAX_RESTARTS
+        });
+      }
+    } else {
+      console.log('WGC max restarts reached — falling back to Monitor mode');
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('wgc-fallback-to-monitor', {
+          reason: 'Window capture failed repeatedly — recording your monitor instead.'
+        });
+      }
+      wgcCleanupAll();
+      wgcCaptureMode = false;
+      stoppingIntentionally = false;
+      midSessionRestarts = 0;
+      recordingSessionTag = Date.now();
+      engineLadder = buildEngineLadder();
+      engineIndex = 0;
+      startRecording(currentMonitor);
+    }
+  });
+
   ipcMain.handle('get-windows', async () => {
     return new Promise((resolve) => {
       const ps = spawn('powershell.exe', [
@@ -1423,8 +1631,7 @@ function createWindow() {
       ps.on('close', () => {
         try {
           let parsed = JSON.parse(out);
-          if (!Array.isArray(parsed)) parsed = [parsed]; // single result isn't array
-          // Filter out our own window and empties
+          if (!Array.isArray(parsed)) parsed = [parsed];
           const windows = parsed
             .filter(w => w.MainWindowTitle && w.MainWindowTitle.trim() !== '')
             .filter(w => w.MainWindowTitle !== 'Peak-Abu')
@@ -1449,7 +1656,6 @@ function createWindow() {
   ipcMain.handle('get-install-path', () =>
     app.isPackaged ? path.dirname(process.execPath) : path.join(__dirname));
 
-  // Current HDR capture setting (for UI restore on launch)
   ipcMain.handle('get-current-hdr', () => captureHdr);
   ipcMain.handle('get-current-adapter', () => captureAdapter);
 
@@ -1475,10 +1681,12 @@ function createWindow() {
       await killFFmpegTree(dying);
     }
 
-    // Set or clear window capture target
     captureWindowTitle = windowTitle || null;
 
-    // Reset full session audio accumulators
+    if (wgcCaptureMode) {
+      wgcSourceId = windowTitle || null;
+    }
+
     fullSessionAudioChunks = [];
     fullSessionMicChunks = [];
     fullSessionAudioIndex = 0;
@@ -1498,15 +1706,12 @@ function createWindow() {
     midSessionRestarts = 0;
     recordingSessionTag = Date.now();
 
-    // Fresh continuous audio files for this recording session. The renderer
-    // restarts its MediaRecorders on start-recording, so the first blob
-    // appended to each file carries the WebM header.
     hlAudioPath = path.join(BUFFER_DIR, `hl_audio_${recordingSessionTag}.webm`);
     hlMicPath = path.join(BUFFER_DIR, `hl_mic_${recordingSessionTag}.webm`);
     hlAudioChunkCount = 0;
     hlMicChunkCount = 0;
 
-    engineLadder = captureWindowTitle ? ['gdi-window'] : buildEngineLadder();
+    engineLadder = buildEngineLadder();
     engineIndex = 0;
     startRecording(monitorIndex);
   });
@@ -1526,19 +1731,19 @@ function createWindow() {
 
     stopDiskWatcher();
 
-    // FULL SESSION MODE: archive the whole buffer into one file BEFORE any
-    // cleanup. archiveFullSession() reads the chunks + fs_audio/fs_mic files,
-    // concats them, and clears the buffer itself in its finalize step. We must
-    // NOT wipe the buffer here or there'd be nothing left to archive.
+    if (wgcCaptureMode) {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('wgc-stop-capture');
+        mainWindow.webContents.send('recording-stopped');
+      }
+      setTimeout(() => wgcCleanupAll(), 1500);
+    }
+
     if (fullSessionMode) {
-      // Give FFmpeg a beat to flush the last chunk's moov atom before concat.
       setTimeout(() => archiveFullSession(), 1200);
       return;
     }
 
-    // NORMAL MODE: clear stale chunks + continuous audio so an ended session
-    // can't leak old footage/audio into a squad save. Runs after killFFmpegTree
-    // resolves, so no chunk is still open when we delete.
     hlAudioPath = null;
     hlMicPath = null;
     hlAudioChunkCount = 0;
@@ -1605,11 +1810,6 @@ function createWindow() {
     audioFirstChunkTime = wallTime;
   });
 
-  // Desktop audio blob from the renderer's MediaRecorder. WebM headers only
-  // exist in the first blob, so every blob is APPENDED to one continuous
-  // per-session file — never held in a pruned array (that caused the
-  // repeating-audio bug: middle chunks vanished, skip math went stale, and
-  // every later highlight was muxed against the same audio).
   ipcMain.on('save-audio-chunk', (event, buffer) => {
     const buf = Buffer.from(buffer);
 
@@ -1621,8 +1821,6 @@ function createWindow() {
     }
 
     if (fullSessionMode) {
-      // Append into ONE continuous file — headerless fragments only work
-      // as a single stream, not as separate concat inputs.
       const audioPath = path.join(BUFFER_DIR, 'fs_audio_full.webm');
       try {
         fs.appendFileSync(audioPath, buf);
@@ -1695,7 +1893,6 @@ function createWindow() {
     const prefs = loadUserPreferences();
     prefs[key] = value;
     saveUserPreferences(prefs);
-    // Live-update gamepad config in main process
     if (key === 'gamepadButton') {
       gamepadPrefs.buttonIndex = (value === null || value === undefined) ? null : parseInt(value);
       gpState = { lastPressTime: 0, isHeld: false, holdStart: 0, fired: false };
@@ -1711,13 +1908,11 @@ function createWindow() {
     return prefs[key] !== undefined ? prefs[key] : null;
   });
 
-  // Free space (GB) at the active storage root — for the hover warning
   ipcMain.handle('get-free-space-gb', () => {
     const free = getFreeBytes(getActiveStorageRoot());
     return free === null ? null : +(free / 1e9).toFixed(1);
   });
 
-  // Optional separate archive location for full sessions
   ipcMain.handle('pick-fullsession-directory', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       title: 'Choose Full Session Archive Location',
@@ -1765,9 +1960,9 @@ app.whenReady().then(async () => {
 let isCleaningUp = false;
 
 app.on('before-quit', async (event) => {
-  if (isCleaningUp) return;          // second pass: let the quit proceed
+  if (isCleaningUp) return;
   if (ffmpegProcess) {
-    event.preventDefault();          // hold the quit until FFmpeg is dead
+    event.preventDefault();
     isCleaningUp = true;
     stoppingIntentionally = true;
     stopBufferReadyWatcher();
@@ -1776,8 +1971,9 @@ app.on('before-quit', async (event) => {
     ffmpegProcess = null;
     await killFFmpegTree(dying);
     globalShortcut.unregisterAll();
-    app.quit();                      // re-trigger quit; isCleaningUp lets it through
+    app.quit();
   } else {
+    if (wgcCaptureMode) wgcCleanupAll();
     stopBufferReadyWatcher();
     stopXInputPoll();
     globalShortcut.unregisterAll();
@@ -1785,11 +1981,10 @@ app.on('before-quit', async (event) => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();  // triggers before-quit
+  if (process.platform !== 'darwin') app.quit();
 });
 
 
-// Concat every buffered chunk into one full-session file, then clear the buffer.
 function archiveFullSession() {
   if (!fullSessionMode) return;
   if (sessionArchiveActive) return;
@@ -1813,8 +2008,6 @@ function archiveFullSession() {
     return;
   }
 
-  // The final chunk is usually incomplete (FFmpeg killed mid-write, no moov atom).
-  // Drop it if we have more than one chunk to avoid concat corruption.
   if (chunks.length > 1) {
     const last = chunks[chunks.length - 1];
     const lastSize = (() => { try { return fs.statSync(last.path).size; } catch(e) { return 0; } })();
@@ -1853,7 +2046,6 @@ function archiveFullSession() {
   const hasAudio = fullSessionAudioChunks.length > 0;
   const hasMic = fullSessionMicChunks.length > 0;
 
-  // Step 1: concat video chunks
   const concatVideo = spawn(getFFmpegPath(), [
     '-f', 'concat', '-safe', '0', '-i', videoListPath,
     '-c', 'copy', '-y', hasAudio ? tempVideoPath : outputPath,
@@ -1875,20 +2067,13 @@ function archiveFullSession() {
     }
 
     if (!hasAudio) {
-      // No audio captured — video-only archive
       finalize(outputPath, chunks, null, null);
       return;
     }
 
-    // The concatenated video track is the source of truth for length: it can be
-    // SHORTER than the continuous audio (dropped final chunk, imperfect chunk/
-    // audio boundary alignment). Probe its real duration and trim audio to match,
-    // or the whole-session audio overhangs the video and drifts progressively
-    // out of sync — fine in short per-clip saves, broken across a full session.
     const { spawnSync } = require('child_process');
     let videoDurationSec = 0;
 
-    // Preferred: ffprobe (clean numeric output).
     try {
       const probe = spawnSync(getFFmpegPath().replace(/ffmpeg(\.exe)?$/i, 'ffprobe$1'), [
         '-v', 'error', '-show_entries', 'format=duration',
@@ -1897,8 +2082,6 @@ function archiveFullSession() {
       videoDurationSec = parseFloat((probe.stdout || '').trim()) || 0;
     } catch (e) { videoDurationSec = 0; }
 
-    // Fallback: parse ffmpeg's own stderr "Duration: HH:MM:SS.ss" line. ffmpeg
-    // is always bundled, so this works even when ffprobe.exe isn't shipped.
     if (videoDurationSec <= 0) {
       try {
         const info = spawnSync(getFFmpegPath(), ['-i', tempVideoPath], {
@@ -1915,9 +2098,6 @@ function archiveFullSession() {
 
     console.log(`Archive: concatenated video duration = ${videoDurationSec.toFixed(3)}s`);
 
-    // Audio is already one continuous appended webm — just re-encode it to m4a
-    // (decode fixes the appended-fragment stream), no concat needed. Trim to the
-    // video's real duration with -t so lengths match exactly.
     const audioSrc = fullSessionAudioChunks[0];
     const tempAudioReenc = path.join(BUFFER_DIR, `fs_temp_audio_${Date.now()}.m4a`);
     const concatAudio = spawn(getFFmpegPath(), [
@@ -1934,7 +2114,7 @@ function archiveFullSession() {
 
     concatAudio.on('close', (audioCode) => {
       console.log(`=== AUDIO RE-ENCODE exit code: ${audioCode} ===`);
-      console.log(audioErr.slice(-2000));  // last 2000 chars of FFmpeg output
+      console.log(audioErr.slice(-2000));
       if (audioCode !== 0 || !fs.existsSync(tempAudioReenc)) {
         console.log('Archive: audio concat failed — saving video only');
         try { fs.renameSync(tempVideoPath, outputPath); } catch(e) {}
@@ -2022,9 +2202,7 @@ function archiveFullSession() {
       fs.writeFileSync(outPath.replace(/\.mp4$/, '.json'), JSON.stringify(sidecar, null, 2));
     } catch(e) {}
 
-    // Clean up video chunks
     for (const c of videoChunks) { try { fs.unlinkSync(c.path); } catch(e) {} }
-    // Clean up audio disk chunks
     if (audioFiles) audioFiles.forEach(p => { try { fs.unlinkSync(p); } catch(e) {} });
     if (micFiles) micFiles.forEach(p => { try { fs.unlinkSync(p); } catch(e) {} });
 
@@ -2061,11 +2239,17 @@ function stopRecordingInternal() {
     console.log('Recording stopped');
   }
 
+  if (wgcCaptureMode) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('wgc-stop-capture');
+    }
+    setTimeout(() => wgcCleanupAll(), 1500);
+  }
+
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('recording-stopped');
   }
 
-  // Give FFmpeg a beat to finalize the last chunk before we concat it
   if (wasRecording && fullSessionMode) {
     setTimeout(() => archiveFullSession(), 1200);
   }
