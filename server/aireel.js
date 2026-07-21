@@ -38,7 +38,7 @@ const crypto = require('crypto');
 const AIREEL_DIR = path.join(os.tmpdir(), 'peak-abu-aireel');
 const PROFILE_FILE = path.join(__dirname, 'aiprofiles.json');
 
-const ALLOWED_TARGETS = [15, 30, 60, 90, 120]; // seconds
+const ALLOWED_TARGETS = [15, 30, 60, 90, 120, 180, 300]; // seconds
 const MAX_CLIPS = 30;
 const SEG_MIN = 4;
 const SEG_MAX = 12;
@@ -405,7 +405,7 @@ function scoreClip(clip) {
     if (cand.score < 0.15) break;
     if (picked.some(p => Math.abs(p.t - cand.t) < SEG_MAX)) continue;
     picked.push(cand);
-    if (picked.length >= 12) break;
+    if (picked.length >= 18) break;
   }
   clip.moments = picked.sort((a, b) => a.t - b.t);
 }
@@ -577,7 +577,7 @@ function validateEdl(segments, clips, targetSec) {
 function anthropicMessage(apiKey, system, user) {
   const body = JSON.stringify({
     model: process.env.AIREEL_MODEL || 'claude-sonnet-4-6',
-    max_tokens: 1800,
+    max_tokens: 6000,
     system,
     messages: [{ role: 'user', content: user }]
   });

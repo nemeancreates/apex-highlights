@@ -149,8 +149,8 @@
 
     .pov-label {
       position: absolute;
-      top: 6px;
-      left: 6px;
+      bottom: 6px;
+      right: 6px;
       background: rgba(57, 211, 160, 0.9);
       color: #04140d;
       padding: 3px 8px;
@@ -651,7 +651,7 @@
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      z-index: 10;
+      z-index: 11;
       transition: all 0.15s;
       line-height: 1;
     }
@@ -983,6 +983,8 @@
          <option value="60" selected>60s</option>
          <option value="90">90s</option>
          <option value="120">2 min</option>
+         <option value="180">3 min</option>
+         <option value="300">5 min</option>
        </select>
      </div>
      <div>
@@ -1869,9 +1871,15 @@
     }
 
     function getCurrentMasterTime() {
-      const primary = videos.find(v => !v.missing && !v.processing && v.loaded);
-      if (!primary) return 0;
-      return (primary.element.currentTime || 0) + (primary.offset || 0);
+      const loaded = videos.filter(v => !v.missing && !v.processing && v.loaded);
+      if (!loaded.length) return 0;
+      // Clock hands off to the next still-playing POV when the current one
+      // ends or gets parked — a frozen master time made the drift corrector
+      // snap longer POVs back to it forever.
+      const clock = loaded.find(v => !v.element.ended && !v.element.paused)
+                 || loaded.find(v => !v.element.ended)
+                 || loaded[0];
+      return (clock.element.currentTime || 0) + (clock.offset || 0);
     }
 
     function calculateOffsets() {
@@ -2475,10 +2483,16 @@
 
       function update(ts) {
         if (!isPlaying) return;
-        const primary = videos.find(v => !v.missing && !v.processing && v.loaded);
-        if (!primary) return;
+        const loaded = videos.filter(v => !v.missing && !v.processing && v.loaded);
+        if (!loaded.length) return;
 
-        const masterTime = (primary.element.currentTime || 0) + (primary.offset || 0);
+        // Clock source: first POV still playing. When the shortest POV ends
+        // first, the clock hands off instead of freezing — a frozen master
+        // time made the corrector loop longer POVs on their final seconds.
+        const clock = loaded.find(v => !v.element.ended && !v.element.paused)
+                   || loaded.find(v => !v.element.ended)
+                   || loaded[0];
+        const masterTime = (clock.element.currentTime || 0) + (clock.offset || 0);
         document.getElementById('timeDisplay').textContent = formatTime(masterTime) + ' / ' + formatTime(masterDuration);
         updateNeedle();
 
@@ -2487,7 +2501,7 @@
         if (!lastResyncCheck || ts - lastResyncCheck > 250) {
           lastResyncCheck = ts;
           videos.forEach(v => {
-            if (v.missing || v.processing || !v.loaded || v === primary) return;
+            if (v.missing || v.processing || !v.loaded || v === clock) return;
             if (v.element.ended || v.element.seeking) return;
             const target = masterTime - v.offset;
             if (target < 0 || target > v.element.duration) return;
