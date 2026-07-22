@@ -21,8 +21,8 @@ const USER_PREFS_PATH = path.join(app.getPath('userData'), 'user-preferences.jso
 const CHUNK_SECONDS = 10;
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.30',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.30.exe',
+  version: '0.1.31',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.31.exe',
   releaseNotes: 'Game Window Capture (Beta) added — record a specific game window instead of your whole monitor.'
 };
 
