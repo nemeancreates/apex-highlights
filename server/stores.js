@@ -217,7 +217,7 @@ function startSessionPurge() {
       }
     }
     if (purged > 0) log('info', 'sessions_purged', { purged });
-  }, * 60 * 60 * 1000);
+  }, 60 * 60 * 1000);
 }
 
 module.exports = {
