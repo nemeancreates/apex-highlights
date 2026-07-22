@@ -156,9 +156,12 @@ function initSockets(io) {
               log('info', 'session_archived', { session: sessionCode, uploads: current.uploads.length });
               saveSessionsToDisk();
             } else {
-              sessions.delete(sessionCode);
-              saveSessionsToDisk();
-              log('info', 'session_deleted', { session: sessionCode });
+              // Empty + no uploads: hold it for the full TTL anyway so a squad
+              // that disbands and regroups can rejoin the same code. The purge
+              // sweep will collect it. (Previously deleted here after 5min,
+              // and only from the in-memory Map — the SQLite row survived and
+              // got resurrected on the next restart.)
+              log('info', 'session_idle_empty', { session: sessionCode });
             }
           }
         }, 5 * 60 * 1000);

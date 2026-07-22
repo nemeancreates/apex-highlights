@@ -42,7 +42,7 @@ const MAX_HIGHLIGHTS_PER_SESSION = 200;
 const ALLOWED_CLIP_DURATIONS = [15000, 30000, 60000, 180000];
 
 // --- Session lifetime ---
-const SESSION_TTL = 3 * 24 * 60 * 60 * 1000; // 3 days
+const SESSION_TTL = 48 * 60 * 60 * 1000; // 48 hours — beta testing window
 
 // --- Uploads ---
 const ALLOWED_EXTENSIONS = ['.mp4', '.json'];

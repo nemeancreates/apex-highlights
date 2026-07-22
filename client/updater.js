@@ -147,7 +147,7 @@ function downloadInstaller(url, onProgress) {
 // --updated flag tells NSIS to skip the "welcome" page and go straight to install.
 function runInstallerAndQuit(installerPath) {
   try {
-    const child = spawn(installerPath, ['/SILENT', '/CLOSEAPPLICATIONS'], {
+    const child = spawn(installerPath, ['/S'], {
       detached: true,
       stdio: 'ignore'
     });

@@ -577,7 +577,7 @@ function getFreeBytes(dir) {
 
 function getWgcSpanSeconds() {
   const clipDurationSec = maxChunks * CHUNK_SECONDS;
-  return Math.max(120, 3 * clipDurationSec);
+  return Math.max(45, Math.ceil(1.5 * clipDurationSec) + 15);
 }
 
 function wgcFileTag() {
@@ -1007,9 +1007,9 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
 
       const extract = spawn(getFFmpegPath(), [
         '-fflags', '+genpts+igndts',
+        '-i', file.path,
         '-ss', ssOffset.toFixed(3),
         '-t', durationSec.toFixed(3),
-        '-i', file.path,
         ...encoderArgs,
         '-fps_mode', 'cfr', '-r', String(recordFps),
         '-movflags', '+faststart',
@@ -1042,9 +1042,9 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
 
       const extractA = spawn(getFFmpegPath(), [
         '-fflags', '+genpts+igndts',
+        '-i', older.path,
         '-ss', olderSs.toFixed(3),
         '-t', splitPoint.toFixed(3),
-        '-i', older.path,
         ...encoderArgs,
         '-fps_mode', 'cfr', '-r', String(recordFps),
         '-movflags', '+faststart',
