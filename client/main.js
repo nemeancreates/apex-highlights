@@ -21,8 +21,8 @@ const USER_PREFS_PATH = path.join(app.getPath('userData'), 'user-preferences.jso
 const CHUNK_SECONDS = 10;
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.31',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.31.exe',
+  version: '0.1.32',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.32.exe',
   releaseNotes: 'Game Window Capture (Beta) added — record a specific game window instead of your whole monitor.'
 };
 
@@ -675,23 +675,29 @@ function wgcFindCoveringFiles(startUTC, endUTC) {
   const candidates = wgcFiles.filter(f => f.startUTC && fs.existsSync(f.path));
   if (candidates.length === 0) return null;
 
+  // Oldest first
   candidates.sort((a, b) => a.startUTC - b.startUTC);
+  const newest = candidates[candidates.length - 1];
 
-  for (const f of candidates) {
-    if (f.startUTC <= startUTC) {
-      return { mode: 'single', files: [f] };
-    }
+  // Window fully inside the newest file → single extract from it.
+  // (Previously this walked oldest-first and always matched the OLD file,
+  // extracting at an offset past its content — frozen-frame/black clips
+  // on every save after the first rollover.)
+  if (newest.startUTC <= startUTC) {
+    return { mode: 'single', files: [newest] };
   }
 
+  // Window starts before the newest file began → straddle: tail of the
+  // previous file + head of the newest.
   if (candidates.length >= 2) {
     const older = candidates[candidates.length - 2];
-    const newer = candidates[candidates.length - 1];
-    if (older.startUTC <= startUTC && newer.startUTC <= endUTC) {
-      return { mode: 'straddle', files: [older, newer] };
+    if (older.startUTC <= startUTC) {
+      return { mode: 'straddle', files: [older, newest] };
     }
   }
 
-  return { mode: 'single', files: [candidates[candidates.length - 1]] };
+  // Best effort
+  return { mode: 'single', files: [newest] };
 }
 
 function startDiskWatcher() {
@@ -798,8 +804,6 @@ function startRecording(monitor) {
     recordingStartTime = Date.now();
     videoStartTime = recordingStartTime;
     lastHighlightBoundary = 0;
-    audioFirstChunkTime = null;
-    micFirstChunkTime = null;
     if (fullSessionMode) startDiskWatcher();
     return;
   }
@@ -849,8 +853,11 @@ function startRecording(monitor) {
   lastHighlightBoundary = 0;
   lastDropCount = 0;
   lowSpeedStreak = 0;
-  audioFirstChunkTime = null;
-  micFirstChunkTime = null;
+  // NOTE: audioFirstChunkTime / micFirstChunkTime are NOT reset here.
+  // startRecording also runs on mid-session crash restarts, where the
+  // renderer's audio recorders keep running and never re-send their start
+  // timestamps — nulling them here made every post-restart save extract
+  // audio from t=0 (the repeating-audio bug, round two).
   let stderrTail = '';
 
   startBufferReadyWatcher();
@@ -1010,6 +1017,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
         '-i', file.path,
         '-ss', ssOffset.toFixed(3),
         '-t', durationSec.toFixed(3),
+        '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1',
         ...encoderArgs,
         '-fps_mode', 'cfr', '-r', String(recordFps),
         '-movflags', '+faststart',
@@ -1045,6 +1053,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
         '-i', older.path,
         '-ss', olderSs.toFixed(3),
         '-t', splitPoint.toFixed(3),
+        '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1',
         ...encoderArgs,
         '-fps_mode', 'cfr', '-r', String(recordFps),
         '-movflags', '+faststart',
@@ -1063,6 +1072,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
           '-fflags', '+genpts+igndts',
           '-t', newerDur.toFixed(3),
           '-i', newer.path,
+          '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1',
           ...encoderArgs,
           '-fps_mode', 'cfr', '-r', String(recordFps),
           '-movflags', '+faststart',
@@ -1710,6 +1720,8 @@ function createWindow() {
     hlMicPath = path.join(BUFFER_DIR, `hl_mic_${recordingSessionTag}.webm`);
     hlAudioChunkCount = 0;
     hlMicChunkCount = 0;
+    audioFirstChunkTime = null;
+    micFirstChunkTime = null;
 
     engineLadder = buildEngineLadder();
     engineIndex = 0;
