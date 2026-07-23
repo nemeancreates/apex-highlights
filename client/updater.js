@@ -147,16 +147,23 @@ function downloadInstaller(url, onProgress) {
 // --updated flag tells NSIS to skip the "welcome" page and go straight to install.
 function runInstallerAndQuit(installerPath) {
   try {
-    const child = spawn(installerPath, ['/S'], {
-      detached: true,
-      stdio: 'ignore'
+    // shell.openPath hands the .exe to Windows properly — UAC prompt
+    // surfaces correctly and SmartScreen can show its click-through.
+    // spawn() with detached:true silently dies on both without an OV cert.
+    const { shell } = require('electron');
+    shell.openPath(installerPath).then((err) => {
+      if (err) {
+        console.error('[updater] shell.openPath failed:', err);
+        dialog.showErrorBox('Update Failed',
+          'Could not launch the installer. Please download manually from peakabu.app.');
+      }
     });
-    child.unref();
-    setTimeout(() => app.quit(), 500);
+    // Give shell.openPath a beat to hand off to Windows before quitting
+    setTimeout(() => app.quit(), 1500);
   } catch (err) {
-    console.error('Failed to launch installer:', err.message);
+    console.error('[updater] Failed to launch installer:', err.message);
     dialog.showErrorBox('Update Failed',
-      'Could not launch the installer. Please download the update manually from peakabu.app.');
+      'Could not launch the installer. Please download manually from peakabu.app.');
   }
 }
 
