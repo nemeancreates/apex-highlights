@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Peak-Abu — Every Angle. One Save. Perfectly Synced.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a1611;
+    --bg-deep:#06100c;
+    --card:#0f2318;
+    --card-soft:#0c1c14;
+    --border:#1e3527;
+    --border-soft:#24402e;
+    --teal:#39d3a0;
+    --teal-dim:#1d9e75;
+    --violet:#6c4fd8;
+    --violet-dim:#7d61e6;
+    --amber:#d8a838;
+    --amber-dim:#4a2417;
+    --rose:#f0a5bd;
+    --patreon:#FF424D;
+    --text:#e8f5ec;
+    --text-soft:#c8d6cd;
+    --text-dim:#8fbfa3;
+    --text-muted:#5f7a6a;
+    --display: 'Space Grotesk', sans-serif;
+    --body: 'Inter', sans-serif;
+    --mono: 'JetBrains Mono', monospace;
+  }
+
+  *{ box-sizing:border-box; margin:0; padding:0; }
+
+  html{ scroll-behavior:smooth; }
+
+  body{
+    background:
+      radial-gradient(ellipse 900px 500px at 15% -10%, rgba(57,211,160,0.08), transparent 60%),
+      radial-gradient(ellipse 700px 500px at 90% 15%, rgba(108,79,216,0.07), transparent 60%),
+      var(--bg);
+    color:var(--text-soft);
+    font-family:var(--body);
+    line-height:1.6;
+    overflow-x:hidden;
+  }
+
+  a{ color:inherit; text-decoration:none; }
+  img,video,iframe{ max-width:100%; display:block; }
+
+  ::selection{ background:var(--teal); color:#04140d; }
+
+  .wrap{ max-width:1120px; margin:0 auto; padding:0 24px; }
+
+  h1,h2,h3{ font-family:var(--display); color:var(--text); font-weight:600; letter-spacing:-0.01em; }
+
+  .eyebrow{
+    font-family:var(--mono); font-size:12px; letter-spacing:0.14em; text-transform:uppercase;
+    color:var(--teal); display:flex; align-items:center; gap:8px; margin-bottom:14px;
+  }
+  .eyebrow::before{ content:''; width:6px; height:6px; border-radius:50%; background:var(--teal); box-shadow:0 0 0 4px rgba(57,211,160,0.15); }
+
+  /* ===== NAV ===== */
+  header.nav{
+    position:sticky; top:0; z-index:50;
+    background:rgba(10,22,17,0.85); backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--border);
+  }
+  .nav-inner{ display:flex; align-items:center; justify-content:space-between; padding:14px 24px; max-width:1120px; margin:0 auto; }
+  .brand{ display:flex; align-items:center; gap:10px; font-family:var(--display); font-weight:700; font-size:18px; color:var(--text); }
+  .brand-mark{ width:30px; height:30px; }
+  .nav-links{ display:flex; gap:28px; font-size:14px; color:var(--text-dim); }
+  .nav-links a:hover{ color:var(--teal); }
+  .nav-cta{
+    font-size:13px; font-weight:600; padding:9px 18px; border-radius:8px;
+    background:var(--teal-dim); color:#04140d; box-shadow:0 0 0 1px var(--teal);
+    transition:background .15s, box-shadow .15s;
+  }
+  .nav-cta:hover{ background:var(--teal); box-shadow:0 0 0 1px #4fe0b0; }
+  .nav-actions{ display:flex; align-items:center; gap:10px; }
+  .patreon-cta{
+    font-size:13px; font-weight:600; padding:9px 16px; border-radius:8px;
+    background:var(--card); color:var(--text-dim); border:1px solid var(--border-soft);
+    display:flex; align-items:center; gap:7px;
+    transition:background .15s, color .15s, border-color .15s;
+  }
+  .patreon-cta svg{ width:14px; height:14px; fill:currentColor; }
+  .patreon-cta:hover{ background:var(--patreon); color:#fff; border-color:var(--patreon); }
+  @media(max-width:760px){ .nav-links{ display:none; } }
+
+  /* ===== HERO ===== */
+  .hero{ padding:88px 0 60px; }
+  .hero-inner{ display:grid; grid-template-columns:1fr; gap:44px; align-items:center; }
+  @media(min-width:920px){ .hero-inner{ grid-template-columns:1.05fr 0.95fr; } }
+
+  .hero h1{ font-size:clamp(34px,5vw,54px); line-height:1.06; margin-bottom:20px; }
+  .hero h1 .accent{ color:var(--teal); }
+  .hero p.lead{ font-size:17px; color:var(--text-dim); max-width:480px; margin-bottom:30px; }
+
+  .hero-ctas{ display:flex; gap:12px; flex-wrap:wrap; }
+  .btn{
+    font-family:var(--body); font-weight:600; font-size:15px; padding:14px 24px;
+    border-radius:9px; cursor:pointer; display:inline-flex; align-items:center; gap:8px;
+    transition:background .15s, box-shadow .15s, border-color .15s, transform .1s;
+  }
+  .btn:active{ transform:translateY(1px); }
+  .btn-primary{ background:var(--teal-dim); color:#04140d; box-shadow:0 0 0 1px var(--teal); }
+  .btn-primary:hover{ background:var(--teal); box-shadow:0 0 0 1px #4fe0b0; }
+  .btn-ghost{ background:var(--card); color:var(--text-dim); border:1px solid var(--border-soft); }
+  .btn-ghost:hover{ border-color:var(--teal); color:var(--teal); }
+
+  .patent-note{ margin-top:22px; font-family:var(--mono); font-size:11.5px; color:var(--text-muted); }
+
+  /* ===== Sync bar signature ===== */
+  .syncviz{
+    position:relative; background:var(--card); border:1px solid var(--border);
+    border-radius:16px; padding:32px 28px 26px; overflow:hidden;
+  }
+  .syncviz::before{
+    content:''; position:absolute; inset:0;
+    background:radial-gradient(circle at 50% 50%, rgba(57,211,160,0.06), transparent 70%);
+    pointer-events:none;
+  }
+  .syncviz-label{ font-family:var(--mono); font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:18px; }
+  .syncviz-stage{ position:relative; height:150px; display:flex; align-items:flex-end; justify-content:center; gap:22px; }
+  .sync-bar{
+    width:16px; border-radius:5px 5px 0 0;
+    animation: floatbar 3.2s ease-in-out infinite;
+  }
+  .sync-bar.b1{ background:var(--teal); animation-delay:0s; }
+  .sync-bar.b2{ background:var(--violet); animation-delay:.5s; }
+  .sync-bar.b3{ background:var(--amber); animation-delay:1s; }
+  .sync-bar.b4{ background:var(--rose); animation-delay:1.5s; }
+
+  @keyframes floatbar{
+    0%{ height:46px; }
+    35%{ height:98px; }
+    50%{ height:60px; }
+    65%{ height:112px; }
+    100%{ height:46px; }
+  }
+  /* pause independent drift and snap to aligned height around the save pulse */
+  .sync-bar{ animation-name: floatbar; }
+  .syncviz-stage.snap .sync-bar{ animation: none; height:104px; transition:height .35s ease; }
+
+  .save-line{
+    position:absolute; left:50%; top:10px; bottom:0; width:1px;
+    background:linear-gradient(to bottom, transparent, var(--teal), transparent);
+    opacity:0.5;
+  }
+  .save-marker{
+    position:absolute; left:50%; top:2px; transform:translateX(-50%) rotate(45deg);
+    width:14px; height:14px; background:var(--teal); border-radius:3px;
+    box-shadow:0 0 0 5px rgba(57,211,160,0.12);
+    animation: pulse 3.2s ease-in-out infinite;
+  }
+  @keyframes pulse{
+    0%,40%{ opacity:0.35; }
+    48%{ opacity:1; box-shadow:0 0 0 9px rgba(57,211,160,0.22); }
+    56%{ opacity:0.35; box-shadow:0 0 0 5px rgba(57,211,160,0.12); }
+    100%{ opacity:0.35; }
+  }
+  .syncviz-caption{
+    display:flex; justify-content:space-between; margin-top:18px; padding-top:16px;
+    border-top:1px solid var(--border); font-family:var(--mono); font-size:11.5px; color:var(--text-muted);
+  }
+  .syncviz-caption strong{ color:var(--teal); font-weight:500; }
+
+  @media (prefers-reduced-motion: reduce){
+    .sync-bar{ animation:none; height:80px; }
+    .save-marker{ animation:none; opacity:0.8; }
+  }
+
+  /* ===== Section shell ===== */
+  section{ padding:76px 0; border-top:1px solid var(--border); }
+  section.hero{ border-top:none; }
+  .section-head{ max-width:640px; margin-bottom:44px; }
+  .section-head h2{ font-size:clamp(26px,3.4vw,36px); margin-bottom:14px; }
+  .section-head p{ color:var(--text-dim); font-size:15.5px; }
+
+  /* ===== Video frame (mimics app card chrome) ===== */
+  .videoframe{
+    background:var(--card); border:1px solid var(--border); border-radius:14px;
+    overflow:hidden;
+  }
+  .videoframe .chrome{
+    display:flex; align-items:center; gap:7px; padding:11px 14px;
+    background:var(--card-soft); border-bottom:1px solid var(--border);
+  }
+  .chrome-dot{ width:9px; height:9px; border-radius:50%; }
+  .chrome-dot.r{ background:#7a3149; } .chrome-dot.y{ background:#9c5230; } .chrome-dot.g{ background:var(--teal-dim); }
+  .chrome-title{ margin-left:8px; font-family:var(--mono); font-size:12px; color:var(--text-muted); }
+  .videoframe .video-body{ position:relative; padding-top:56.25%; height:0; }
+  .videoframe .video-body iframe{ position:absolute; inset:0; width:100%; height:100%; border:0; }
+
+  /* ===== How it works ===== */
+  .flow-grid{ display:grid; grid-template-columns:1fr; gap:36px; }
+  @media(min-width:920px){ .flow-grid{ grid-template-columns:0.9fr 1.1fr; align-items:start; } }
+  .steps{ display:flex; flex-direction:column; gap:0; }
+  .step{ display:flex; gap:18px; padding:20px 0; border-bottom:1px solid var(--border); }
+  .step:last-child{ border-bottom:none; }
+  .step-num{
+    font-family:var(--mono); font-size:13px; color:var(--teal); width:30px; flex-shrink:0;
+    padding-top:2px;
+  }
+  .step h3{ font-size:16.5px; margin-bottom:4px; }
+  .step p{ font-size:14.5px; color:var(--text-dim); }
+
+  /* ===== Feature grid ===== */
+  .feat-grid{ display:grid; grid-template-columns:1fr; gap:16px; }
+  @media(min-width:700px){ .feat-grid{ grid-template-columns:1fr 1fr; } }
+  @media(min-width:1000px){ .feat-grid{ grid-template-columns:1fr 1fr 1fr; } }
+  .feat-card{
+    background:var(--card); border:1px solid var(--border); border-radius:12px; padding:22px;
+    transition:border-color .15s;
+  }
+  .feat-card:hover{ border-color:var(--border-soft); }
+  .feat-icon{
+    width:36px; height:36px; border-radius:9px; display:flex; align-items:center; justify-content:center;
+    margin-bottom:14px; background:var(--card-soft); border:1px solid var(--border-soft);
+  }
+  .feat-card h3{ font-size:16px; margin-bottom:7px; }
+  .feat-card p{ font-size:13.8px; color:var(--text-dim); }
+
+  /* ===== Security ===== */
+  .sec-layout{ display:grid; grid-template-columns:1fr; gap:40px; }
+  @media(min-width:920px){ .sec-layout{ grid-template-columns:1fr 1fr; align-items:start; } }
+  .sec-list{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media(max-width:480px){ .sec-list{ grid-template-columns:1fr; } }
+  .sec-item{
+    display:flex; gap:11px; align-items:flex-start; background:var(--card);
+    border:1px solid var(--border); border-radius:10px; padding:14px 15px;
+  }
+  .sec-item .dot{ width:7px; height:7px; border-radius:50%; background:var(--teal); margin-top:6px; flex-shrink:0; }
+  .sec-item h4{ font-size:13.5px; color:var(--text); font-weight:600; margin-bottom:3px; }
+  .sec-item p{ font-size:12.5px; color:var(--text-muted); }
+
+  /* ===== Squads / audience ===== */
+  .squad-grid{ display:grid; grid-template-columns:1fr; gap:16px; }
+  @media(min-width:760px){ .squad-grid{ grid-template-columns:repeat(3,1fr); } }
+  .squad-card{
+    padding:24px; border-radius:12px; background:var(--card-soft); border:1px solid var(--border);
+  }
+  .squad-card .tag{ font-family:var(--mono); font-size:11px; color:var(--violet); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:10px; display:block; }
+  .squad-card h3{ font-size:16.5px; margin-bottom:8px; }
+  .squad-card p{ font-size:13.8px; color:var(--text-dim); }
+
+  /* ===== Final CTA ===== */
+  .final-cta{
+    text-align:center; background:var(--card); border:1px solid var(--border);
+    border-radius:20px; padding:56px 32px; position:relative; overflow:hidden;
+  }
+  .final-cta::before{
+    content:''; position:absolute; inset:0;
+    background:radial-gradient(ellipse 500px 260px at 50% 0%, rgba(57,211,160,0.09), transparent 70%);
+  }
+  .final-cta h2{ font-size:clamp(24px,3.6vw,32px); margin-bottom:14px; position:relative; }
+  .final-cta p{ color:var(--text-dim); margin-bottom:28px; position:relative; max-width:460px; margin-left:auto; margin-right:auto; }
+  .final-cta .hero-ctas{ justify-content:center; position:relative; }
+
+  /* ===== Footer ===== */
+  footer{ border-top:1px solid var(--border); padding:40px 0; }
+  .foot-inner{ display:flex; flex-direction:column; gap:16px; align-items:center; text-align:center; }
+  @media(min-width:700px){ .foot-inner{ flex-direction:row; justify-content:space-between; text-align:left; } }
+  .foot-brand{ display:flex; align-items:center; gap:9px; font-family:var(--display); font-weight:600; color:var(--text-dim); font-size:14px; }
+  .foot-brand svg{ width:20px; height:20px; }
+  .foot-meta{ font-family:var(--mono); font-size:11.5px; color:var(--text-muted); line-height:1.7; }
+  .foot-links{ display:flex; gap:20px; font-size:13.5px; color:var(--text-dim); }
+  .foot-links a:hover{ color:var(--teal); }
+
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-inner">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" fill="none">
+        <rect x="2" y="10" width="14" height="14" rx="4" fill="#39d3a0" opacity="0.9"/>
+        <rect x="10" y="6" width="14" height="14" rx="4" fill="#6c4fd8" opacity="0.85"/>
+        <rect x="16" y="14" width="14" height="14" rx="4" fill="#d8a838" opacity="0.85"/>
+      </svg>
+      Peak-Abu
+    </div>
+    <nav class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#how-it-works">How it Works</a>
+      <a href="#security">Security</a>
+      <a href="#squads">Squads</a>
+    </nav>
+    <div class="nav-actions">
+      <a class="patreon-cta" href="https://www.patreon.com/c/nemeancreates/membership" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><circle cx="15" cy="9.5" r="6.5"/><rect x="2" y="2" width="4" height="20"/></svg>
+        Patreon
+      </a>
+      <a class="nav-cta" href="https://peakabu.app">Get Started</a>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="wrap hero-inner">
+      <div>
+        <div class="eyebrow">Multi-POV highlight capture</div>
+        <h1>Every angle.<br>One save. <span class="accent">Perfectly synced.</span></h1>
+        <p class="lead">Peak-Abu captures every teammate's point of view during a match and locks them to the same clock. One save gives your whole squad the same highlight — frame for frame, from every seat.</p>
+        <div class="hero-ctas">
+          <a class="btn btn-primary" href="https://peakabu.app">Get Peak-Abu</a>
+          <a class="btn btn-ghost" href="#demo">Watch it in action</a>
+        </div>
+        <div class="patent-note">Sync &amp; coordinated-save protocol — patent pending, USPTO App #64/111,818</div>
+      </div>
+
+      <div class="syncviz">
+        <div class="syncviz-label">Coordinated Save — Live Concept</div>
+        <div class="syncviz-stage" id="syncStage">
+          <div class="save-line"></div>
+          <div class="save-marker"></div>
+          <div class="sync-bar b1"></div>
+          <div class="sync-bar b2"></div>
+          <div class="sync-bar b3"></div>
+          <div class="sync-bar b4"></div>
+        </div>
+        <div class="syncviz-caption">
+          <span>4 POVs, independent buffers</span>
+          <span><strong>▸</strong> one save, one instant</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DEMO VIDEO -->
+  <section id="demo">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">See it, don't just read about it</div>
+        <h2>A highlight, captured from every seat</h2>
+        <p>Two players, two POVs, one synced save — this is the entire idea in under a minute.</p>
+      </div>
+      <div class="videoframe" style="max-width:640px; margin:0 auto;">
+        <div class="chrome">
+          <span class="chrome-dot r"></span><span class="chrome-dot y"></span><span class="chrome-dot g"></span>
+          <span class="chrome-title">peakabu.app/player — session demo</span>
+        </div>
+        <div class="video-body">
+          <iframe src="https://www.youtube.com/embed/Bi_0jopE5h4" title="Peak-Abu 2-POV synced highlight demo" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section id="how-it-works">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">How it works</div>
+        <h2>From session code to synced clip</h2>
+        <p>No separate recording setup for every player. One code gets the whole squad on the same clock.</p>
+      </div>
+      <div class="flow-grid">
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">01</div>
+            <div><h3>Start a session</h3><p>One player opens Peak-Abu and generates a session code.</p></div>
+          </div>
+          <div class="step">
+            <div class="step-num">02</div>
+            <div><h3>Squad joins</h3><p>Everyone else drops the same code into their own client. No configuration to match.</p></div>
+          </div>
+          <div class="step">
+            <div class="step-num">03</div>
+            <div><h3>Play like normal</h3><p>Each client quietly holds a rolling buffer of that player's own gameplay in the background.</p></div>
+          </div>
+          <div class="step">
+            <div class="step-num">04</div>
+            <div><h3>Someone hits save</h3><p>Any player triggers it — a hotkey is all it takes. Every POV extracts the same window, at the same instant.</p></div>
+          </div>
+          <div class="step">
+            <div class="step-num">05</div>
+            <div><h3>Watch it synced</h3><p>Clips upload automatically and open in a web player with every POV lined up frame-for-frame.</p></div>
+          </div>
+        </div>
+        <div class="videoframe">
+          <div class="chrome">
+            <span class="chrome-dot r"></span><span class="chrome-dot y"></span><span class="chrome-dot g"></span>
+            <span class="chrome-title">3-POV session — full flow</span>
+          </div>
+          <div class="video-body">
+            <iframe src="https://www.youtube.com/embed/gfh-q2WgRyM" title="Peak-Abu 3-POV usage flow demo" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section id="features">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">What's under the hood</div>
+        <h2>Built for squads, not solo streamers</h2>
+        <p>Every feature exists because a five-stack needed it — not because a highlight tool "should" have it.</p>
+      </div>
+      <div class="feat-grid">
+        <div class="feat-card">
+          <div class="feat-icon"><svg width="18" height="18" viewBox="0 0 18 18"><rect x="1" y="5" width="7" height="7" rx="2" fill="#39d3a0"/><rect x="6" y="3" width="7" height="7" rx="2" fill="#6c4fd8" opacity="0.85"/><rect x="10" y="8" width="7" height="7" rx="2" fill="#d8a838" opacity="0.85"/></svg></div>
+          <h3>Multi-POV capture</h3>
+          <p>Every teammate's own game window is captured locally on their own machine — no one uploads raw footage they don't need to.</p>
+        </div>
+        <div class="feat-card">
+          <div class="feat-icon"><svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="7" stroke="#39d3a0" stroke-width="1.6" fill="none"/><path d="M9 5v4l3 2" stroke="#39d3a0" stroke-width="1.6" stroke-linecap="round" fill="none"/></svg></div>
+          <h3>Coordinated save</h3>
+          <p>A shared clock keeps every client's rolling buffer in sync, so one save extracts the identical moment from every POV — patent pending.</p>
+        </div>
+        <div class="feat-card">
+          <div class="feat-icon"><svg width="18" height="18" viewBox="0 0 18 18"><rect x="2" y="2" width="14" height="14" rx="3" stroke="#39d3a0" stroke-width="1.6" fill="none"/><path d="M6 9h6M9 6v6" stroke="#39d3a0" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+          <h3>Server-side composite export</h3>
+          <p>Want one combined file instead of juggling separate streams? Export a single stitched clip straight from the server.</p>
+        </div>
+        <div class="feat-card">
+          <div class="feat-icon"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M9 2l1.8 4.6L15.5 8 11.3 10.4 9 15l-2.3-4.6L2.5 8l4.7-1.4L9 2z" fill="#d8a838"/></svg></div>
+          <h3>AI highlight reels</h3>
+          <p>Turn a full session into an edited reel automatically — the model picks the moments, you pick when to share it.</p>
+        </div>
+        <div class="feat-card">
+          <div class="feat-icon"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M2 14l4-6 3 3 3-5 4 8" stroke="#39d3a0" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <h3>Smart delivery</h3>
+          <p>Playback is built to stay fast and light on bandwidth, whether you're reviewing one POV or scrubbing through all of them.</p>
+        </div>
+        <div class="feat-card">
+          <div class="feat-icon"><svg width="18" height="18" viewBox="0 0 18 18"><rect x="3" y="3" width="12" height="12" rx="3" stroke="#39d3a0" stroke-width="1.6" fill="none"/><path d="M6 9h6" stroke="#39d3a0" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+          <h3>Free tier, no forced cloud costs</h3>
+          <p>Keep everything local on the free tier — no surprise storage bills. Upgrade only when you actually want cloud-hosted, shareable replays.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECURITY -->
+  <section id="security">
+    <div class="wrap">
+      <div class="sec-layout">
+        <div>
+          <div class="section-head" style="margin-bottom:26px;">
+            <div class="eyebrow">Taken seriously, not bolted on</div>
+            <h2>Security, built against real standards</h2>
+            <p>Peak-Abu is developed against the same core categories used by modern secure-development frameworks like OWASP and Microsoft's SDL — not as a checkbox, but as an ongoing practice.</p>
+          </div>
+          <div class="sec-list">
+            <div class="sec-item"><span class="dot"></span><div><h4>Input validation</h4><p>Every input is treated as untrusted and validated server-side.</p></div></div>
+            <div class="sec-item"><span class="dot"></span><div><h4>Authentication</h4><p>Hashed credentials and secure session handling.</p></div></div>
+            <div class="sec-item"><span class="dot"></span><div><h4>Access control</h4><p>Permission checks enforced on every request, not just the UI.</p></div></div>
+            <div class="sec-item"><span class="dot"></span><div><h4>Data protection</h4><p>Encrypted in transit; sensitive data never logged.</p></div></div>
+            <div class="sec-item"><span class="dot"></span><div><h4>Secrets management</h4><p>No secrets in code — vaulted and environment-scoped.</p></div></div>
+            <div class="sec-item"><span class="dot"></span><div><h4>Secure architecture</h4><p>Minimal attack surface, internal APIs kept internal.</p></div></div>
+            <div class="sec-item"><span class="dot"></span><div><h4>Dependency security</h4><p>Libraries scanned and kept current, not left to rot.</p></div></div>
+            <div class="sec-item"><span class="dot"></span><div><h4>Logging &amp; monitoring</h4><p>Auth events logged, anomalies watched for.</p></div></div>
+          </div>
+        </div>
+        <div class="videoframe">
+          <div class="chrome">
+            <span class="chrome-dot r"></span><span class="chrome-dot y"></span><span class="chrome-dot g"></span>
+            <span class="chrome-title">Security deep dive — ~10 min</span>
+          </div>
+          <div class="video-body">
+            <iframe src="https://www.youtube.com/embed/8YVD-gYl9EY" title="Peak-Abu security deep dive" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SQUADS -->
+  <section id="squads">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Who it's for</div>
+        <h2>Built for people who play together</h2>
+        <p>Peak-Abu exists for the moments a single POV can't tell the whole story.</p>
+      </div>
+      <div class="squad-grid">
+        <div class="squad-card">
+          <span class="tag">5-stacks</span>
+          <h3>Squad clips that actually match</h3>
+          <p>Stop stitching together five separate Discord uploads to figure out what happened. One save, every angle, already synced.</p>
+        </div>
+        <div class="squad-card">
+          <span class="tag">Scrims</span>
+          <h3>Review from every seat</h3>
+          <p>Break down a round the way your coach or IGL sees it — not just whoever remembered to hit record.</p>
+        </div>
+        <div class="squad-card">
+          <span class="tag">Collegiate esports</span>
+          <h3>Recruiting reels with proof</h3>
+          <p>A synced multi-POV highlight shows a play the way scouts actually need to see it — every angle, same moment.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FINAL CTA -->
+  <section>
+    <div class="wrap">
+      <div class="final-cta">
+        <h2>Every save, from every seat.</h2>
+        <p>Free to start. No cloud storage bill sneaking up on you. Just synced highlights, whenever your squad needs one.</p>
+        <div class="hero-ctas">
+          <a class="btn btn-primary" href="https://peakabu.app">Get Peak-Abu</a>
+          <a class="btn btn-ghost" href="https://www.patreon.com/c/nemeancreates/membership" target="_blank" rel="noopener">Support on Patreon</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap foot-inner">
+    <div class="foot-brand">
+      <svg viewBox="0 0 32 32" fill="none">
+        <rect x="2" y="10" width="14" height="14" rx="4" fill="#39d3a0" opacity="0.9"/>
+        <rect x="10" y="6" width="14" height="14" rx="4" fill="#6c4fd8" opacity="0.85"/>
+        <rect x="16" y="14" width="14" height="14" rx="4" fill="#d8a838" opacity="0.85"/>
+      </svg>
+      Peak-Abu
+    </div>
+    <div class="foot-links">
+      <a href="#features">Features</a>
+      <a href="#security">Security</a>
+      <a href="https://peakabu.app">peakabu.app</a>
+      <a href="https://www.patreon.com/c/nemeancreates/membership" target="_blank" rel="noopener">Patreon</a>
+    </div>
+    <div class="foot-meta">© 2026 Peak-Abu<br>Sync protocol patent pending — USPTO App #64/111,818</div>
+  </div>
+</footer>
+
+<script>
+  // Occasionally snap the sync bars flush to visually punctuate the "save" pulse
+  const stage = document.getElementById('syncStage');
+  if (stage && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    setInterval(() => {
+      stage.classList.add('snap');
+      setTimeout(() => stage.classList.remove('snap'), 700);
+    }, 3200);
+  }
+</script>
+
+</body>
+</html>

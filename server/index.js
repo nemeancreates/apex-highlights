@@ -46,13 +46,16 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'"],
       scriptSrcAttr: ["'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      mediaSrc: ["'self'", "blob:", config.SPACES_CDN_BASE],
-      imgSrc: ["'self'", "data:", config.SPACES_CDN_BASE],
-      connectSrc: ["'self'", "ws:", "wss:", config.SPACES_CDN_BASE]
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      frameSrc: ["'self'", "https://www.youtube.com"],
+      mediaSrc: ["'self'", "blob:", "https://peakbu-media.nyc3.cdn.digitaloceanspaces.com"],
+      imgSrc: ["'self'", "data:", "https://peakbu-media.nyc3.cdn.digitaloceanspaces.com", "https://i.ytimg.com"],
+      connectSrc: ["'self'", "ws:", "wss:", "https://peakbu-media.nyc3.cdn.digitaloceanspaces.com"]
     }
   }
 }));
+app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use(cors({ origin: config.ALLOWED_ORIGINS }));
 app.use(express.json({ limit: '1mb' }));
 app.use(rateLimit);
@@ -62,7 +65,7 @@ app.use('/player', express.static(path.join(__dirname, '..', 'web-player')));
 app.use('/media', express.static(path.join(__dirname, 'uploads')));
 
 // --- Tiny inline routes ---
-app.get('/', (req, res) => {
+app.get('/api/health', (req, res) => {
   res.json({ status: 'Peak-Abu server running', activeSessions: sessions.size });
 });
 
