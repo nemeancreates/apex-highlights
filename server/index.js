@@ -53,7 +53,8 @@ app.use(helmet({
       imgSrc: ["'self'", "data:", "https://peakbu-media.nyc3.cdn.digitaloceanspaces.com", "https://i.ytimg.com"],
       connectSrc: ["'self'", "ws:", "wss:", "https://peakbu-media.nyc3.cdn.digitaloceanspaces.com"]
     }
-  }
+  },
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
 }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use(cors({ origin: config.ALLOWED_ORIGINS }));
