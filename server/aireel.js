@@ -1,5 +1,5 @@
 // ================================================================
-// server/aireel.js — Peak-Abu AI Highlight Reel engine (v0.1.10)
+// server/aireel.js — Peak-Abu AI Highlight Reel engine (v0.1.11)
 // ================================================================
 // Pipeline:
 //   1. PREPARE — ensure selected clips exist locally (pull from CDN if purged)
@@ -10,9 +10,14 @@
 //                an Edit Decision List + a written editor's report. Falls
 //                back to a built-in heuristic editor if no API key is set
 //                or the AI response is invalid.
-//   4. RENDER  — FFmpeg renders each EDL segment (solo full-frame, or
-//                side-by-side for synced multi-POV moments with the primary
-//                POV's in-game audio), concatenates, serves a download link.
+//   4. RENDER  — FFmpeg renders each EDL segment (solo full-frame, or a
+//                2/3/4-tile multi-POV composite for synced moments, carrying
+//                the primary POV's in-game audio), concatenates, serves a
+//                download link.
+//
+// Multi-POV layouts (v0.1.11): segments carry a `members` array of up to
+// MAX_TILES clips. 1 = full frame, 2 = side-by-side, 3-4 = grid. members[0]
+// is always the primary POV and supplies the audio track.
 //
 // Learning loop: user style notes + editor reports accumulate per-game in
 // aiprofiles.json and are fed into future prompts, so the editor improves
@@ -44,6 +49,7 @@ const SEG_MIN = 4;
 const SEG_MAX = 12;
 const SEG_DEFAULT = 8;
 const OVERLAP_WINDOW_MS = 5000;
+const MAX_TILES = 4;
 const JOB_TTL_MS = 60 * 60 * 1000;
 const SESSION_COOLDOWN_MS = 2 * 60 * 1000;
 const ANALYZE_TIMEOUT_MS = 3 * 60 * 1000;
@@ -67,7 +73,8 @@ function initAiReel(deps) {
   setInterval(cleanupJobs, 15 * 60 * 1000);
   D.log('info', 'aireel_ready', {
     aiEditor: !!process.env.ANTHROPIC_API_KEY,
-    model: process.env.AIREEL_MODEL || 'claude-sonnet-4-6'
+    model: process.env.AIREEL_MODEL || 'claude-sonnet-4-6',
+    maxTiles: MAX_TILES
   });
 }
 
@@ -271,6 +278,13 @@ async function runJob(job) {
     return;
   }
 
+  const syncable = clips.filter(c => c.startTimeUTC != null).length;
+  if (syncable < clips.length) {
+    D.log('warn', 'aireel_missing_starttime', {
+      jobId: job.id, withSync: syncable, total: clips.length
+    });
+  }
+
   // 2. ANALYZE
   job.status = 'analyzing';
   for (let i = 0; i < clips.length; i++) {
@@ -303,6 +317,10 @@ async function runJob(job) {
     return;
   }
 
+  const tileHist = {};
+  edl.forEach(s => { const n = (s.members || []).length || 1; tileHist[n] = (tileHist[n] || 0) + 1; });
+  D.log('info', 'aireel_edl_built', { jobId: job.id, engine, segments: edl.length, tiles: tileHist });
+
   // 4. RENDER
   job.status = 'rendering';
   const segFiles = [];
@@ -311,7 +329,7 @@ async function runJob(job) {
     const segPath = path.join(job.workDir, `seg_${String(i).padStart(2, '0')}.mp4`);
     const ok = await renderSegment(edl[i], clips, segPath);
     if (ok) segFiles.push(segPath);
-    else D.log('warn', 'aireel_segment_failed', { jobId: job.id, seg: i });
+    else D.log('warn', 'aireel_segment_failed', { jobId: job.id, seg: i, layout: edl[i].layout });
   }
 
   if (segFiles.length === 0) {
@@ -410,13 +428,17 @@ function scoreClip(clip) {
   clip.moments = picked.sort((a, b) => a.t - b.t);
 }
 
-// ---------- Heuristic editor ----------
+// ---------- Shared helpers ----------
+function round2(n) { return Math.round(n * 100) / 100; }
+function layoutFor(n) { return n >= 3 ? 'grid' : n === 2 ? 'side' : 'solo'; }
+
+// Absolute wall-clock ms for a moment, or null when the clip has no clock sync.
+// Clips without startTimeUTC can never be grouped into a multi-POV tile.
 function absTime(clip, t) {
-  return clip.startTimeUTC != null
-    ? clip.startTimeUTC + t * 1000
-    : Number.MIN_SAFE_INTEGER + Math.random() * 1e6;
+  return clip.startTimeUTC != null ? clip.startTimeUTC + t * 1000 : null;
 }
 
+// ---------- Heuristic editor ----------
 function heuristicEdl(job, clips) {
   const target = job.targetSec;
   const pool = [];
@@ -435,54 +457,63 @@ function heuristicEdl(job, clips) {
     total += dur;
   }
 
-  chosen.sort((a, b) => a.abs - b.abs);
+  // Chronological; unsynced moments (abs === null) sink to the end.
+  chosen.sort((a, b) => (a.abs == null ? 1 : b.abs == null ? -1 : a.abs - b.abs));
+
   const edl = [];
   const used = new Set();
+
   for (let i = 0; i < chosen.length; i++) {
     if (used.has(i)) continue;
-    const a = chosen[i];
-    let partnerIdx = -1;
-    for (let j = i + 1; j < chosen.length; j++) {
+    const group = [chosen[i]];
+    used.add(i);
+
+    // Gather up to MAX_TILES distinct POVs sharing the same real-world instant.
+    for (let j = i + 1; j < chosen.length && group.length < MAX_TILES; j++) {
       if (used.has(j)) continue;
       const b = chosen[j];
-      if (b.clip.id !== a.clip.id && Math.abs(b.abs - a.abs) <= OVERLAP_WINDOW_MS) { partnerIdx = j; break; }
+      if (group[0].abs == null || b.abs == null) break;
+      if (Math.abs(b.abs - group[0].abs) > OVERLAP_WINDOW_MS) break;
+      if (group.some(g => g.clip.id === b.clip.id)) continue;
+      group.push(b);
+      used.add(j);
     }
-    if (partnerIdx >= 0) {
-      const b = chosen[partnerIdx];
-      used.add(i); used.add(partnerIdx);
-      const primary = a.score >= b.score ? a : b;
-      const secondary = primary === a ? b : a;
-      const dur = Math.max(a.duration, b.duration);
-      let secStart = secondary.clip.startTimeUTC != null && primary.clip.startTimeUTC != null
-        ? (primary.clip.startTimeUTC + primary.start * 1000 - secondary.clip.startTimeUTC) / 1000
-        : secondary.start;
-      secStart = Math.max(0, Math.min(secStart, Math.max(0, secondary.clip.duration - dur)));
-      edl.push({
-        layout: 'side',
-        clipId: primary.clip.id, start: round2(primary.start), duration: round2(Math.min(dur, SEG_MAX)),
-        partnerClipId: secondary.clip.id, partnerStart: round2(secStart)
-      });
-    } else {
-      used.add(i);
-      edl.push({ layout: 'solo', clipId: a.clip.id, start: round2(a.start), duration: round2(a.duration) });
-    }
+
+    group.sort((a, b) => b.score - a.score); // best POV leads + carries audio
+    const primary = group[0];
+    const dur = Math.min(SEG_MAX, Math.max(...group.map(g => g.duration)));
+
+    const members = group.map(g => {
+      let s = g.start;
+      if (g !== primary && g.clip.startTimeUTC != null && primary.clip.startTimeUTC != null) {
+        s = (primary.clip.startTimeUTC + primary.start * 1000 - g.clip.startTimeUTC) / 1000;
+      }
+      s = Math.max(0, Math.min(s, Math.max(0, g.clip.duration - dur)));
+      return { clipId: g.clip.id, start: round2(s) };
+    });
+
+    edl.push({
+      layout: layoutFor(members.length),
+      duration: round2(dur),
+      clipId: primary.clip.id,
+      start: members[0].start,
+      members
+    });
   }
 
-  const soloCount = edl.filter(s => s.layout === 'solo').length;
-  const sideCount = edl.length - soloCount;
+  const counts = { solo: 0, side: 0, grid: 0 };
+  edl.forEach(s => counts[s.layout]++);
   const report =
     `Heuristic editor report (${job.game || 'unknown game'}):\n` +
     `Scanned ${clips.length} POV(s) for loudness spikes and on-screen chaos. ` +
     `Selected ${chosen.length} moments totaling ~${Math.round(total)}s against your ${target}s target. ` +
-    `${sideCount} moment(s) were captured by multiple squad members at the same real time and were cut side-by-side ` +
-    `with the more intense POV leading and carrying the audio; ${soloCount} played solo full-frame. ` +
-    `Segments are ordered chronologically. ` +
-    `Tip: add style notes ("faster cuts", "hold on clutches longer") — they're saved per game and shape future edits.`;
+    `${counts.grid} moment(s) had 3-4 squad members recording the same real-world instant and were cut as a grid; ` +
+    `${counts.side} were cut side-by-side; ${counts.solo} played solo full-frame. ` +
+    `The most intense POV leads each multi-view shot and carries the audio. Segments are ordered chronologically. ` +
+    `Tip: add style notes ("prefer 3-up", "hold on clutches longer") — they're saved per game and shape future edits.`;
 
   return { edl, report };
 }
-
-function round2(n) { return Math.round(n * 100) / 100; }
 
 // ---------- AI editor (Anthropic) ----------
 async function tryAnthropicEdl(job, clips) {
@@ -501,16 +532,26 @@ async function tryAnthropicEdl(job, clips) {
   const systemPrompt =
     'You are the editing engine for Peak-Abu, a multi-POV gameplay highlight tool. ' +
     'You receive per-clip intensity analysis (loudness + visual chaos scores) and must produce an edit decision list for a highlight reel. ' +
-    'Clips from different players that share startTimeUTC-aligned moments show the SAME real play from different POVs — those deserve side-by-side layout with the best POV as primary. ' +
+    'Clips from different players whose startTimeUTC-aligned moments coincide show the SAME real play from different POVs — ' +
+    `group them into a single multi-view segment (up to ${MAX_TILES} tiles on screen at once). ` +
     'Respond with ONLY a JSON object, no markdown fences, no prose, in this exact shape: ' +
-    '{"segments":[{"layout":"solo"|"side","clipId":"...","start":<sec>,"duration":<sec 4-12>,"partnerClipId":"...","partnerStart":<sec>}],"report":"<3-6 sentence editor\'s report addressed to the user explaining your choices and what you learned about editing this game>"} ' +
-    'Rules: partnerClipId/partnerStart only for layout "side" and must be a different clipId. ' +
+    '{"segments":[{"clipIds":["primaryId","secondId","thirdId"],"starts":[<sec>,<sec>,<sec>],"duration":<sec 4-12>}],' +
+    '"report":"<3-6 sentence editor\'s report addressed to the user explaining your choices and what you learned about editing this game>"} ' +
+    `Rules: clipIds has 1-${MAX_TILES} entries, all distinct and all real clipIds from the input. ` +
+    'clipIds[0] is the primary POV — it leads the layout and carries the audio; order the rest by intensity. ' +
+    'starts is a parallel array, same length as clipIds, giving each clip\'s in-point in ITS OWN timeline — ' +
+    'compute non-primary in-points from startTimeUTC so every tile shows the same real-world instant. ' +
+    '1 clipId renders full-frame, 2 side-by-side, 3-4 as a grid. ' +
+    'Only group clips that genuinely overlap in real time; do not pad a segment with unrelated footage. ' +
+    'A clip with a null startTimeUTC cannot be time-aligned and must appear only as a single-clipId segment. ' +
+    'If userStyleNotes requests a specific tile count (e.g. "3 POVs at once"), honor it wherever enough overlapping POVs exist. ' +
     'Total duration must not exceed the target by more than 15%. Order segments for narrative flow (usually chronological, save the best moment for last if it is clearly strongest). ' +
     'start+duration must fit within each clip\'s durationSec. Never invent clipIds.';
 
   const userPrompt = JSON.stringify({
     game: job.game || 'unknown',
     targetSec: job.targetSec,
+    maxTiles: MAX_TILES,
     userStyleNotes: job.styleNotes || null,
     gameProfile: profile ? {
       priorRuns: profile.runs,
@@ -537,37 +578,49 @@ async function tryAnthropicEdl(job, clips) {
   }
 }
 
+// Accepts the v0.1.11 { clipIds[], starts[] } shape and the legacy
+// { clipId, start, partnerClipId, partnerStart } shape.
 function validateEdl(segments, clips, targetSec) {
   if (!Array.isArray(segments)) return null;
   const byId = new Map(clips.map(c => [c.id, c]));
   const out = [];
   let total = 0;
+
   for (const s of segments) {
     if (!s || typeof s !== 'object') continue;
-    const clip = byId.get(String(s.clipId));
-    if (!clip) continue;
-    let start = Number(s.start), dur = Number(s.duration);
-    if (!isFinite(start) || !isFinite(dur)) continue;
-    dur = Math.max(SEG_MIN, Math.min(SEG_MAX, dur));
-    start = Math.max(0, Math.min(start, Math.max(0, clip.duration - dur)));
-    if (clip.duration < SEG_MIN) continue;
 
-    let layout = s.layout === 'side' ? 'side' : 'solo';
-    let partnerClipId = null, partnerStart = null;
-    if (layout === 'side') {
-      const partner = byId.get(String(s.partnerClipId));
-      if (partner && partner.id !== clip.id && partner.duration >= SEG_MIN) {
-        partnerClipId = partner.id;
-        partnerStart = Number(s.partnerStart);
-        if (!isFinite(partnerStart)) partnerStart = 0;
-        partnerStart = Math.max(0, Math.min(partnerStart, Math.max(0, partner.duration - dur)));
-      } else {
-        layout = 'solo';
-      }
+    let ids = Array.isArray(s.clipIds) ? s.clipIds.map(String) : [];
+    let starts = Array.isArray(s.starts) ? s.starts.map(Number) : [];
+    if (ids.length === 0) { // legacy solo/side shape
+      ids = [String(s.clipId)];
+      starts = [Number(s.start)];
+      if (s.partnerClipId) { ids.push(String(s.partnerClipId)); starts.push(Number(s.partnerStart)); }
     }
 
-    out.push({ layout, clipId: clip.id, start: round2(start), duration: round2(dur),
-               partnerClipId, partnerStart: partnerStart != null ? round2(partnerStart) : null });
+    let dur = Number(s.duration);
+    if (!isFinite(dur)) continue;
+    dur = Math.max(SEG_MIN, Math.min(SEG_MAX, dur));
+
+    const members = [];
+    const seen = new Set();
+    for (let i = 0; i < ids.length && members.length < MAX_TILES; i++) {
+      const clip = byId.get(ids[i]);
+      if (!clip || seen.has(clip.id) || clip.duration < SEG_MIN) continue;
+      let st = Number(starts[i]);
+      if (!isFinite(st)) st = 0;
+      st = Math.max(0, Math.min(st, Math.max(0, clip.duration - dur)));
+      seen.add(clip.id);
+      members.push({ clipId: clip.id, start: round2(st) });
+    }
+    if (members.length === 0) continue;
+
+    out.push({
+      layout: layoutFor(members.length),
+      duration: round2(dur),
+      clipId: members[0].clipId,
+      start: members[0].start,
+      members
+    });
     total += dur;
     if (total > targetSec * 1.3) break;
   }
@@ -614,41 +667,77 @@ function anthropicMessage(apiKey, system, user) {
 const ENC = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
              '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-ac', '2'];
 
+// Tile geometry on a 1280x720 canvas. 2-up is centered vertically;
+// 3-up is two on top with the third centered below; 4-up is a 2x2.
+const TILE_W = 640, TILE_H = 360;
+const GRID_POS = {
+  2: [[0, 180], [640, 180]],
+  3: [[0, 0], [640, 0], [320, 360]],
+  4: [[0, 0], [640, 0], [0, 360], [640, 360]]
+};
+
 async function renderSegment(seg, clips, outPath) {
   const byId = new Map(clips.map(c => [c.id, c]));
-  const clip = byId.get(seg.clipId);
-  if (!clip) return false;
+
+  // Tolerate a legacy EDL entry that has no members array.
+  let rawMembers = seg.members;
+  if (!Array.isArray(rawMembers) || rawMembers.length === 0) {
+    rawMembers = [{ clipId: seg.clipId, start: seg.start }];
+  }
+
+  const members = rawMembers
+    .map(m => ({ start: Number(m.start) || 0, clip: byId.get(m.clipId) }))
+    .filter(m => m.clip)
+    .slice(0, MAX_TILES);
+  if (members.length === 0) return false;
+
   const d = String(seg.duration);
+  const primary = members[0];
 
-  if (seg.layout === 'side' && seg.partnerClipId) {
-    const partner = byId.get(seg.partnerClipId);
-    if (!partner) return renderSegment({ ...seg, layout: 'solo' }, clips, outPath);
-
-    const cell = 'scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2,fps=30';
+  // --- Single POV: full frame ---
+  if (members.length === 1) {
     const args = [
-      '-ss', String(seg.start), '-t', d, '-i', clip.path,
-      '-ss', String(seg.partnerStart || 0), '-t', d, '-i', partner.path,
+      '-ss', String(primary.start), '-t', d, '-i', primary.clip.path,
       '-f', 'lavfi', '-t', d, '-i', 'anullsrc=r=48000:cl=stereo',
       '-filter_complex',
-      `[0:v]${cell}[l];[1:v]${cell}[r];[l][r]hstack=inputs=2,pad=1280:720:0:180,format=yuv420p[v]`,
+      '[0:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v]',
       '-map', '[v]',
-      '-map', clip.hasAudio ? '0:a:0' : '2:a:0',
+      '-map', primary.clip.hasAudio ? '0:a:0' : '1:a:0',
       '-af', 'aresample=async=1000',
       ...ENC, '-shortest', '-y', outPath
     ];
     return runFF(args, RENDER_TIMEOUT_MS);
   }
 
-  const args = [
-    '-ss', String(seg.start), '-t', d, '-i', clip.path,
-    '-f', 'lavfi', '-t', d, '-i', 'anullsrc=r=48000:cl=stereo',
-    '-filter_complex',
-    '[0:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p[v]',
+  // --- 2-4 POVs: composite onto a black canvas via chained overlays ---
+  const pos = GRID_POS[members.length];
+  const baseIdx = members.length;        // the color=black input
+  const silentIdx = members.length + 1;  // the anullsrc input
+
+  const args = [];
+  members.forEach(m => args.push('-ss', String(m.start), '-t', d, '-i', m.clip.path));
+  args.push('-f', 'lavfi', '-t', d, '-i', 'color=c=black:s=1280x720:r=30');
+  args.push('-f', 'lavfi', '-t', d, '-i', 'anullsrc=r=48000:cl=stereo');
+
+  const cell = `scale=${TILE_W}:${TILE_H}:force_original_aspect_ratio=decrease,` +
+               `pad=${TILE_W}:${TILE_H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30`;
+
+  const chain = members.map((m, i) => `[${i}:v]${cell}[t${i}]`);
+  let prev = `[${baseIdx}:v]`;
+  members.forEach((m, i) => {
+    const last = i === members.length - 1;
+    const outLabel = last ? '[v]' : `[b${i}]`;
+    chain.push(`${prev}[t${i}]overlay=${pos[i][0]}:${pos[i][1]}${last ? ',format=yuv420p' : ''}${outLabel}`);
+    prev = `[b${i}]`;
+  });
+
+  args.push(
+    '-filter_complex', chain.join(';'),
     '-map', '[v]',
-    '-map', clip.hasAudio ? '0:a:0' : '1:a:0',
+    '-map', primary.clip.hasAudio ? '0:a:0' : `${silentIdx}:a:0`,
     '-af', 'aresample=async=1000',
     ...ENC, '-shortest', '-y', outPath
-  ];
+  );
   return runFF(args, RENDER_TIMEOUT_MS);
 }
 
