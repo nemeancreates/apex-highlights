@@ -24,6 +24,7 @@ const {
 } = require('./stores');
 const { initAuthRoutes } = require('./auth');
 const { initSessionRoutes } = require('./routes/sessions');
+const { initJoinRoutes } = require('./routes/join');
 const { initUploadRoutes } = require('./routes/uploads');
 const { initCompositeRoutes, startCompositeCleanup } = require('./composite');
 const { initSockets } = require('./sockets');
@@ -77,6 +78,7 @@ app.get('/api/version', (req, res) => {
 // --- Feature routes ---
 initAuthRoutes(app);
 initSessionRoutes(app);
+initJoinRoutes(app);
 initUploadRoutes(app, io);
 initCompositeRoutes(app);
 initSockets(io);

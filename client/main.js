@@ -15,14 +15,74 @@ function getFFmpegPath() {
   return path.join(__dirname, 'ffmpeg', 'ffmpeg.exe');
 }
 
+// ================================
+// DEEP LINK — peakabu://join/<CODE>?autostart=1
+// Windows hands the URL to a NEW process, so a single-instance lock is
+// mandatory: without it a second copy of the app launches, fights over the
+// hotkey registration, and the running session never sees the link.
+// ================================
+const PROTOCOL = 'peakabu';
+let pendingDeepLink = null;
+
+if (!app.requestSingleInstanceLock()) {
+  // The lock request already forwarded our argv to the running instance.
+  app.exit(0);
+}
+
+function parseDeepLink(url) {
+  if (typeof url !== 'string') return null;
+  const m = /^peakabu:\/\/join\/([A-Za-z0-9]{4,6})/i.exec(url.trim());
+  if (!m) return null;
+  return {
+    code: m[1].toUpperCase(),
+    autostart: !/[?&]autostart=0/i.test(url)
+  };
+}
+
+function extractDeepLink(argv) {
+  if (!Array.isArray(argv)) return null;
+  for (const a of argv) {
+    const parsed = parseDeepLink(a);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+function routeDeepLink(link) {
+  if (!link) return;
+  console.log(`Deep link received: join ${link.code} (autostart=${link.autostart})`);
+  pendingDeepLink = link;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+    mainWindow.webContents.send('deep-link-join', link);
+  }
+}
+
+app.on('second-instance', (event, argv) => {
+  routeDeepLink(extractDeepLink(argv));
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  }
+});
+
+// macOS/Linux path — harmless on Windows
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  routeDeepLink(parseDeepLink(url));
+});
+
 const DEFAULT_BUFFER_DIR = path.join(os.tmpdir(), 'apex-highlights-buffer');
 const DEFAULT_CLIPS_DIR = path.join(app.getPath('videos'), 'PeakAbu');
 const USER_PREFS_PATH = path.join(app.getPath('userData'), 'user-preferences.json');
 const CHUNK_SECONDS = 10;
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.33',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.33.exe',
+  version: '0.1.34',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.34.exe',
   releaseNotes: 'Game Window Capture (Beta) added — record a specific game window instead of your whole monitor.'
 };
 
@@ -1951,14 +2011,35 @@ function createWindow() {
     return { path: getArchiveBaseDir() };
   });
 
+  // Renderer pulls the link once it's booted and knows its auth state.
+  ipcMain.handle('consume-deep-link', () => {
+    const link = pendingDeepLink;
+    pendingDeepLink = null;
+    return link;
+  });
+
+  ipcMain.handle('get-join-link', (event, code) => {
+    const clean = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+    return clean.length >= 4 ? `https://peakabu.app/join/${clean}` : null;
+  });
+
   ipcMain.handle('get-current-hotkey', () => customHotkey);
   ipcMain.handle('get-hotkey-registered', () => startupHotkeyRegistered);
 }
+
 
 app.whenReady().then(async () => {
   const startupPrefs = loadUserPreferences();
   gamepadPrefs.buttonIndex = (startupPrefs.gamepadButton !== null && startupPrefs.gamepadButton !== undefined) ? parseInt(startupPrefs.gamepadButton) : null;
   gamepadPrefs.triggerMode = startupPrefs.gamepadTriggerMode || 'double';
+  // Register the scheme at runtime so dev builds work too. Packaged builds
+  // also get it from NSIS via the electron-builder "protocols" block.
+  if (app.isPackaged) {
+    app.setAsDefaultProtocolClient(PROTOCOL);
+  } else {
+    app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1] || '.')]);
+  }
+  pendingDeepLink = extractDeepLink(process.argv);
   startXInputPoll();
   ensureFolders();
   sweepOrphanedFFmpeg();

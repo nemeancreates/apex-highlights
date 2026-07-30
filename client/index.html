@@ -1,7 +1,7 @@
 ﻿<!DOCTYPE html>
 <html>
   <head>
-    <h1>Peak-Abu</h1><span style="font-size:11px;color:#3a5244;margin-left:6px;vertical-align:middle;">v0.1.33</span>
+    <h1>Peak-Abu</h1><span style="font-size:11px;color:#3a5244;margin-left:6px;vertical-align:middle;">v0.1.34</span>
     <style>
       * { box-sizing: border-box; }
       body {
@@ -418,6 +418,9 @@
             <div class="session-code" id="sessionCodeDisplay" onclick="copySessionCode()">------</div>
             <div class="hint" id="sessionCodeHint">Click the code to copy to clipboard</div>
             <a class="player-link" id="playerLink" href="#" target="_blank">🌐 Open in Web Player</a>
+            <button class="btn-secondary" onclick="copyInviteLink()" style="margin-top:6px;padding:8px;font-size:13px;">
+              &#128279; Copy Invite Link <span style="color:#5f7a6a;">(paste in Discord)</span>
+            </button>
             <div class="uc-label" style="margin-top:13px;">Squad</div>
             <div class="member-list" id="memberList"></div>
             <button class="btn-leave" onclick="leaveSession()">Leave Session</button>
@@ -1137,6 +1140,10 @@
           hudLog('squad','Joined session ' + data.code,'success');
           ipcRenderer.send('session-connected', { code: data.code, username: username });
           addSessionToHistory(data.code, window.isSessionHost ? 'host' : 'member');
+          if (window.autoStartAfterJoin) {
+            window.autoStartAfterJoin = false;
+            autoStartRecordingSafe();
+          }
         });
 
         window.socket.on('member-joined', function(d) { addMember(d.username, false); hudLog('squad',d.username+' joined','success'); });
@@ -1631,6 +1638,88 @@
        }, 1000);
       }
 
+      // =====================
+      // DEEP LINK JOIN — peakabu://join/<CODE> from a shared invite.
+      // Arrives either at cold start (consume-deep-link) or while running
+      // (deep-link-join push). If the user isn't logged in yet the link is
+      // parked and replayed the moment auth succeeds.
+      // =====================
+      window.pendingDeepLink = null;
+      window.autoStartAfterJoin = false;
+
+      window.copyInviteLink = async function() {
+        if (!window.currentSessionCode) return;
+        var url = await ipcRenderer.invoke('get-join-link', window.currentSessionCode);
+        if (!url) return;
+        clipboard.writeText(url);
+        var hint = document.getElementById('sessionCodeHint');
+        hint.textContent = '\u2705 Invite link copied — paste it in Discord';
+        setTimeout(function() { hint.textContent = 'Click the code to copy to clipboard'; }, 3000);
+        hudLog('squad', 'Invite link copied: ' + url, 'success');
+      };
+
+      async function handleDeepLink(link) {
+        if (!link || !link.code) return;
+
+        if (!window.authToken) {
+          window.pendingDeepLink = link;
+          hudLog('system', '\uD83D\uDD17 Invite to ' + link.code + ' — log in to join', 'info');
+          return;
+        }
+
+        if (window.currentSessionCode === link.code) {
+          hudLog('squad', 'Already in session ' + link.code, 'info');
+          if (link.autostart) await autoStartRecordingSafe();
+          return;
+        }
+
+        if (window.currentSessionCode) {
+          hudLog('squad', 'Leaving ' + window.currentSessionCode + ' for invite ' + link.code, 'info');
+          window.leaveSession();
+        }
+
+        window.autoStartAfterJoin = !!link.autostart;
+        document.getElementById('joinCodeInput').value = link.code;
+        hudLog('squad', '\uD83D\uDD17 Joining ' + link.code + ' from invite...', 'broadcast');
+        window.isSessionHost = false;
+        connectToSession(link.code, window.authUsername);
+      }
+
+      async function autoStartRecordingSafe() {
+        if (window.isRecordingActive) {
+          hudLog('system', 'Already recording — invite joined without restarting capture', 'info');
+          return;
+        }
+
+        // Monitor list populates asynchronously; don't start against a
+        // placeholder option or FFmpeg gets a NaN monitor index.
+        var sel = document.getElementById('monitorSelect');
+        for (var i = 0; i < 25; i++) {
+          if (sel.options.length && sel.options[0].value !== '') break;
+          await new Promise(function(r) { setTimeout(r, 150); });
+        }
+        if (!sel.options.length || sel.options[0].value === '') {
+          hudLog('system', '\u26A0 Joined, but monitors not detected — press Start manually', 'error');
+          return;
+        }
+
+        if (window.wgcMode === 'window' && !window.wgcSourceId) {
+          hudLog('system', '\u26A0 Joined. Pick a game window, then press Start', 'error');
+          return;
+        }
+
+        hudLog('activity', '\u25B6 Auto-starting capture from invite', 'success');
+        await window.startRecording();
+      }
+
+      window.consumePendingDeepLink = function() {
+        var link = window.pendingDeepLink;
+        window.pendingDeepLink = null;
+        if (link) handleDeepLink(link);
+      };
+
+      ipcRenderer.on('deep-link-join', function(ev, link) { handleDeepLink(link); });
+
       ipcRenderer.on('hotkey-save-pressed', function() { window.saveHighlight(); });
       // =====================
       // GAMEPAD CONTROLLER SUPPORT
@@ -2029,6 +2118,7 @@
         document.getElementById('authBar').style.display = 'flex';
         document.getElementById('authBarName').textContent = username;
         document.getElementById('sessionPanel').style.display = 'flex';
+        if (window.consumePendingDeepLink) window.consumePendingDeepLink();
       }
       function showAuthLoggedOut() {
         document.getElementById('authPanel').style.display = 'block';
@@ -2041,7 +2131,11 @@
         setTimeout(function(){ el.style.display = 'none'; }, 4000);
       }
 
-      checkAuthOnLoad();
+      ipcRenderer.invoke('consume-deep-link')
+        .then(function(link) { if (link) window.pendingDeepLink = link; })
+        .catch(function() {})
+        .then(function() { checkAuthOnLoad(); });
+
     </script>
     <script>
       // ===== Redesign compatibility shims =====
