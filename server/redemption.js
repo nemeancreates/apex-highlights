@@ -37,10 +37,16 @@ function generateOneCode(tier) {
 }
 
 // Returns an array of generated code strings.
-function generateRedemptionCodes({ tier, note, maxUses, quantity }) {
+// durationDays: omit/null for a LIFETIME code (never expires — for
+// friends/family, $1500+ backers, manual grants). Set a number for a
+// TIMED subscription code (e.g. 30 for a monthly Kickstarter tier).
+function generateRedemptionCodes({ tier, note, maxUses, quantity, durationDays }) {
   if (!TIERS[tier]) throw new Error(`Unknown tier "${tier}"`);
   const uses = Math.max(1, Math.min(100000, parseInt(maxUses, 10) || 1));
   const qty = Math.max(1, Math.min(500, parseInt(quantity, 10) || 1));
+  const duration = (durationDays !== undefined && durationDays !== null && durationDays !== '')
+    ? (Math.max(1, Math.min(3650, parseInt(durationDays, 10) || 0)) || null)
+    : null;
   const generated = [];
   for (let i = 0; i < qty; i++) {
     let code = generateOneCode(tier);
@@ -48,16 +54,33 @@ function generateRedemptionCodes({ tier, note, maxUses, quantity }) {
     codes.set(code, {
       code, tier, note: note || null,
       maxUses: uses, useCount: 0, usedBy: [],
+      durationDays: duration, // null = lifetime
       createdAt: new Date().toISOString()
     });
     generated.push(code);
   }
   saveCodesToDisk();
-  log('info', 'redemption_codes_generated', { tier, quantity: qty, maxUses: uses, note });
+  log('info', 'redemption_codes_generated', { tier, quantity: qty, maxUses: uses, durationDays: duration, note });
   return generated;
 }
 
-// Returns { ok: true, tier } or { ok: false, error }
+// Non-mutating validity check — same rules as redeemCode's guards, used
+// by auth.js to decide the anti-stacking rule BEFORE actually consuming
+// a use. redeemCode re-checks everything anyway (never trust a stale
+// peek), so this is purely for ordering: "is this code even usable" has
+// to be answered before "does the tier make sense for this account".
+function peekCode(rawCode, username) {
+  const code = String(rawCode || '').trim().toUpperCase();
+  const entry = codes.get(code);
+  if (!entry) return { ok: false, error: 'Invalid code' };
+  if (entry.useCount >= entry.maxUses) return { ok: false, error: 'Code has already been fully redeemed' };
+  if (entry.usedBy.some(u => u.username.toLowerCase() === username.toLowerCase())) {
+    return { ok: false, error: "You've already redeemed this code" };
+  }
+  return { ok: true, tier: entry.tier, durationDays: entry.durationDays || null };
+}
+
+// Returns { ok: true, tier, durationDays } or { ok: false, error }
 function redeemCode(rawCode, username) {
   const code = String(rawCode || '').trim().toUpperCase();
   const entry = codes.get(code);
@@ -69,8 +92,8 @@ function redeemCode(rawCode, username) {
   entry.useCount++;
   entry.usedBy.push({ username, redeemedAt: new Date().toISOString() });
   saveCodesToDisk();
-  log('info', 'redemption_code_used', { code, username, tier: entry.tier, useCount: entry.useCount, maxUses: entry.maxUses });
-  return { ok: true, tier: entry.tier };
+  log('info', 'redemption_code_used', { code, username, tier: entry.tier, durationDays: entry.durationDays || null, useCount: entry.useCount, maxUses: entry.maxUses });
+  return { ok: true, tier: entry.tier, durationDays: entry.durationDays || null };
 }
 
 // --- Bandwidth safeguard (upload bytes — see note in config.js about the
@@ -93,4 +116,4 @@ function trackBandwidth(username, bytes, users, saveUsersToDisk) {
   saveUsersToDisk();
 }
 
-module.exports = { loadCodesFromDisk, generateRedemptionCodes, redeemCode, trackBandwidth };
+module.exports = { loadCodesFromDisk, generateRedemptionCodes, redeemCode, peekCode, trackBandwidth };

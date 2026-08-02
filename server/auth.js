@@ -7,9 +7,9 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { log } = require('./logger');
 const { safeError } = require('./utils');
-const { JWT_SECRET, JWT_EXPIRY, BCRYPT_ROUNDS, TIERS, ADMIN_SECRET } = require('./config');
+const { JWT_SECRET, JWT_EXPIRY, BCRYPT_ROUNDS, TIERS, TIER_ORDER, ADMIN_SECRET } = require('./config');
 const { users, saveUsersToDisk } = require('./stores');
-const { generateRedemptionCodes, redeemCode } = require('./redemption');
+const { generateRedemptionCodes, redeemCode, peekCode } = require('./redemption');
 
 // A user's tier as of right now — falls back to t1 for missing/unknown/
 // expired tiers rather than trusting a stale field forever. tierExpiresAt
@@ -127,27 +127,60 @@ function initAuthRoutes(app) {
   app.post('/auth/redeem', requireAuth, (req, res) => {
     const { code } = req.body || {};
     if (!code) return safeError(res, 400, 'Code required');
+
+    // Peek first (no mutation) — "is this code even usable" has to be
+    // answered before "does this tier make sense for this account".
+    const preview = peekCode(code, req.user.username);
+    if (!preview.ok) return safeError(res, 400, preview.error);
+
+    const user = users.get(req.user.username.toLowerCase());
+    const currentTier = getEffectiveTier(user);
+    const hasActivePlan = currentTier !== 't1';
+
+    // Anti-stacking: a TIMED code can't be redeemed on top of an active
+    // subscription at the same or higher tier — this is what stops one
+    // account from buying five 30-day codes and chaining them into five
+    // months. It CAN be used to upgrade (t2 active -> redeem t3 timed
+    // code is fine) and lifetime codes always bypass this entirely, since
+    // those are hand-issued (friends/family, big backers) not sold in bulk.
+    if (preview.durationDays && hasActivePlan &&
+        TIER_ORDER.indexOf(preview.tier) <= TIER_ORDER.indexOf(currentTier)) {
+      return safeError(res, 400,
+        `You already have an active ${TIERS[currentTier].label} plan. Timed codes can't stack on an active subscription — wait for it to expire, or redeem a code for a higher tier to upgrade now.`);
+    }
+
     const result = redeemCode(code, req.user.username);
     if (!result.ok) return safeError(res, 400, result.error);
-    const user = users.get(req.user.username.toLowerCase());
+
     user.tier = result.tier;
     user.tierSource = 'redeemed';
-    user.tierExpiresAt = null; // lifetime
+    user.tierExpiresAt = result.durationDays
+      ? Date.now() + result.durationDays * 24 * 60 * 60 * 1000
+      : null; // null = lifetime
     saveUsersToDisk();
-    log('info', 'tier_granted', { username: req.user.username, tier: result.tier, source: 'redeemed' });
-    return res.json({ tier: result.tier });
+    log('info', 'tier_granted', {
+      username: req.user.username, tier: result.tier, source: 'redeemed',
+      durationDays: result.durationDays, tierExpiresAt: user.tierExpiresAt
+    });
+    return res.json({ tier: result.tier, tierExpiresAt: user.tierExpiresAt });
   });
 
   // Admin-only — generate codes for Kickstarter batches etc. Not for
-  // client use; hit this from the droplet with curl. Example:
+  // client use; hit this from the droplet with curl. Examples:
+  //   Timed (30-day) Squad code, 50 uses — Kickstarter tier:
   //   curl -X POST https://peakabu.app/admin/redemption-codes \
   //     -H "X-Admin-Secret: $ADMIN_SECRET" -H "Content-Type: application/json" \
-  //     -d '{"tier":"t3","note":"KS $60 backers","maxUses":50,"quantity":1}'
+  //     -d '{"tier":"t3","note":"KS $28 backers","maxUses":50,"quantity":1,"durationDays":30}'
+  //
+  //   Lifetime Pro code, 1 use — friend/family/$1500 backer:
+  //   curl -X POST https://peakabu.app/admin/redemption-codes \
+  //     -H "X-Admin-Secret: $ADMIN_SECRET" -H "Content-Type: application/json" \
+  //     -d '{"tier":"t4","note":"lifetime - family","maxUses":1,"quantity":1}'
   app.post('/admin/redemption-codes', requireAdmin, (req, res) => {
-    const { tier, note, maxUses, quantity } = req.body || {};
+    const { tier, note, maxUses, quantity, durationDays } = req.body || {};
     if (!TIERS[tier]) return safeError(res, 400, 'Invalid tier');
     try {
-      const generated = generateRedemptionCodes({ tier, note, maxUses, quantity });
+      const generated = generateRedemptionCodes({ tier, note, maxUses, quantity, durationDays });
       return res.status(201).json({ codes: generated });
     } catch (err) {
       return safeError(res, 400, err.message);

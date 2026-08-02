@@ -22,7 +22,7 @@ function createSessionForUser(rawUsername) {
   const tierConfig = TIERS[tier];
 
   if (!tierConfig.canHost) {
-    return { error: "Free tier can't host a session — upgrade to Creator, Squad, or Pro.", status: 403 };
+    return { error: "Free tier can host 2 total a session — upgrade to Creator, Squad, or Pro.", status: 403 };
   }
 
   const monthKey = getMonthKey();

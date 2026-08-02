@@ -73,11 +73,16 @@ const MAX_PENDING_HIGHLIGHTS = 3;    // queued triggers during cooldown lock
 // being filled by freeloaders).
 // ================================
 const TIERS = {
-  t1: { label: 'Free',    canHost: true,  memberCap: 2,    freeMemberSubCap: 2, clipCap: 20,  sessionsPerMonth: 6,  retentionDays: 1,  hasAiReel: false },
+  t1: { label: 'Free',    canHost: true,  memberCap: 2,     freeMemberSubCap: 2, clipCap: 20,  sessionsPerMonth: 6,  retentionDays: 1,  hasAiReel: false },
   t2: { label: 'Creator', canHost: true,  memberCap: 5,     freeMemberSubCap: 2, clipCap: 75,  sessionsPerMonth: 50, retentionDays: 3,  hasAiReel: false },
   t3: { label: 'Squad',   canHost: true,  memberCap: 11,    freeMemberSubCap: 2, clipCap: 175, sessionsPerMonth: 80, retentionDays: 7,  hasAiReel: true  },
   t4: { label: 'Pro',     canHost: true,  memberCap: 41,    freeMemberSubCap: 2, clipCap: 300, sessionsPerMonth: 70, retentionDays: 14, hasAiReel: true  }
 };
+
+// Ordering for tier comparisons — used to stop a timed code from
+// "stacking" on top of an equal-or-higher active subscription (see
+// auth.js /auth/redeem). Lifetime codes bypass this check entirely.
+const TIER_ORDER = ['t1', 't2', 't3', 't4'];
 
 // --- Admin (redemption code generation only — never exposed to the client) ---
 const ADMIN_SECRET = process.env.ADMIN_SECRET || null;
@@ -98,9 +103,9 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 // Update when a new client build is uploaded to the CDN.
 // ================================
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.35',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.35.exe',
-  releaseNotes: 'Tier plans, redemption codes, and settings that actually save between launches'
+  version: '0.1.34',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.34.exe',
+  releaseNotes: 'Database upgrade for improved reliability at scale.'
 };
 
 module.exports = {
@@ -129,6 +134,7 @@ module.exports = {
   SOCKET_RATE_WINDOW,
   MAX_PENDING_HIGHLIGHTS,
   TIERS,
+  TIER_ORDER,
   ADMIN_SECRET,
   REDEMPTION_CODES_FILE,
   BANDWIDTH_ALERT_BYTES,
