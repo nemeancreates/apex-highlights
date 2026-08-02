@@ -98,7 +98,7 @@ function initAuthRoutes(app) {
     saveUsersToDisk();
     const token = jwt.sign({ username: clean }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
     log('info', 'user_registered', { username: clean });
-    return res.status(201).json({ token, username: clean });
+    return res.status(201).json({ token, username: clean, tier: 't1' });
   });
 
   app.post('/auth/login', async (req, res) => {
@@ -115,8 +115,8 @@ function initAuthRoutes(app) {
       return safeError(res, 401, 'Invalid username or password');
     }
     const token = jwt.sign({ username: user.username }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
-    log('info', 'user_login', { username: user.username });
-    return res.status(200).json({ token, username: user.username });
+    log('info', 'user_login', { username: user.username, tier: getEffectiveTier(user) });
+    return res.status(200).json({ token, username: user.username, tier: getEffectiveTier(user) });
   });
 
   app.get('/auth/me', requireAuth, (req, res) => {

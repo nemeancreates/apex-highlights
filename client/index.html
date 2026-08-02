@@ -131,6 +131,31 @@
       .auth-bar .user-label { color: #7a9686; }
       .auth-bar .user-label strong { color: #39d3a0; }
       .auth-bar button { width: auto; padding: 6px 14px; font-size: 14px; }
+      .auth-bar-right { display: flex; align-items: center; gap: 8px; }
+
+      /* ===== Tier badge + redeem ===== */
+      .tier-badge {
+        font-size: 11px; padding: 3px 9px; border-radius: 4px; font-weight: 600;
+        letter-spacing: 0.5px; text-transform: uppercase; white-space: nowrap;
+      }
+      .tier-badge.t1 { background: #1a2f22; color: #7a9686; }
+      .tier-badge.t2 { background: #2a2145; color: #a98fe8; }
+      .tier-badge.t3 { background: #14342a; color: #39d3a0; }
+      .tier-badge.t4 { background: #3d2f10; color: #d8a838; }
+      .redeem-wrap { position: relative; }
+      .redeem-panel {
+        display: none; position: absolute; top: 38px; right: 0; width: 250px;
+        background: #12251a; border: 1px solid #2f4a3a; border-radius: 9px; padding: 13px;
+        z-index: 30; box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+      }
+      .redeem-panel.show { display: block; }
+      .redeem-panel input {
+        font-family: 'Consolas', monospace; letter-spacing: 1px; text-transform: uppercase;
+        font-size: 13px; margin-bottom: 8px;
+      }
+      .redeem-panel .redeem-msg { font-size: 12px; margin-top: 7px; line-height: 1.4; }
+      .redeem-panel .redeem-msg.ok { color: #39d3a0; }
+      .redeem-panel .redeem-msg.err { color: #f0857a; }
 
       .row { display: flex; gap: 8px; }
       .row > * { flex: 1; }
@@ -395,7 +420,20 @@
       <!-- AUTH BAR (shown after login — compact) -->
       <div class="auth-bar" id="authBar" style="display:none;">
         <span class="user-label">Logged in as <strong id="authBarName"></strong></span>
-        <button onclick="logoutUser()">Log Out</button>
+        <div class="auth-bar-right">
+          <span class="tier-badge t1" id="tierBadge">Free</span>
+          <div class="redeem-wrap">
+            <button class="btn-secondary" onclick="toggleRedeemPanel()" title="Redeem a subscription code">🎟 Redeem</button>
+            <div class="redeem-panel" id="redeemPanel">
+              <div class="uc-label">Redeem a code</div>
+              <input type="text" id="redeemInput" placeholder="PA-T3-XXXXXXXX" maxlength="20"
+                     onkeydown="if(event.key==='Enter')submitRedeem()" />
+              <button class="btn-save" style="padding:9px;font-size:14px;" onclick="submitRedeem()">Activate</button>
+              <div class="redeem-msg" id="redeemMsg"></div>
+            </div>
+          </div>
+          <button onclick="logoutUser()">Log Out</button>
+        </div>
       </div>
 
       <!-- MAIN GRID -->
@@ -2101,7 +2139,7 @@
         
        try {
          var res = await fetch('https://peakabu.app/auth/me', { headers: { 'Authorization':'Bearer '+window.authToken } });
-         if (res.ok) { var d = await res.json(); showAuthLoggedIn(d.username); }
+         if (res.ok) { var d = await res.json(); updateTierBadge(d.tier); showAuthLoggedIn(d.username); }
          else if (res.status === 401) { clearAuthState(); showAuthLoggedOut(); }
          else { if (window.authUsername) showAuthLoggedIn(window.authUsername); else showAuthLoggedOut(); }
        } catch(e) {
@@ -2131,6 +2169,7 @@
           var data = await res.json();
           if (!res.ok) { showAuthError(data.error||'Registration failed'); return; }
           storeAuthState(data.token, data.username);
+          updateTierBadge(data.tier || 't1');
           showAuthLoggedIn(data.username);
         } catch(e) { showAuthError('Could not reach server'); }
       };
@@ -2147,6 +2186,7 @@
           var data = await res.json();
           if (!res.ok) { showAuthError(data.error||'Login failed'); return; }
           storeAuthState(data.token, data.username);
+          updateTierBadge(data.tier);
           showAuthLoggedIn(data.username);
         } catch(e) { showAuthError('Could not reach server'); }
       };
@@ -2154,6 +2194,8 @@
       window.logoutUser = function() {
         clearAuthState();
         showAuthLoggedOut();
+        updateTierBadge('t1');
+        document.getElementById('redeemPanel').classList.remove('show');
         if (window.socket) { window.socket.disconnect(); window.socket = null; }
         window.currentSessionCode = null;
         document.getElementById('sessionPanel-disconnected').style.display = 'block';
@@ -2194,6 +2236,71 @@
         el.textContent = msg; el.style.display = 'block';
         setTimeout(function(){ el.style.display = 'none'; }, 4000);
       }
+
+      // =====================
+      // TIER + REDEMPTION
+      // Codes are generated server-side (admin only) and can be gifted —
+      // whoever redeems one gets the tier, so a backer can hand theirs off.
+      // =====================
+      window.currentTier = 't1';
+      var TIER_LABELS = { t1: 'Free', t2: 'Creator', t3: 'Squad', t4: 'Pro' };
+
+      function updateTierBadge(tier) {
+        window.currentTier = tier || 't1';
+        var badge = document.getElementById('tierBadge');
+        if (!badge) return;
+        badge.className = 'tier-badge ' + window.currentTier;
+        badge.textContent = TIER_LABELS[window.currentTier] || 'Free';
+      }
+
+      window.toggleRedeemPanel = function() {
+        var p = document.getElementById('redeemPanel');
+        p.classList.toggle('show');
+        if (p.classList.contains('show')) {
+          document.getElementById('redeemMsg').textContent = '';
+          document.getElementById('redeemInput').focus();
+        }
+      };
+
+      window.submitRedeem = async function() {
+        var input = document.getElementById('redeemInput');
+        var msg = document.getElementById('redeemMsg');
+        var code = input.value.trim().toUpperCase();
+        if (!code) { msg.className = 'redeem-msg err'; msg.textContent = 'Enter a code first'; return; }
+
+        msg.className = 'redeem-msg';
+        msg.textContent = 'Checking...';
+        try {
+          var res = await fetch('https://peakabu.app/auth/redeem', {
+            method: 'POST',
+            headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+window.authToken },
+            body: JSON.stringify({ code: code })
+          });
+          var data = await res.json();
+          if (!res.ok) {
+            msg.className = 'redeem-msg err';
+            msg.textContent = data.error || 'Could not redeem that code';
+            return;
+          }
+          updateTierBadge(data.tier);
+          input.value = '';
+          msg.className = 'redeem-msg ok';
+          msg.textContent = '✅ ' + (TIER_LABELS[data.tier] || data.tier) + ' unlocked!';
+          hudLog('system', '🎟 Code redeemed — ' + (TIER_LABELS[data.tier] || data.tier) + ' tier active', 'success');
+          setTimeout(function() { document.getElementById('redeemPanel').classList.remove('show'); }, 2500);
+        } catch (e) {
+          msg.className = 'redeem-msg err';
+          msg.textContent = 'Could not reach server';
+        }
+      };
+
+      // Close the redeem panel on outside click
+      document.addEventListener('click', function(e) {
+        var panel = document.getElementById('redeemPanel');
+        if (!panel || !panel.classList.contains('show')) return;
+        if (panel.closest('.redeem-wrap').contains(e.target)) return;
+        panel.classList.remove('show');
+      });
 
       ipcRenderer.invoke('consume-deep-link')
         .then(function(link) { if (link) window.pendingDeepLink = link; })
