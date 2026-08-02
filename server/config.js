@@ -100,7 +100,7 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 const LATEST_CLIENT_VERSION = {
   version: '0.1.35',
   downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.35.exe',
-  releaseNotes: 'Database upgrade for improved reliability at scale.'
+  releaseNotes: 'Tier plans, redemption codes, and settings that actually save between launches'
 };
 
 module.exports = {
