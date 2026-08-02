@@ -1,15 +1,16 @@
 // ================================
 // SOCKETS — connection wiring: auth middleware, time-sync, join-session,
-// clip duration, recording status, disconnect. Highlight save logic lives
-// in ./highlights.js.
+// clip duration, recording status, disconnect, migrate-session. Highlight
+// save logic lives in ./highlights.js.
 // ================================
 const { log } = require('../logger');
 const { sanitizeUsername, sanitizeCode } = require('../utils');
 const { MAX_MEMBERS_PER_SESSION, ALLOWED_CLIP_DURATIONS } = require('../config');
-const { sessions, saveSessionsToDisk } = require('../stores');
+const { sessions, saveSessionsToDisk, users } = require('../stores');
 const { checkSocketRate, removeSocketRate } = require('../ratelimit');
-const { socketAuth } = require('../auth');
+const { socketAuth, getEffectiveTier } = require('../auth');
 const { registerHighlightHandlers } = require('./highlights');
+const { createSessionForUser } = require('../routes/sessions');
 
 function initSockets(io) {
   io.use(socketAuth);
@@ -48,13 +49,29 @@ function initSockets(io) {
 
       const session = sessions.get(sessionCode);
       if (!session) { socket.emit('error-message', { message: 'Session not found' }); return; }
-      if (session.members.length >= MAX_MEMBERS_PER_SESSION) { socket.emit('error-message', { message: 'Session is full' }); return; }
+
+      const memberCap = session.maxMembers || MAX_MEMBERS_PER_SESSION;
+      if (session.members.length >= memberCap) { socket.emit('error-message', { message: 'Session is full' }); return; }
       if (session.members.some(m => m.username === cleanUsername)) { socket.emit('error-message', { message: 'Username already taken in this session' }); return; }
       if (socket.sessionCode) { socket.emit('error-message', { message: 'Already in a session. Leave first.' }); return; }
+
+      const joinerUser = users.get(cleanUsername.toLowerCase());
+      const joinerTier = getEffectiveTier(joinerUser);
+
+      // Free-tier sub-cap applies regardless of host tier — prevents a
+      // Pro host filling a 41-seat session with free-tier freeloaders.
+      if (joinerTier === 't1') {
+        const freeCount = session.members.filter(m => m.tier === 't1').length;
+        if (freeCount >= 2) {
+          socket.emit('error-message', { message: 'This session already has the max number of Free-tier members (2). Ask the host to upgrade.' });
+          return;
+        }
+      }
 
       const member = {
         socketId: socket.id,
         username: cleanUsername,
+        tier: joinerTier,
         isRecording: false,
         joinedAt: new Date().toISOString()
       };
@@ -64,12 +81,15 @@ function initSockets(io) {
       socket.sessionCode = sessionCode;
       socket.username = cleanUsername;
 
-      log('info', 'member_joined', { session: sessionCode, username: cleanUsername });
+      log('info', 'member_joined', { session: sessionCode, username: cleanUsername, tier: joinerTier });
 
       socket.emit('session-joined', {
         code: sessionCode,
         createdBy: session.createdBy,
         clipDuration: session.clipDuration,
+        expiresAt: session.expiresAt || null,
+        maxClips: session.maxClips || null,
+        clipsUsed: session.highlightCount || 0,
         members: session.members.map(m => ({
           username: m.username,
           isRecording: m.isRecording
@@ -130,6 +150,33 @@ function initSockets(io) {
       });
 
       log('info', 'recording_status', { session: sessionCode, username: socket.username, isRecording });
+    });
+
+    // ================================
+    // MIGRATE — host-only. Spins up a fresh session (same tier gating as
+    // POST /sessions, including the monthly cap) and moves the whole
+    // squad over in one shot when the current session fills up.
+    // ================================
+    socket.on('migrate-session', () => {
+      if (!checkSocketRate(socket.id)) return;
+      const sessionCode = socket.sessionCode;
+      if (!sessionCode) return;
+      const session = sessions.get(sessionCode);
+      if (!session) return;
+
+      if (session.createdBy !== socket.username) {
+        socket.emit('error-message', { message: 'Only the session host can start a new session' });
+        return;
+      }
+
+      const result = createSessionForUser(socket.username);
+      if (result.error) {
+        socket.emit('error-message', { message: result.error });
+        return;
+      }
+
+      log('info', 'session_migrated', { from: sessionCode, to: result.session.code, by: socket.username });
+      io.to(sessionCode).emit('session-migrated', { newCode: result.session.code });
     });
 
     // Highlight save broadcast + lock/queue machinery

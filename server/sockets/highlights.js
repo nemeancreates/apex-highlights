@@ -31,6 +31,14 @@ function fireCoordinatedHighlight(io, sessionCode, session, username, coordinate
     clipDuration
   });
 
+  // session.maxClips is set at creation from the host's tier (see
+  // routes/sessions.js); falls back to the old global constant for
+  // sessions created before tiers shipped.
+  io.to(sessionCode).emit('clip-count-update', {
+    used: session.highlightCount,
+    max: session.maxClips || MAX_HIGHLIGHTS_PER_SESSION
+  });
+
   // Tell every client to lock their save button
   io.to(sessionCode).emit('highlight-cooldown', {
     lockDuration,
@@ -77,9 +85,11 @@ function registerHighlightHandlers(io, socket) {
 
     const pending = session.pendingHighlights = session.pendingHighlights || [];
 
-    // Session highlight cap — count fired + already-queued triggers
-    if ((session.highlightCount || 0) + pending.length >= MAX_HIGHLIGHTS_PER_SESSION) {
-      socket.emit('error-message', { message: 'Highlight limit reached for this session (' + MAX_HIGHLIGHTS_PER_SESSION + ')' });
+    // Session clip cap — count fired + already-queued triggers. Uses the
+    // host's tier-based cap (session.maxClips) when present.
+    const clipCap = session.maxClips || MAX_HIGHLIGHTS_PER_SESSION;
+    if ((session.highlightCount || 0) + pending.length >= clipCap) {
+      socket.emit('error-message', { message: 'Clip limit reached for this session (' + clipCap + '). Host can start a new session to keep going.' });
       return;
     }
 

@@ -1,7 +1,7 @@
 ﻿<!DOCTYPE html>
 <html>
   <head>
-    <h1>Peak-Abu</h1><span style="font-size:11px;color:#3a5244;margin-left:6px;vertical-align:middle;">v0.1.34</span>
+    <h1>Peak-Abu</h1><span style="font-size:11px;color:#3a5244;margin-left:6px;vertical-align:middle;">v0.1.35</span>
     <style>
       * { box-sizing: border-box; }
       body {
@@ -423,6 +423,8 @@
             </button>
             <div class="uc-label" style="margin-top:13px;">Squad</div>
             <div class="member-list" id="memberList"></div>
+            <div id="clipCounter" style="font-size:12px;color:#5f7a6a;text-align:center;margin:6px 0;display:none;"></div>
+            <button class="btn-secondary" id="migrateBtn" onclick="migrateSession()" style="display:none;margin-bottom:6px;">↺ Start New Session for Squad</button>
             <button class="btn-leave" onclick="leaveSession()">Leave Session</button>
           </div>
         </div>
@@ -546,8 +548,8 @@
             </div>
 
             <label>Monitor</label>
-            <select id="monitorSelect" style="margin-bottom:11px;">
-              <option>Loading monitors...</option>
+            <select id="monitorSelect" style="margin-bottom:11px;" onchange="onMonitorChange()">
+              <option value="">Loading monitors...</option>
             </select>
 
             <div class="monitor-active" id="monitorActive" style="display:none;">Recording: <span id="monitorActiveName">—</span></div>
@@ -746,8 +748,14 @@
         var raw = localStorage.getItem('peak_abu_session_history');
         if (!raw) return [];
         var history = JSON.parse(raw);
-        var cutoff = Date.now() - (20 * 24 * 60 * 60 * 1000);
-        history = history.filter(function(h) { return new Date(h.timestamp).getTime() > cutoff; });
+        var legacyCutoff = Date.now() - (20 * 24 * 60 * 60 * 1000);
+        history = history.filter(function(h) {
+          // New entries carry a real expiresAt from the server (tier-based
+          // retention). Older entries saved before this shipped fall back
+          // to the old flat 20-day window so they don't just vanish.
+          if (typeof h.expiresAt === 'number') return Date.now() < h.expiresAt;
+          return new Date(h.timestamp).getTime() > legacyCutoff;
+        });
         return history;
       } catch(e) { return []; }
     }
@@ -756,7 +764,7 @@
       localStorage.setItem('peak_abu_session_history', JSON.stringify(history));
     }
 
-    function addSessionToHistory(code, role) {
+    function addSessionToHistory(code, role, expiresAt) {
       var history = loadSessionHistory();
       // Remove duplicate if exists
       history = history.filter(function(h) { return h.code !== code; });
@@ -764,7 +772,8 @@
         code: code,
         role: role,
         username: window.authUsername,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        expiresAt: (typeof expiresAt === 'number') ? expiresAt : null
       });
       // Cap at max
       while (history.length > SESSION_HISTORY_MAX) history.pop();
@@ -1139,7 +1148,8 @@
           updateMemberList(data.members);
           hudLog('squad','Joined session ' + data.code,'success');
           ipcRenderer.send('session-connected', { code: data.code, username: username });
-          addSessionToHistory(data.code, window.isSessionHost ? 'host' : 'member');
+          addSessionToHistory(data.code, window.isSessionHost ? 'host' : 'member', data.expiresAt);
+          updateClipCounter(data.clipsUsed, data.maxClips);
           if (window.autoStartAfterJoin) {
             window.autoStartAfterJoin = false;
             autoStartRecordingSafe();
@@ -1148,6 +1158,15 @@
 
         window.socket.on('member-joined', function(d) { addMember(d.username, false); hudLog('squad',d.username+' joined','success'); });
         window.socket.on('member-left', function(d) { removeMember(d.username); hudLog('squad',d.username+' left','info'); });
+        window.socket.on('clip-count-update', function(d) { updateClipCounter(d.used, d.max); });
+        window.socket.on('session-migrated', function(d) {
+          hudLog('squad', 'Host started a new session — moving to ' + d.newCode, 'broadcast');
+          var wasHost = window.isSessionHost;
+          window.leaveSession();
+          document.getElementById('joinCodeInput').value = d.newCode;
+          window.isSessionHost = wasHost;
+          connectToSession(d.newCode, window.authUsername);
+        });
         window.socket.on('member-recording-update', function(d) { updateMemberRecording(d.username, d.isRecording); });
 
         window.socket.on('clip-duration-changed', function(d) {
@@ -1195,7 +1214,25 @@
         document.getElementById('memberList').innerHTML = '';
         document.getElementById('clipDurationHost').style.display = 'none';
         document.getElementById('clipDurationMember').style.display = 'none';
+        document.getElementById('clipCounter').style.display = 'none';
+        document.getElementById('migrateBtn').style.display = 'none';
         ipcRenderer.send('session-disconnected');
+      };
+
+      function updateClipCounter(used, max) {
+        var el = document.getElementById('clipCounter');
+        if (!max) { el.style.display = 'none'; return; }
+        el.style.display = 'block';
+        var remaining = max - used;
+        el.textContent = used + ' / ' + max + ' clips used this session' + (remaining <= 15 ? ' — ' + remaining + ' left' : '');
+        el.style.color = remaining <= 15 ? '#f0a5bd' : '#5f7a6a';
+        document.getElementById('migrateBtn').style.display = (window.isSessionHost && remaining <= 15) ? 'block' : 'none';
+      }
+
+      window.migrateSession = function() {
+        if (!window.socket) return;
+        window.socket.emit('migrate-session');
+        hudLog('system', 'Starting a new session for the squad...', 'info');
       };
 
       function updateMemberList(members) {
@@ -1220,6 +1257,19 @@
       // =====================
       // RECORDING
       // =====================
+      window.savedMonitorIndex = null;
+      window.monitorsPopulated = false;
+      function applySavedMonitorSelection() {
+        var sel = document.getElementById('monitorSelect');
+        if (!sel || !window.monitorsPopulated || window.savedMonitorIndex === null) return;
+        var opt = sel.querySelector('option[value="'+window.savedMonitorIndex+'"]');
+        if (opt) sel.value = String(window.savedMonitorIndex);
+      }
+      window.onMonitorChange = function() {
+        var idx = parseInt(document.getElementById('monitorSelect').value);
+        if (!isNaN(idx)) ipcRenderer.send('update-settings', { monitor: idx });
+      };
+
       ipcRenderer.send('get-monitors');
       ipcRenderer.on('monitors-list', function(ev, monitors) {
         var sel = document.getElementById('monitorSelect');
@@ -1230,6 +1280,8 @@
           opt.textContent = 'Monitor '+(i+1)+' — '+m.width+'x'+m.height+(m.primary?' (Primary)':'');
           sel.appendChild(opt);
         });
+        window.monitorsPopulated = true;
+        applySavedMonitorSelection();
       });
 
       async function startAudioCapture() {
@@ -1383,6 +1435,10 @@
               ipcRenderer.invoke('wgc-set-capture-mode', { mode: 'window', windowTitle: s.name });
               window.closeWindowPicker();
               hudLog('system', '🪟 Window selected: ' + s.name, 'success');
+              if (window.pendingAutoStartAfterWindowPick) {
+                window.pendingAutoStartAfterWindowPick = false;
+                autoStartRecordingSafe();
+              }
             };
             grid.appendChild(card);
           });
@@ -1703,8 +1759,13 @@
           return;
         }
 
+        // WGC source IDs don't survive a restart, so an invite arriving in
+        // Window mode has no handle to record. Open the picker and resume
+        // auto-start the moment they choose one.
         if (window.wgcMode === 'window' && !window.wgcSourceId) {
-          hudLog('system', '\u26A0 Joined. Pick a game window, then press Start', 'error');
+          window.pendingAutoStartAfterWindowPick = true;
+          hudLog('system', '\uD83E\uDE9F Joined — pick your game window to start recording', 'info');
+          window.openWindowPicker();
           return;
         }
 
@@ -2006,9 +2067,12 @@
        });
       };
       window.addEventListener('DOMContentLoaded', function() {
-       window.updateSettings();
-       ipcRenderer.invoke('get-current-hdr').then(function(isHdr) {
-         document.getElementById('hdrSelect').value = isHdr ? 'hdr' : 'sdr';
+       ipcRenderer.invoke('get-saved-settings').then(function(saved) {
+         if (saved.fps) document.getElementById('fpsSelect').value = String(saved.fps);
+         if (saved.resolution) document.getElementById('resolutionSelect').value = saved.resolution;
+         document.getElementById('hdrSelect').value = saved.hdr ? 'hdr' : 'sdr';
+         window.savedMonitorIndex = (typeof saved.monitorIndex === 'number') ? saved.monitorIndex : null;
+         applySavedMonitorSelection();
        });
       });
 

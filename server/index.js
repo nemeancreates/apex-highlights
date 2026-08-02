@@ -29,6 +29,7 @@ const { initUploadRoutes } = require('./routes/uploads');
 const { initCompositeRoutes, startCompositeCleanup } = require('./composite');
 const { initSockets } = require('./sockets');
 const { initAiReel } = require('./aireel');
+const { loadCodesFromDisk } = require('./redemption');
 
 // --- App + HTTP + Socket.IO ---
 const app = express();
@@ -86,6 +87,7 @@ initSockets(io);
 // --- Boot ---
 loadUsersFromDisk();
 loadSessionsFromDisk();
+loadCodesFromDisk();
 retryPendingSpacesUploads();
 startRateLimitCleanup();
 startSessionPurge();

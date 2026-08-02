@@ -10,6 +10,10 @@
 //     (members, pendingHighlights, highlightLockedUntil) with no meaning on
 //     disk. Durable parts (session row + uploads) are written through to
 //     SQLite; transient fields reset on load.
+//
+// TIERS: user tier state and per-session tier limits are persisted here.
+// If a field isn't in the upsert statements below it silently vanishes on
+// restart — that's how the first pass of tier support lost redeemed tiers.
 // ================================
 const fs = require('fs');
 const path = require('path');
@@ -22,22 +26,57 @@ const db = require('./db');
 const users = new Map();
 const sessions = new Map();
 
+// A session's expiry: prefer its own tier-derived expiresAt, fall back to
+// the global TTL for sessions created before tiers shipped.
+function sessionExpiryMs(s) {
+  if (typeof s.expiresAt === 'number' && s.expiresAt > 0) return s.expiresAt;
+  return new Date(s.createdAt).getTime() + SESSION_TTL;
+}
+
 // --- Prepared statements (compiled once, reused) ---
 const stmt = {
   upsertUser: db.prepare(`
-    INSERT INTO users (username_lower, username, passwordHash, createdAt)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO users (
+      username_lower, username, passwordHash, createdAt,
+      tier, tierSource, tierExpiresAt,
+      sessionsThisMonth, sessionsMonthKey,
+      bandwidthBytesThisMonth, bandwidthMonthKey, bandwidthAlertedThisMonth
+    )
+    VALUES (
+      @username_lower, @username, @passwordHash, @createdAt,
+      @tier, @tierSource, @tierExpiresAt,
+      @sessionsThisMonth, @sessionsMonthKey,
+      @bandwidthBytesThisMonth, @bandwidthMonthKey, @bandwidthAlertedThisMonth
+    )
     ON CONFLICT(username_lower) DO UPDATE SET
-      passwordHash = excluded.passwordHash
+      passwordHash = excluded.passwordHash,
+      tier = excluded.tier,
+      tierSource = excluded.tierSource,
+      tierExpiresAt = excluded.tierExpiresAt,
+      sessionsThisMonth = excluded.sessionsThisMonth,
+      sessionsMonthKey = excluded.sessionsMonthKey,
+      bandwidthBytesThisMonth = excluded.bandwidthBytesThisMonth,
+      bandwidthMonthKey = excluded.bandwidthMonthKey,
+      bandwidthAlertedThisMonth = excluded.bandwidthAlertedThisMonth
   `),
   allUsers: db.prepare(`SELECT * FROM users`),
 
   upsertSession: db.prepare(`
-    INSERT INTO sessions (code, id, createdBy, createdAt, clipDuration, highlightCount)
-    VALUES (@code, @id, @createdBy, @createdAt, @clipDuration, @highlightCount)
+    INSERT INTO sessions (
+      code, id, createdBy, createdAt, clipDuration, highlightCount,
+      hostTier, expiresAt, maxMembers, maxClips
+    )
+    VALUES (
+      @code, @id, @createdBy, @createdAt, @clipDuration, @highlightCount,
+      @hostTier, @expiresAt, @maxMembers, @maxClips
+    )
     ON CONFLICT(code) DO UPDATE SET
       clipDuration = excluded.clipDuration,
-      highlightCount = excluded.highlightCount
+      highlightCount = excluded.highlightCount,
+      hostTier = excluded.hostTier,
+      expiresAt = excluded.expiresAt,
+      maxMembers = excluded.maxMembers,
+      maxClips = excluded.maxClips
   `),
   deleteSession: db.prepare(`DELETE FROM sessions WHERE code = ?`),
   allSessions: db.prepare(`SELECT * FROM sessions`),
@@ -63,7 +102,16 @@ function loadUsersFromDisk() {
     users.set(row.username_lower, {
       username: row.username,
       passwordHash: row.passwordHash,
-      createdAt: row.createdAt
+      createdAt: row.createdAt,
+      tier: row.tier || 't1',
+      tierSource: row.tierSource || 'default',
+      tierExpiresAt: row.tierExpiresAt ?? null,
+      sessionsThisMonth: row.sessionsThisMonth || 0,
+      sessionsMonthKey: row.sessionsMonthKey || null,
+      bandwidthBytesThisMonth: row.bandwidthBytesThisMonth || 0,
+      bandwidthMonthKey: row.bandwidthMonthKey || null,
+      // SQLite has no boolean type — stored as 0/1, surfaced as a bool
+      bandwidthAlertedThisMonth: !!row.bandwidthAlertedThisMonth
     });
   }
   log('info', 'users_loaded', { count: users.size });
@@ -74,7 +122,20 @@ function loadUsersFromDisk() {
 function saveUsersToDisk() {
   const persist = db.transaction(() => {
     for (const [lower, u] of users) {
-      stmt.upsertUser.run(lower, u.username, u.passwordHash, u.createdAt);
+      stmt.upsertUser.run({
+        username_lower: lower,
+        username: u.username,
+        passwordHash: u.passwordHash,
+        createdAt: u.createdAt,
+        tier: u.tier || 't1',
+        tierSource: u.tierSource || 'default',
+        tierExpiresAt: u.tierExpiresAt ?? null,
+        sessionsThisMonth: u.sessionsThisMonth || 0,
+        sessionsMonthKey: u.sessionsMonthKey ?? null,
+        bandwidthBytesThisMonth: u.bandwidthBytesThisMonth || 0,
+        bandwidthMonthKey: u.bandwidthMonthKey ?? null,
+        bandwidthAlertedThisMonth: u.bandwidthAlertedThisMonth ? 1 : 0
+      });
     }
   });
   try {
@@ -91,8 +152,8 @@ function loadSessionsFromDisk() {
   const now = Date.now();
   let loaded = 0, expired = 0;
   for (const row of stmt.allSessions.all()) {
-    const age = now - new Date(row.createdAt).getTime();
-    if (age > SESSION_TTL) {
+    // Per-session tier retention, with the global TTL as the fallback
+    if (now > sessionExpiryMs(row)) {
       stmt.deleteSession.run(row.code); // cascade drops uploads
       expired++;
       continue;
@@ -105,6 +166,10 @@ function loadSessionsFromDisk() {
       createdAt: row.createdAt,
       clipDuration: row.clipDuration,
       highlightCount: row.highlightCount,
+      hostTier: row.hostTier ?? null,
+      expiresAt: row.expiresAt ?? null,
+      maxMembers: row.maxMembers ?? null,
+      maxClips: row.maxClips ?? null,
       highlightLockedUntil: 0,   // transient — rebuilt live
       pendingHighlights: [],     // transient
       members: [],               // transient
@@ -126,7 +191,11 @@ function saveSessionsToDisk() {
         createdBy: s.createdBy,
         createdAt: s.createdAt,
         clipDuration: s.clipDuration,
-        highlightCount: s.highlightCount || 0
+        highlightCount: s.highlightCount || 0,
+        hostTier: s.hostTier ?? null,
+        expiresAt: s.expiresAt ?? null,
+        maxMembers: s.maxMembers ?? null,
+        maxClips: s.maxClips ?? null
       });
       for (const u of s.uploads) {
         stmt.upsertUpload.run({
@@ -199,13 +268,15 @@ function retryPendingSpacesUploads() {
   if (retried > 0) log('info', 'spaces_retry_queued', { count: retried });
 }
 
-// --- Daily purge of expired sessions (Spaces objects + DB rows) ---
+// --- Hourly purge of expired sessions (Spaces objects + DB rows) ---
+// Honors each session's own tier-based expiresAt; sessions created before
+// tiers shipped fall back to the global SESSION_TTL.
 function startSessionPurge() {
   setInterval(async () => {
     const now = Date.now();
     let purged = 0;
     for (const [code, session] of sessions) {
-      if (now - new Date(session.createdAt).getTime() > SESSION_TTL) {
+      if (now > sessionExpiryMs(session)) {
         for (const up of session.uploads) {
           if (up.videoKey) await deleteFromSpaces(up.videoKey);
           if (up.thumbnailKey) await deleteFromSpaces(up.thumbnailKey);

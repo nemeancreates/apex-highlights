@@ -42,7 +42,7 @@ const MAX_HIGHLIGHTS_PER_SESSION = 200;
 const ALLOWED_CLIP_DURATIONS = [15000, 30000, 60000, 180000];
 
 // --- Session lifetime ---
-const SESSION_TTL = 48 * 60 * 60 * 1000; // 48 hours — beta testing window
+const SESSION_TTL = 48 * 60 * 60 * 1000; // 48 hours — beta testing window / fallback for pre-tier sessions
 
 // --- Uploads ---
 const ALLOWED_EXTENSIONS = ['.mp4', '.json'];
@@ -58,12 +58,48 @@ const SOCKET_RATE_WINDOW = 10000;    // 10 seconds
 const MAX_PENDING_HIGHLIGHTS = 3;    // queued triggers during cooldown lock
 
 // ================================
+// TIERS — the single source of truth for what each tier can do.
+// t1 Free / t2 Creator / t3 Squad / t4 Pro (naming matches the TIER GATE
+// convention already used in aireel.js).
+//
+// hostSessionsPerMonth: max sessions a user of this tier can CREATE per
+// calendar month (does not limit joining others' sessions).
+// clipCap: max total saved highlight clips across the whole session,
+// regardless of who saves them (see sockets/highlights.js + routes/uploads.js).
+// retentionDays: how long an ended session's clips stay in storage before
+// the purge sweep deletes them. 0 = expires in 24h (Free tier).
+// freeMemberSubCap: regardless of host tier, at most this many Free-tier
+// members can be in one session (prevents a Pro host's 41 seats from
+// being filled by freeloaders).
+// ================================
+const TIERS = {
+  t1: { label: 'Free',    canHost: false, memberCap: null, freeMemberSubCap: 2, clipCap: 0,   sessionsPerMonth: 0,  retentionDays: 1,  hasAiReel: false },
+  t2: { label: 'Creator', canHost: true,  memberCap: 5,     freeMemberSubCap: 2, clipCap: 75,  sessionsPerMonth: 50, retentionDays: 3,  hasAiReel: false },
+  t3: { label: 'Squad',   canHost: true,  memberCap: 11,    freeMemberSubCap: 2, clipCap: 175, sessionsPerMonth: 80, retentionDays: 7,  hasAiReel: true  },
+  t4: { label: 'Pro',     canHost: true,  memberCap: 41,    freeMemberSubCap: 2, clipCap: 300, sessionsPerMonth: 70, retentionDays: 14, hasAiReel: true  }
+};
+
+// --- Admin (redemption code generation only — never exposed to the client) ---
+const ADMIN_SECRET = process.env.ADMIN_SECRET || null;
+
+// --- Redemption codes ---
+const REDEMPTION_CODES_FILE = path.join(__dirname, 'redemption-codes.json');
+
+// --- Bandwidth safeguard ---
+// NOTE: media is served straight from the DO Spaces CDN, which never
+// touches this server, so true "bytes pulled" (downloads/playback) isn't
+// observable here. This tracks UPLOAD bytes only, as an approximation —
+// flags any single account that has pushed more than this much in a
+// calendar month so you catch outliers before they skew cost averages.
+const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
+
+// ================================
 // CLIENT VERSION — served at /api/version for the client auto-updater.
 // Update when a new client build is uploaded to the CDN.
 // ================================
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.34',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.34.exe',
+  version: '0.1.35',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.35.exe',
   releaseNotes: 'Database upgrade for improved reliability at scale.'
 };
 
@@ -92,5 +128,9 @@ module.exports = {
   SOCKET_RATE_MAX,
   SOCKET_RATE_WINDOW,
   MAX_PENDING_HIGHLIGHTS,
+  TIERS,
+  ADMIN_SECRET,
+  REDEMPTION_CODES_FILE,
+  BANDWIDTH_ALERT_BYTES,
   LATEST_CLIENT_VERSION
 };

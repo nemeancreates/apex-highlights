@@ -15,12 +15,23 @@ db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
 // --- Schema ---
+// NOTE: CREATE TABLE IF NOT EXISTS only runs on a fresh database. For an
+// EXISTING database the tier columns below are added by the migration
+// block further down — keep the two in sync when adding new columns.
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     username_lower TEXT PRIMARY KEY,
     username       TEXT NOT NULL,
     passwordHash   TEXT NOT NULL,
-    createdAt      TEXT NOT NULL
+    createdAt      TEXT NOT NULL,
+    tier           TEXT NOT NULL DEFAULT 't1',
+    tierSource     TEXT NOT NULL DEFAULT 'default',
+    tierExpiresAt  INTEGER,
+    sessionsThisMonth INTEGER NOT NULL DEFAULT 0,
+    sessionsMonthKey  TEXT,
+    bandwidthBytesThisMonth INTEGER NOT NULL DEFAULT 0,
+    bandwidthMonthKey       TEXT,
+    bandwidthAlertedThisMonth INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS sessions (
@@ -29,7 +40,11 @@ db.exec(`
     createdBy           TEXT NOT NULL,
     createdAt           TEXT NOT NULL,
     clipDuration        INTEGER NOT NULL DEFAULT 30000,
-    highlightCount      INTEGER NOT NULL DEFAULT 0
+    highlightCount      INTEGER NOT NULL DEFAULT 0,
+    hostTier            TEXT,
+    expiresAt           INTEGER,
+    maxMembers          INTEGER,
+    maxClips            INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS uploads (
@@ -52,5 +67,38 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_uploads_session ON uploads(sessionCode);
 `);
+
+// ================================
+// MIGRATIONS — additive only, idempotent, safe to run on every boot.
+//
+// SQLite has no "ADD COLUMN IF NOT EXISTS", so we read the existing
+// column list via PRAGMA and only add what's missing. Existing rows get
+// the DEFAULT (or NULL), so nobody's account or session is disturbed.
+// Adding a column is a metadata-only operation in SQLite — it does not
+// rewrite the table, so this stays fast as the DB grows.
+// ================================
+function addColumnIfMissing(table, column, definition) {
+  const existing = db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
+  if (existing.includes(column)) return false;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  console.log(`DB migration: added ${table}.${column}`);
+  return true;
+}
+
+// users — tier state + monthly counters
+addColumnIfMissing('users', 'tier', "TEXT NOT NULL DEFAULT 't1'");
+addColumnIfMissing('users', 'tierSource', "TEXT NOT NULL DEFAULT 'default'");
+addColumnIfMissing('users', 'tierExpiresAt', 'INTEGER');
+addColumnIfMissing('users', 'sessionsThisMonth', 'INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('users', 'sessionsMonthKey', 'TEXT');
+addColumnIfMissing('users', 'bandwidthBytesThisMonth', 'INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('users', 'bandwidthMonthKey', 'TEXT');
+addColumnIfMissing('users', 'bandwidthAlertedThisMonth', 'INTEGER NOT NULL DEFAULT 0');
+
+// sessions — tier limits captured at creation time
+addColumnIfMissing('sessions', 'hostTier', 'TEXT');
+addColumnIfMissing('sessions', 'expiresAt', 'INTEGER');
+addColumnIfMissing('sessions', 'maxMembers', 'INTEGER');
+addColumnIfMissing('sessions', 'maxClips', 'INTEGER');
 
 module.exports = db;

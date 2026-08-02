@@ -78,6 +78,9 @@ function page({ code, host, memberCount, valid, reason }) {
       <div class="hint" id="hint">Click the code to copy it</div>
       <a class="btn primary" id="openBtn" href="${deepLink}">Open Peak-Abu &amp; Join</a>
       <a class="btn ghost" href="/player?code=${code}">Watch in browser instead</a>
+      <div class="hint" id="handoff" style="display:none;color:${BRAND.teal};margin-top:14px;margin-bottom:0;">
+        Peak-Abu is opening — you can close this tab.
+      </div>
       <div class="foot">
         Nothing happened? <a href="https://peakabu.app" style="color:${BRAND.teal}">Download Peak-Abu</a>,
         then enter code <strong>${code}</strong> in the app.
@@ -92,6 +95,12 @@ ${valid ? `<script>
   // Auto-handoff on load. Browsers may require a gesture for custom
   // schemes, so the button above stays the reliable path.
   setTimeout(function(){ window.location.href = ${JSON.stringify(deepLink)}; }, 400);
+  // Browsers block window.close() on tabs the user navigated to, so the
+  // best we can do is tell them the tab has done its job.
+  setTimeout(function(){
+    var h = document.getElementById('handoff');
+    if (h) h.style.display = 'block';
+  }, 2200);
 
   function copyCode(){
     navigator.clipboard.writeText(${JSON.stringify(code)}).then(function(){

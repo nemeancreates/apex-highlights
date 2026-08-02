@@ -80,10 +80,17 @@ const DEFAULT_CLIPS_DIR = path.join(app.getPath('videos'), 'PeakAbu');
 const USER_PREFS_PATH = path.join(app.getPath('userData'), 'user-preferences.json');
 const CHUNK_SECONDS = 10;
 
+// Shared resolution key <-> dimensions map (used for saving AND applying)
+const RESOLUTION_MAP = {
+  native: null,
+  '720': { width: 1280, height: 720 },
+  '480': { width: 854, height: 480 }
+};
+
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.34',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.34.exe',
-  releaseNotes: 'Game Window Capture (Beta) added — record a specific game window instead of your whole monitor.'
+  version: '0.1.35',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.35.exe',
+  releaseNotes: 'Discord Integration.'
 };
 
 let BUFFER_DIR = DEFAULT_BUFFER_DIR;
@@ -92,6 +99,8 @@ let CLIPS_DIR = DEFAULT_CLIPS_DIR;
 let maxChunks = 18;
 let recordFps = 30;
 let recordResolution = null;
+let recordResolutionKey = 'native'; // 'native' | '720' | '480' — persisted key form
+let savedMonitorIndex = null; // last user-selected monitor index, persisted
 let customHotkey = 'F9';
 let startupHotkeyRegistered = true;
 let captureHdr = false;
@@ -400,57 +409,88 @@ function ensureFolders() {
   if (!fs.existsSync(CLIPS_DIR)) fs.mkdirSync(CLIPS_DIR, { recursive: true });
 }
 
-function loadUserPreferences() {
+// Pure read — parses the prefs file with NO side effects on in-memory
+// globals. Use this (never loadUserPreferences) anywhere you're about to
+// merge a new value in and save. loadUserPreferences() re-derives
+// customHotkey/captureHdr/captureAdapter/wgcCaptureMode/etc. from whatever
+// is still on disk every time it's called, so calling it AFTER setting a
+// new value in memory silently reverts that value back to the old one
+// right before it gets saved — this was the root cause of settings (and
+// the hotkey) not persisting.
+function readPrefsRaw() {
   try {
     if (fs.existsSync(USER_PREFS_PATH)) {
-      const data = fs.readFileSync(USER_PREFS_PATH, 'utf8');
-      const prefs = JSON.parse(data);
-
-      if (prefs.storageDirectory && fs.existsSync(prefs.storageDirectory)) {
-        CLIPS_DIR = path.join(prefs.storageDirectory, 'PeakAbu');
-        BUFFER_DIR = path.join(prefs.storageDirectory, '.apex-highlights-buffer');
-      }
-
-      if (prefs.hotkey && isValidHotkey(prefs.hotkey)) {
-        customHotkey = prefs.hotkey;
-        console.log(`Loaded user hotkey preference: ${customHotkey}`);
-      }
-
-      if (typeof prefs.captureHdr === 'boolean') {
-        captureHdr = prefs.captureHdr;
-        console.log(`Loaded HDR capture preference: ${captureHdr}`);
-      }
-
-      if (typeof prefs.captureAdapter === 'number' || prefs.captureAdapter === null) {
-        captureAdapter = prefs.captureAdapter;
-        console.log(`Loaded capture adapter preference: ${captureAdapter === null ? 'auto' : captureAdapter}`);
-      }
-
-      if (typeof prefs.fullSessionMode === 'boolean') {
-        fullSessionMode = prefs.fullSessionMode;
-        console.log(`Loaded full session mode preference: ${fullSessionMode}`);
-      }
-      if (prefs.fullSessionDir && fs.existsSync(prefs.fullSessionDir)) {
-        fullSessionDir = prefs.fullSessionDir;
-        console.log(`Loaded full session archive dir: ${fullSessionDir}`);
-      }
-
-      if (typeof prefs.wgcCaptureMode === 'boolean') {
-        wgcCaptureMode = prefs.wgcCaptureMode;
-        console.log(`Loaded capture mode preference: ${wgcCaptureMode ? 'Window' : 'Monitor'}`);
-      }
-      if (prefs.wgcLastWindowTitle) {
-        wgcLastWindowTitle = prefs.wgcLastWindowTitle;
-        console.log(`Loaded last window title: ${wgcLastWindowTitle}`);
-      }
-
-      console.log(`Loaded preferences: storageDir=${CLIPS_DIR}`);
-      return prefs;
+      return JSON.parse(fs.readFileSync(USER_PREFS_PATH, 'utf8'));
     }
   } catch (err) {
-    console.log('Could not load user preferences:', err.message);
+    console.log('Could not read user preferences:', err.message);
   }
   return {};
+}
+
+// Applies saved preferences onto in-memory globals. Only call this at
+// startup — calling it mid-session after changing a setting will clobber
+// the change you just made. For read-modify-write, use readPrefsRaw.
+function loadUserPreferences() {
+  const prefs = readPrefsRaw();
+  if (Object.keys(prefs).length === 0) return prefs;
+
+  if (prefs.storageDirectory && fs.existsSync(prefs.storageDirectory)) {
+    CLIPS_DIR = path.join(prefs.storageDirectory, 'PeakAbu');
+    BUFFER_DIR = path.join(prefs.storageDirectory, '.apex-highlights-buffer');
+  }
+
+  if (prefs.hotkey && isValidHotkey(prefs.hotkey)) {
+    customHotkey = prefs.hotkey;
+    console.log(`Loaded user hotkey preference: ${customHotkey}`);
+  }
+
+  if (typeof prefs.captureHdr === 'boolean') {
+    captureHdr = prefs.captureHdr;
+    console.log(`Loaded HDR capture preference: ${captureHdr}`);
+  }
+
+  if (typeof prefs.captureAdapter === 'number' || prefs.captureAdapter === null) {
+    captureAdapter = prefs.captureAdapter;
+    console.log(`Loaded capture adapter preference: ${captureAdapter === null ? 'auto' : captureAdapter}`);
+  }
+
+  if (typeof prefs.fullSessionMode === 'boolean') {
+    fullSessionMode = prefs.fullSessionMode;
+    console.log(`Loaded full session mode preference: ${fullSessionMode}`);
+  }
+  if (prefs.fullSessionDir && fs.existsSync(prefs.fullSessionDir)) {
+    fullSessionDir = prefs.fullSessionDir;
+    console.log(`Loaded full session archive dir: ${fullSessionDir}`);
+  }
+
+  if (typeof prefs.wgcCaptureMode === 'boolean') {
+    wgcCaptureMode = prefs.wgcCaptureMode;
+    console.log(`Loaded capture mode preference: ${wgcCaptureMode ? 'Window' : 'Monitor'}`);
+  }
+  if (prefs.wgcLastWindowTitle) {
+    wgcLastWindowTitle = prefs.wgcLastWindowTitle;
+    console.log(`Loaded last window title: ${wgcLastWindowTitle}`);
+  }
+
+  if (prefs.fps && [30, 60].includes(prefs.fps)) {
+    recordFps = prefs.fps;
+    console.log(`Loaded fps preference: ${recordFps}`);
+  }
+
+  if (prefs.resolution && prefs.resolution in RESOLUTION_MAP) {
+    recordResolutionKey = prefs.resolution;
+    recordResolution = RESOLUTION_MAP[prefs.resolution];
+    console.log(`Loaded resolution preference: ${recordResolutionKey}`);
+  }
+
+  if (typeof prefs.monitorIndex === 'number') {
+    savedMonitorIndex = prefs.monitorIndex;
+    console.log(`Loaded monitor preference: index ${savedMonitorIndex}`);
+  }
+
+  console.log(`Loaded preferences: storageDir=${CLIPS_DIR}`);
+  return prefs;
 }
 
 function saveUserPreferences(prefs) {
@@ -1598,7 +1638,7 @@ function createWindow() {
       const dirPath = result.filePaths[0];
       CLIPS_DIR = path.join(dirPath, 'PeakAbu');
       BUFFER_DIR = path.join(dirPath, '.apex-highlights-buffer');
-      const prefs = loadUserPreferences();
+      const prefs = readPrefsRaw();
       prefs.storageDirectory = dirPath;
       saveUserPreferences(prefs);
       ensureFolders();
@@ -1632,7 +1672,7 @@ function createWindow() {
   ipcMain.handle('wgc-set-capture-mode', (event, { mode, windowTitle }) => {
     wgcCaptureMode = (mode === 'window');
     if (windowTitle !== undefined) wgcLastWindowTitle = windowTitle || null;
-    const prefs = loadUserPreferences();
+    const prefs = readPrefsRaw();
     prefs.wgcCaptureMode = wgcCaptureMode;
     prefs.wgcLastWindowTitle = wgcLastWindowTitle;
     saveUserPreferences(prefs);
@@ -1728,6 +1768,15 @@ function createWindow() {
 
   ipcMain.handle('get-current-hdr', () => captureHdr);
   ipcMain.handle('get-current-adapter', () => captureAdapter);
+
+  // Consolidated settings snapshot for UI restore on launch.
+  ipcMain.handle('get-saved-settings', () => ({
+    fps: recordFps,
+    resolution: recordResolutionKey,
+    monitorIndex: savedMonitorIndex,
+    hotkey: customHotkey,
+    hdr: captureHdr
+  }));
 
   ipcMain.on('save-highlight', () => saveHighlight());
   ipcMain.on('broadcast-save-highlight', (event, { coordinated_timestamp, clipDuration }) => {
@@ -1835,20 +1884,35 @@ function createWindow() {
     if (settings.bufferSeconds && bufferMap[settings.bufferSeconds]) {
       maxChunks = bufferMap[settings.bufferSeconds];
     }
-    if (settings.fps && [30, 60].includes(settings.fps)) recordFps = settings.fps;
 
-    const resMap = {
-      'native': null,
-      '720': { width: 1280, height: 720 },
-      '480': { width: 854, height: 480 }
-    };
-    if (settings.resolution && settings.resolution in resMap) {
-      recordResolution = resMap[settings.resolution];
+    if (settings.fps && [30, 60].includes(settings.fps) && settings.fps !== recordFps) {
+      recordFps = settings.fps;
+      const prefs = readPrefsRaw();
+      prefs.fps = recordFps;
+      saveUserPreferences(prefs);
+      console.log(`FPS set to: ${recordFps}`);
+    }
+
+    if (settings.resolution && settings.resolution in RESOLUTION_MAP && settings.resolution !== recordResolutionKey) {
+      recordResolutionKey = settings.resolution;
+      recordResolution = RESOLUTION_MAP[settings.resolution];
+      const prefs = readPrefsRaw();
+      prefs.resolution = recordResolutionKey;
+      saveUserPreferences(prefs);
+      console.log(`Resolution set to: ${recordResolutionKey}`);
+    }
+
+    if (typeof settings.monitor === 'number' && !Number.isNaN(settings.monitor) && settings.monitor !== savedMonitorIndex) {
+      savedMonitorIndex = settings.monitor;
+      const prefs = readPrefsRaw();
+      prefs.monitorIndex = savedMonitorIndex;
+      saveUserPreferences(prefs);
+      console.log(`Monitor preference set to index ${savedMonitorIndex}`);
     }
 
     if (typeof settings.hdr === 'boolean' && settings.hdr !== captureHdr) {
       captureHdr = settings.hdr;
-      const prefs = loadUserPreferences();
+      const prefs = readPrefsRaw();
       prefs.captureHdr = captureHdr;
       saveUserPreferences(prefs);
       console.log(`HDR capture fix ${captureHdr ? 'ENABLED' : 'disabled'}`);
@@ -1858,22 +1922,25 @@ function createWindow() {
       const a = settings.adapter;
       captureAdapter = (a === null || a === '' || a === 'auto') ? null : parseInt(a, 10);
       if (Number.isNaN(captureAdapter)) captureAdapter = null;
-      const prefs = loadUserPreferences();
+      const prefs = readPrefsRaw();
       prefs.captureAdapter = captureAdapter;
       saveUserPreferences(prefs);
       console.log(`Capture adapter set to: ${captureAdapter === null ? 'auto' : captureAdapter}`);
     }
 
-    if (settings.hotkey && isValidHotkey(settings.hotkey)) {
-      if (customHotkey) globalShortcut.unregister(customHotkey);
-      customHotkey = settings.hotkey;
-      const registered = globalShortcut.register(customHotkey, onHotkeyPressed);
+    if (settings.hotkey && isValidHotkey(settings.hotkey) && settings.hotkey !== customHotkey) {
+      const previousHotkey = customHotkey;
+      if (previousHotkey) globalShortcut.unregister(previousHotkey);
+      const registered = globalShortcut.register(settings.hotkey, onHotkeyPressed);
       if (registered) {
-        const prefs = loadUserPreferences();
+        customHotkey = settings.hotkey;
+        const prefs = readPrefsRaw();
         prefs.hotkey = customHotkey;
         saveUserPreferences(prefs);
+        console.log(`Hotkey set to: ${customHotkey}`);
       } else {
-        mainWindow.webContents.send('hotkey-error', `Failed to register ${customHotkey}. Another app may be using it.`);
+        if (previousHotkey) globalShortcut.register(previousHotkey, onHotkeyPressed);
+        mainWindow.webContents.send('hotkey-error', `Failed to register ${settings.hotkey}. Another app may be using it.`);
       }
     }
   });
@@ -1951,7 +2018,7 @@ function createWindow() {
 
  ipcMain.on('set-full-session-mode', (event, enabled) => {
     fullSessionMode = !!enabled;
-    const prefs = loadUserPreferences();
+    const prefs = readPrefsRaw();
     prefs.fullSessionMode = enabled;
     saveUserPreferences(prefs);
     fullSessionMode = !!enabled;
@@ -1993,7 +2060,7 @@ function createWindow() {
     });
     if (!result.canceled && result.filePaths.length > 0) {
       fullSessionDir = result.filePaths[0];
-      const prefs = loadUserPreferences();
+      const prefs = readPrefsRaw();
       prefs.fullSessionDir = fullSessionDir;
       saveUserPreferences(prefs);
       return { success: true, path: fullSessionDir };
@@ -2005,7 +2072,7 @@ function createWindow() {
 
   ipcMain.handle('clear-fullsession-directory', () => {
     fullSessionDir = null;
-    const prefs = loadUserPreferences();
+    const prefs = readPrefsRaw();
     delete prefs.fullSessionDir;
     saveUserPreferences(prefs);
     return { path: getArchiveBaseDir() };

@@ -13,3 +13,6 @@ server/peakabu.db-shm
 server/peakabu.db-wal
 logs/server.log
 logs/usage.log
+logs/
+server/aiprofiles.json
+ecosystem.config.js

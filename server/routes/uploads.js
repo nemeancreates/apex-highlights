@@ -1,7 +1,7 @@
 // ================================
 // UPLOAD ROUTE — multer config, content verification, Spaces handoff.
 // The single biggest route in the app; lives alone so it has room to grow
-// (per-tier upload limits will land here).
+// (per-tier upload limits live here — see session.maxClips).
 // ================================
 const fs = require('fs');
 const path = require('path');
@@ -15,10 +15,11 @@ const {
   MAX_FILE_SIZE,
   MAX_HIGHLIGHTS_PER_SESSION
 } = require('../config');
-const { sessions, saveSessionsToDisk } = require('../stores');
+const { sessions, saveSessionsToDisk, users, saveUsersToDisk } = require('../stores');
 const { isSpacesEnabled, uploadToSpaces } = require('../spaces');
 const { enqueueThumbnail } = require('../media');
 const { requireAuth } = require('../auth');
+const { trackBandwidth } = require('../redemption');
 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
@@ -72,16 +73,14 @@ function initUploadRoutes(app, io) {
       return res.status(403).json({ error: 'You are not a member of this session' });
     }
 
-    // 200 highlights per session = up to 200 clips per member.
-    // Cap is per-uploader so one member's volume can't starve the squad,
-    // with an absolute session backstop of 200 x current member count.
-    const uploaderClipCount = session.uploads.filter(u => u.username === uploaderName).length;
-    if (uploaderClipCount >= MAX_HIGHLIGHTS_PER_SESSION) {
-      return safeError(res, 400, 'Highlight limit reached for this session (200 per member).');
-    }
-    const sessionUploadCap = MAX_HIGHLIGHTS_PER_SESSION * Math.max(session.members.length, 1);
-    if (session.uploads.length >= sessionUploadCap) {
-      return safeError(res, 400, 'Upload limit reached for this session.');
+    // Tier-based cap: session.maxClips is set at creation from the host's
+    // tier (see routes/sessions.js). Total across all uploaders — not
+    // per-member — matching the "clips per session" tier limits. Sessions
+    // created before tiers shipped won't have maxClips; fall back to the
+    // old per-member formula so they don't suddenly break.
+    const sessionClipCap = session.maxClips || (MAX_HIGHLIGHTS_PER_SESSION * Math.max(session.members.length, 1));
+    if (session.uploads.length >= sessionClipCap) {
+      return safeError(res, 400, `Clip limit reached for this session (${sessionClipCap}). Host can start a new session to keep going.`);
     }
 
     upload.fields([
@@ -186,6 +185,10 @@ function initUploadRoutes(app, io) {
 
       session.uploads.push(uploadRecord);
       saveSessionsToDisk();
+
+      // Bandwidth safeguard — see config.js note on why this tracks upload
+      // bytes rather than true CDN egress.
+      trackBandwidth(uploaderName, videoFile.size, users, saveUsersToDisk);
 
       log('info', 'upload_received', { session: code, username: uploaderName, sizeMB: (videoFile.size / 1024 / 1024).toFixed(1) });
       logUsage('upload', {

@@ -1,44 +1,84 @@
 // ================================
 // SESSION ROUTES — create a session, read session state, list uploads.
+// createSessionForUser() is shared with the migrate-session socket
+// handler in sockets/index.js so "start a new session" behaves identically
+// whether it comes from the button or the API.
 // ================================
 const { v4: uuidv4 } = require('uuid');
 const { log } = require('../logger');
 const { sanitizeUsername, sanitizeCode, safeError, generateCode } = require('../utils');
-const { MAX_SESSIONS } = require('../config');
-const { sessions } = require('../stores');
-const { requireAuth } = require('../auth');
+const { MAX_SESSIONS, MAX_MEMBERS_PER_SESSION, TIERS } = require('../config');
+const { sessions, users, saveUsersToDisk } = require('../stores');
+const { requireAuth, getEffectiveTier, getMonthKey } = require('../auth');
+
+// Shared by POST /sessions and the migrate-session socket handler.
+// Returns { session } on success or { error, status } on failure.
+function createSessionForUser(rawUsername) {
+  const username = sanitizeUsername(rawUsername);
+  if (!username) return { error: 'Invalid account username', status: 400 };
+
+  const user = users.get(rawUsername.toLowerCase());
+  const tier = getEffectiveTier(user);
+  const tierConfig = TIERS[tier];
+
+  if (!tierConfig.canHost) {
+    return { error: "Free tier can't host a session — upgrade to Creator, Squad, or Pro.", status: 403 };
+  }
+
+  const monthKey = getMonthKey();
+  if (user.sessionsMonthKey !== monthKey) {
+    user.sessionsMonthKey = monthKey;
+    user.sessionsThisMonth = 0;
+  }
+  if (user.sessionsThisMonth >= tierConfig.sessionsPerMonth) {
+    return { error: `Monthly session limit reached for ${tierConfig.label} (${tierConfig.sessionsPerMonth}/mo). Resets next month.`, status: 403 };
+  }
+
+  if (sessions.size >= MAX_SESSIONS) {
+    return { error: 'Server is at capacity. Try again later.', status: 503 };
+  }
+
+  let code = generateCode();
+  while (sessions.has(code)) code = generateCode();
+
+  const now = Date.now();
+  const session = {
+    id: uuidv4(),
+    code,
+    createdBy: username,
+    hostTier: tier,
+    createdAt: new Date().toISOString(),
+    expiresAt: now + tierConfig.retentionDays * 24 * 60 * 60 * 1000,
+    maxMembers: tierConfig.memberCap,
+    maxClips: tierConfig.clipCap,
+    clipDuration: 30000,        // default 30s — host can change
+    highlightLockedUntil: 0,    // timestamp when session-wide lock expires
+    highlightCount: 0,          // coordinated highlight triggers this session
+    pendingHighlights: [],      // triggers that arrived during lock — fired in order
+    members: [],
+    uploads: []
+  };
+
+  sessions.set(code, session);
+  user.sessionsThisMonth++;
+  saveUsersToDisk();
+  log('info', 'session_created', { code, createdBy: username, hostTier: tier, sessionsThisMonth: user.sessionsThisMonth });
+
+  return { session };
+}
 
 function initSessionRoutes(app) {
   app.post('/sessions', requireAuth, (req, res) => {
-    const username = sanitizeUsername(req.user.username);
-    if (!username) {
-      return safeError(res, 400, 'Invalid account username');
-    }
-
-    if (sessions.size >= MAX_SESSIONS) {
-      return safeError(res, 503, 'Server is at capacity. Try again later.');
-    }
-
-    let code = generateCode();
-    while (sessions.has(code)) code = generateCode();
-
-    const session = {
-      id: uuidv4(),
-      code,
-      createdBy: username,
-      createdAt: new Date().toISOString(),
-      clipDuration: 30000,        // default 30s — host can change
-      highlightLockedUntil: 0,    // timestamp when session-wide lock expires
-      highlightCount: 0,          // coordinated highlight triggers this session
-      pendingHighlights: [],      // triggers that arrived during lock — fired in order
-      members: [],
-      uploads: []
-    };
-
-    sessions.set(code, session);
-    log('info', 'session_created', { code, createdBy: username });
-
-    res.status(201).json({ sessionCode: code, sessionId: session.id });
+    const result = createSessionForUser(req.user.username);
+    if (result.error) return safeError(res, result.status, result.error);
+    const s = result.session;
+    res.status(201).json({
+      sessionCode: s.code,
+      sessionId: s.id,
+      maxMembers: s.maxMembers,
+      maxClips: s.maxClips,
+      expiresAt: s.expiresAt
+    });
   });
 
   app.get('/sessions/:code', (req, res) => {
@@ -52,7 +92,11 @@ function initSessionRoutes(app) {
       code: session.code,
       createdBy: session.createdBy,
       createdAt: session.createdAt,
+      expiresAt: session.expiresAt || null,
       clipDuration: session.clipDuration,
+      maxMembers: session.maxMembers || MAX_MEMBERS_PER_SESSION,
+      maxClips: session.maxClips || null,
+      clipsUsed: session.highlightCount || 0,
       members: session.members.map(m => ({
         username: m.username,
         isRecording: m.isRecording,
@@ -73,4 +117,4 @@ function initSessionRoutes(app) {
   });
 }
 
-module.exports = { initSessionRoutes };
+module.exports = { initSessionRoutes, createSessionForUser };
