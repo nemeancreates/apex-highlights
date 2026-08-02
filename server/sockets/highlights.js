@@ -31,13 +31,11 @@ function fireCoordinatedHighlight(io, sessionCode, session, username, coordinate
     clipDuration
   });
 
-  // session.maxClips is set at creation from the host's tier (see
-  // routes/sessions.js); falls back to the old global constant for
-  // sessions created before tiers shipped.
-  io.to(sessionCode).emit('clip-count-update', {
-    used: session.highlightCount,
-    max: session.maxClips || MAX_HIGHLIGHTS_PER_SESSION
-  });
+  // NOTE: the clip-count-update the UI listens for is emitted from
+  // routes/uploads.js as each member's upload actually lands — not here.
+  // highlightCount (a per-trigger-press stat, not per-upload) undercounts
+  // real usage once a squad has more than 1 member, so it's kept only as
+  // a general stat and no longer drives the live counter or the cap.
 
   // Tell every client to lock their save button
   io.to(sessionCode).emit('highlight-cooldown', {
@@ -85,10 +83,18 @@ function registerHighlightHandlers(io, socket) {
 
     const pending = session.pendingHighlights = session.pendingHighlights || [];
 
-    // Session clip cap — count fired + already-queued triggers. Uses the
-    // host's tier-based cap (session.maxClips) when present.
+    // Session clip cap — projected against squad size, see block below.
+    // client saves and uploads its own POV per trigger, so a 2-person squad
+    // consumes 2 clips per "Save" press, not 1. session.uploads is the same
+    // array routes/uploads.js pushes to as files are actually accepted, so
+    // this stays in sync with what's really costing storage.
     const clipCap = session.maxClips || MAX_HIGHLIGHTS_PER_SESSION;
-    if ((session.highlightCount || 0) + pending.length >= clipCap) {
+    const uploadsSoFar = session.uploads ? session.uploads.length : 0;
+    const squadSize = Math.max(session.members.length, 1);
+    // +1 for the trigger being requested right now, plus one full round
+    // per trigger already sitting in the queue waiting to fire
+    const projected = uploadsSoFar + (pending.length + 1) * squadSize;
+    if (projected > clipCap) {
       socket.emit('error-message', { message: 'Clip limit reached for this session (' + clipCap + '). Host can start a new session to keep going.' });
       return;
     }

@@ -205,6 +205,15 @@ function initUploadRoutes(app, io) {
         uploadId: uploadRecord.id
       });
 
+      // Authoritative clip counter: this is what actually costs storage,
+      // counted per-upload (per-POV) rather than per "Save" press — a
+      // 2-person squad consumes 2 clips per trigger, and this reflects
+      // that as each person's file lands, not when the button is pressed.
+      io.to(code).emit('clip-count-update', {
+        used: session.uploads.length,
+        max: session.maxClips || MAX_HIGHLIGHTS_PER_SESSION
+      });
+
       res.status(201).json({
         message: 'Upload successful',
         uploadId: uploadRecord.id
