@@ -73,7 +73,7 @@ const MAX_PENDING_HIGHLIGHTS = 3;    // queued triggers during cooldown lock
 // being filled by freeloaders).
 // ================================
 const TIERS = {
-  t1: { label: 'Free',    canHost: false, memberCap: null, freeMemberSubCap: 2, clipCap: 0,   sessionsPerMonth: 0,  retentionDays: 1,  hasAiReel: false },
+  t1: { label: 'Free',    canHost: true,  memberCap: 2,    freeMemberSubCap: 2, clipCap: 20,  sessionsPerMonth: 6,  retentionDays: 1,  hasAiReel: false },
   t2: { label: 'Creator', canHost: true,  memberCap: 5,     freeMemberSubCap: 2, clipCap: 75,  sessionsPerMonth: 50, retentionDays: 3,  hasAiReel: false },
   t3: { label: 'Squad',   canHost: true,  memberCap: 11,    freeMemberSubCap: 2, clipCap: 175, sessionsPerMonth: 80, retentionDays: 7,  hasAiReel: true  },
   t4: { label: 'Pro',     canHost: true,  memberCap: 41,    freeMemberSubCap: 2, clipCap: 300, sessionsPerMonth: 70, retentionDays: 14, hasAiReel: true  }
