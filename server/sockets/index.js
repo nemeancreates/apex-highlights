@@ -58,15 +58,6 @@ function initSockets(io) {
       const joinerUser = users.get(cleanUsername.toLowerCase());
       const joinerTier = getEffectiveTier(joinerUser);
 
-      // Free-tier sub-cap applies regardless of host tier — prevents a
-      // Pro host filling a 41-seat session with free-tier freeloaders.
-      if (joinerTier === 't1') {
-        const freeCount = session.members.filter(m => m.tier === 't1').length;
-        if (freeCount >= 2) {
-          socket.emit('error-message', { message: 'This session already has the max number of Free-tier members (2). Ask the host to upgrade.' });
-          return;
-        }
-      }
 
       const member = {
         socketId: socket.id,
