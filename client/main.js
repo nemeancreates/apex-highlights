@@ -80,6 +80,341 @@ const DEFAULT_CLIPS_DIR = path.join(app.getPath('videos'), 'PeakAbu');
 const USER_PREFS_PATH = path.join(app.getPath('userData'), 'user-preferences.json');
 const CHUNK_SECONDS = 10;
 
+// ================================
+// GAME DETECTION + WINDOW FILTERING
+// Two jobs:
+//   1. Keep Spotify / Steam / Explorer / browsers out of the Game Window
+//      picker so users only see plausible capture targets.
+//   2. Identify which game is running, for session history labelling (and
+//      later, auto-capture genre selection).
+// Process names are compared lowercase, without ".exe".
+// ================================
+
+// Known games → display name + genre. Genre drives the auto-capture settle
+// window in a later release; harmless to carry now.
+const GAME_PROCESS_MAP = {
+  // --- Shooters
+  'valorant-win64-shipping': { name: 'VALORANT', genre: 'shooter' },
+  'valorant':                { name: 'VALORANT', genre: 'shooter' },
+  'cs2':                     { name: 'Counter-Strike 2', genre: 'shooter' },
+  'csgo':                    { name: 'CS:GO', genre: 'shooter' },
+  'overwatch':               { name: 'Overwatch 2', genre: 'shooter' },
+  'rainbowsix':              { name: 'Rainbow Six Siege', genre: 'shooter' },
+  'rainbowsixgame':          { name: 'Rainbow Six Siege', genre: 'shooter' },
+  'destiny2':                { name: 'Destiny 2', genre: 'shooter' },
+  'escapefromtarkov':        { name: 'Escape from Tarkov', genre: 'shooter' },
+  'huntgame':                { name: 'Hunt: Showdown', genre: 'shooter' },
+  'discovery':               { name: 'THE FINALS', genre: 'shooter' },
+  'marvel-win64-shipping':   { name: 'Marvel Rivals', genre: 'shooter' },
+  'helldivers2':             { name: 'Helldivers 2', genre: 'shooter' },
+  'warframe.x64':            { name: 'Warframe', genre: 'shooter' },
+  'modernwarfare':           { name: 'Call of Duty', genre: 'shooter' },
+  'cod':                     { name: 'Call of Duty', genre: 'shooter' },
+  'blackopscoldwar':         { name: 'Call of Duty', genre: 'shooter' },
+  'titanfall2':              { name: 'Titanfall 2', genre: 'shooter' },
+  'thefinals':               { name: 'THE FINALS', genre: 'shooter' },
+  'gta5':                    { name: 'GTA V', genre: 'shooter' },
+  'gta5_enhanced':           { name: 'GTA V Enhanced', genre: 'shooter' },
+  'rdr2':                    { name: 'Red Dead Redemption 2', genre: 'shooter' },
+
+  // --- Battle royale (longer settle windows — sustained fights)
+  'r5apex':                    { name: 'Apex Legends', genre: 'battle_royale' },
+  'r5apex_dx12':               { name: 'Apex Legends', genre: 'battle_royale' },
+  'fortniteclient-win64-shipping': { name: 'Fortnite', genre: 'battle_royale' },
+  'tslgame':                   { name: 'PUBG', genre: 'battle_royale' },
+  'warzone':                   { name: 'Warzone', genre: 'battle_royale' },
+  'naraka':                    { name: 'Naraka: Bladepoint', genre: 'battle_royale' },
+
+  // --- Survival / crafting
+  'minecraft.windows':   { name: 'Minecraft', genre: 'survival' },
+  'javaw':               { name: 'Minecraft (Java)', genre: 'survival' },
+  'valheim':             { name: 'Valheim', genre: 'survival' },
+  'rustclient':          { name: 'Rust', genre: 'survival' },
+  'sonsofthaforest':     { name: 'Sons of the Forest', genre: 'survival' },
+  'sonsoftheforest':     { name: 'Sons of the Forest', genre: 'survival' },
+  '7daystodie':          { name: '7 Days to Die', genre: 'survival' },
+  'projectzomboid':      { name: 'Project Zomboid', genre: 'survival' },
+  'palworld-win64-shipping': { name: 'Palworld', genre: 'survival' },
+  'shootergame':         { name: 'ARK', genre: 'survival' },
+  'dayz':                { name: 'DayZ', genre: 'survival' },
+  'satisfactory':        { name: 'Satisfactory', genre: 'survival' },
+  'factorio':            { name: 'Factorio', genre: 'survival' },
+  'terraria':            { name: 'Terraria', genre: 'survival' },
+
+  // --- MOBA
+  'league of legends':   { name: 'League of Legends', genre: 'moba' },
+  'dota2':               { name: 'Dota 2', genre: 'moba' },
+  'smite':               { name: 'SMITE', genre: 'moba' },
+  'project8':            { name: 'Deadlock', genre: 'moba' },
+  'deadlock':            { name: 'Deadlock', genre: 'moba' },
+  'heroesofthestorm_x64':{ name: 'Heroes of the Storm', genre: 'moba' },
+
+  // --- Horror (mic reactions carry the signal)
+  'phasmophobia':        { name: 'Phasmophobia', genre: 'horror' },
+  'deadbydaylight-win64-shipping': { name: 'Dead by Daylight', genre: 'horror' },
+  'lethal company':      { name: 'Lethal Company', genre: 'horror' },
+  'lethalcompany':       { name: 'Lethal Company', genre: 'horror' },
+  'devour':              { name: 'DEVOUR', genre: 'horror' },
+  'contentwarning':      { name: 'Content Warning', genre: 'horror' },
+  'rEPO':                { name: 'R.E.P.O.', genre: 'horror' },
+
+  // --- Sports / racing (near-constant audio floor)
+  'rocketleague':        { name: 'Rocket League', genre: 'sports_racing' },
+  'forzahorizon5':       { name: 'Forza Horizon 5', genre: 'sports_racing' },
+  'forza_gaming.desktop.x64_release': { name: 'Forza', genre: 'sports_racing' },
+  'acc':                 { name: 'Assetto Corsa Competizione', genre: 'sports_racing' },
+  'assettocorsa':        { name: 'Assetto Corsa', genre: 'sports_racing' },
+  'iracingsim64dx11':    { name: 'iRacing', genre: 'sports_racing' },
+  'beamng.drive.x64':    { name: 'BeamNG.drive', genre: 'sports_racing' },
+  'f1_24':               { name: 'F1 24', genre: 'sports_racing' },
+  'fc25':                { name: 'EA FC', genre: 'sports_racing' },
+  'nba2k25':             { name: 'NBA 2K', genre: 'sports_racing' }
+};
+
+// Never show these in the picker. This is the fix for "Spotify and a random
+// Steam window show up as capture targets".
+const NON_GAME_PROCESSES = new Set([
+  // Browsers
+  'chrome','msedge','firefox','brave','opera','opera_gx','vivaldi','iexplore','safari',
+  // Chat / social / media
+  'spotify','discord','discordptb','discordcanary','slack','teams','ms-teams','zoom',
+  'telegram','whatsapp','signal','thunderbird','skype','vlc','mpc-hc64','mpc-hc',
+  'itunes','applemusic','musicbee','foobar2000','audacity',
+  // Launchers / storefronts
+  'steam','steamwebhelper','epicgameslauncher','battle.net','battle.net helper',
+  'ubisoftconnect','upc','galaxyclient','eadesktop','ealauncher','origin','riotclientux',
+  'riotclientservices','playnite.desktoppapp','playnite.fullscreenapp','itch',
+  // Capture / streaming (avoid recursive capture)
+  'obs64','obs32','streamlabs obs','streamlabs','xsplit.core','nvcontainer',
+  'nvidia share','nvidia overlay','medal','outplayed','peak-abu','electron',
+  // Windows shell / system
+  'explorer','applicationframehost','textinputhost','shellexperiencehost','searchhost',
+  'searchapp','startmenuexperiencehost','systemsettings','taskmgr','lockapp',
+  'widgets','widgetservice','sihost','dwm','rundll32','msinfo32','control',
+  // Dev / office
+  'code','devenv','rider64','idea64','pycharm64','webstorm64','sublime_text',
+  'notepad','notepad++','winword','excel','powerpnt','outlook','onenote','msaccess',
+  'windowsterminal','cmd','powershell','pwsh','conhost','wt','git-gui','gitkraken',
+  'photoshop','illustrator','afterfx','premiere pro','blender','figma','krita','gimp',
+  // Misc utilities
+  '7zfm','winrar','calculator','snippingtool','sndvol','mspaint','msedgewebview2'
+]);
+
+// Titles that are always shell chrome, regardless of process
+const NON_GAME_TITLE_PATTERNS = [
+  /^program manager$/i,
+  /^windows input experience$/i,
+  /^microsoft text input application$/i,
+  /^task manager$/i,
+  /^settings$/i,
+  /^search$/i,
+  /^start$/i,
+  /^peak-abu/i,
+  /^new notification$/i,
+  /^volume mixer$/i
+];
+
+function normalizeProcName(n) {
+  return String(n || '').replace(/\.exe$/i, '').trim().toLowerCase();
+}
+
+function lookupGame(procName) {
+  const key = normalizeProcName(procName);
+  if (!key) return null;
+  if (GAME_PROCESS_MAP[key]) return GAME_PROCESS_MAP[key];
+  // Loose match for versioned/shipping variants (e.g. FooGame-Win64-Shipping)
+  for (const k of Object.keys(GAME_PROCESS_MAP)) {
+    if (key.startsWith(k) || k.startsWith(key)) return GAME_PROCESS_MAP[k];
+  }
+  return null;
+}
+
+// Unknown process: assume it's a game unless it's clearly not. Erring toward
+// "show it" here is deliberate — a hard filter would hide someone's obscure
+// indie title with no way to recover. The "Show all windows" checkbox in the
+// picker is the escape hatch for anything this still gets wrong.
+function isLikelyGameProcess(procName, title) {
+  const key = normalizeProcName(procName);
+  if (NON_GAME_TITLE_PATTERNS.some(re => re.test(String(title || '').trim()))) return false;
+  if (!key) return false;                 // no process match at all — hide by default
+  if (NON_GAME_PROCESSES.has(key)) return false;
+  if (/^(microsoft|windows|nvidia|amd|intel|realtek|logitech|razer|corsair|steelseries)/i.test(key)) return false;
+  return true;
+}
+
+// Single source of truth for "what windows exist". Used by both the picker
+// and game detection so they can't disagree.
+function enumerateWindowsPS() {
+  return new Promise((resolve) => {
+    const ps = spawn('powershell.exe', [
+      '-NoProfile', '-Command',
+      "Get-Process | Where-Object {$_.MainWindowTitle -ne ''} | Select-Object ProcessName,MainWindowTitle | ConvertTo-Json -Compress"
+    ], { windowsHide: true });
+
+    let out = '';
+    ps.stdout.on('data', d => out += d.toString());
+    ps.on('close', () => {
+      try {
+        let parsed = JSON.parse(out);
+        if (!Array.isArray(parsed)) parsed = [parsed];
+        resolve(parsed
+          .filter(w => w.MainWindowTitle && w.MainWindowTitle.trim() !== '')
+          .filter(w => w.MainWindowTitle !== 'Peak-Abu')
+          .map(w => ({ processName: w.ProcessName, title: w.MainWindowTitle })));
+      } catch (e) {
+        resolve([]);
+      }
+    });
+    ps.on('error', () => resolve([]));
+  });
+}
+
+// ================================
+// DOCKED / WINDOWED WEB PLAYER
+// Default: the player rides inside the main window as a WebContentsView on
+// the right ~2/3, client shrinks to the left 1/3. Windowed mode (settings
+// toggle) opens it as its own BrowserWindow that dies with the main window.
+// ================================
+let playerView = null;
+let playerWindow = null;
+let playerWindowedMode = false;
+let playerDockedWidth = 0;       // px reserved from the right edge (view + gutter); 0 = not yet computed
+const PLAYER_GUTTER = 4;         // width of the visible drag handle, carved out of the reserved zone
+const MIN_PLAYER_VIEW = 360;     // floor for the visible player area
+const MIN_CLIENT_WIDTH = 520;    // floor for the client column — this is what stops the squish
+
+function defaultPlayerDockedWidth(winWidth) {
+  // Client gets the majority share by default (~55%); drag the divider for more.
+  return Math.round(winWidth * 0.45);
+}
+
+function clampPlayerDockedWidth(desired, winWidth) {
+  // In windowed mode, there's no view taking up space in the main window,
+  // so the client-width floor doesn't apply — it's purely a docked-mode
+  // concern. Just clamp the player side (it still needs a minimum).
+  if (playerWindowedMode) {
+    const minAllowed = MIN_PLAYER_VIEW + PLAYER_GUTTER;
+    return Math.max(minAllowed, desired);
+  }
+
+  const minAllowed = MIN_PLAYER_VIEW + PLAYER_GUTTER;
+  const maxAllowed = Math.max(minAllowed, winWidth - MIN_CLIENT_WIDTH);
+  return Math.min(maxAllowed, Math.max(minAllowed, desired));
+}
+
+function playerUrlFor(code) {
+  const clean = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+  return clean.length >= 4
+    ? `https://peakabu.app/player?code=${clean}`
+    : 'https://peakabu.app/player';
+}
+
+function layoutPlayerView() {
+  if (!playerView || !mainWindow || mainWindow.isDestroyed()) return;
+  const [w, h] = mainWindow.getContentSize();
+
+  if (!playerDockedWidth) playerDockedWidth = defaultPlayerDockedWidth(w);
+  playerDockedWidth = clampPlayerDockedWidth(playerDockedWidth, w);
+
+  // The reserved zone is [player view][gutter]. The gutter is deliberately
+  // NOT covered by the native view, so the renderer's divider/close button
+  // (drawn in the base webContents layer) stay visible and clickable —
+  // a WebContentsView renders above the window's own content wherever
+  // their bounds overlap, so anything drawn under it would be invisible.
+  const viewWidth = playerDockedWidth - PLAYER_GUTTER;
+  playerView.setBounds({ x: w - viewWidth, y: 0, width: viewWidth, height: h });
+
+  // Read back what the view ACTUALLY got rather than trusting what we asked
+  // for. Electron can adjust bounds, and getContentSize() (DIP) may not match
+  // the renderer's window.innerWidth (CSS px) on scaled displays — which is
+  // what leaves a gap between the divider and where the view really starts.
+  const applied = playerView.getBounds();
+  const actualViewLeft = applied.x;
+  const actualViewWidth = applied.width;
+
+  console.log(
+    `[dock] w=${w} viewWidth=${viewWidth} appliedX=${applied.x} appliedW=${applied.width} ` +
+    `reserved=${playerDockedWidth} gutter=${PLAYER_GUTTER} dividerShouldBeAt=${w - playerDockedWidth + PLAYER_GUTTER}`
+  );
+
+  mainWindow.webContents.send('player-docked', {
+    docked: true,
+    reservedRight: playerDockedWidth,
+    gutter: PLAYER_GUTTER,
+    // Authoritative geometry, straight from the applied bounds
+    viewLeft: actualViewLeft,
+    viewWidth: actualViewWidth,
+    contentWidth: w
+  });
+}
+
+function openDockedPlayer(code) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const { WebContentsView } = require('electron');
+  if (playerView) {
+    playerView.webContents.loadURL(playerUrlFor(code));
+    layoutPlayerView();
+    return;
+  }
+  playerView = new WebContentsView({
+    webPreferences: { nodeIntegration: false, contextIsolation: true }
+  });
+  mainWindow.contentView.addChildView(playerView);
+  playerView.webContents.loadURL(playerUrlFor(code));
+  layoutPlayerView();
+  console.log('Web player docked into main window');
+}
+
+function closeDockedPlayer() {
+  if (!playerView) return;
+  try { mainWindow.contentView.removeChildView(playerView); } catch (e) {}
+  try { playerView.webContents.close(); } catch (e) {}
+  playerView = null;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('player-docked', { docked: false, reservedRight: 0 });
+  }
+  console.log('Docked web player closed');
+}
+
+function openWindowedPlayer(code) {
+  // Guarantee any leftover docked-mode UI (drag handle, close button) is
+  // cleared the moment we go windowed, even if nothing was docked this
+  // session — this is what was leaving a stale close button on screen.
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('player-docked', { docked: false, reservedRight: 0 });
+  }
+
+  if (playerWindow && !playerWindow.isDestroyed()) {
+    playerWindow.webContents.loadURL(playerUrlFor(code));
+    playerWindow.show();
+    playerWindow.focus();
+    return;
+  }
+
+  const b = mainWindow.getBounds();
+  playerWindow = new BrowserWindow({
+    width: Math.round(b.width * 0.62),
+    height: b.height,
+    x: b.x + Math.round(b.width * 0.38),
+    y: b.y,
+    title: 'Peak-Abu Player',
+    backgroundColor: '#0a1611',
+    webPreferences: { nodeIntegration: false, contextIsolation: true }
+  });
+  playerWindow.setMenuBarVisibility(false);
+  playerWindow.loadURL(playerUrlFor(code));
+  playerWindow.on('closed', () => { playerWindow = null; });
+  console.log('Web player opened in its own window');
+}
+
+function closeAnyPlayer() {
+  closeDockedPlayer();
+  if (playerWindow && !playerWindow.isDestroyed()) {
+    try { playerWindow.destroy(); } catch (e) {}
+  }
+  playerWindow = null;
+}
+
 // Shared resolution key <-> dimensions map (used for saving AND applying)
 const RESOLUTION_MAP = {
   native: null,
@@ -88,8 +423,8 @@ const RESOLUTION_MAP = {
 };
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.35',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.35.exe',
+  version: '0.1.36',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.36.exe',
   releaseNotes: 'Discord Integration.'
 };
 
@@ -468,6 +803,16 @@ function loadUserPreferences() {
     wgcCaptureMode = prefs.wgcCaptureMode;
     console.log(`Loaded capture mode preference: ${wgcCaptureMode ? 'Window' : 'Monitor'}`);
   }
+  if (typeof prefs.playerWindowedMode === 'boolean') {
+    playerWindowedMode = prefs.playerWindowedMode;
+    console.log(`Loaded web player mode: ${playerWindowedMode ? 'separate window' : 'docked'}`);
+  }
+
+  if (typeof prefs.playerDockedWidth === 'number' && prefs.playerDockedWidth > 0) {
+    playerDockedWidth = prefs.playerDockedWidth;
+    console.log(`Loaded docked player width: ${playerDockedWidth}px`);
+  }
+
   if (prefs.wgcLastWindowTitle) {
     wgcLastWindowTitle = prefs.wgcLastWindowTitle;
     console.log(`Loaded last window title: ${wgcLastWindowTitle}`);
@@ -1597,11 +1942,25 @@ app.commandLine.appendSwitch('enable-features', 'WebRtcAllowInputVolumeAdjustmen
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 900, height: 700,
+    width: 1440, height: 840,
+    minWidth: 1020, minHeight: 640,
+    show: false,                 // avoid the un-maximized flash on launch
+    backgroundColor: '#0a1611',
     webPreferences: {
       nodeIntegration: true, contextIsolation: false, experimentalFeatures: true
     }
   });
+
+  // Open maximized (not kiosk fullscreen — the title bar has to stay usable
+  // for the docked player split and for dragging the window between monitors)
+  mainWindow.maximize();
+  mainWindow.once('ready-to-show', () => mainWindow.show());
+
+  // Keep the docked player pinned to the right 2/3 through any resize
+  mainWindow.on('resize', () => layoutPlayerView());
+  mainWindow.on('maximize', () => layoutPlayerView());
+  mainWindow.on('unmaximize', () => layoutPlayerView());
+  mainWindow.on('closed', () => { closeAnyPlayer(); });
 
   mainWindow.loadFile('index.html');
   if (!app.isPackaged) mainWindow.webContents.openDevTools();
@@ -1647,21 +2006,53 @@ function createWindow() {
     return { success: false };
   });
 
-  ipcMain.handle('wgc-list-windows', async () => {
+  ipcMain.handle('wgc-list-windows', async (event, opts) => {
+    const includeAll = !!(opts && opts.includeAll);
     const { desktopCapturer } = require('electron');
     const sources = await desktopCapturer.getSources({
       types: ['window'],
       thumbnailSize: { width: 320, height: 180 },
       fetchWindowIcons: true
     });
-    return sources
+
+    // desktopCapturer only gives us the window TITLE. Cross-reference against
+    // the process list so we can filter on executable name, which is far more
+    // reliable — "Spotify Premium" as a title is easy to miss, spotify.exe isn't.
+    const procByTitle = new Map();
+    try {
+      const wins = await enumerateWindowsPS();
+      wins.forEach(w => procByTitle.set(w.title, w.processName));
+    } catch (e) {
+      console.log('Window/process cross-reference failed:', e.message);
+    }
+
+    const mapped = sources
       .filter(s => s.name && s.name.trim() !== '' && s.name !== 'Peak-Abu')
-      .map(s => ({
-        id: s.id,
-        name: s.name,
-        thumbnailDataUrl: s.thumbnail ? s.thumbnail.toDataURL() : null,
-        appIconDataUrl: s.appIcon ? s.appIcon.toDataURL() : null
-      }));
+      .map(s => {
+        const proc = procByTitle.get(s.name) || '';
+        const known = lookupGame(proc);
+        return {
+          id: s.id,
+          name: s.name,
+          processName: proc,
+          knownGame: known ? known.name : null,
+          genre: known ? known.genre : null,
+          isGame: !!known || isLikelyGameProcess(proc, s.name),
+          thumbnailDataUrl: s.thumbnail ? s.thumbnail.toDataURL() : null,
+          appIconDataUrl: s.appIcon ? s.appIcon.toDataURL() : null
+        };
+      });
+
+    const filtered = includeAll ? mapped.slice() : mapped.filter(m => m.isGame);
+    // Recognised titles float to the top
+    filtered.sort((a, b) => (b.knownGame ? 1 : 0) - (a.knownGame ? 1 : 0));
+
+    return {
+      windows: filtered,
+      totalCount: mapped.length,
+      hiddenCount: mapped.length - filtered.length,
+      filtered: !includeAll
+    };
   });
 
   ipcMain.handle('wgc-get-capture-mode', () => ({
@@ -1729,32 +2120,7 @@ function createWindow() {
     }
   });
 
-  ipcMain.handle('get-windows', async () => {
-    return new Promise((resolve) => {
-      const ps = spawn('powershell.exe', [
-        '-NoProfile', '-Command',
-        "Get-Process | Where-Object {$_.MainWindowTitle -ne ''} | Select-Object ProcessName,MainWindowTitle | ConvertTo-Json -Compress"
-      ], { windowsHide: true });
-
-      let out = '';
-      ps.stdout.on('data', d => out += d.toString());
-      ps.on('close', () => {
-        try {
-          let parsed = JSON.parse(out);
-          if (!Array.isArray(parsed)) parsed = [parsed];
-          const windows = parsed
-            .filter(w => w.MainWindowTitle && w.MainWindowTitle.trim() !== '')
-            .filter(w => w.MainWindowTitle !== 'Peak-Abu')
-            .map(w => ({ processName: w.ProcessName, title: w.MainWindowTitle }));
-          resolve(windows);
-        } catch (e) {
-          console.log('Window enum parse failed:', e.message);
-          resolve([]);
-        }
-      });
-      ps.on('error', () => resolve([]));
-    });
-  });
+  ipcMain.handle('get-windows', async () => enumerateWindowsPS());
 
   ipcMain.handle('get-storage-directory', () => CLIPS_DIR);
   ipcMain.handle('is-first-launch', () => !loadUserPreferences().hasLaunched);
@@ -2092,6 +2458,180 @@ function createWindow() {
 
   ipcMain.handle('get-current-hotkey', () => customHotkey);
   ipcMain.handle('get-hotkey-registered', () => startupHotkeyRegistered);
+
+  // ================================
+  // CLEAN UNINSTALL
+  // Wipes the buffer directory we know about (NSIS can't see a custom
+  // storage path), then hands off to the real NSIS uninstaller. Saved
+  // highlight videos and their .json sidecars are never touched.
+  // ================================
+  ipcMain.handle('run-uninstall', async () => {
+    // Stop capture first so nothing holds a file handle open
+    try { stopRecordingInternal(); } catch (e) {}
+
+    const wiped = [];
+    const tryWipe = (p, isDir) => {
+      try {
+        if (!p || !fs.existsSync(p)) return;
+        if (isDir) fs.rmSync(p, { recursive: true, force: true });
+        else fs.unlinkSync(p);
+        wiped.push(p);
+      } catch (e) {
+        console.log(`Uninstall cleanup skipped ${p}: ${e.message}`);
+      }
+    };
+
+    tryWipe(BUFFER_DIR, true);            // active buffer (may be custom path)
+    tryWipe(DEFAULT_BUFFER_DIR, true);    // default temp buffer
+    tryWipe(path.join(os.tmpdir(), 'peakabu-ffmpeg.log'), false);
+    try {
+      fs.readdirSync(os.tmpdir())
+        .filter(f => /^PeakAbu-Update-\d+\.exe$/i.test(f))
+        .forEach(f => tryWipe(path.join(os.tmpdir(), f), false));
+    } catch (e) {}
+
+    console.log(`Uninstall pre-clean removed ${wiped.length} item(s)`);
+
+    if (!app.isPackaged) {
+      return { success: false, error: 'Uninstall is only available in the installed build (not dev mode).', wiped: wiped.length };
+    }
+
+    const installDir = path.dirname(process.execPath);
+    const candidates = [
+      'Uninstall Peak-Abu.exe',
+      'Uninstall peak-abu.exe',
+      'Uninstall.exe'
+    ].map(c => path.join(installDir, c));
+    const uninstaller = candidates.find(p => fs.existsSync(p));
+
+    if (!uninstaller) {
+      return { success: false, error: 'Uninstaller not found. Use Windows Settings > Apps to remove Peak-Abu.', wiped: wiped.length };
+    }
+
+    try {
+      const { shell } = require('electron');
+      await shell.openPath(uninstaller);
+      setTimeout(() => app.quit(), 1500);
+      return { success: true, wiped: wiped.length };
+    } catch (err) {
+      return { success: false, error: err.message, wiped: wiped.length };
+    }
+  });
+
+  // ================================
+  // WEB PLAYER — docked view or its own window
+  // ================================
+  ipcMain.handle('open-player', (event, payload) => {
+    const code = payload && payload.code;
+    if (playerWindowedMode) {
+      closeDockedPlayer();
+      openWindowedPlayer(code);
+      return { mode: 'windowed' };
+    }
+    if (playerWindow && !playerWindow.isDestroyed()) {
+      try { playerWindow.destroy(); } catch (e) {}
+      playerWindow = null;
+    }
+    openDockedPlayer(code);
+    return { mode: 'docked' };
+  });
+
+  ipcMain.handle('close-player', () => {
+    closeAnyPlayer();
+    return { success: true };
+  });
+
+  // Live drag — fires on every pointermove while resizing. Cheap enough
+  // over same-process IPC to just round-trip and let layoutPlayerView's
+  // clamp be the single source of truth (renderer never has to guess it).
+  ipcMain.on('resize-player-width', (event, desiredWidth) => {
+    if (!playerView || !mainWindow || mainWindow.isDestroyed()) return;
+    // Always clamp against a FRESH read of content size, not a cached one —
+    // this is what guarantees the value echoed back to the renderer matches
+    // where the view is actually placed, even if the window changed size
+    // (e.g. mid-maximize) between the last layout and this drag event.
+    playerDockedWidth = desiredWidth;
+    layoutPlayerView();
+  });
+
+  // Fires once on release — persists the chosen width so it survives restart.
+  ipcMain.on('resize-player-width-commit', (event, desiredWidth) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    playerDockedWidth = desiredWidth;
+    layoutPlayerView();
+    const prefs = readPrefsRaw();
+    prefs.playerDockedWidth = playerDockedWidth;
+    saveUserPreferences(prefs);
+  });
+
+
+  ipcMain.handle('is-player-open', () =>
+    !!playerView || !!(playerWindow && !playerWindow.isDestroyed()));
+
+  ipcMain.handle('get-player-windowed-mode', () => playerWindowedMode);
+
+  ipcMain.handle('set-player-windowed-mode', (event, enabled) => {
+    const wasOpen = !!playerView || !!(playerWindow && !playerWindow.isDestroyed());
+    let code = null;
+    if (playerView) {
+      try { code = new URL(playerView.webContents.getURL()).searchParams.get('code'); } catch (e) {}
+    } else if (playerWindow && !playerWindow.isDestroyed()) {
+      try { code = new URL(playerWindow.webContents.getURL()).searchParams.get('code'); } catch (e) {}
+    }
+
+    playerWindowedMode = !!enabled;
+    const prefs = readPrefsRaw();
+    prefs.playerWindowedMode = playerWindowedMode;
+    saveUserPreferences(prefs);
+    console.log(`Web player mode: ${playerWindowedMode ? 'separate window' : 'docked'}`);
+
+    // Move an already-open player into the newly chosen mode
+    if (wasOpen) {
+      closeAnyPlayer();
+      if (playerWindowedMode) openWindowedPlayer(code);
+      else openDockedPlayer(code);
+    } else if (playerWindowedMode && mainWindow && !mainWindow.isDestroyed()) {
+      // Nothing was open yet, but switching to windowed still needs to
+      // clear any stale docked-UI state from an earlier session.
+      mainWindow.webContents.send('player-docked', { docked: false, reservedRight: 0 });
+    }
+    return { windowed: playerWindowedMode };
+  });
+
+  // ================================
+  // GAME DETECTION — best-effort label for session history
+  // ================================
+  ipcMain.handle('detect-game', async () => {
+    let wins = [];
+    try { wins = await enumerateWindowsPS(); } catch (e) { return null; }
+
+    // Known title wins outright
+    for (const w of wins) {
+      const g = lookupGame(w.processName);
+      if (g) {
+        return { name: g.name, genre: g.genre, process: w.processName, title: w.title, known: true };
+      }
+    }
+
+    // If they picked a specific window for WGC, trust that over a guess
+    if (wgcCaptureMode && wgcLastWindowTitle) {
+      const match = wins.find(w => w.title === wgcLastWindowTitle);
+      return {
+        name: wgcLastWindowTitle,
+        genre: 'shooter',
+        process: match ? match.processName : '',
+        title: wgcLastWindowTitle,
+        known: false
+      };
+    }
+
+    // Fall back to the first plausible non-shell window
+    const guess = wins.find(w => isLikelyGameProcess(w.processName, w.title));
+    if (guess) {
+      return { name: guess.title, genre: 'shooter', process: guess.processName, title: guess.title, known: false };
+    }
+    return null;
+  });
 }
 
 
@@ -2121,6 +2661,7 @@ let isCleaningUp = false;
 
 app.on('before-quit', async (event) => {
   if (isCleaningUp) return;
+  closeAnyPlayer();
   if (ffmpegProcess) {
     event.preventDefault();
     isCleaningUp = true;

@@ -6,7 +6,7 @@
 // ================================
 const { log } = require('../logger');
 const { MAX_HIGHLIGHTS_PER_SESSION, MAX_PENDING_HIGHLIGHTS } = require('../config');
-const { sessions } = require('../stores');
+const { sessions, clipWeightForDuration } = require('../stores');
 const { checkSocketRate } = require('../ratelimit');
 
 // Fires a coordinated save to all clients, locks the session, and on
@@ -83,17 +83,28 @@ function registerHighlightHandlers(io, socket) {
 
     const pending = session.pendingHighlights = session.pendingHighlights || [];
 
-    // Session clip cap — projected against squad size, see block below.
+    // Session clip cap — projected against squad size AND clip weight.
     // client saves and uploads its own POV per trigger, so a 2-person squad
     // consumes 2 clips per "Save" press, not 1. session.uploads is the same
     // array routes/uploads.js pushes to as files are actually accepted, so
     // this stays in sync with what's really costing storage.
+    //
+    // WEIGHT: the real weight of an upload isn't known until it lands
+    // (routes/uploads.js reads durationMs from the metadata sidecar), so
+    // this projects using the session's CONFIGURED clip duration as a
+    // stand-in — the length every manual save actually targets. Once
+    // auto-capture (batch 3) can run past the fixed clipDuration, this
+    // projection becomes an estimate rather than exact; routes/uploads.js
+    // remains the authoritative source once files actually land.
     const clipCap = session.maxClips || MAX_HIGHLIGHTS_PER_SESSION;
-    const uploadsSoFar = session.uploads ? session.uploads.length : 0;
+    const weightedSoFar = session.uploads
+      ? session.uploads.reduce((sum, u) => sum + (u.clipWeight || 1), 0)
+      : 0;
     const squadSize = Math.max(session.members.length, 1);
+    const perTriggerWeight = clipWeightForDuration(session.clipDuration || 30000);
     // +1 for the trigger being requested right now, plus one full round
     // per trigger already sitting in the queue waiting to fire
-    const projected = uploadsSoFar + (pending.length + 1) * squadSize;
+    const projected = weightedSoFar + (pending.length + 1) * squadSize * perTriggerWeight;
     if (projected > clipCap) {
       socket.emit('error-message', { message: 'Clip limit reached for this session (' + clipCap + '). Host can start a new session to keep going.' });
       return;

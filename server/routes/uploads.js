@@ -15,7 +15,7 @@ const {
   MAX_FILE_SIZE,
   MAX_HIGHLIGHTS_PER_SESSION
 } = require('../config');
-const { sessions, saveSessionsToDisk, users, saveUsersToDisk } = require('../stores');
+const { sessions, saveSessionsToDisk, users, saveUsersToDisk, clipWeightForDuration } = require('../stores');
 const { isSpacesEnabled, uploadToSpaces } = require('../spaces');
 const { enqueueThumbnail } = require('../media');
 const { requireAuth } = require('../auth');
@@ -78,8 +78,18 @@ function initUploadRoutes(app, io) {
     // per-member — matching the "clips per session" tier limits. Sessions
     // created before tiers shipped won't have maxClips; fall back to the
     // old per-member formula so they don't suddenly break.
+    //
+    // WEIGHTED CAP: this pre-check runs before the file is even parsed, so
+    // the real duration/weight of THIS upload isn't known yet — it assumes
+    // weight 1 (the common case) as a soft gate. The authoritative weighted
+    // total is written after the file lands (see below), where the actual
+    // durationMs from the metadata sidecar is known. A single clip landing
+    // right at the cap can therefore push the weighted total slightly over;
+    // that's accepted rather than blocking uploads on a size we can't know
+    // in advance without buffering the whole file first.
     const sessionClipCap = session.maxClips || (MAX_HIGHLIGHTS_PER_SESSION * Math.max(session.members.length, 1));
-    if (session.uploads.length >= sessionClipCap) {
+    const weightedSoFar = session.uploads.reduce((sum, u) => sum + (u.clipWeight || 1), 0);
+    if (weightedSoFar >= sessionClipCap) {
       return safeError(res, 400, `Clip limit reached for this session (${sessionClipCap}). Host can start a new session to keep going.`);
     }
 
@@ -115,6 +125,8 @@ function initUploadRoutes(app, io) {
         return safeError(res, 400, 'Invalid file content. File must be a valid MP4.');
       }
 
+      let parsedDurationMs = null;
+
       if (req.files.metadata) {
         const metaFile = req.files.metadata[0];
         if (!verifyJSON(metaFile.path)) {
@@ -123,7 +135,19 @@ function initUploadRoutes(app, io) {
           log('warn', 'upload_rejected', { reason: 'invalid_metadata', session: code, username: uploaderName });
           return safeError(res, 400, 'Invalid metadata format.');
         }
+        // Pull durationMs for weight calculation — best-effort. A metadata
+        // read failure here just falls back to weight 1, it doesn't fail
+        // the upload; the video itself already passed verification.
+        try {
+          const metaJson = JSON.parse(fs.readFileSync(metaFile.path, 'utf8'));
+          const d = metaJson.durationMs;
+          if (typeof d === 'number' && isFinite(d) && d > 0) parsedDurationMs = d;
+        } catch (e) {
+          log('warn', 'duration_parse_failed', { session: code, error: e.message });
+        }
       }
+
+      const clipWeight = clipWeightForDuration(parsedDurationMs);
 
       const thumbName = `thumb_${path.basename(videoFile.filename, '.mp4')}.jpg`;
       const thumbPath = path.join(path.dirname(videoFile.path), thumbName);
@@ -180,7 +204,9 @@ function initUploadRoutes(app, io) {
         thumbnailKey: null,
         metadataKey: null,
         uploadedAt: new Date().toISOString(),
-        fileSize: videoFile.size
+        fileSize: videoFile.size,
+        durationMs: parsedDurationMs,
+        clipWeight: clipWeight
       };
 
       session.uploads.push(uploadRecord);
@@ -190,14 +216,19 @@ function initUploadRoutes(app, io) {
       // bytes rather than true CDN egress.
       trackBandwidth(uploaderName, videoFile.size, users, saveUsersToDisk);
 
-      log('info', 'upload_received', { session: code, username: uploaderName, sizeMB: (videoFile.size / 1024 / 1024).toFixed(1) });
+      log('info', 'upload_received', {
+        session: code, username: uploaderName,
+        sizeMB: (videoFile.size / 1024 / 1024).toFixed(1),
+        durationMs: parsedDurationMs, clipWeight
+      });
       logUsage('upload', {
         session: code,
         username: uploaderName,
         uploadId: uploadRecord.id,
         sizeMB: parseFloat((videoFile.size / 1024 / 1024).toFixed(2)),
         memberCount: session.members.length,
-        createdBy: session.createdBy
+        createdBy: session.createdBy,
+        clipWeight
       });
 
       io.to(code).emit('upload-received', {
@@ -205,12 +236,13 @@ function initUploadRoutes(app, io) {
         uploadId: uploadRecord.id
       });
 
-      // Authoritative clip counter: this is what actually costs storage,
-      // counted per-upload (per-POV) rather than per "Save" press — a
-      // 2-person squad consumes 2 clips per trigger, and this reflects
-      // that as each person's file lands, not when the button is pressed.
+      // Authoritative clip counter: WEIGHTED total, not a flat per-upload
+      // count. A 4-6 minute clip costs 2 against the cap instead of 1 —
+      // this is what actually reflects storage/bandwidth cost now that
+      // clip length varies (batch 3's auto-capture can save up to 6min).
+      const weightedUsed = session.uploads.reduce((sum, u) => sum + (u.clipWeight || 1), 0);
       io.to(code).emit('clip-count-update', {
-        used: session.uploads.length,
+        used: weightedUsed,
         max: session.maxClips || MAX_HIGHLIGHTS_PER_SESSION
       });
 

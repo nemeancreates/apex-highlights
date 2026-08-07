@@ -145,25 +145,65 @@ function downloadInstaller(url, onProgress) {
 
 // Launch the installer detached and quit the current app.
 // --updated flag tells NSIS to skip the "welcome" page and go straight to install.
+// Launch the installer SILENTLY and quit. /S puts NSIS in silent mode
+// (no wizard, no "uninstall the old version?" prompt) and --force-run
+// relaunches Peak-Abu when the install finishes. That's the one-click path.
+//
+// Silent spawn can be swallowed by SmartScreen on an unsigned build, so if
+// the child process doesn't survive its first few seconds we fall back to
+// shell.openPath, which surfaces the SmartScreen click-through properly.
+// Once OV signing lands, the fallback should stop firing.
 function runInstallerAndQuit(installerPath) {
+  let handedOff = false;
+
+  const fallbackVisible = (why) => {
+    if (handedOff) return;
+    handedOff = true;
+    console.log(`[updater] Falling back to visible installer (${why})`);
+    try {
+      const { shell } = require('electron');
+      shell.openPath(installerPath).then((err) => {
+        if (err) {
+          console.error('[updater] shell.openPath failed:', err);
+          dialog.showErrorBox('Update Failed',
+            'Could not launch the installer. Please download manually from peakabu.app.');
+          return;
+        }
+        setTimeout(() => app.quit(), 1500);
+      });
+    } catch (err) {
+      console.error('[updater] Failed to launch installer:', err.message);
+      dialog.showErrorBox('Update Failed',
+        'Could not launch the installer. Please download manually from peakabu.app.');
+    }
+  };
+
   try {
-    // shell.openPath hands the .exe to Windows properly — UAC prompt
-    // surfaces correctly and SmartScreen can show its click-through.
-    // spawn() with detached:true silently dies on both without an OV cert.
-    const { shell } = require('electron');
-    shell.openPath(installerPath).then((err) => {
-      if (err) {
-        console.error('[updater] shell.openPath failed:', err);
-        dialog.showErrorBox('Update Failed',
-          'Could not launch the installer. Please download manually from peakabu.app.');
-      }
+    const child = spawn(installerPath, ['/S', '--force-run'], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true
     });
-    // Give shell.openPath a beat to hand off to Windows before quitting
-    setTimeout(() => app.quit(), 1500);
+
+    child.on('error', (err) => fallbackVisible('spawn error: ' + err.message));
+
+    // A silent NSIS installer that dies instantly means it never really ran.
+    child.on('exit', (code) => {
+      if (!handedOff && code !== 0) fallbackVisible('installer exited ' + code);
+    });
+
+    child.unref();
+
+    // Survived long enough to be real — hand off and get out of the way so
+    // the installer can replace our files.
+    setTimeout(() => {
+      if (handedOff) return;
+      handedOff = true;
+      console.log('[updater] Silent installer running — quitting to let it finish');
+      app.quit();
+    }, 2500);
   } catch (err) {
-    console.error('[updater] Failed to launch installer:', err.message);
-    dialog.showErrorBox('Update Failed',
-      'Could not launch the installer. Please download manually from peakabu.app.');
+    fallbackVisible('spawn threw: ' + err.message);
   }
 }
 

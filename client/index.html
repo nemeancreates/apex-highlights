@@ -177,6 +177,23 @@
 
       .uc-label { font-size: 11px; color: #5f7a6a; text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 5px; }
 
+      /* ===== Session title + local note ===== */
+      .session-title-row {
+        display: flex; align-items: center; justify-content: center; gap: 6px;
+        margin: 6px 0 2px; font-size: 14px; color: #8fbfa3;
+      }
+      .session-title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+      .session-title-text.untitled { color: #45604f; font-style: italic; }
+      .session-title-game {
+        text-align: center; font-size: 11px; color: #3a5244; margin-bottom: 6px;
+      }
+      .session-note-row {
+        display: flex; align-items: center; justify-content: center; gap: 6px;
+        margin: 0 0 8px; font-size: 12px; color: #5f7a6a;
+      }
+      .session-note-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; font-style: italic; }
+      .session-note-text.empty::before { content: 'Add a private note'; color: #3a5244; font-style: italic; }
+
       /* ===== Player link ===== */
       .player-link { display: block; text-align: center; margin: 7px 0; font-size: 13px; color: #39d3a0; text-decoration: none; }
       .player-link:hover { text-decoration: underline; color: #4fe0b0; }
@@ -197,7 +214,7 @@
 
       /* ===== Members ===== */
       .member-list {
-        overflow-y: auto; min-height: 0; max-height: 172px;
+        overflow-y: auto; min-height: 0; max-height: 248px;
         padding-right: 4px; margin: 5px 0;
       }
       .member-list::-webkit-scrollbar { width: 6px; }
@@ -293,28 +310,98 @@
       .upload-progress-fill.success { background: #39d3a0; }
       .upload-progress-fill.error { background: #f0857a; }
 
-      /* ===== HUD ===== */
-      .hud-card { background: #0f2318; border: 1px solid #1e3527; border-radius: 10px; margin-top: 13px; }
-      .hud-tabs { display: flex; gap: 3px; padding: 0 7px; }
+    /* ===== HUD — vertical icon rail on the left, pane on the right ===== */
+      .hud-card {
+        background: #0f2318; border: 1px solid #1e3527; border-radius: 10px;
+        display: flex; overflow: hidden;
+      }
+      .hud-rail {
+        display: flex; flex-direction: column; gap: 2px;
+        padding: 6px 4px; background: #0d1e15;
+        border-right: 1px solid #1e3527; flex-shrink: 0;
+      }
       .hud-tab {
-        flex: none; width: auto; margin: 0; padding: 10px 16px; font-size: 14px;
-        background: transparent; border: 1px solid transparent; border-bottom: none;
-        color: #5f7a6a; border-radius: 8px 8px 0 0;
+        position: relative; width: 38px; height: 38px; margin: 0; padding: 0;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 16px; background: transparent; border: 1px solid transparent;
+        color: #5f7a6a; border-radius: 7px; transition: background .15s, color .15s;
       }
-      .hud-tab:hover { background: transparent; color: #8fbfa3; border-color: transparent; border-bottom: none; }
-      .hud-tab.active { background: #0c1c14; border: 1px solid #24402e; border-bottom: none; color: #39d3a0; font-weight: 500; }
+      .hud-tab:hover { background: #14291d; color: #8fbfa3; border-color: transparent; }
+      .hud-tab.active { background: #0c1c14; border-color: #24402e; color: #39d3a0; }
       .hud-tab .tab-badge {
-        display: inline-block; min-width: 14px; padding: 1px 4px; margin-left: 3px;
-        background: #1d9e75; color: #04140d; border-radius: 8px; font-size: 9px; font-weight: 700;
+        position: absolute; top: 2px; right: 2px;
+        min-width: 13px; padding: 0 3px; line-height: 13px;
+        background: #1d9e75; color: #04140d; border-radius: 7px;
+        font-size: 9px; font-weight: 700; text-align: center;
       }
+      .hud-body { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+      .hud-title {
+        font-size: 11px; color: #39d3a0; text-transform: uppercase; letter-spacing: 1px;
+        padding: 10px 14px 8px; border-bottom: 1px solid #1e3527; flex-shrink: 0;
+      }
+      /* Fixed height ≈ 5 history rows. Every HUD tab now scrolls past that
+         point instead of growing the whole card into an endless list. */
+      .hud-panes { height: 264px; background: #0c1c14; }
       .hud-pane {
-        display: none; height: 132px; overflow-y: auto;
-        background: #0c1c14; border-top: 1px solid #24402e; border-radius: 0 0 10px 10px; padding: 8px 14px;
+        display: none; height: 100%; overflow-y: auto; padding: 8px 14px;
       }
       .hud-pane.active { display: block; }
       .hud-pane::-webkit-scrollbar { width: 6px; }
       .hud-pane::-webkit-scrollbar-thumb { background: #24402e; border-radius: 3px; }
       .hud-empty { color: #3a5244; font-size: 13px; text-align: center; padding: 30px 0; font-style: italic; }
+
+      /* ===== History rows ===== */
+      .hist-item {
+        padding: 6px 0; border-bottom: 1px solid #14291d; cursor: pointer;
+      }
+      .hist-item:last-child { border-bottom: none; }
+      .hist-top { display: flex; align-items: center; gap: 6px; font-size: 14px; color: #7a9686; }
+      .hist-code { color: #c8d6cd; font-family: 'Consolas', monospace; letter-spacing: 1px; }
+      .hist-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #8fbfa3; }
+      .hist-edit {
+        width: auto; padding: 0 4px; margin: 0; font-size: 12px; line-height: 1;
+        background: transparent; border: none; color: #3a5244; flex-shrink: 0;
+      }
+      .hist-edit:hover { background: transparent; border: none; color: #39d3a0; }
+      .hist-meta { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: #45604f; margin-top: 2px; }
+      .hist-meta .exp-ok { color: #5f7a6a; }
+      .hist-meta .exp-soon { color: #d8a838; }
+      .hist-meta .exp-dead { color: #f0857a; }
+
+      /* ===== Docked web player: reserve room on the right ===== */
+      body.player-docked { align-items: flex-start; }
+
+      /* Below this, force a single column rather than letting the grid
+         squeeze the two halves into an unreadable mess. Dragging the
+         divider is clamped well above this point, but it's a backstop. */
+      @media (max-width: 640px) {
+        .grid { grid-template-columns: 1fr; }
+      }
+
+      /* ===== Docked player: drag handle + close control =====
+         Both are positioned with `right: Npx`, the same coordinate basis
+         main.js uses for the native view's bounds — they stay aligned
+         with the view's edge automatically as the window resizes. */
+      .dock-divider {
+        display: none;
+        position: fixed; top: 0; bottom: 0; left: 0;
+        cursor: col-resize; background: #1e3527; z-index: 50;
+        transition: background 0.1s;
+      }
+      .dock-divider.show { display: block; }
+      .dock-divider:hover, .dock-divider.dragging { background: #39d3a0; }
+
+      .dock-close-btn {
+        display: none;
+        position: fixed; top: 54px; left: 0;
+        width: 22px; height: 22px; border-radius: 4px;
+        background: #12251a; border: 1px solid #24402e; color: #f0a5bd;
+        align-items: center; justify-content: center;
+        cursor: pointer; z-index: 51; font-size: 11px; line-height: 1;
+      }
+      .dock-close-btn.show { display: flex; }
+      .dock-close-btn:hover { background: #3a1622; border-color: #7a3149; }
+
       .clip-item {
         background: transparent; padding: 5px 0; margin: 0; border-radius: 0;
         font-size: 14px; word-break: break-all; display: flex; justify-content: space-between; gap: 6px; color: #7a9686;
@@ -348,6 +435,8 @@
     </style>
   </head>
   <body>
+    <div class="dock-divider" id="dockDivider" title="Drag to resize"></div>
+    <div class="dock-close-btn" id="dockCloseBtn" title="Close web player" onclick="closeDockedPlayer()">✕</div>
     <div class="app">
 
       <div class="header">
@@ -362,7 +451,7 @@
               </svg>
             </button>
           </div>
-          <span class="version-tag">v0.1.35</span>
+          <span class="version-tag">v0.1.36</span>
         </div>
         <button class="btn-secondary btn-sm" onclick="openSettings()">⚙ Settings</button>
       </div>
@@ -378,8 +467,24 @@
             <label>Video Storage Location</label>
             <div class="storage-path" id="storagePathDisplay">Loading...</div>
             <button class="btn-secondary" style="width:100%;margin-bottom:16px;" onclick="pickStorageDirectory()">📁 Change Storage Directory</button>
+
             <hr style="border:1px solid #1e3527;margin:16px 0;">
-            <button class="btn-secondary" style="width:100%;" onclick="openUninstallGuide()">🗑 Uninstall Peak-Abu</button>
+
+            <div class="fs-toggle-row" style="margin:0 0 4px;">
+              <div class="fs-toggle-label">
+                <span style="font-size:13px;color:#8fbfa3;">Web Player in a separate window</span>
+              </div>
+              <label class="switch" style="margin:0;">
+                <input type="checkbox" id="playerWindowedToggle" onchange="onPlayerWindowedToggle()" />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <p style="font-size:11px;color:#3a5244;margin:0 0 16px;">Off: the player docks inside Peak-Abu and closes with it.</p>
+
+            <hr style="border:1px solid #1e3527;margin:16px 0;">
+
+            <button class="btn-leave" style="width:100%;" onclick="runUninstall()">🗑 Uninstall Peak-Abu</button>
+            <p style="font-size:11px;color:#3a5244;text-align:center;margin-top:6px;">Your saved highlight videos are never deleted.</p>
           </div>
         </div>
       </div>
@@ -478,7 +583,21 @@
             <div class="uc-label">Session Code — click to copy</div>
             <div class="session-code" id="sessionCodeDisplay" onclick="copySessionCode()">------</div>
             <div class="hint" id="sessionCodeHint">Click the code to copy to clipboard</div>
-            <a class="player-link" id="playerLink" href="#" target="_blank">🌐 Open in Web Player</a>
+
+            <!-- SESSION TITLE — server-synced, any member can set/change it -->
+            <div class="session-title-row" id="sessionTitleRow">
+              <span class="session-title-text" id="sessionTitleText">Untitled session</span>
+              <button class="hist-edit" id="sessionTitleEditBtn" onclick="editSessionTitle()" title="Rename this session for everyone">✏</button>
+            </div>
+            <div class="session-title-game" id="sessionTitleGame" style="display:none;"></div>
+
+            <!-- LOCAL NOTE — client-only, never sent to server or other members -->
+            <div class="session-note-row" id="sessionNoteRow">
+              <span class="session-note-text" id="sessionNoteText"></span>
+              <button class="hist-edit" id="sessionNoteEditBtn" onclick="editSessionLocalNote()" title="Your own private note (only visible to you)">📝</button>
+            </div>
+
+            <a class="player-link" id="playerLink" href="#" onclick="openWebPlayer(event)">🌐 Open in Web Player</a>
             <button class="btn-secondary" onclick="copyInviteLink()" style="margin-top:6px;padding:8px;font-size:13px;">
               &#128279; Copy Invite Link <span style="color:#5f7a6a;">(paste in Discord)</span>
             </button>
@@ -487,6 +606,25 @@
             <div id="clipCounter" style="font-size:12px;color:#5f7a6a;text-align:center;margin:6px 0;display:none;"></div>
             <button class="btn-secondary" id="migrateBtn" onclick="migrateSession()" style="display:none;margin-bottom:6px;">↺ Start New Session for Squad</button>
             <button class="btn-leave" onclick="leaveSession()">Leave Session</button>
+          </div>
+        </div>
+
+        <!-- SESSION HUD — lives under the session card, fills the left column -->
+        <div class="hud-card">
+          <div class="hud-rail">
+            <button class="hud-tab active" id="hudTab-activity" onclick="switchHudTab('activity')" title="Activity">⚡<span class="tab-badge" id="hudBadge-activity" style="display:none;">0</span></button>
+            <button class="hud-tab" id="hudTab-squad" onclick="switchHudTab('squad')" title="Squad">👥<span class="tab-badge" id="hudBadge-squad" style="display:none;">0</span></button>
+            <button class="hud-tab" id="hudTab-system" onclick="switchHudTab('system')" title="System">🛠<span class="tab-badge" id="hudBadge-system" style="display:none;">0</span></button>
+            <button class="hud-tab" id="hudTab-history" onclick="switchHudTab('history')" title="History">📋<span class="tab-badge" id="hudBadge-history" style="display:none;">0</span></button>
+          </div>
+          <div class="hud-body">
+            <div class="hud-title" id="hudTitle">Activity</div>
+            <div class="hud-panes">
+              <div class="hud-pane active" id="hudPane-activity"><div class="hud-empty">Highlight saves and uploads appear here</div></div>
+              <div class="hud-pane" id="hudPane-squad"><div class="hud-empty">Squad joins and leaves appear here</div></div>
+              <div class="hud-pane" id="hudPane-system"><div class="hud-empty">App messages appear here</div></div>
+              <div class="hud-pane" id="hudPane-history"><div class="hud-empty">Session history appears here</div></div>
+            </div>
           </div>
         </div>
         </div>
@@ -608,12 +746,17 @@
             <div id="wgcPickerModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:100;">
               <div style="max-width:640px;margin:60px auto;background:#0f2318;border:1px solid #2f4a3a;border-radius:10px;padding:16px;max-height:75vh;overflow-y:auto;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-                  <h3 style="margin:0;color:#39d3a0;">Pick a Window</h3>
-                  <div>
-                    <button class="btn-secondary btn-sm" onclick="refreshWindowPicker()" style="margin-right:8px;">↺ Refresh</button>
+                  <h3 style="margin:0;color:#39d3a0;">Pick a Game Window</h3>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <label style="display:flex;align-items:center;gap:5px;margin:0;font-size:11px;color:#5f7a6a;text-transform:none;letter-spacing:0;cursor:pointer;">
+                      <input type="checkbox" id="wgcShowAll" onchange="toggleWgcShowAll()" style="accent-color:#39d3a0;margin:0;" />
+                      Show all windows
+                    </label>
+                    <button class="btn-secondary btn-sm" onclick="refreshWindowPicker()">↺ Refresh</button>
                     <button class="btn-secondary btn-sm" onclick="closeWindowPicker()">✕</button>
                   </div>
                 </div>
+                <div id="wgcFilterNote" style="font-size:11px;color:#3a5244;margin-bottom:10px;"></div>
                 <div id="wgcPickerGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;"></div>
               </div>
             </div>
@@ -680,19 +823,7 @@
         </div>
       </div>
 
-      <!-- SESSION HUD -->
-      <div class="hud-card">
-        <div class="hud-tabs">
-          <button class="hud-tab active" id="hudTab-activity" onclick="switchHudTab('activity')">⚡ Activity<span class="tab-badge" id="hudBadge-activity" style="display:none;">0</span></button>
-          <button class="hud-tab" id="hudTab-squad" onclick="switchHudTab('squad')">👥 Squad<span class="tab-badge" id="hudBadge-squad" style="display:none;">0</span></button>
-          <button class="hud-tab" id="hudTab-system" onclick="switchHudTab('system')">🛠 System<span class="tab-badge" id="hudBadge-system" style="display:none;">0</span></button>
-          <button class="hud-tab" id="hudTab-history" onclick="switchHudTab('history')">📋 History<span class="tab-badge" id="hudBadge-history" style="display:none;">0</span></button>
-        </div>
-        <div class="hud-pane active" id="hudPane-activity"><div class="hud-empty">Highlight saves and uploads appear here</div></div>
-        <div class="hud-pane" id="hudPane-squad"><div class="hud-empty">Squad joins and leaves appear here</div></div>
-        <div class="hud-pane" id="hudPane-system"><div class="hud-empty">App messages appear here</div></div>
-        <div class="hud-pane" id="hudPane-history"><div class="hud-empty">Session history appears here</div></div>
-      </div>
+      
 
     </div>
     <script>
@@ -793,12 +924,16 @@
       const HUD_MAX_ITEMS = 50;
       window.activeHudTab = 'activity';
 
+      var HUD_TITLES = { activity:'Activity', squad:'Squad', system:'System', history:'Session History' };
+
       window.switchHudTab = function(tab) {
        window.activeHudTab = tab;
        ['activity','squad','system','history'].forEach(t => {
          document.getElementById('hudTab-'+t).classList.toggle('active', t===tab);
          document.getElementById('hudPane-'+t).classList.toggle('active', t===tab);
        });
+       var title = document.getElementById('hudTitle');
+       if (title) title.textContent = HUD_TITLES[tab] || tab;
        var badge = document.getElementById('hudBadge-'+tab);
        badge.style.display = 'none';
        badge.textContent = '0';
@@ -832,19 +967,73 @@
 
     function addSessionToHistory(code, role, expiresAt) {
       var history = loadSessionHistory();
-      // Remove duplicate if exists
+      var prior = history.find(function(h) { return h.code === code; });
       history = history.filter(function(h) { return h.code !== code; });
       history.unshift({
         code: code,
         role: role,
         username: window.authUsername,
         timestamp: new Date().toISOString(),
-        expiresAt: (typeof expiresAt === 'number') ? expiresAt : null
+        expiresAt: (typeof expiresAt === 'number') ? expiresAt : null,
+        // Preserve anything already learned for this code on a rejoin.
+        // `title` is the SERVER-synced squad title; `localNote` is
+        // per-user-only and never overwritten by server data.
+        game: prior ? (prior.game || null) : null,
+        title: prior ? (prior.title || null) : null,
+        localNote: prior ? (prior.localNote || null) : null
       });
-      // Cap at max
       while (history.length > SESSION_HISTORY_MAX) history.pop();
       saveSessionHistory(history);
       renderSessionHistory();
+    }
+
+    // Syncs server-canonical game/title into the local history entry.
+    // Pass whichever of game/title changed; null args are left untouched.
+    function setSessionHistoryGame(code, game, title) {
+      if (!code) return;
+      var history = loadSessionHistory();
+      var entry = history.find(function(h) { return h.code === code; });
+      if (!entry) return;
+      var changed = false;
+      if (game && entry.game !== game) { entry.game = game; changed = true; }
+      if (typeof title !== 'undefined' && title !== null && entry.title !== title) { entry.title = title; changed = true; }
+      if (!changed) return;
+      saveSessionHistory(history);
+      renderSessionHistory();
+    }
+
+    // Stamped when recording starts — whatever game was detected running.
+    function setSessionHistoryGame(code, game) {
+      if (!code || !game) return;
+      var history = loadSessionHistory();
+      var entry = history.find(function(h) { return h.code === code; });
+      if (!entry || entry.game === game) return;
+      entry.game = game;
+      saveSessionHistory(history);
+      renderSessionHistory();
+    }
+
+    window.renameSessionHistory = function(code) {
+      var history = loadSessionHistory();
+      var entry = history.find(function(h) { return h.code === code; });
+      if (!entry) return;
+      var current = entry.title || entry.game || '';
+      var next = prompt('Name this session', current);
+      if (next === null) return;
+      entry.title = next.trim().slice(0, 60) || null;
+      saveSessionHistory(history);
+      renderSessionHistory();
+    };
+
+    function formatExpiry(expiresAt) {
+      if (typeof expiresAt !== 'number' || !expiresAt) return { text: '', cls: 'exp-ok' };
+      var ms = expiresAt - Date.now();
+      if (ms <= 0) return { text: 'clips expired', cls: 'exp-dead' };
+      var h = Math.floor(ms / 3600000);
+      if (h < 1) return { text: 'expires in ' + Math.max(1, Math.floor(ms / 60000)) + 'm', cls: 'exp-dead' };
+      if (h < 24) return { text: 'expires in ' + h + 'h', cls: 'exp-soon' };
+      var d = Math.floor(h / 24);
+      return { text: 'expires in ' + d + 'd ' + (h % 24) + 'h', cls: 'exp-ok' };
     }
 
     function renderSessionHistory() {
@@ -857,26 +1046,59 @@
       pane.innerHTML = '';
       history.forEach(function(h) {
         var item = document.createElement('div');
-        item.className = 'clip-item';
-        item.style.cursor = 'pointer';
+        item.className = 'hist-item';
 
-        var info = document.createElement('span');
-        var roleIcon = h.role === 'host' ? '👑' : '👤';
-        info.textContent = roleIcon + ' ' + h.code;
+        var top = document.createElement('div');
+        top.className = 'hist-top';
 
-        var time = document.createElement('span');
-        time.className = 'clip-time';
+        var role = document.createElement('span');
+        role.textContent = h.role === 'host' ? '👑' : '👤';
+
+        var code = document.createElement('span');
+        code.className = 'hist-code';
+        code.textContent = h.code;
+
+        var name = document.createElement('span');
+        name.className = 'hist-name';
+        name.textContent = h.title || h.game || '';
+
+        var edit = document.createElement('button');
+        edit.className = 'hist-edit';
+        edit.textContent = '✏';
+        edit.title = 'Rename this session';
+        edit.addEventListener('click', function(e) {
+          e.stopPropagation();
+          window.renameSessionHistory(h.code);
+        });
+
+        top.appendChild(role);
+        top.appendChild(code);
+        top.appendChild(name);
+        top.appendChild(edit);
+
+        var meta = document.createElement('div');
+        meta.className = 'hist-meta';
+
+        var exp = formatExpiry(h.expiresAt);
+        var expSpan = document.createElement('span');
+        expSpan.className = exp.cls;
+        expSpan.textContent = exp.text;
+
+        var when = document.createElement('span');
         var d = new Date(h.timestamp);
-        time.textContent = d.toLocaleDateString([], {month:'short', day:'numeric'}) + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+        when.textContent = d.toLocaleDateString([], {month:'short', day:'numeric'}) + ' ' +
+                           d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
 
-        item.appendChild(info);
-        item.appendChild(time);
+        meta.appendChild(expSpan);
+        meta.appendChild(when);
+
+        item.appendChild(top);
+        item.appendChild(meta);
 
         item.addEventListener('click', function() {
           document.getElementById('joinCodeInput').value = h.code;
-          clipboard.writeText(h.code); (function() {
-            hudLog('system', '📋 Code ' + h.code + ' copied & filled', 'success');
-          })();
+          clipboard.writeText(h.code);
+          hudLog('system', '📋 Code ' + h.code + ' copied & filled', 'success');
         });
 
         pane.appendChild(item);
@@ -923,6 +1145,67 @@
       };
 
       // =====================
+      // SESSION TITLE (server-synced) + LOCAL NOTE (client-only)
+      // =====================
+      function renderSessionTitle(title) {
+        var el = document.getElementById('sessionTitleText');
+        if (!el) return;
+        if (title) {
+          el.textContent = title;
+          el.classList.remove('untitled');
+        } else {
+          el.textContent = 'Untitled session';
+          el.classList.add('untitled');
+        }
+      }
+
+      function renderSessionGame(game) {
+        var el = document.getElementById('sessionTitleGame');
+        if (!el) return;
+        if (game) {
+          el.textContent = '🎮 ' + game;
+          el.style.display = 'block';
+        } else {
+          el.style.display = 'none';
+        }
+      }
+
+      window.editSessionTitle = function() {
+        if (!window.socket || !window.currentSessionCode) return;
+        var current = document.getElementById('sessionTitleText').textContent;
+        if (current === 'Untitled session') current = '';
+        var next = prompt('Session title (visible to everyone in the squad)', current);
+        if (next === null) return;
+        window.socket.emit('set-session-title', { title: next.trim().slice(0, 60) });
+      };
+
+      // Local note: purely client-side, stored on the localStorage history
+      // entry for this code. Never touches the server or other members.
+      function renderSessionLocalNote(code) {
+        var el = document.getElementById('sessionNoteText');
+        if (!el || !code) return;
+        var history = loadSessionHistory();
+        var entry = history.find(function(h) { return h.code === code; });
+        var note = entry ? (entry.localNote || '') : '';
+        el.textContent = note;
+        el.classList.toggle('empty', !note);
+      }
+
+      window.editSessionLocalNote = function() {
+        if (!window.currentSessionCode) return;
+        var history = loadSessionHistory();
+        var entry = history.find(function(h) { return h.code === window.currentSessionCode; });
+        var current = entry ? (entry.localNote || '') : '';
+        var next = prompt('Your private note for this session (only visible to you)', current);
+        if (next === null) return;
+        if (!entry) return; // shouldn't happen — addSessionToHistory runs on join
+        entry.localNote = next.trim().slice(0, 80) || null;
+        saveSessionHistory(history);
+        renderSessionLocalNote(window.currentSessionCode);
+        renderSessionHistory();
+      };
+
+      // =====================
       // CLIP DURATION
       // =====================
       function formatDuration(ms) {
@@ -960,8 +1243,261 @@
           if (r.success) { loadStoragePath(); hudLog('system','✅ Storage directory updated','success'); }
         });
       };
-      window.openUninstallGuide = function() {
-        alert('To uninstall Peak-Abu:\n\n1. Press Win+R\n2. Type "appwiz.cpl" and press Enter\n3. Find "Peak-Abu" in the list\n4. Click Uninstall\n\nYour video files stay in your storage directory.');
+      window.runUninstall = async function() {
+        var ok = confirm(
+          'Uninstall Peak-Abu?\n\n' +
+          'This removes the app, its settings, and all temporary buffer files.\n\n' +
+          'Your saved highlight videos and their .json files will NOT be deleted — ' +
+          'they stay in your storage directory.'
+        );
+        if (!ok) return;
+
+        hudLog('system', 'Cleaning up and launching uninstaller...', 'info');
+        try {
+          var r = await ipcRenderer.invoke('run-uninstall');
+          if (!r.success) {
+            hudLog('system', '⚠ ' + r.error, 'error');
+            alert(r.error);
+          }
+        } catch (e) {
+          hudLog('system', '⚠ Uninstall failed: ' + e.message, 'error');
+        }
+      };
+
+      // ===== Web player: docked vs separate window =====
+     window.onPlayerWindowedToggle = function() {
+        var enabled = document.getElementById('playerWindowedToggle').checked;
+        window.playerWindowedModeClient = enabled;
+
+        if (enabled) {
+          // Hide immediately, client-side — don't wait on the IPC round
+          // trip for something the user needs to see react right away.
+          var divider = document.getElementById('dockDivider');
+          var closeBtn = document.getElementById('dockCloseBtn');
+          if (divider) divider.classList.remove('show');
+          if (closeBtn) closeBtn.classList.remove('show');
+          document.body.classList.remove('player-docked');
+          document.body.style.paddingRight = '';
+        }
+
+        ipcRenderer.invoke('set-player-windowed-mode', enabled).then(function() {
+          hudLog('system', enabled
+            ? 'Web player will open in its own window'
+            : 'Web player will dock inside Peak-Abu', 'info');
+        });
+      };
+
+      ipcRenderer.invoke('get-player-windowed-mode').then(function(enabled) {
+        var el = document.getElementById('playerWindowedToggle');
+        if (el) el.checked = !!enabled;
+        window.playerWindowedModeClient = !!enabled;
+      }).catch(function() {});
+
+      // Main process reserves the right side for the docked player — shift
+      // the client content into the remaining strip so nothing sits underneath,
+      // and keep the divider/close button pinned to the view's actual edge.
+      window.dockedGutter = 6;
+
+      // Mirrors main.js's clamp constants. This is a hard visual backstop —
+      // even if a stale/out-of-range value ever reaches the renderer over
+      // IPC, the on-screen divider/padding/close-button can never squish
+      // the client column past this, independent of whatever main decides.
+      var CLIENT_MIN_PLAYER_VIEW = 360;
+      var CLIENT_MIN_CLIENT_WIDTH = 520;
+
+      function clampReservedWidthClient(desired) {
+        var w = window.innerWidth;
+        var minAllowed = CLIENT_MIN_PLAYER_VIEW + window.dockedGutter;
+        var maxAllowed = Math.max(minAllowed, w - CLIENT_MIN_CLIENT_WIDTH);
+        return Math.min(maxAllowed, Math.max(minAllowed, desired));
+      }
+
+      function positionDockControls(totalWidth) {
+        var divider = document.getElementById('dockDivider');
+        var closeBtn = document.getElementById('dockCloseBtn');
+        if (!divider || !closeBtn) return;
+
+        var clamped = clampReservedWidthClient(totalWidth);
+        window.dockedTotalWidth = clamped;
+
+        divider.style.right = (clamped - window.dockedGutter) + 'px';
+        divider.style.width = window.dockedGutter + 'px';
+
+        // Anchor the close button off the divider's OWN rendered position
+        // (not a second independent calculation) so the two can never
+        // disagree with each other on screen.
+        var rect = divider.getBoundingClientRect();
+        closeBtn.style.right = (window.innerWidth - rect.left + 6) + 'px';
+      }
+
+      window.playerWindowedModeClient = false;
+
+      // Places the divider/close button at an EXACT pixel value with no
+      // re-derivation — used for values that already came from main
+      // (the authority on where the native view actually sits).
+      // Positions everything from the view's ACTUAL left edge, using `left`
+      // rather than `right`. Anchoring from the left means we're working in
+      // the same direction main measured from, so a mismatch between
+      // getContentSize() and window.innerWidth can't open a gap.
+      function placeDockControlsFromViewLeft(viewLeft) {
+        var divider = document.getElementById('dockDivider');
+        var closeBtn = document.getElementById('dockCloseBtn');
+        if (!divider || !closeBtn) return;
+
+        var gutter = window.dockedGutter;
+        var dividerLeft = Math.max(0, viewLeft - gutter);
+
+        divider.style.left = dividerLeft + 'px';
+        divider.style.right = 'auto';
+        divider.style.width = gutter + 'px';
+
+        closeBtn.style.left = (dividerLeft - 34) + 'px';
+        closeBtn.style.right = 'auto';
+
+        // Client content stops exactly where the divider begins.
+        // paddingRight is computed from the divider's ACTUAL on-screen position,
+        // not from main's DIP measurements — this is what closes the gap.
+        window.dockedContentWidth = dividerLeft;
+        var rect = divider.getBoundingClientRect();
+        document.body.style.paddingRight = (window.innerWidth - rect.left + 4) + 'px';
+
+        console.log(
+          `[dock-renderer-place] dividerLeft=${dividerLeft} rect.left=${rect.left.toFixed(0)} ` +
+          `innerWidth=${window.innerWidth} paddingRight=${(window.innerWidth - rect.left + 4)}`
+        );
+      }
+
+      // Fallback for mid-drag, before main echoes real geometry back
+      function placeDockControlsExact(totalWidth) {
+        placeDockControlsFromViewLeft(window.innerWidth - totalWidth + window.dockedGutter);
+      }
+
+      window.dockDragActive = false;
+
+      ipcRenderer.on('player-docked', function(ev, d) {
+        var divider = document.getElementById('dockDivider');
+        var closeBtn = document.getElementById('dockCloseBtn');
+        // Defensive guard: if we know we're in windowed mode client-side,
+        // never let a stray docked:true event turn these controls back on.
+        if (window.playerWindowedModeClient && d && d.docked) return;
+        // While the user is actively dragging, the renderer owns the
+        // divider position. Accepting echoes mid-drag makes the bar fight
+        // the cursor. The pointerup handler re-syncs from main afterward.
+        if (window.dockDragActive && d && d.docked) return;
+        if (d && d.docked) {
+          if (typeof d.gutter === 'number') window.dockedGutter = d.gutter;
+
+          // main.js already clamped this against the REAL window content
+          // size before positioning the native view — re-clamping here
+          // against window.innerWidth was the bug: any tiny discrepancy
+          // between the two measurements (scrollbars, timing) put the
+          // divider at a different x than where the view actually starts,
+          // leaving a visible dead gap. Trust main's number as-is.
+          // Prefer the real applied geometry; fall back to the reserved
+          // width only if an older main.js didn't send viewLeft.
+          if (typeof d.viewLeft === 'number') {
+            var dipToCss = (d.contentWidth > 0) ? (window.innerWidth / d.contentWidth) : 1;
+            window.dockDipToCss = dipToCss;
+            var viewLeftCss = d.viewLeft * dipToCss;
+            console.log(
+              `[dock-renderer] contentWidth=${d.contentWidth} innerWidth=${window.innerWidth} ` +
+              `dipToCss=${dipToCss.toFixed(3)} viewLeft=${d.viewLeft} viewLeftCss=${viewLeftCss.toFixed(0)} ` +
+              `gutter=${window.dockedGutter} dividerWillBeAt=${(viewLeftCss - window.dockedGutter).toFixed(0)}`
+            );
+            placeDockControlsFromViewLeft(viewLeftCss);
+          } else {
+            placeDockControlsExact(d.reservedRight);
+          }
+          document.body.classList.add('player-docked');
+
+          if (divider) divider.classList.add('show');
+          if (closeBtn) closeBtn.classList.add('show');
+        } else {
+          document.body.classList.remove('player-docked');
+          document.body.style.paddingRight = '';
+          if (divider) divider.classList.remove('show');
+          if (closeBtn) closeBtn.classList.remove('show');
+        }
+      });
+
+      window.closeDockedPlayer = function() {
+        ipcRenderer.invoke('close-player').then(function() {
+          hudLog('system', '🌐 Web player closed', 'info');
+        });
+      };
+
+      // Drag handle. Main process is the single source of truth for the
+      // clamped width — the renderer just reports a desired value and
+      // repositions itself off whatever player-docked echoes back, so it
+      // can never drift out of sync with the actual native view edge.
+      (function() {
+        var divider = document.getElementById('dockDivider');
+        if (!divider) return;
+        var dragging = false;
+
+        // CSS px — correct for local positioning
+        function reservedWidthFromMouseX(clientX) {
+          return clampReservedWidthClient(window.innerWidth - clientX);
+        }
+
+        // main.js works in DIP, so convert before sending. window.dockDipToCss
+        // is captured from the last echo; defaults to 1 on an unscaled display.
+        function toDip(cssPx) {
+          var ratio = window.dockDipToCss || 1;
+          return Math.round(cssPx / ratio);
+        }
+
+        divider.addEventListener('pointerdown', function(e) {
+          dragging = true;
+          window.dockDragActive = true;
+          divider.classList.add('dragging');
+          divider.setPointerCapture(e.pointerId);
+          e.preventDefault();
+        });
+
+        divider.addEventListener('pointermove', function(e) {
+          if (!dragging) return;
+          var desired = reservedWidthFromMouseX(e.clientX);
+          // During an ACTIVE drag only: move the bar off our own local
+          // clamp so it tracks the cursor with zero perceived lag. This is
+          // the one moment the renderer is allowed to guess — main's next
+          // 'player-docked' echo (fired from resize-player-width below)
+          // will immediately overwrite this with the authoritative value.
+          placeDockControlsExact(desired);
+          ipcRenderer.send('resize-player-width', toDip(desired));
+        });
+
+        divider.addEventListener('pointerup', function(e) {
+          if (!dragging) return;
+          dragging = false;
+          divider.classList.remove('dragging');
+          try { divider.releasePointerCapture(e.pointerId); } catch (err) {}
+          ipcRenderer.send('resize-player-width-commit', toDip(reservedWidthFromMouseX(e.clientX)));
+          // Release ownership a beat after the commit so main's final,
+          // authoritative echo is the last word on where things sit.
+          setTimeout(function() { window.dockDragActive = false; }, 120);
+        });
+
+        // Pointer capture can be lost (alt-tab, window drag) without a
+        // pointerup ever firing — without this the flag sticks true and
+        // the divider stops responding to main entirely.
+        divider.addEventListener('lostpointercapture', function() {
+          if (!dragging) return;
+          dragging = false;
+          divider.classList.remove('dragging');
+          window.dockDragActive = false;
+        });
+      })();
+
+      window.openWebPlayer = function(e) {
+        if (e) e.preventDefault();
+        if (!window.currentSessionCode) return;
+        ipcRenderer.invoke('open-player', { code: window.currentSessionCode })
+          .then(function(r) {
+            hudLog('system', r.mode === 'docked'
+              ? '🌐 Web player opened alongside the client'
+              : '🌐 Web player opened in its own window', 'info');
+          });
       };
       document.getElementById('settingsModal').addEventListener('click', function(e) { if (e.target.id==='settingsModal') closeSettings(); });
 
@@ -1216,10 +1752,33 @@
           ipcRenderer.send('session-connected', { code: data.code, username: username });
           addSessionToHistory(data.code, window.isSessionHost ? 'host' : 'member', data.expiresAt);
           updateClipCounter(data.clipsUsed, data.maxClips);
+
+          renderSessionTitle(data.title || null);
+          renderSessionGame(data.detectedGame || null);
+          // Server title/game are the canonical values for THIS code —
+          // sync into local history so the History tab agrees with what
+          // the session card shows, without overwriting a local note.
+          if (data.title) setSessionHistoryGame(data.code, data.detectedGame || null, data.title);
+          else if (data.detectedGame) setSessionHistoryGame(data.code, data.detectedGame);
+          renderSessionLocalNote(data.code);
+
           if (window.autoStartAfterJoin) {
             window.autoStartAfterJoin = false;
             autoStartRecordingSafe();
           }
+        });
+
+        window.socket.on('session-title-changed', function(d) {
+          renderSessionTitle(d.title);
+          if (window.currentSessionCode) setSessionHistoryGame(window.currentSessionCode, null, d.title);
+          if (d.setBy !== window.authUsername) {
+            hudLog('squad', d.setBy + ' renamed the session' + (d.title ? ' to "' + d.title + '"' : ''), 'info');
+          }
+        });
+
+        window.socket.on('session-game-detected', function(d) {
+          renderSessionGame(d.game);
+          if (window.currentSessionCode) setSessionHistoryGame(window.currentSessionCode, d.game);
         });
 
         window.socket.on('member-joined', function(d) { addMember(d.username, false); hudLog('squad',d.username+' joined','success'); });
@@ -1282,6 +1841,10 @@
         document.getElementById('clipDurationMember').style.display = 'none';
         document.getElementById('clipCounter').style.display = 'none';
         document.getElementById('migrateBtn').style.display = 'none';
+        renderSessionTitle(null);
+        renderSessionGame(null);
+        var noteEl = document.getElementById('sessionNoteText');
+        if (noteEl) { noteEl.textContent = ''; noteEl.classList.add('empty'); }
         ipcRenderer.send('session-disconnected');
       };
 
@@ -1413,6 +1976,23 @@
         await startMicCapture();
 
         if (window.socket) window.socket.emit('recording-status', { isRecording: true });
+
+        // Best-effort game label for the session history row + squad view.
+        // First detection wins server-side (see session-game-detected
+        // handler in sockets/index.js), so an unreliable guess from one
+        // member won't keep clobbering a confident match from another.
+        try {
+          var detected = await ipcRenderer.invoke('detect-game');
+          if (detected && detected.name) {
+            window.detectedGame = detected;
+            if (window.currentSessionCode) {
+              setSessionHistoryGame(window.currentSessionCode, detected.name);
+              if (window.socket) window.socket.emit('session-game-detected', { game: detected.name });
+            }
+            hudLog('system', '🎮 Detected: ' + detected.name +
+              (detected.known ? '' : ' (guess — rename in History if wrong)'), 'info');
+          }
+        } catch (e) {}
       };
 
       ipcRenderer.on('buffer-ready', function() {
@@ -1476,11 +2056,25 @@
       window.closeWindowPicker = function() {
         document.getElementById('wgcPickerModal').style.display = 'none';
       };
+      window.wgcShowAllWindows = false;
+
+      window.toggleWgcShowAll = function() {
+        window.wgcShowAllWindows = document.getElementById('wgcShowAll').checked;
+        window.refreshWindowPicker();
+      };
+
       window.refreshWindowPicker = async function() {
         var grid = document.getElementById('wgcPickerGrid');
         grid.innerHTML = '<div style="color:#5f7a6a;">Loading windows...</div>';
         try {
-          var sources = await ipcRenderer.invoke('wgc-list-windows');
+          var result = await ipcRenderer.invoke('wgc-list-windows', { includeAll: window.wgcShowAllWindows });
+          var sources = (result && result.windows) ? result.windows : [];
+          var note = document.getElementById('wgcFilterNote');
+          if (note) {
+            note.textContent = (result && result.filtered && result.hiddenCount > 0)
+              ? result.hiddenCount + ' non-game window(s) hidden'
+              : '';
+          }
           grid.innerHTML = '';
           sources.forEach(function(s) {
             var card = document.createElement('div');
@@ -1491,8 +2085,9 @@
             thumb.src = s.thumbnailDataUrl || '';
             thumb.style.cssText = 'width:100%;border-radius:4px;background:#04140d;min-height:90px;object-fit:contain;';
             var name = document.createElement('div');
-            name.textContent = s.name;
-            name.style.cssText = 'font-size:12px;color:#c8d6cd;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+            name.textContent = (s.knownGame ? '🎮 ' : '') + s.name;
+            name.title = s.processName ? s.processName + '.exe' : s.name;
+            name.style.cssText = 'font-size:12px;color:' + (s.knownGame ? '#39d3a0' : '#c8d6cd') + ';margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
             card.appendChild(thumb); card.appendChild(name);
             card.onclick = function() {
               window.wgcSourceId = s.id;
@@ -1508,7 +2103,13 @@
             };
             grid.appendChild(card);
           });
-          if (!sources.length) grid.innerHTML = '<div style="color:#5f7a6a;">No capturable windows found</div>';
+          if (!sources.length) {
+            grid.innerHTML = '<div style="color:#5f7a6a;">' +
+              (window.wgcShowAllWindows
+                ? 'No capturable windows found'
+                : 'No games detected — tick "Show all windows" if your game isn\'t listed') +
+              '</div>';
+          }
         } catch (e) {
           grid.innerHTML = '<div style="color:#f0857a;">Failed to list windows: ' + e.message + '</div>';
         }

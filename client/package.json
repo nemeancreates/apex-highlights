@@ -1,6 +1,6 @@
 {
   "name": "peak-abu",
-  "version": "0.1.35",
+  "version": "0.1.36",
   "description": "Multi-POV synchronized gameplay highlights",
   "author": "nemeancreates",
   "main": "main.js",
@@ -15,7 +15,8 @@
     "appId": "app.peakabu.recorder",
     "productName": "Peak-Abu",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "build"
     },
     "extraResources": [
       {
@@ -39,7 +40,9 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": true,
+      "include": "build/installer.nsh"
     }
   },
   "devDependencies": {

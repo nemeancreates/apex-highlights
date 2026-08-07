@@ -44,7 +44,9 @@ db.exec(`
     hostTier            TEXT,
     expiresAt           INTEGER,
     maxMembers          INTEGER,
-    maxClips            INTEGER
+    maxClips            INTEGER,
+    title               TEXT,
+    detectedGame        TEXT
   );
 
   CREATE TABLE IF NOT EXISTS uploads (
@@ -62,6 +64,8 @@ db.exec(`
     metadataKey  TEXT,
     uploadedAt   TEXT,
     fileSize     INTEGER,
+    durationMs   INTEGER,
+    clipWeight   INTEGER NOT NULL DEFAULT 1,
     FOREIGN KEY (sessionCode) REFERENCES sessions(code) ON DELETE CASCADE
   );
 
@@ -100,5 +104,11 @@ addColumnIfMissing('sessions', 'hostTier', 'TEXT');
 addColumnIfMissing('sessions', 'expiresAt', 'INTEGER');
 addColumnIfMissing('sessions', 'maxMembers', 'INTEGER');
 addColumnIfMissing('sessions', 'maxClips', 'INTEGER');
+addColumnIfMissing('sessions', 'title', 'TEXT');
+addColumnIfMissing('sessions', 'detectedGame', 'TEXT');
+
+// uploads — duration-based clip weight (batch 2: 3min=1, 6min=2, hard cap)
+addColumnIfMissing('uploads', 'durationMs', 'INTEGER');
+addColumnIfMissing('uploads', 'clipWeight', "INTEGER NOT NULL DEFAULT 1");
 
 module.exports = db;

@@ -26,6 +26,19 @@ const db = require('./db');
 const users = new Map();
 const sessions = new Map();
 
+// ================================
+// CLIP WEIGHT — duration-based clip-count cost. 0-3min = 1, 3:01-6min = 2.
+// 6 minutes is the hard cap on auto-capture length, so weight never exceeds
+// 2 regardless of how long a clip claims to be — a malformed/spoofed
+// durationMs can't inflate the cost past what the system actually allows
+// to be recorded.
+// ================================
+const CLIP_WEIGHT_THRESHOLD_MS = 3 * 60 * 1000;
+function clipWeightForDuration(durationMs) {
+  if (typeof durationMs !== 'number' || !isFinite(durationMs) || durationMs <= 0) return 1;
+  return durationMs > CLIP_WEIGHT_THRESHOLD_MS ? 2 : 1;
+}
+
 // A session's expiry: prefer its own tier-derived expiresAt, fall back to
 // the global TTL for sessions created before tiers shipped.
 function sessionExpiryMs(s) {
@@ -64,11 +77,11 @@ const stmt = {
   upsertSession: db.prepare(`
     INSERT INTO sessions (
       code, id, createdBy, createdAt, clipDuration, highlightCount,
-      hostTier, expiresAt, maxMembers, maxClips
+      hostTier, expiresAt, maxMembers, maxClips, title, detectedGame
     )
     VALUES (
       @code, @id, @createdBy, @createdAt, @clipDuration, @highlightCount,
-      @hostTier, @expiresAt, @maxMembers, @maxClips
+      @hostTier, @expiresAt, @maxMembers, @maxClips, @title, @detectedGame
     )
     ON CONFLICT(code) DO UPDATE SET
       clipDuration = excluded.clipDuration,
@@ -76,20 +89,25 @@ const stmt = {
       hostTier = excluded.hostTier,
       expiresAt = excluded.expiresAt,
       maxMembers = excluded.maxMembers,
-      maxClips = excluded.maxClips
+      maxClips = excluded.maxClips,
+      title = excluded.title,
+      detectedGame = excluded.detectedGame
   `),
   deleteSession: db.prepare(`DELETE FROM sessions WHERE code = ?`),
   allSessions: db.prepare(`SELECT * FROM sessions`),
 
   upsertUpload: db.prepare(`
     INSERT INTO uploads (id, sessionCode, username, videoFile, metadataFile, thumbnailFile,
-      videoUrl, thumbnailUrl, metadataUrl, videoKey, thumbnailKey, metadataKey, uploadedAt, fileSize)
+      videoUrl, thumbnailUrl, metadataUrl, videoKey, thumbnailKey, metadataKey, uploadedAt, fileSize,
+      durationMs, clipWeight)
     VALUES (@id, @sessionCode, @username, @videoFile, @metadataFile, @thumbnailFile,
-      @videoUrl, @thumbnailUrl, @metadataUrl, @videoKey, @thumbnailKey, @metadataKey, @uploadedAt, @fileSize)
+      @videoUrl, @thumbnailUrl, @metadataUrl, @videoKey, @thumbnailKey, @metadataKey, @uploadedAt, @fileSize,
+      @durationMs, @clipWeight)
     ON CONFLICT(id) DO UPDATE SET
       videoUrl = excluded.videoUrl, thumbnailUrl = excluded.thumbnailUrl, metadataUrl = excluded.metadataUrl,
       videoKey = excluded.videoKey, thumbnailKey = excluded.thumbnailKey, metadataKey = excluded.metadataKey,
-      thumbnailFile = excluded.thumbnailFile
+      thumbnailFile = excluded.thumbnailFile,
+      durationMs = excluded.durationMs, clipWeight = excluded.clipWeight
   `),
   uploadsForSession: db.prepare(`SELECT * FROM uploads WHERE sessionCode = ?`)
 };
@@ -170,6 +188,8 @@ function loadSessionsFromDisk() {
       expiresAt: row.expiresAt ?? null,
       maxMembers: row.maxMembers ?? null,
       maxClips: row.maxClips ?? null,
+      title: row.title ?? null,
+      detectedGame: row.detectedGame ?? null,
       highlightLockedUntil: 0,   // transient — rebuilt live
       pendingHighlights: [],     // transient
       members: [],               // transient
@@ -195,7 +215,9 @@ function saveSessionsToDisk() {
         hostTier: s.hostTier ?? null,
         expiresAt: s.expiresAt ?? null,
         maxMembers: s.maxMembers ?? null,
-        maxClips: s.maxClips ?? null
+        maxClips: s.maxClips ?? null,
+        title: s.title ?? null,
+        detectedGame: s.detectedGame ?? null
       });
       for (const u of s.uploads) {
         stmt.upsertUpload.run({
@@ -212,7 +234,9 @@ function saveSessionsToDisk() {
           thumbnailKey: u.thumbnailKey ?? null,
           metadataKey: u.metadataKey ?? null,
           uploadedAt: u.uploadedAt ?? null,
-          fileSize: u.fileSize ?? null
+          fileSize: u.fileSize ?? null,
+          durationMs: u.durationMs ?? null,
+          clipWeight: u.clipWeight || 1
         });
       }
     }
@@ -299,5 +323,6 @@ module.exports = {
   loadSessionsFromDisk,
   saveSessionsToDisk,
   retryPendingSpacesUploads,
-  startSessionPurge
+  startSessionPurge,
+  clipWeightForDuration
 };

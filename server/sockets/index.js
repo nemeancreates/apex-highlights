@@ -74,13 +74,17 @@ function initSockets(io) {
 
       log('info', 'member_joined', { session: sessionCode, username: cleanUsername, tier: joinerTier });
 
+      const weightedClipsUsed = (session.uploads || []).reduce((sum, u) => sum + (u.clipWeight || 1), 0);
+
       socket.emit('session-joined', {
         code: sessionCode,
         createdBy: session.createdBy,
         clipDuration: session.clipDuration,
         expiresAt: session.expiresAt || null,
         maxClips: session.maxClips || null,
-        clipsUsed: session.highlightCount || 0,
+        clipsUsed: weightedClipsUsed,
+        title: session.title || null,
+        detectedGame: session.detectedGame || null,
         members: session.members.map(m => ({
           username: m.username,
           isRecording: m.isRecording
@@ -89,6 +93,60 @@ function initSockets(io) {
 
       socket.to(sessionCode).emit('member-joined', { username: cleanUsername });
     });
+
+    // ================================
+    // SESSION TITLE — any member can set/change it. Broadcast to the whole
+    // squad so everyone's client shows the same title, and persisted so it
+    // survives reconnects/late joins via session-joined. This is distinct
+    // from each user's LOCAL note (client-side only, never sent here).
+    // ================================
+    socket.on('set-session-title', ({ title }) => {
+      if (!checkSocketRate(socket.id)) return;
+      const sessionCode = socket.sessionCode;
+      if (!sessionCode) return;
+      const session = sessions.get(sessionCode);
+      if (!session) return;
+
+      const clean = (typeof title === 'string') ? title.trim().slice(0, 60) : '';
+      session.title = clean || null;
+      saveSessionsToDisk();
+
+      log('info', 'session_title_changed', { session: sessionCode, title: session.title, setBy: socket.username });
+
+      io.to(sessionCode).emit('session-title-changed', {
+        title: session.title,
+        setBy: socket.username
+      });
+    });
+
+    // ================================
+    // DETECTED GAME — informational, set by whichever client detects it
+    // first. Does not overwrite an existing value, since a later, weaker
+    // guess shouldn't clobber an earlier confident match. Purely a label;
+    // never gates anything.
+    // ================================
+    socket.on('session-game-detected', ({ game }) => {
+      if (!checkSocketRate(socket.id)) return;
+      const sessionCode = socket.sessionCode;
+      if (!sessionCode) return;
+      const session = sessions.get(sessionCode);
+      if (!session) return;
+      if (session.detectedGame) return; // first detection wins
+
+      const clean = (typeof game === 'string') ? game.trim().slice(0, 60) : '';
+      if (!clean) return;
+
+      session.detectedGame = clean;
+      saveSessionsToDisk();
+
+      log('info', 'session_game_detected', { session: sessionCode, game: clean, by: socket.username });
+
+      io.to(sessionCode).emit('session-game-detected', { game: clean });
+    });
+
+    // ================================
+    // CLIP DURATION — host only
+    // ================================
 
     // ================================
     // CLIP DURATION — host only

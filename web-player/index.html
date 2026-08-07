@@ -88,6 +88,7 @@
     .video-grid {
       flex: 1;
       display: grid;
+      grid-auto-rows: 1fr;
       gap: 3px;
       padding: 3px;
       overflow-y: auto;
@@ -368,6 +369,7 @@
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
+      justify-content: center;
       background: #0f2318;
       border-left: 2px solid #12251a;
     }
@@ -380,14 +382,21 @@
       margin-bottom: 8px;
       text-transform: uppercase;
       letter-spacing: 1px;
+      position: sticky;
+      top: -10px;
+      background: #0f2318;
+      padding: 4px 0;
+      z-index: 2;
     }
 
-    .members-section { flex: 1; overflow-y: auto; border-bottom: 1px solid #1e3527; }
+    /* Players and Audio each take half the panel so the divider sits at the
+       vertical centre, and both scroll independently. */
+    .members-section { flex: 0 1 auto; max-height: 42vh; overflow-y: auto; border-bottom: 1px solid #1e3527; }
     .members-section::-webkit-scrollbar { width: 5px; }
     .members-section::-webkit-scrollbar-track { background: #04140d; }
     .members-section::-webkit-scrollbar-thumb { background: #24402e; border-radius: 3px; }
 
-    .audio-section { max-height: 220px; overflow-y: auto; border-top: 1px solid #1e3527; }
+    .audio-section { flex: 0 1 auto; max-height: 42vh; overflow-y: auto; border-top: 1px solid #1e3527; }
     .audio-section::-webkit-scrollbar { width: 5px; }
     .audio-section::-webkit-scrollbar-track { background: #04140d; }
     .audio-section::-webkit-scrollbar-thumb { background: #24402e; border-radius: 3px; }
@@ -896,18 +905,11 @@
       </div>
       <button class="btn" onclick="loadSession()">Load</button>
       <button class="btn btn-secondary btn-icon" id="shareBtn" onclick="copyShareLink()" title="Copy share link" style="display:none;">&#x1F517;</button>
-      <button class="btn btn-secondary btn-icon" id="settingsBtn" onclick="toggleSettings()" title="Settings">&#x2699;</button>
+  
     </div>
   </div>
 
-  <!-- SETTINGS DROPDOWN -->
-  <div id="settingsPanel" class="settings-panel" style="display:none;">
-    <div class="settings-row">
-      <button class="btn btn-small btn-secondary" id="localBtn" onclick="pickLocalFolder()">&#x1F4C2; Use Local Clips</button>
-      <span class="local-status" id="localStatusText"></span>
-      <button class="settings-close" onclick="toggleSettings()" title="Close">&#x2715;</button>
-    </div>
-  </div>
+  
 
   <div class="main-layout">
     <div class="video-area">
@@ -1191,6 +1193,7 @@
     function updateLocalStatusBar() {
       const txt = document.getElementById('localStatusText');
       if (txt) txt.textContent = localClipMap.size > 0 ? localClipMap.size + ' clips scanned' : '';
+      // Element no longer exists in the DOM — guarded above.
     }
 
     function clearLocalClips() {
@@ -1199,8 +1202,8 @@
       localBlobUrls = [];
       const txt = document.getElementById('localStatusText');
       if (txt) txt.textContent = '';
-      document.getElementById('localBtn').classList.remove('loaded');
-      document.getElementById('localBtn').textContent = '\u{1F4C2} Use Local Clips';
+      const lb = document.getElementById('localBtn');
+      if (lb) { lb.classList.remove('loaded'); lb.textContent = '\u{1F4C2} Use Local Clips'; }
 
       // Revert any local sources back to CDN
       allUploads.forEach(u => {
@@ -2556,19 +2559,11 @@
     // SETTINGS PANEL
     // ========================
 
-    function toggleSettings() {
-      const panel = document.getElementById('settingsPanel');
-      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-    }
-
-    // Close settings on outside click
-    document.addEventListener('click', function(e) {
-      const panel = document.getElementById('settingsPanel');
-      const btn = document.getElementById('settingsBtn');
-      if (!panel || panel.style.display === 'none') return;
-      if (panel.contains(e.target) || (btn && btn.contains(e.target))) return;
-      panel.style.display = 'none';
-    });
+    // Settings panel + local-clip loading are shelved until the feature is
+    // properly tested. The scanning code below is intentionally left intact
+    // (loadSession still calls applyLocalMatches, which no-ops on an empty map)
+    // so nothing crashes — there's just no UI entry point right now.
+    function toggleSettings() { /* shelved */ }
 
     // ========================
     // EXPORT PANEL (composite / AI reel)
