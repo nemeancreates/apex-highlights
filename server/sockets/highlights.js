@@ -12,8 +12,12 @@ const { checkSocketRate } = require('../ratelimit');
 // Fires a coordinated save to all clients, locks the session, and on
 // expiry either drains the next queued trigger (with its original
 // timestamp) or emits highlight-unlocked.
-function fireCoordinatedHighlight(io, sessionCode, session, username, coordinated_timestamp) {
-  const clipDuration = session.clipDuration || 30000;
+function fireCoordinatedHighlight(io, sessionCode, session, username, coordinated_timestamp, clipDurationOverride, triggerSource) {
+  // clipDurationOverride lets auto-capture (sockets/autocapture.js) pass its
+  // own elapsed ACTIVE-window length instead of the session's fixed manual
+  // clip duration. Falls back to the normal manual-save behavior otherwise.
+  const clipDuration = clipDurationOverride || session.clipDuration || 30000;
+  const source = triggerSource || 'manual';
   const postCapture = Math.ceil(clipDuration * 0.1);
   // Lock for: post-capture window + 15s buffer refill cooldown
   const lockDuration = postCapture + 15000;
@@ -21,7 +25,7 @@ function fireCoordinatedHighlight(io, sessionCode, session, username, coordinate
   session.highlightCount = (session.highlightCount || 0) + 1;
   session.highlightLockedUntil = Date.now() + lockDuration;
 
-  log('info', 'highlight_triggered', { session: sessionCode, username, ts: coordinated_timestamp, clipDuration, lockMs: lockDuration, highlightCount: session.highlightCount });
+  log('info', 'highlight_triggered', { session: sessionCode, username, ts: coordinated_timestamp, clipDuration, lockMs: lockDuration, highlightCount: session.highlightCount, source });
 
   // Tell every client to save their POV — anchored to the trigger's
   // original timestamp (may be in the past for queued triggers)

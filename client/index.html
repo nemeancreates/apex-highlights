@@ -177,22 +177,23 @@
 
       .uc-label { font-size: 11px; color: #5f7a6a; text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 5px; }
 
-      /* ===== Session title + local note ===== */
+     /* ===== Session title + local note ===== */
       .session-title-row {
-        display: flex; align-items: center; justify-content: center; gap: 6px;
-        margin: 6px 0 2px; font-size: 14px; color: #8fbfa3;
+        display: flex; align-items: center; justify-content: center; gap: 5px;
+        margin: 4px 0 1px; font-size: 12px; color: #8fbfa3;
       }
-      .session-title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+      .session-title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px; }
       .session-title-text.untitled { color: #45604f; font-style: italic; }
       .session-title-game {
-        text-align: center; font-size: 11px; color: #3a5244; margin-bottom: 6px;
+        text-align: center; font-size: 10px; color: #3a5244; margin-bottom: 4px;
       }
       .session-note-row {
-        display: flex; align-items: center; justify-content: center; gap: 6px;
-        margin: 0 0 8px; font-size: 12px; color: #5f7a6a;
+        display: flex; align-items: center; justify-content: center; gap: 5px;
+        margin: 0 0 6px; font-size: 10px; color: #5f7a6a;
       }
-      .session-note-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; font-style: italic; }
+      .session-note-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px; font-style: italic; }
       .session-note-text.empty::before { content: 'Add a private note'; color: #3a5244; font-style: italic; }
+      .session-title-row .hist-edit, .session-note-row .hist-edit { font-size: 11px; }
 
       /* ===== Player link ===== */
       .player-link { display: block; text-align: center; margin: 7px 0; font-size: 13px; color: #39d3a0; text-decoration: none; }
@@ -296,6 +297,20 @@
         display: none; background: #3a1520; border: 1px solid #7a3149;
         border-radius: 6px; padding: 8px 10px; font-size: 12px; color: #f0a5bd; margin: 6px 0;
       }
+
+      /* ===== Auto-Capture ===== */
+      .ac-toggle-row { display: flex; align-items: center; justify-content: space-between; margin: 0 0 4px; }
+      .ac-locked-note { font-size: 11px; color: #d8a838; margin: 0 0 10px; }
+      .ac-sub-row { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+      .ac-sub-row label { margin: 0; flex-shrink: 0; }
+      .ac-source-btn { width: auto; padding: 6px 10px; font-size: 12px; }
+      .ac-source-btn.muted { background: #3a1622; border-color: #7a3149; color: #f0a5bd; }
+      .ac-monkeys { display: flex; gap: 3px; align-items: center; }
+      .ac-monkey { font-size: 15px; opacity: 0.3; transition: opacity 0.2s, transform 0.15s; }
+      .ac-monkey.listening { opacity: 0.7; }
+      .ac-monkey.peak { opacity: 1; transform: scale(1.3); }
+      @keyframes acPulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+      .ac-monkey.active-window { animation: acPulse 1s ease-in-out infinite; opacity: 1; }
 
       /* ===== Hotkey (hidden capture input) ===== */
       input#hotkeyCapture { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
@@ -483,13 +498,81 @@
 
             <hr style="border:1px solid #1e3527;margin:16px 0;">
 
+            <div class="ac-toggle-row">
+              <div class="fs-toggle-label">
+                <span style="font-size:13px;color:#8fbfa3;">👂 Auto-Highlight Detection</span>
+              </div>
+              <label class="switch" style="margin:0;">
+                <input type="checkbox" id="autoCaptureToggle" onchange="onAutoCaptureToggle()" />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <p class="ac-locked-note" id="acLockedNote" style="display:none;">🔒 Creator tier or higher required — Redeem a code above to unlock.</p>
+            <p style="font-size:11px;color:#3a5244;margin:0 0 10px;">Listens for loud moments and saves automatically. Off by default — turn on per-device.</p>
+
+            <div id="acSubSettings" style="display:none;">
+              <div class="ac-sub-row">
+                <label style="margin:0;flex:1;">Sensitivity</label>
+                <select id="autoCaptureSensitivitySelect" onchange="onAutoCaptureSensitivityChange()" style="width:auto;flex:1;">
+                  <option value="low">Low</option>
+                  <option value="medium" selected>Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+              <div class="ac-sub-row">
+                <button class="ac-source-btn btn-secondary" id="acDesktopSourceBtn" onclick="onAutoCaptureSourceToggle('desktop')">🔊 Desktop: On</button>
+                <button class="ac-source-btn btn-secondary" id="acMicSourceBtn" onclick="onAutoCaptureSourceToggle('mic')">🎙 Mic: On</button>
+              </div>
+            </div>
+
+            <hr style="border:1px solid #1e3527;margin:16px 0;">
+
             <button class="btn-leave" style="width:100%;" onclick="runUninstall()">🗑 Uninstall Peak-Abu</button>
             <p style="font-size:11px;color:#3a5244;text-align:center;margin-top:6px;">Your saved highlight videos are never deleted.</p>
           </div>
         </div>
       </div>
 
+      <!-- TEXT INPUT MODAL — replaces window.prompt(), which Electron does
+           not implement (it silently no-ops). Shared by session title,
+           local note, and history rename. -->
+      <div id="textInputModal" class="modal">
+        <div class="modal-content" style="max-width:380px;">
+          <div class="modal-header">
+            <h2 id="textInputModalTitle">Edit</h2>
+            <button class="modal-close" onclick="closeTextInputModal()">×</button>
+          </div>
+          <input type="text" id="textInputModalField" maxlength="80"
+                 onkeydown="if(event.key==='Enter')submitTextInputModal(); if(event.key==='Escape')closeTextInputModal();" />
+          <div class="row">
+            <button class="btn-save" onclick="submitTextInputModal()">Save</button>
+            <button class="btn-secondary" onclick="closeTextInputModal()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- AUTO-CAPTURE DISCLOSURE — shown once, first time the toggle is enabled -->
+      <div id="acDisclosureModal" class="modal">
+        <div class="modal-content" style="max-width:420px;">
+          <div class="modal-header">
+            <h2>👂 Auto-Highlight Detection</h2>
+            <button class="modal-close" onclick="acCancelDisclosure()">×</button>
+          </div>
+          <p style="font-size:13px;line-height:1.5;color:#c8d6cd;margin-bottom:14px;">
+            Auto-Highlight listens to your game audio and mic in real time to detect highlight moments.
+            All analysis happens on your device. Audio is only sent to Peak-Abu as part of clips you save.
+          </p>
+          <div class="row">
+            <button class="btn-save" onclick="acConfirmDisclosure()">Turn On</button>
+            <button class="btn-secondary" onclick="acCancelDisclosure()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
       <!-- FIRST LAUNCH MODAL -->
+
+      <!-- FIRST LAUNCH MODAL -->
+
       <div id="firstLaunchModal" class="modal">
         <div class="modal-content">
           <div class="welcome-icon">🙈</div>
@@ -699,8 +782,14 @@
           <div class="card" style="position:relative;">
             <div class="rec-head">
               <h3>Recording</h3>
-              <button class="btn-icon" id="micMenuBtn" title="Audio settings" onclick="toggleMicMenu()"
-                      style="width:38px;height:36px;font-size:17px;">🎤</button>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div class="ac-monkeys" title="Auto-Highlight Detection status">
+                  <span class="ac-monkey" id="acMonkeyDesktop">🙉</span>
+                  <span class="ac-monkey" id="acMonkeyMic">🙊</span>
+                </div>
+                <button class="btn-icon" id="micMenuBtn" title="Audio settings" onclick="toggleMicMenu()"
+                        style="width:38px;height:36px;font-size:17px;">🎤</button>
+              </div>
             </div>
 
             <!-- MIC / AUDIO POPOVER -->
@@ -849,6 +938,18 @@
       window.authToken = null;
       window.authUsername = null;
 
+      // Auto-capture state
+      window.autoCaptureEnabled = false;
+      window.autoCaptureSensitivity = 'medium';
+      window.autoCaptureDesktopOn = true;
+      window.autoCaptureMicOn = true;
+      window.autoCaptureWindowActive = false;
+      var AUTO_CAPTURE_PROFILES = {
+        low:    { multiplier: 2.5, settleMs: 6000, minActiveMs: 25000 },
+        medium: { multiplier: 2.0, settleMs: 4000, minActiveMs: 20000 },
+        high:   { multiplier: 1.6, settleMs: 2500, minActiveMs: 15000 }
+      };
+
       // =====================
       // CLOCK SYNC — measures this PC's offset from the Peak-Abu server
       // clock via min-RTT ping sampling, then pushes it to main so every
@@ -988,41 +1089,63 @@
     }
 
     // Syncs server-canonical game/title into the local history entry.
-    // Pass whichever of game/title changed; null args are left untouched.
+    // Pass whichever of game/title changed; undefined/omitted args are left
+    // untouched (null IS a valid value — it means "explicitly cleared").
+    // Always re-renders, even if the entry was missing and had to be
+    // created from scratch — this is what a title edit right after joining
+    // (before the join's own addSessionToHistory call has settled) needs.
     function setSessionHistoryGame(code, game, title) {
-      if (!code) return;
+      console.log('[setSessionHistoryGame] called with code:', code, 'game:', game, 'title:', title);
+      if (!code) { console.log('[setSessionHistoryGame] bailed — no code'); return; }
       var history = loadSessionHistory();
       var entry = history.find(function(h) { return h.code === code; });
-      if (!entry) return;
-      var changed = false;
-      if (game && entry.game !== game) { entry.game = game; changed = true; }
-      if (typeof title !== 'undefined' && title !== null && entry.title !== title) { entry.title = title; changed = true; }
-      if (!changed) return;
+      console.log('[setSessionHistoryGame] found entry:', JSON.stringify(entry));
+
+      if (!entry) {
+        // Shouldn't normally happen (session-joined already adds an entry
+        // before this can fire), but don't silently drop the update if it does.
+        entry = {
+          code: code,
+          role: (window.isSessionHost ? 'host' : 'member'),
+          username: window.authUsername,
+          timestamp: new Date().toISOString(),
+          expiresAt: null,
+          game: null,
+          title: null,
+          localNote: null
+        };
+        history.unshift(entry);
+      }
+
+      if (typeof game !== 'undefined' && game !== null) entry.game = game;
+      if (typeof title !== 'undefined' && title !== null) entry.title = title;
+
+      while (history.length > SESSION_HISTORY_MAX) history.pop();
       saveSessionHistory(history);
       renderSessionHistory();
     }
 
-    // Stamped when recording starts — whatever game was detected running.
-    function setSessionHistoryGame(code, game) {
-      if (!code || !game) return;
-      var history = loadSessionHistory();
-      var entry = history.find(function(h) { return h.code === code; });
-      if (!entry || entry.game === game) return;
-      entry.game = game;
-      saveSessionHistory(history);
-      renderSessionHistory();
-    }
+    
 
     window.renameSessionHistory = function(code) {
       var history = loadSessionHistory();
       var entry = history.find(function(h) { return h.code === code; });
       if (!entry) return;
       var current = entry.title || entry.game || '';
-      var next = prompt('Name this session', current);
-      if (next === null) return;
-      entry.title = next.trim().slice(0, 60) || null;
-      saveSessionHistory(history);
-      renderSessionHistory();
+      openTextInputModal('Name this session', current, function(value) {
+        var h2 = loadSessionHistory();
+        var e2 = h2.find(function(h) { return h.code === code; });
+        if (!e2) return;
+        e2.title = value.slice(0, 60) || null;
+        saveSessionHistory(h2);
+        renderSessionHistory();
+        // If this is the currently-open session, also push the rename to
+        // the server so the squad's canonical title matches what History
+        // now shows locally — otherwise the two could disagree.
+        if (window.socket && window.currentSessionCode === code) {
+          window.socket.emit('set-session-title', { title: e2.title || '' });
+        }
+      });
     };
 
     function formatExpiry(expiresAt) {
@@ -1170,13 +1293,50 @@
         }
       }
 
+      // =====================
+      // TEXT INPUT MODAL — Electron does not implement window.prompt();
+      // it's a documented no-op. This is the replacement for every place
+      // that used to call prompt() (session title, local note, history rename).
+      // =====================
+      window._textInputModalCallback = null;
+
+      function openTextInputModal(title, currentValue, onSave) {
+        document.getElementById('textInputModalTitle').textContent = title;
+        var field = document.getElementById('textInputModalField');
+        field.value = currentValue || '';
+        window._textInputModalCallback = onSave;
+        document.getElementById('textInputModal').classList.add('show');
+        setTimeout(function() { field.focus(); field.select(); }, 30);
+      }
+
+      window.closeTextInputModal = function() {
+        document.getElementById('textInputModal').classList.remove('show');
+        window._textInputModalCallback = null;
+      };
+
+      window.submitTextInputModal = function() {
+        var value = document.getElementById('textInputModalField').value;
+        var cb = window._textInputModalCallback;
+        window.closeTextInputModal();
+        if (cb) cb(value.trim());
+      };
+
+      document.getElementById('textInputModal').addEventListener('click', function(e) {
+        if (e.target.id === 'textInputModal') closeTextInputModal();
+      });
+
       window.editSessionTitle = function() {
         if (!window.socket || !window.currentSessionCode) return;
         var current = document.getElementById('sessionTitleText').textContent;
         if (current === 'Untitled session') current = '';
-        var next = prompt('Session title (visible to everyone in the squad)', current);
-        if (next === null) return;
-        window.socket.emit('set-session-title', { title: next.trim().slice(0, 60) });
+        openTextInputModal('Session Title (visible to your whole squad)', current, function(value) {
+          var clean = value.slice(0, 60);
+          console.log('[editSessionTitle] value typed:', JSON.stringify(value), 'clean:', JSON.stringify(clean), 'code:', window.currentSessionCode);
+          renderSessionTitle(clean || null);
+          setSessionHistoryGame(window.currentSessionCode, undefined, clean || null);
+          console.log('[editSessionTitle] history after update:', JSON.stringify(loadSessionHistory().find(function(h) { return h.code === window.currentSessionCode; })));
+          window.socket.emit('set-session-title', { title: clean });
+        });
       };
 
       // Local note: purely client-side, stored on the localStorage history
@@ -1193,16 +1353,19 @@
 
       window.editSessionLocalNote = function() {
         if (!window.currentSessionCode) return;
+        var code = window.currentSessionCode;
         var history = loadSessionHistory();
-        var entry = history.find(function(h) { return h.code === window.currentSessionCode; });
+        var entry = history.find(function(h) { return h.code === code; });
         var current = entry ? (entry.localNote || '') : '';
-        var next = prompt('Your private note for this session (only visible to you)', current);
-        if (next === null) return;
-        if (!entry) return; // shouldn't happen — addSessionToHistory runs on join
-        entry.localNote = next.trim().slice(0, 80) || null;
-        saveSessionHistory(history);
-        renderSessionLocalNote(window.currentSessionCode);
-        renderSessionHistory();
+        openTextInputModal('Private Note (only visible to you)', current, function(value) {
+          var h2 = loadSessionHistory();
+          var e2 = h2.find(function(h) { return h.code === code; });
+          if (!e2) return; // shouldn't happen — addSessionToHistory runs on join
+          e2.localNote = value.slice(0, 80) || null;
+          saveSessionHistory(h2);
+          renderSessionLocalNote(code);
+          renderSessionHistory();
+        });
       };
 
       // =====================
@@ -1675,6 +1838,7 @@
         if (!window.micDeviceId || !window.micEnabled) return;
         try {
           var stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: window.micDeviceId } } });
+          window._liveMicStream = stream;
           window.micRecorder = new MediaRecorder(stream, { mimeType:'audio/webm;codecs=opus', audioBitsPerSecond:128000 });
           window.micRecorder.ondataavailable = async function(ev) {
             if (ev.data && ev.data.size > 0) { ipcRenderer.send('save-mic-chunk', await ev.data.arrayBuffer()); }
@@ -1682,6 +1846,7 @@
           window.micRecorder.onerror = function(e) { console.log('Mic error:', e); };
           window.micRecorder.start(10000);
           ipcRenderer.send('mic-recording-started', Date.now()+20);
+          if (window.autoCaptureEnabled) window.acAttachMic(stream);
           
           hudLog('system','🎤 Mic capture started','success');
         } catch(err) {
@@ -1700,7 +1865,206 @@
        loadAudioOutputDevices();
      });
         
-      
+      // =====================
+      // AUTO-CAPTURE — client-side audio analysis
+      // Taps the SAME MediaStreams already used for desktop/mic recording
+      // (no second capture request). Runs a lightweight RMS-vs-rolling-
+      // average peak detector on each and reports peaks to the server via
+      // 'auto-peak'. The server owns all ACTIVE/settle timing — this code
+      // only ever reports "louder than usual right now", never decides
+      // when to save.
+      // =====================
+      window._acAudioCtx = null;
+      window._acDesktop = null;
+      window._acMic = null;
+
+      function acGetAudioCtx() {
+        if (!window._acAudioCtx) window._acAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        return window._acAudioCtx;
+      }
+
+      function acCreateAnalyzer(stream) {
+        var ctx = acGetAudioCtx();
+        var source = ctx.createMediaStreamSource(stream);
+        var analyser = ctx.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+        return { source: source, analyser: analyser, data: new Uint8Array(analyser.fftSize), rolling: [], lastEmit: 0, timer: null };
+      }
+
+      function acReadRms(state) {
+        state.analyser.getByteTimeDomainData(state.data);
+        var sum = 0;
+        for (var i = 0; i < state.data.length; i++) {
+          var v = (state.data[i] - 128) / 128;
+          sum += v * v;
+        }
+        return Math.sqrt(sum / state.data.length);
+      }
+
+      var AC_ROLLING_MAX_SAMPLES = 250; // ~50s at 200ms
+      var AC_FLOOR = 0.02;              // absolute floor so near-silence can't false-trigger off a tiny rolling avg
+      var AC_EMIT_THROTTLE_MS = 500;    // don't spam the socket while a loud sound sustains
+
+      function acPollSource(sourceName, state) {
+        if (!state) return;
+        var rms = acReadRms(state);
+        state.rolling.push(rms);
+        if (state.rolling.length > AC_ROLLING_MAX_SAMPLES) state.rolling.shift();
+
+        var avg = state.rolling.reduce(function(a, b) { return a + b; }, 0) / state.rolling.length;
+        var profile = AUTO_CAPTURE_PROFILES[window.autoCaptureSensitivity] || AUTO_CAPTURE_PROFILES.medium;
+        var threshold = Math.max(avg * profile.multiplier, AC_FLOOR);
+
+        if (rms > threshold) {
+          acFlashMonkey(sourceName);
+          var now = Date.now();
+          if (now - state.lastEmit >= AC_EMIT_THROTTLE_MS) {
+            state.lastEmit = now;
+            acReportPeak(profile);
+          }
+        }
+      }
+
+      function acReportPeak(profile) {
+        if (!window.autoCaptureEnabled) return;
+        if (!window.socket || !window.currentSessionCode) return;
+        if (!window.isRecordingActive || !window.bufferReady) return;
+        window.socket.emit('auto-peak', { settleMs: profile.settleMs, minActiveMs: profile.minActiveMs });
+      }
+
+      function acFlashMonkey(sourceName) {
+        var el = document.getElementById(sourceName === 'mic' ? 'acMonkeyMic' : 'acMonkeyDesktop');
+        if (!el) return;
+        el.classList.add('peak');
+        setTimeout(function() { el.classList.remove('peak'); }, 180);
+      }
+      function acSetMonkeyListening(sourceName, listening) {
+        var el = document.getElementById(sourceName === 'mic' ? 'acMonkeyMic' : 'acMonkeyDesktop');
+        if (el) el.classList.toggle('listening', !!listening);
+      }
+      function acSetActiveWindowVisual(active) {
+        ['acMonkeyDesktop', 'acMonkeyMic'].forEach(function(id) {
+          var el = document.getElementById(id);
+          if (el) el.classList.toggle('active-window', !!active);
+        });
+      }
+
+      window.acAttachDesktop = function(stream) {
+        acDetachDesktop();
+        if (!window.autoCaptureEnabled || !window.autoCaptureDesktopOn || !stream) return;
+        var state = acCreateAnalyzer(stream);
+        state.timer = setInterval(function() { acPollSource('desktop', state); }, 200);
+        window._acDesktop = state;
+        acSetMonkeyListening('desktop', true);
+      };
+      window.acAttachMic = function(stream) {
+        acDetachMic();
+        if (!window.autoCaptureEnabled || !window.autoCaptureMicOn || !stream) return;
+        var state = acCreateAnalyzer(stream);
+        state.timer = setInterval(function() { acPollSource('mic', state); }, 200);
+        window._acMic = state;
+        acSetMonkeyListening('mic', true);
+      };
+      function acDetachDesktop() {
+        if (window._acDesktop) {
+          clearInterval(window._acDesktop.timer);
+          try { window._acDesktop.source.disconnect(); } catch (e) {}
+          window._acDesktop = null;
+        }
+        acSetMonkeyListening('desktop', false);
+      }
+      function acDetachMic() {
+        if (window._acMic) {
+          clearInterval(window._acMic.timer);
+          try { window._acMic.source.disconnect(); } catch (e) {}
+          window._acMic = null;
+        }
+        acSetMonkeyListening('mic', false);
+      }
+      window.acDetachAll = function() {
+        acDetachDesktop();
+        acDetachMic();
+        acSetActiveWindowVisual(false);
+      };
+
+      // ===== Settings UI =====
+      window.onAutoCaptureToggle = function() {
+        var checked = document.getElementById('autoCaptureToggle').checked;
+        if (checked && window.currentTier === 't1') {
+          document.getElementById('autoCaptureToggle').checked = false;
+          return;
+        }
+        if (checked && !window._acDisclosureSeen) {
+          document.getElementById('autoCaptureToggle').checked = false;
+          document.getElementById('acDisclosureModal').classList.add('show');
+          return;
+        }
+        acCommitEnabled(checked);
+      };
+
+      window.acConfirmDisclosure = function() {
+        window._acDisclosureSeen = true;
+        ipcRenderer.invoke('set-user-pref', 'autoCaptureDisclosureSeen', true);
+        document.getElementById('acDisclosureModal').classList.remove('show');
+        document.getElementById('autoCaptureToggle').checked = true;
+        acCommitEnabled(true);
+      };
+      window.acCancelDisclosure = function() {
+        document.getElementById('acDisclosureModal').classList.remove('show');
+        document.getElementById('autoCaptureToggle').checked = false;
+      };
+
+      function acCommitEnabled(enabled) {
+        window.autoCaptureEnabled = enabled;
+        ipcRenderer.invoke('set-user-pref', 'autoCaptureEnabled', enabled);
+        document.getElementById('acSubSettings').style.display = enabled ? 'block' : 'none';
+        hudLog('system', enabled ? '👂 Auto-Highlight Detection enabled' : 'Auto-Highlight Detection disabled', 'info');
+        if (enabled && window.isRecordingActive) {
+          if (window._liveDesktopStream) window.acAttachDesktop(window._liveDesktopStream);
+          if (window._liveMicStream) window.acAttachMic(window._liveMicStream);
+        } else if (!enabled) {
+          window.acDetachAll();
+        }
+      }
+
+      window.onAutoCaptureSensitivityChange = function() {
+        window.autoCaptureSensitivity = document.getElementById('autoCaptureSensitivitySelect').value;
+        ipcRenderer.invoke('set-user-pref', 'autoCaptureSensitivity', window.autoCaptureSensitivity);
+      };
+
+      window.onAutoCaptureSourceToggle = function(source) {
+        var btn = document.getElementById(source === 'mic' ? 'acMicSourceBtn' : 'acDesktopSourceBtn');
+        var enabled = source === 'mic' ? !window.autoCaptureMicOn : !window.autoCaptureDesktopOn;
+        if (source === 'mic') window.autoCaptureMicOn = enabled; else window.autoCaptureDesktopOn = enabled;
+        btn.classList.toggle('muted', !enabled);
+        btn.textContent = (source === 'mic' ? '🎙 Mic: ' : '🔊 Desktop: ') + (enabled ? 'On' : 'Off');
+        ipcRenderer.invoke('set-user-pref', source === 'mic' ? 'autoCaptureMicOn' : 'autoCaptureDesktopOn', enabled);
+        if (window.isRecordingActive && window.autoCaptureEnabled) {
+          if (source === 'mic') { if (enabled && window._liveMicStream) window.acAttachMic(window._liveMicStream); else acDetachMic(); }
+          else { if (enabled && window._liveDesktopStream) window.acAttachDesktop(window._liveDesktopStream); else acDetachDesktop(); }
+        }
+      };
+
+      Promise.all([
+        ipcRenderer.invoke('get-user-pref', 'autoCaptureEnabled'),
+        ipcRenderer.invoke('get-user-pref', 'autoCaptureSensitivity'),
+        ipcRenderer.invoke('get-user-pref', 'autoCaptureDesktopOn'),
+        ipcRenderer.invoke('get-user-pref', 'autoCaptureMicOn'),
+        ipcRenderer.invoke('get-user-pref', 'autoCaptureDisclosureSeen')
+      ]).then(function(vals) {
+        window.autoCaptureEnabled = vals[0] === true;
+        window.autoCaptureSensitivity = vals[1] || 'medium';
+        window.autoCaptureDesktopOn = vals[2] !== false;
+        window.autoCaptureMicOn = vals[3] !== false;
+        window._acDisclosureSeen = vals[4] === true;
+        var toggle = document.getElementById('autoCaptureToggle');
+        var sub = document.getElementById('acSubSettings');
+        if (toggle) toggle.checked = window.autoCaptureEnabled;
+        if (sub) sub.style.display = window.autoCaptureEnabled ? 'block' : 'none';
+        var sensSel = document.getElementById('autoCaptureSensitivitySelect');
+        if (sensSel) sensSel.value = window.autoCaptureSensitivity;
+      }).catch(function() {});
 
       // =====================
       // SESSION
@@ -1769,8 +2133,11 @@
         });
 
         window.socket.on('session-title-changed', function(d) {
+          console.log('[session-title-changed] received:', d, 'currentSessionCode:', window.currentSessionCode);
           renderSessionTitle(d.title);
-          if (window.currentSessionCode) setSessionHistoryGame(window.currentSessionCode, null, d.title);
+          // d.title can be null (title cleared) — pass it through explicitly
+          // rather than skipping, so History reflects a cleared title too.
+          if (window.currentSessionCode) setSessionHistoryGame(window.currentSessionCode, undefined, d.title);
           if (d.setBy !== window.authUsername) {
             hudLog('squad', d.setBy + ' renamed the session' + (d.title ? ' to "' + d.title + '"' : ''), 'info');
           }
@@ -1820,6 +2187,25 @@
         });
 
         window.socket.on('upload-received', function(d) { hudLog('activity','☁️ '+d.username+' uploaded their clip','success'); });
+
+        window.socket.on('auto-capture-start', function(d) {
+          window.autoCaptureWindowActive = true;
+          acSetActiveWindowVisual(true);
+          ipcRenderer.send('auto-capture-active', true);
+          hudLog('activity', '👂 ' + d.username + ' — auto-capture listening for the moment to settle...', 'broadcast');
+        });
+        window.socket.on('auto-capture-end', function(d) {
+          window.autoCaptureWindowActive = false;
+          acSetActiveWindowVisual(false);
+          ipcRenderer.send('auto-capture-active', false);
+          hudLog('activity', '🎬 Auto-capture window closed (' + (d.elapsedMs/1000).toFixed(0) + 's) — saving...', 'broadcast');
+        });
+        window.socket.on('auto-capture-cancel', function(d) {
+          window.autoCaptureWindowActive = false;
+          acSetActiveWindowVisual(false);
+          ipcRenderer.send('auto-capture-active', false);
+          hudLog('system', '👂 Auto-capture: false alarm, too short to save', 'info');
+        });
 
         window.socket.on('error-message', function(d) {
           if (d.message && d.message.includes('cooldown')) { hudLog('activity','⏳ '+d.message,'info'); return; }
@@ -1927,6 +2313,7 @@
           var settings = audioTrack.getSettings();
           if (settings.sampleRate && settings.sampleRate < 44100) { stream.getTracks().forEach(function(t){t.stop();}); return; }
           var audioOnlyStream = new MediaStream([audioTrack]);
+          window._liveDesktopStream = audioOnlyStream;
           window.mediaRecorder = new MediaRecorder(audioOnlyStream, { mimeType:'audio/webm;codecs=opus', audioBitsPerSecond:192000 });
           window.mediaRecorder.ondataavailable = async function(ev) {
             if (ev.data && ev.data.size > 0) ipcRenderer.send('save-audio-chunk', await ev.data.arrayBuffer());
@@ -1934,6 +2321,7 @@
           window.mediaRecorder.onerror = function(e) { console.log('MediaRecorder error:', e); };
           window.mediaRecorder.start(10000);
           ipcRenderer.send('audio-recording-started', Date.now()+20);
+          if (window.autoCaptureEnabled) window.acAttachDesktop(audioOnlyStream);
         } catch(err) { console.log('Audio capture failed:', err.name, err.message); }
       }
 
@@ -2012,6 +2400,11 @@
       if (window.mediaRecorder && window.mediaRecorder.state !== 'inactive') { window.mediaRecorder.stop(); window.mediaRecorder = null; }
       wgcStopAll();
       stopMicCapture();
+      window.acDetachAll();
+      window._liveDesktopStream = null;
+      window._liveMicStream = null;
+      window.autoCaptureWindowActive = false;
+      ipcRenderer.send('auto-capture-active', false);
       document.getElementById('startBtn').textContent = '▶ Start Highlight Session';
       document.getElementById('stopBtn').disabled = true;
       document.getElementById('saveBtn').disabled = true;
@@ -2877,9 +3270,24 @@
       function updateTierBadge(tier) {
         window.currentTier = tier || 't1';
         var badge = document.getElementById('tierBadge');
-        if (!badge) return;
-        badge.className = 'tier-badge ' + window.currentTier;
-        badge.textContent = TIER_LABELS[window.currentTier] || 'Free';
+        if (badge) {
+          badge.className = 'tier-badge ' + window.currentTier;
+          badge.textContent = TIER_LABELS[window.currentTier] || 'Free';
+        }
+        acUpdateTierGate();
+      }
+
+      function acUpdateTierGate() {
+        var toggle = document.getElementById('autoCaptureToggle');
+        var note = document.getElementById('acLockedNote');
+        if (!toggle) return;
+        var locked = (window.currentTier === 't1');
+        toggle.disabled = locked;
+        if (note) note.style.display = locked ? 'block' : 'none';
+        if (locked && window.autoCaptureEnabled) {
+          toggle.checked = false;
+          acCommitEnabled(false);
+        }
       }
 
       window.toggleRedeemPanel = function() {

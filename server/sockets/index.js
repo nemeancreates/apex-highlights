@@ -10,6 +10,7 @@ const { sessions, saveSessionsToDisk, users } = require('../stores');
 const { checkSocketRate, removeSocketRate } = require('../ratelimit');
 const { socketAuth, getEffectiveTier } = require('../auth');
 const { registerHighlightHandlers } = require('./highlights');
+const { registerAutoCaptureHandlers } = require('./autocapture');
 const { createSessionForUser } = require('../routes/sessions');
 
 function initSockets(io) {
@@ -230,6 +231,9 @@ function initSockets(io) {
 
     // Highlight save broadcast + lock/queue machinery
     registerHighlightHandlers(io, socket);
+
+    // Auto-capture state machine — server-authoritative ACTIVE/settle timing
+    registerAutoCaptureHandlers(io, socket);
 
     socket.on('disconnect', () => {
       removeSocketRate(socket.id);

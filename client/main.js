@@ -455,6 +455,7 @@ let bufferReadyWatcher = null;
 let recordingStartTime = null;
 let recordingSessionTag = Date.now();
 let lastHighlightBoundary = 0;
+let autoCaptureLocked = false; // true while a server-side auto-capture ACTIVE window is open — suspends chunk pruning so the whole window survives to save time
 
 let hlAudioPath = null;
 let hlMicPath = null;
@@ -918,6 +919,7 @@ function getPreciseUTC() { return Date.now() + clockOffset; }
 
 function pruneOldChunks() {
   if (fullSessionMode) return;
+  if (autoCaptureLocked) return; // an auto-capture window may be open — don't evict chunks it still needs
 
   const files = fs.readdirSync(BUFFER_DIR)
     .filter(f => f.endsWith('.mp4'))
@@ -1065,6 +1067,7 @@ function wgcFinalizeFile(fileId) {
 }
 
 function wgcCleanupOldFiles() {
+  if (autoCaptureLocked) return; // same reasoning as pruneOldChunks
   while (wgcFiles.length > 2) {
     const old = wgcFiles.shift();
     if (wgcFileStreams[old.fileId]) {
@@ -2361,6 +2364,14 @@ function createWindow() {
   ipcMain.on('update-mic-settings', (event, settings) => {
     if (settings.volume !== undefined) micVolume = settings.volume;
     if (settings.muted !== undefined) micMuted = settings.muted;
+  });
+
+  // Auto-capture lock: renderer tells main when a server-authoritative
+  // ACTIVE window opens/closes so a highlight extending up to 6 minutes
+  // isn't pruned out from under itself.
+  ipcMain.on('auto-capture-active', (event, active) => {
+    autoCaptureLocked = !!active;
+    console.log(`Auto-capture buffer lock: ${autoCaptureLocked ? 'ON (pruning suspended)' : 'OFF'}`);
   });
 
   let audioOutputDeviceId = 'default';
