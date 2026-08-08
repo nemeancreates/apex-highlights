@@ -302,11 +302,18 @@ function clampPlayerDockedWidth(desired, winWidth) {
   return Math.min(maxAllowed, Math.max(minAllowed, desired));
 }
 
-function playerUrlFor(code) {
+function playerUrlFor(code, token, username) {
   const clean = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
-  return clean.length >= 4
-    ? `https://peakabu.app/player?code=${clean}`
-    : 'https://peakabu.app/player';
+  if (clean.length < 4) return 'https://peakabu.app/player';
+  let url = `https://peakabu.app/player?code=${clean}`;
+  // Credentials only ever get attached here — when the app opens the
+  // player for ITS OWN logged-in user. Never put these on a link meant
+  // to be shared (Copy Invite Link / the player's own "copy share link"
+  // build their URLs separately and never pass through playerUrlFor).
+  if (token && username) {
+    url += `&t=${encodeURIComponent(token)}&u=${encodeURIComponent(username)}`;
+  }
+  return url;
 }
 
 function layoutPlayerView() {
@@ -348,11 +355,11 @@ function layoutPlayerView() {
   });
 }
 
-function openDockedPlayer(code) {
+function openDockedPlayer(code, token, username) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const { WebContentsView } = require('electron');
   if (playerView) {
-    playerView.webContents.loadURL(playerUrlFor(code));
+    playerView.webContents.loadURL(playerUrlFor(code, token, username));
     layoutPlayerView();
     return;
   }
@@ -360,7 +367,7 @@ function openDockedPlayer(code) {
     webPreferences: { nodeIntegration: false, contextIsolation: true }
   });
   mainWindow.contentView.addChildView(playerView);
-  playerView.webContents.loadURL(playerUrlFor(code));
+  playerView.webContents.loadURL(playerUrlFor(code, token, username));
   layoutPlayerView();
   console.log('Web player docked into main window');
 }
@@ -376,7 +383,7 @@ function closeDockedPlayer() {
   console.log('Docked web player closed');
 }
 
-function openWindowedPlayer(code) {
+function openWindowedPlayer(code, token, username) {
   // Guarantee any leftover docked-mode UI (drag handle, close button) is
   // cleared the moment we go windowed, even if nothing was docked this
   // session — this is what was leaving a stale close button on screen.
@@ -385,7 +392,7 @@ function openWindowedPlayer(code) {
   }
 
   if (playerWindow && !playerWindow.isDestroyed()) {
-    playerWindow.webContents.loadURL(playerUrlFor(code));
+    playerWindow.webContents.loadURL(playerUrlFor(code, token, username));
     playerWindow.show();
     playerWindow.focus();
     return;
@@ -402,7 +409,7 @@ function openWindowedPlayer(code) {
     webPreferences: { nodeIntegration: false, contextIsolation: true }
   });
   playerWindow.setMenuBarVisibility(false);
-  playerWindow.loadURL(playerUrlFor(code));
+  playerWindow.loadURL(playerUrlFor(code, token, username));
   playerWindow.on('closed', () => { playerWindow = null; });
   console.log('Web player opened in its own window');
 }
@@ -423,8 +430,8 @@ const RESOLUTION_MAP = {
 };
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.36',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.36.exe',
+  version: '0.1.37',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.37.exe',
   releaseNotes: 'Discord Integration.'
 };
 
@@ -807,6 +814,11 @@ function loadUserPreferences() {
   if (typeof prefs.playerWindowedMode === 'boolean') {
     playerWindowedMode = prefs.playerWindowedMode;
     console.log(`Loaded web player mode: ${playerWindowedMode ? 'separate window' : 'docked'}`);
+  }
+  // Apply the mode-appropriate minimum once the window exists (loadUserPreferences
+  // runs before createWindow in some paths — guard for that)
+  if (mainWindow && !mainWindow.isDestroyed() && playerWindowedMode) {
+    mainWindow.setMinimumSize(560, 640);
   }
 
   if (typeof prefs.playerDockedWidth === 'number' && prefs.playerDockedWidth > 0) {
@@ -1378,9 +1390,16 @@ function startRecording(monitor) {
   });
 }
 
-function saveHighlight(coordinatedTimestamp = null, clipDurationMs = null) {
+function saveHighlight(coordinatedTimestamp = null, clipDurationMs = null, triggerSource = null) {
   const duration = clipDurationMs || 30000;
-  const postDelay = Math.ceil(duration * 0.1);
+  // The buffer writes 10s segments and the save path drops the in-progress
+  // one (it's mid-write). For auto-capture that discarded chunk holds the
+  // END of the fight — the exact moment worth keeping — so wait for it to
+  // close instead of the 10% post-roll, which is far too short to cover a
+  // full segment. Manual saves keep the snappy 10% behavior.
+  const postDelay = (triggerSource === 'auto')
+    ? (CHUNK_SECONDS * 1000) + 1500
+    : Math.ceil(duration * 0.1);
   const clipChunks = Math.ceil(duration / (CHUNK_SECONDS * 1000));
   const saveTimeUTC = coordinatedTimestamp || getPreciseUTC();
 
@@ -1558,8 +1577,28 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     return;
   }
 
+  // ================================
+  // MONITOR MODE — TIME-BASED EXTRACTION
+  //
+  // Previously this glued together WHOLE 10s chunk files and filtered them
+  // by "haven't been used by a previous save". Two failures came out of that:
+  //   1. Output length could only ever be a multiple of CHUNK_SECONDS, so a
+  //      17s auto-capture window became a 10s or 20s clip, never 17s.
+  //   2. The dedup-by-chunk rule starved back-to-back auto saves — by the
+  //      time a window closed, most chunks covering it were already "used",
+  //      leaving one chunk and a 10s clip regardless of the real window.
+  //
+  // Now: pick every chunk that OVERLAPS the requested time window, concat
+  // them, then trim precisely to the window with -ss/-t (same approach the
+  // WGC path already uses). A 17.4s window yields a 17.4s clip; a 4-minute
+  // fight yields a 4-minute clip. Dedup is now by time window, not by file,
+  // so consecutive saves never cannibalize each other's footage.
+  // ================================
+  const windowStartLocal = (saveTimeUTC - clockOffset) - (0.9 * durationMs);
+  const windowEndLocal   = (saveTimeUTC - clockOffset) + (0.1 * durationMs);
+
   const allVideoFiles = fs.readdirSync(BUFFER_DIR)
-    .filter(f => f.endsWith('.mp4') && !f.startsWith('temp_'))
+    .filter(f => f.endsWith('.mp4') && !f.startsWith('temp_') && !f.startsWith('fs_') && !f.startsWith('wgc_'))
     .map(f => {
       const st = fs.statSync(path.join(BUFFER_DIR, f));
       return {
@@ -1570,19 +1609,28 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
       };
     })
     .filter(f => f.size > 100000)
-    .sort((a, b) => a.time - b.time);
+    .sort((a, b) => a.birth - b.birth);
 
-  const withoutInProgress = allVideoFiles.slice(0, -1);
-  const newSinceLastSave = withoutInProgress.filter(f =>
-    f.time > lastHighlightBoundary && f.time > recordingStartTime
-  );
-  const videoFiles = newSinceLastSave.slice(-clipChunks);
+  // Skip the chunk FFmpeg is still writing into (mtime within the last
+  // ~1.2s). Everything older is closed and safe to read.
+  const settledCutoff = Date.now() - 1200;
+  const readable = allVideoFiles.filter(f => f.time <= settledCutoff && f.birth >= recordingStartTime - 2000);
+
+  // A chunk covers [birth, birth + CHUNK_SECONDS]. Keep any that overlaps
+  // the requested window at all.
+  const chunkSpanMs = CHUNK_SECONDS * 1000;
+  const videoFiles = readable.filter(f => {
+    const chunkStart = f.birth;
+    const chunkEnd = Math.max(f.time, f.birth + chunkSpanMs);
+    return chunkEnd >= windowStartLocal && chunkStart <= windowEndLocal;
+  });
 
   if (videoFiles.length === 0) {
     const newest = allVideoFiles.length ? allVideoFiles[allVideoFiles.length - 1] : null;
-    console.log('No eligible chunks: ' +
-      `total=${allVideoFiles.length}, boundary=${lastHighlightBoundary}, ` +
-      `recStart=${recordingStartTime}, newestMtime=${newest ? newest.time : 'n/a'}, ` +
+    console.log('No chunks covering window: ' +
+      `total=${allVideoFiles.length}, readable=${readable.length}, ` +
+      `windowStart=${Math.round(windowStartLocal)}, windowEnd=${Math.round(windowEndLocal)}, ` +
+      `newestBirth=${newest ? Math.round(newest.birth) : 'n/a'}, ` +
       `captureAlive=${!!(ffmpegProcess && ffmpegProcess.exitCode === null)}, retry=${retryCount}`);
 
     if (retryCount < 4) {
@@ -1593,7 +1641,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
       return;
     }
 
-    console.log('No completed chunks after retries');
+    console.log('No covering chunks after retries');
     if (mainWindow && !mainWindow.isDestroyed()) {
       const dead = !(ffmpegProcess && ffmpegProcess.exitCode === null);
       mainWindow.webContents.send('highlight-error', dead
@@ -1603,97 +1651,151 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     return;
   }
 
-  lastHighlightBoundary = videoFiles[videoFiles.length - 1].time;
+  // Trim geometry, derived from real file birth times rather than chunk
+  // index arithmetic — this is what makes arbitrary window lengths work.
+  const firstChunk = videoFiles[0];
+  const lastChunk = videoFiles[videoFiles.length - 1];
+  const availableStart = firstChunk.birth;
+  const availableEnd = Math.max(lastChunk.time, lastChunk.birth + chunkSpanMs);
+
+  const effStart = Math.max(windowStartLocal, availableStart);
+  const effEnd = Math.min(windowEndLocal, availableEnd);
+  const trimOffsetSec = Math.max(0, (effStart - availableStart) / 1000);
+  const trimDurationSec = Math.max(0.5, (effEnd - effStart) / 1000);
+
+  // Time-window dedup: remember where this clip ended so a later save can
+  // tell if it's genuinely re-covering old ground. Chunks are NOT consumed.
+  lastHighlightBoundary = effEnd;
 
   const hasAudio = !!(hlAudioPath && hlAudioChunkCount > 0 && fs.existsSync(hlAudioPath));
   const hasMic = !!(hlMicPath && hlMicChunkCount > 0 && !micMuted && fs.existsSync(hlMicPath));
-  console.log(`Saving highlight: ${videoFiles.length}/${clipChunks} chunks, audio=${hasAudio} (${hlAudioChunkCount} appends), mic=${hasMic} (${hlMicChunkCount} appends) (clip: ${durationMs / 1000}s)`);
+  console.log(`Saving highlight: ${videoFiles.length} chunk(s) covering window, ` +
+    `trim ss=${trimOffsetSec.toFixed(3)}s t=${trimDurationSec.toFixed(3)}s ` +
+    `(requested ${(durationMs / 1000).toFixed(1)}s), audio=${hasAudio} (${hlAudioChunkCount}), mic=${hasMic} (${hlMicChunkCount})`);
 
   const timestamp = new Date(saveTimeUTC).toISOString().replace(/[:.]/g, '-');
   const outputPath = path.join(CLIPS_DIR, `highlight-${timestamp}.mp4`);
   const metadataPath = path.join(CLIPS_DIR, `highlight-${timestamp}.json`);
 
-  const startTimeUTC = Math.round(videoFiles[0].birth + clockOffset);
-  const endTimeUTC = Math.round(videoFiles[videoFiles.length - 1].time + clockOffset);
-  const realDurationMs = Math.max(0, endTimeUTC - startTimeUTC);
-
+  const realDurationMs = Math.round(trimDurationSec * 1000);
   const metadata = {
     clipId: crypto.randomUUID(),
     version: 2,
-    saveTimeUTC, startTimeUTC, endTimeUTC,
-    durationMs: realDurationMs, clipDurationMs: durationMs,
-    frameRate: recordFps, clockOffsetMs: clockOffset,
+    saveTimeUTC,
+    startTimeUTC: Math.round(effStart + clockOffset),
+    endTimeUTC: Math.round(effEnd + clockOffset),
+    durationMs: realDurationMs,
+    clipDurationMs: durationMs,
+    frameRate: recordFps,
+    clockOffsetMs: clockOffset,
     syncUncertaintyMs: clockUncertaintyMs,
     userId: null,
     sessionId: currentSession ? currentSession.code : null,
     coordinated_timestamp: coordinatedTs || null
   };
 
-  const videoListPath = path.join(BUFFER_DIR, 'filelist_' + Date.now() + '.txt');
-  const videoContent = videoFiles.map(f => `file '${f.path.replace(/\\/g, '/')}'`).join('\n');
-  fs.writeFileSync(videoListPath, videoContent);
+  const tempId = Date.now();
+  const videoListPath = path.join(BUFFER_DIR, `filelist_${tempId}.txt`);
+  const tempConcatPath = path.join(BUFFER_DIR, `temp_concat_${tempId}.mp4`);
+  const tempVideoPath = path.join(BUFFER_DIR, `temp_video_${tempId}.mp4`);
+  const tempAudioPath = path.join(BUFFER_DIR, `temp_audio_${tempId}.m4a`);
+  const tempMicPath = hasMic ? path.join(BUFFER_DIR, `temp_mic_${tempId}.m4a`) : null;
 
-  if (hasAudio) {
-    const tempId = Date.now();
-    const tempVideoPath = path.join(BUFFER_DIR, 'temp_video_' + tempId + '.mp4');
-    const tempAudioPath = path.join(BUFFER_DIR, 'temp_audio_' + tempId + '.m4a');
-    const tempMicPath = hasMic ? path.join(BUFFER_DIR, 'temp_mic_' + tempId + '.m4a') : null;
+  fs.writeFileSync(videoListPath, videoFiles.map(f => `file '${f.path.replace(/\\/g, '/')}'`).join('\n'));
 
-    const firstChunkNum = parseInt((videoFiles[0].name.match(/chunk_(?:\d+_)?(\d+)\.mp4/) || [])[1] || '0', 10);
-    const clipVideoStartMs = videoStartTime + (firstChunkNum * CHUNK_SECONDS * 1000) + 250;
-    const clipSpanSec = ((videoFiles[videoFiles.length - 1].time - videoFiles[0].birth) / 1000) + 2;
+  // Audio offsets now key off the TRIMMED video start (effStart), not chunk
+  // index math — the old `firstChunkNum * CHUNK_SECONDS` calculation assumed
+  // the clip began exactly on a chunk boundary, which trimming breaks.
+  const clipSpanSec = trimDurationSec + 1.0;
+  const audioDeltaSec = audioFirstChunkTime ? (effStart - audioFirstChunkTime) / 1000 : 0;
+  const audioSkipSec = Math.max(0, audioDeltaSec);
+  const audioDelaySec = Math.max(0, -audioDeltaSec);
+  const micDeltaSec = micFirstChunkTime ? (effStart - micFirstChunkTime) / 1000 : 0;
+  const micSkipSec = Math.max(0, micDeltaSec);
+  const micDelaySec = Math.max(0, -micDeltaSec);
 
-    const audioDeltaSec = audioFirstChunkTime ? (clipVideoStartMs - audioFirstChunkTime) / 1000 : 0;
-    const audioSkipSec = Math.max(0, audioDeltaSec);
-    const audioDelaySec = Math.max(0, -audioDeltaSec);
+  const trimEncoderArgs = useCpuEncoder
+    ? ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23']
+    : ['-c:v', 'h264_nvenc', '-preset', 'p4', '-tune', 'hq', '-b:v',
+       recordResolution ? (recordResolution.height <= 480 ? '3M' : '5M') : '8M'];
 
-    const micDeltaSec = micFirstChunkTime ? (clipVideoStartMs - micFirstChunkTime) / 1000 : 0;
-    const micSkipSec = Math.max(0, micDeltaSec);
-    const micDelaySec = Math.max(0, -micDeltaSec);
+  function cleanupTemps() {
+    [videoListPath, tempConcatPath, tempVideoPath, tempAudioPath, tempMicPath].forEach(p => {
+      if (p) try { fs.unlinkSync(p); } catch (e) {}
+    });
+  }
 
-    function cleanupTemps() {
-      [tempAudioPath, tempVideoPath, videoListPath, tempMicPath].forEach(p => {
-        if (p) try { fs.unlinkSync(p); } catch (e) {}
-      });
+  function finishSuccess() {
+    fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
+    console.log('Highlight saved to', outputPath);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('highlight-saved', outputPath);
     }
+    uploadHighlight(outputPath, metadataPath);
+  }
 
-    function finishSuccess() {
-      fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
-      console.log('Highlight saved to', outputPath);
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('highlight-saved', outputPath);
-      }
-      uploadHighlight(outputPath, metadataPath);
-    }
-
-    function finishVideoOnly() {
-      console.log('Audio unavailable/merge failed — saving video only');
-      try {
-        fs.copyFileSync(tempVideoPath, outputPath);
-        finishSuccess();
-      } catch (e) {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('highlight-error', 'Failed to save highlight');
-        }
-      }
+  function finishVideoOnly() {
+    console.log('Audio unavailable/merge failed — saving video only');
+    try {
+      fs.copyFileSync(tempVideoPath, outputPath);
       cleanupTemps();
+      finishSuccess();
+    } catch (e) {
+      cleanupTemps();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('highlight-error', 'Failed to save highlight');
+      }
+    }
+  }
+
+  // STEP 1: concat covering chunks (stream copy — fast, no quality loss)
+  const concatVideo = spawn(getFFmpegPath(), [
+    '-f', 'concat', '-safe', '0', '-i', videoListPath,
+    '-c', 'copy', '-y', tempConcatPath
+  ], { windowsHide: true });
+  concatVideo.stderr.on('data', d => console.log('ConcatVideo:', d.toString()));
+
+  concatVideo.on('close', (concatCode) => {
+    if (concatCode !== 0 || !fs.existsSync(tempConcatPath)) {
+      cleanupTemps();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('highlight-error', 'Failed to concat video');
+      }
+      return;
     }
 
-    const concatVideo = spawn(getFFmpegPath(), [
-      '-f', 'concat', '-safe', '0', '-i', videoListPath,
-      '-c', 'copy', '-y', tempVideoPath
-    ]);
-    concatVideo.stderr.on('data', d => console.log('ConcatVideo:', d.toString()));
+    // STEP 2: trim to the exact window. This is the step that lets clip
+    // length match the real ACTIVE window instead of snapping to 10s.
+    const trim = spawn(getFFmpegPath(), [
+      '-fflags', '+genpts+igndts',
+      '-i', tempConcatPath,
+      '-ss', trimOffsetSec.toFixed(3),
+      '-t', trimDurationSec.toFixed(3),
+      ...trimEncoderArgs,
+      '-fps_mode', 'cfr', '-r', String(recordFps),
+      '-an', '-movflags', '+faststart',
+      '-y', tempVideoPath
+    ], { windowsHide: true });
 
-    concatVideo.on('close', (videoCode) => {
-      if (videoCode !== 0) {
+    trim.stderr.on('data', d => console.log('TrimVideo:', d.toString()));
+    trim.on('close', (trimCode) => {
+      try { fs.unlinkSync(tempConcatPath); } catch (e) {}
+      try { fs.unlinkSync(videoListPath); } catch (e) {}
+
+      if (trimCode !== 0 || !fs.existsSync(tempVideoPath)) {
         cleanupTemps();
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('highlight-error', 'Failed to concat video');
+          mainWindow.webContents.send('highlight-error', 'Failed to trim highlight to window');
         }
         return;
       }
 
+      if (!hasAudio) {
+        finishVideoOnly();
+        return;
+      }
+
+      // STEP 3: audio repair + merge (unchanged behavior, new offsets)
       console.log(`Audio sync: skip=${audioSkipSec.toFixed(3)}s delay=${audioDelaySec.toFixed(3)}s span=${clipSpanSec.toFixed(1)}s`);
       const repairAudio = spawn(getFFmpegPath(), [
         '-fflags', '+genpts+igndts', '-err_detect', 'ignore_err',
@@ -1701,8 +1803,9 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
         '-af', 'aresample=async=1000:first_pts=0',
         '-ss', audioSkipSec.toFixed(3), '-t', clipSpanSec.toFixed(3),
         '-c:a', 'aac', '-b:a', '192k', '-y', tempAudioPath
-      ]);
+      ], { windowsHide: true });
       repairAudio.stderr.on('data', d => console.log('RepairAudio:', d.toString()));
+
       repairAudio.on('close', (repairCode) => {
         if (repairCode !== 0 || !fs.existsSync(tempAudioPath)) {
           finishVideoOnly();
@@ -1716,11 +1819,10 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
             '-af', 'aresample=async=1000:first_pts=0',
             '-ss', micSkipSec.toFixed(3), '-t', clipSpanSec.toFixed(3),
             '-c:a', 'aac', '-b:a', '192k', '-y', tempMicPath
-          ]);
+          ], { windowsHide: true });
           repairMic.stderr.on('data', d => console.log('RepairMic:', d.toString()));
-          repairMic.on('close', (micRepairCode) => {
-            if (micRepairCode !== 0 || !fs.existsSync(tempMicPath)) runMerge(false);
-            else runMerge(true);
+          repairMic.on('close', (micCode) => {
+            runMerge(micCode === 0 && fs.existsSync(tempMicPath));
           });
         } else {
           runMerge(false);
@@ -1744,13 +1846,13 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
           mergeArgs.push('-map', '0:v:0', '-map', '1:a:0', '-af', 'aresample=async=1000');
         }
 
-        mergeArgs.push('-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-shortest', '-y', outputPath);
+        mergeArgs.push('-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
+          '-movflags', '+faststart', '-shortest', '-y', outputPath);
 
-        const merge = spawn(getFFmpegPath(), mergeArgs);
+        const merge = spawn(getFFmpegPath(), mergeArgs, { windowsHide: true });
         merge.stderr.on('data', d => console.log('Merge:', d.toString()));
-
-        merge.on('close', (code) => {
-          if (code === 0) {
+        merge.on('close', (mergeCode) => {
+          if (mergeCode === 0 && fs.existsSync(outputPath)) {
             cleanupTemps();
             finishSuccess();
           } else {
@@ -1759,28 +1861,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
         });
       }
     });
-  } else {
-    const concat = spawn(getFFmpegPath(), [
-      '-f', 'concat', '-safe', '0', '-i', videoListPath,
-      '-c', 'copy', '-y', outputPath
-    ]);
-    concat.stderr.on('data', d => console.log('Concat:', d.toString()));
-    concat.on('close', (code) => {
-      try { fs.unlinkSync(videoListPath); } catch (e) {}
-      if (code === 0) {
-        fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
-        console.log('Highlight saved to', outputPath);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('highlight-saved', outputPath);
-        }
-        uploadHighlight(outputPath, metadataPath);
-      } else {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('highlight-error', 'Failed to save highlight');
-        }
-      }
-    });
-  }
+  });
 }
 
 function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVideoStartMs) {
@@ -1946,7 +2027,7 @@ app.commandLine.appendSwitch('enable-features', 'WebRtcAllowInputVolumeAdjustmen
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1440, height: 840,
-    minWidth: 1020, minHeight: 640,
+    minWidth: 560, minHeight: 640,
     show: false,                 // avoid the un-maximized flash on launch
     backgroundColor: '#0a1611',
     webPreferences: {
@@ -2148,9 +2229,9 @@ function createWindow() {
   }));
 
   ipcMain.on('save-highlight', () => saveHighlight());
-  ipcMain.on('broadcast-save-highlight', (event, { coordinated_timestamp, clipDuration }) => {
-    console.log(`Received broadcast save-highlight: ts=${coordinated_timestamp}, clipDuration=${clipDuration}ms`);
-    saveHighlight(coordinated_timestamp, clipDuration);
+  ipcMain.on('broadcast-save-highlight', (event, { coordinated_timestamp, clipDuration, triggerSource }) => {
+    console.log(`Received broadcast save-highlight: ts=${coordinated_timestamp}, clipDuration=${clipDuration}ms, source=${triggerSource || 'manual'}`);
+    saveHighlight(coordinated_timestamp, clipDuration, triggerSource);
   });
   ipcMain.on('set-socket-io', () => console.log('Socket.IO connection noted in main process'));
 
@@ -2534,16 +2615,18 @@ function createWindow() {
   // ================================
   ipcMain.handle('open-player', (event, payload) => {
     const code = payload && payload.code;
+    const token = payload && payload.token;
+    const username = payload && payload.username;
     if (playerWindowedMode) {
       closeDockedPlayer();
-      openWindowedPlayer(code);
+      openWindowedPlayer(code, token, username);
       return { mode: 'windowed' };
     }
     if (playerWindow && !playerWindow.isDestroyed()) {
       try { playerWindow.destroy(); } catch (e) {}
       playerWindow = null;
     }
-    openDockedPlayer(code);
+    openDockedPlayer(code, token, username);
     return { mode: 'docked' };
   });
 
@@ -2582,12 +2665,27 @@ function createWindow() {
   ipcMain.handle('get-player-windowed-mode', () => playerWindowedMode);
 
   ipcMain.handle('set-player-windowed-mode', (event, enabled) => {
+    // Docked mode needs room for client + player side by side; windowed
+    // mode doesn't — let the client shrink like a normal app there.
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setMinimumSize(playerWindowedMode ? 560 : 1020, 640);
+    }
     const wasOpen = !!playerView || !!(playerWindow && !playerWindow.isDestroyed());
-    let code = null;
+    let code = null, carryToken = null, carryUsername = null;
     if (playerView) {
-      try { code = new URL(playerView.webContents.getURL()).searchParams.get('code'); } catch (e) {}
+      try {
+        const u = new URL(playerView.webContents.getURL());
+        code = u.searchParams.get('code');
+        carryToken = u.searchParams.get('t');
+        carryUsername = u.searchParams.get('u');
+      } catch (e) {}
     } else if (playerWindow && !playerWindow.isDestroyed()) {
-      try { code = new URL(playerWindow.webContents.getURL()).searchParams.get('code'); } catch (e) {}
+      try {
+        const u = new URL(playerWindow.webContents.getURL());
+        code = u.searchParams.get('code');
+        carryToken = u.searchParams.get('t');
+        carryUsername = u.searchParams.get('u');
+      } catch (e) {}
     }
 
     playerWindowedMode = !!enabled;
@@ -2599,8 +2697,8 @@ function createWindow() {
     // Move an already-open player into the newly chosen mode
     if (wasOpen) {
       closeAnyPlayer();
-      if (playerWindowedMode) openWindowedPlayer(code);
-      else openDockedPlayer(code);
+      if (playerWindowedMode) openWindowedPlayer(code, carryToken, carryUsername);
+      else openDockedPlayer(code, carryToken, carryUsername);
     } else if (playerWindowedMode && mainWindow && !mainWindow.isDestroyed()) {
       // Nothing was open yet, but switching to windowed still needs to
       // clear any stale docked-UI state from an earlier session.

@@ -386,6 +386,16 @@
       /* ===== Docked web player: reserve room on the right ===== */
       body.player-docked { align-items: flex-start; }
 
+      /* While the player is docked, the native view covers the right side
+         of the window and renders ABOVE all web content — any modal
+         centered on the full window ends up half-hidden behind it. Pin
+         modals into the visible client strip instead. --dock-client-width
+         is set from JS whenever the divider moves. */
+      body.player-docked .modal {
+        width: var(--dock-client-width, 100%);
+        right: auto;
+      }
+
       /* Below this, force a single column rather than letting the grid
          squeeze the two halves into an unreadable mess. Dragging the
          divider is clamped well above this point, but it's a backstop. */
@@ -466,7 +476,7 @@
               </svg>
             </button>
           </div>
-          <span class="version-tag">v0.1.36</span>
+          <span class="version-tag">v0.1.37</span>
         </div>
         <button class="btn-secondary btn-sm" onclick="openSettings()">⚙ Settings</button>
       </div>
@@ -944,11 +954,22 @@
       window.autoCaptureDesktopOn = true;
       window.autoCaptureMicOn = true;
       window.autoCaptureWindowActive = false;
+      // Tuned against real Apex capture data (idle mic rms≈0.006, idle
+      // desktop rms≈0.008; real peaks: mic 0.06–0.37, desktop 0.03–0.055).
+      // multiplier is comfortably above idle without missing genuine peaks.
+      // minActiveMs is the MINIMUM real moment worth saving — kept short so
+      // a brief-but-real highlight (a quick knock) isn't discarded, which
+      // was causing start→cancel→start loops when peaks were sporadic.
       var AUTO_CAPTURE_PROFILES = {
-        low:    { multiplier: 2.5, settleMs: 6000, minActiveMs: 25000 },
-        medium: { multiplier: 2.0, settleMs: 4000, minActiveMs: 20000 },
-        high:   { multiplier: 1.6, settleMs: 2500, minActiveMs: 15000 }
+        low:    { multiplier: 5.0, settleMs: 12000, minActiveMs: 7000 },
+        medium: { multiplier: 3.5, settleMs: 10000, minActiveMs: 5000 }, // = proven "high" config from EMA-freeze testing
+        high:   { multiplier: 2.5, settleMs: 9000, minActiveMs: 4000 }
       };
+      // Mic gets its own extra multiplier on TOP of the sensitivity
+      // multiplier — mic picks up breathing/keyboard/room noise far more
+      // easily than desktop audio drifts, so it needs a much higher bar
+      // before something counts as a real peak.
+      var AC_MIC_EXTRA_MULTIPLIER = 2.6;
 
       // =====================
       // CLOCK SYNC — measures this PC's offset from the Peak-Abu server
@@ -1523,6 +1544,7 @@
         window.dockedContentWidth = dividerLeft;
         var rect = divider.getBoundingClientRect();
         document.body.style.paddingRight = (window.innerWidth - rect.left + 4) + 'px';
+        document.body.style.setProperty('--dock-client-width', rect.left + 'px');
 
         console.log(
           `[dock-renderer-place] dividerLeft=${dividerLeft} rect.left=${rect.left.toFixed(0)} ` +
@@ -1578,9 +1600,23 @@
         } else {
           document.body.classList.remove('player-docked');
           document.body.style.paddingRight = '';
+          document.body.style.removeProperty('--dock-client-width');
           if (divider) divider.classList.remove('show');
           if (closeBtn) closeBtn.classList.remove('show');
         }
+      });
+
+      // Window resized: main re-lays the native view via its own resize
+      // handler and re-emits player-docked — but if that echo races the
+      // resize, our padding/divider can go stale. Nudge main to re-send
+      // authoritative geometry after resizes settle.
+      var _dockResizeTimer = null;
+      window.addEventListener('resize', function() {
+        if (!document.body.classList.contains('player-docked')) return;
+        clearTimeout(_dockResizeTimer);
+        _dockResizeTimer = setTimeout(function() {
+          ipcRenderer.send('resize-player-width', window.dockedTotalWidth ? Math.round(window.dockedTotalWidth / (window.dockDipToCss || 1)) : 0);
+        }, 150);
       });
 
       window.closeDockedPlayer = function() {
@@ -1655,7 +1691,7 @@
       window.openWebPlayer = function(e) {
         if (e) e.preventDefault();
         if (!window.currentSessionCode) return;
-        ipcRenderer.invoke('open-player', { code: window.currentSessionCode })
+        ipcRenderer.invoke('open-player', { code: window.currentSessionCode, token: window.authToken, username: window.authUsername })
           .then(function(r) {
             hudLog('system', r.mode === 'docked'
               ? '🌐 Web player opened alongside the client'
@@ -1902,22 +1938,92 @@
         return Math.sqrt(sum / state.data.length);
       }
 
-      var AC_ROLLING_MAX_SAMPLES = 250; // ~50s at 200ms
-      var AC_FLOOR = 0.02;              // absolute floor so near-silence can't false-trigger off a tiny rolling avg
+      window._acDebug = true; // flip to false once tuned
+
+      var AC_ROLLING_MAX_SAMPLES = 250; // legacy constant, harmless if unused
+      var AC_FLOOR = 0.01;              // absolute floor so near-silence can't false-trigger
       var AC_EMIT_THROTTLE_MS = 500;    // don't spam the socket while a loud sound sustains
+      var AC_WARMUP_SAMPLES = 200;   // ~10s at 200ms — no peaks can fire until baseline is real
+      var AC_SUSTAIN_POLLS = 7;      // loud polls required within the window before a peak is "real"
+      var AC_SUSTAIN_WINDOW = 12;    // rolling window size (~600ms at 50ms) — tolerates natural gaps between shots
+      var AC_EMA_QUIET = 0.0125;    // baseline adapts fast while below threshold (rescaled 4x for 50ms polling, was 0.05 @ 200ms)
+      var AC_EMA_LOUD  = 0.00125;   // ...and 10x slower while above, so loud stretches barely move it (rescaled 4x for 50ms polling, was 0.005 @ 200ms)
+
+      // ===== COLD-START NOISE FLOOR CALIBRATION =====
+      // The EMA seeds itself from whatever RMS happened to be playing the
+      // instant a source attaches — if that's mid-fight or mid-rotation the
+      // baseline starts inflated and every threshold after it is wrong until
+      // the EMA slowly drifts down. This samples actual quiet stretches over
+      // the opening minutes and REPLACES the seed with the true floor.
+      // Every 2 min, a 10s window, 5 checks => covers the first 10 min.
+      // Each window is only accepted if it stayed genuinely quiet (below a
+      // loose ceiling), so a check landing on a fight is discarded, not forced.
+      // The MINIMUM of valid samples becomes the anchor.
+      var AC_CAL_INTERVAL_MS   = 120000; // 2 min between checks
+      var AC_CAL_WINDOW_MS     = 10000;  // 10s sampling window
+      var AC_CAL_TOTAL_CHECKS  = 5;      // 5 checks => first 10 min
+      var AC_CAL_QUIET_CEILING = 3;      // window valid only if avg RMS < 3 * AC_FLOOR
 
       function acPollSource(sourceName, state) {
         if (!state) return;
         var rms = acReadRms(state);
-        state.rolling.push(rms);
-        if (state.rolling.length > AC_ROLLING_MAX_SAMPLES) state.rolling.shift();
 
-        var avg = state.rolling.reduce(function(a, b) { return a + b; }, 0) / state.rolling.length;
+        // If a calibration window is currently open for this source, fold
+        // this poll's RMS into that window's running average. Cheap — reuses
+        // the RMS we just computed, no second read.
+        if (state.calWindowActive) {
+          state.calWindowRmsSum += rms;
+          state.calWindowRmsCount++;
+        }
+
         var profile = AUTO_CAPTURE_PROFILES[window.autoCaptureSensitivity] || AUTO_CAPTURE_PROFILES.medium;
-        var threshold = Math.max(avg * profile.multiplier, AC_FLOOR);
 
-        if (rms > threshold) {
-          acFlashMonkey(sourceName);
+        if (state.ema === undefined) state.ema = rms;
+        state.sampleCount = (state.sampleCount || 0) + 1;
+
+        var effectiveMultiplier = profile.multiplier * (sourceName === 'mic' ? AC_MIC_EXTRA_MULTIPLIER : 1);
+        var threshold = Math.max(state.ema * effectiveMultiplier, AC_FLOOR);
+        var isPeak = rms > threshold;
+
+        var alpha = isPeak ? AC_EMA_LOUD : AC_EMA_QUIET;
+        state.ema = state.ema + alpha * (rms - state.ema);
+
+        var warmedUp = state.sampleCount >= AC_WARMUP_SAMPLES;
+
+        // STEP 1: update the sustain tracking FIRST — rolling window, not
+        // strict-consecutive or leaky-decrement. At 50ms polling, real
+        // gunfire has sub-100ms quiet gaps between shots that a decrement
+        // approach still struggles to bridge (isolated blips never build
+        // enough cushion). Counting peaks across a recent fixed window
+        // tolerates those gaps directly while still filtering one-shot SFX.
+        if (!state.peakHistory) state.peakHistory = [];
+        state.peakHistory.push(isPeak ? 1 : 0);
+        if (state.peakHistory.length > AC_SUSTAIN_WINDOW) state.peakHistory.shift();
+        var peaksInWindow = 0;
+        for (var pi = 0; pi < state.peakHistory.length; pi++) peaksInWindow += state.peakHistory[pi];
+        state.consecutivePeaks = peaksInWindow; // keep debug log field meaningful
+
+        // STEP 2: THEN compute sustainedPeak, using the count just updated
+        var sustainedPeak = warmedUp && peaksInWindow >= AC_SUSTAIN_POLLS;
+
+        // STEP 3: THEN log — everything referenced here is already final
+        if (window._acDebug && (isPeak || (state._debugCounter = (state._debugCounter || 0) + 1) % 10 === 0)) {
+          console.log('[ac-' + sourceName + '] sens=' + window.autoCaptureSensitivity +
+                      ' baseMult=' + profile.multiplier + ' effMult=' + effectiveMultiplier +
+                      ' settleMs=' + profile.settleMs +
+                      ' rms=' + rms.toFixed(4) +
+                      ' ema=' + state.ema.toFixed(4) +
+                      ' threshold=' + threshold.toFixed(4) +
+                      ' warmedUp=' + warmedUp + ' isPeak=' + isPeak +
+                      ' consec=' + state.consecutivePeaks + ' sustained=' + sustainedPeak);
+        }
+
+        // STEP 4: THEN act — this is what actually reports to the server,
+        // and it must use sustainedPeak, never raw isPeak, or a single
+        // one-shot blip (reload, jump, a word spoken) reports immediately.
+        if (isPeak) acFlashMonkey(sourceName);
+
+        if (sustainedPeak) {
           var now = Date.now();
           if (now - state.lastEmit >= AC_EMIT_THROTTLE_MS) {
             state.lastEmit = now;
@@ -1926,10 +2032,69 @@
         }
       }
 
+      // ---- Cold-start calibration lifecycle (per source state) ----
+      function acStartCalibration(sourceName, state) {
+        state.calChecksDone = 0;
+        state.calValidSamples = [];
+        state.calDone = false;
+        state.calWindowActive = false;
+        if (state.calTimer) clearTimeout(state.calTimer);
+        acScheduleNextCalCheck(sourceName, state);
+      }
+
+      function acScheduleNextCalCheck(sourceName, state) {
+        if (state.calChecksDone >= AC_CAL_TOTAL_CHECKS) { acFinalizeCalibration(sourceName, state); return; }
+        state.calTimer = setTimeout(function() {
+          // Open a 10s window; acPollSource folds RMS in while it's active.
+          state.calWindowActive = true;
+          state.calWindowRmsSum = 0;
+          state.calWindowRmsCount = 0;
+          state.calTimer = setTimeout(function() { acCloseCalWindow(sourceName, state); }, AC_CAL_WINDOW_MS);
+        }, AC_CAL_INTERVAL_MS);
+      }
+
+      function acCloseCalWindow(sourceName, state) {
+        state.calWindowActive = false;
+        state.calChecksDone++;
+        if (state.calWindowRmsCount > 0) {
+          var avg = state.calWindowRmsSum / state.calWindowRmsCount;
+          var ceiling = AC_FLOOR * AC_CAL_QUIET_CEILING;
+          if (avg < ceiling) {
+            state.calValidSamples.push(avg);
+            if (window._acDebug) console.log('[ac-cal] ' + sourceName + ' check ' + state.calChecksDone + '/' + AC_CAL_TOTAL_CHECKS + ' ACCEPTED avg=' + avg.toFixed(4) + ' (ceiling=' + ceiling.toFixed(4) + ')');
+          } else if (window._acDebug) {
+            console.log('[ac-cal] ' + sourceName + ' check ' + state.calChecksDone + '/' + AC_CAL_TOTAL_CHECKS + ' REJECTED avg=' + avg.toFixed(4) + ' (too loud, ceiling=' + ceiling.toFixed(4) + ')');
+          }
+        }
+        acScheduleNextCalCheck(sourceName, state);
+      }
+
+      function acFinalizeCalibration(sourceName, state) {
+        state.calDone = true;
+        if (!state.calValidSamples.length) {
+          if (window._acDebug) console.log('[ac-cal] ' + sourceName + ' NO valid quiet samples — keeping adaptive EMA as-is');
+          return;
+        }
+        var floor = Math.min.apply(null, state.calValidSamples);
+        // REPLACE the cold-start seed. The EMA can still drift from here if
+        // the game's genuine ambient level changes after minute 10.
+        state.ema = floor;
+        if (window._acDebug) console.log('[ac-cal] ' + sourceName + ' CALIBRATED — EMA reset to floor=' + floor.toFixed(4) + ' from ' + state.calValidSamples.length + ' valid sample(s)');
+      }
+
+      function acStopCalibration(state) {
+        if (state && state.calTimer) { clearTimeout(state.calTimer); state.calTimer = null; }
+        if (state) state.calWindowActive = false;
+      }
+
+
       function acReportPeak(profile) {
         if (!window.autoCaptureEnabled) return;
         if (!window.socket || !window.currentSessionCode) return;
         if (!window.isRecordingActive || !window.bufferReady) return;
+        console.log('[ac-emit] sens=' + window.autoCaptureSensitivity +
+                    ' settleMs=' + profile.settleMs +
+                    ' minActiveMs=' + profile.minActiveMs);
         window.socket.emit('auto-peak', { settleMs: profile.settleMs, minActiveMs: profile.minActiveMs });
       }
 
@@ -1954,21 +2119,24 @@
         acDetachDesktop();
         if (!window.autoCaptureEnabled || !window.autoCaptureDesktopOn || !stream) return;
         var state = acCreateAnalyzer(stream);
-        state.timer = setInterval(function() { acPollSource('desktop', state); }, 200);
+        state.timer = setInterval(function() { acPollSource('desktop', state); }, 50); // TEMP: was 200ms — testing sampling-gap theory
         window._acDesktop = state;
+        acStartCalibration('desktop', state);
         acSetMonkeyListening('desktop', true);
       };
       window.acAttachMic = function(stream) {
         acDetachMic();
         if (!window.autoCaptureEnabled || !window.autoCaptureMicOn || !stream) return;
         var state = acCreateAnalyzer(stream);
-        state.timer = setInterval(function() { acPollSource('mic', state); }, 200);
+        state.timer = setInterval(function() { acPollSource('mic', state); }, 50); // TEMP: was 200ms — testing sampling-gap theory
         window._acMic = state;
+        acStartCalibration('mic', state);
         acSetMonkeyListening('mic', true);
       };
       function acDetachDesktop() {
         if (window._acDesktop) {
           clearInterval(window._acDesktop.timer);
+          acStopCalibration(window._acDesktop);
           try { window._acDesktop.source.disconnect(); } catch (e) {}
           window._acDesktop = null;
         }
@@ -1977,6 +2145,7 @@
       function acDetachMic() {
         if (window._acMic) {
           clearInterval(window._acMic.timer);
+          acStopCalibration(window._acMic);
           try { window._acMic.source.disconnect(); } catch (e) {}
           window._acMic = null;
         }
@@ -2169,7 +2338,7 @@
 
         window.socket.on('coordinated-save-highlight', function(d) {
          hudLog('activity','⚡ '+d.username+' triggered highlight — syncing all POVs...','broadcast');
-         ipcRenderer.send('broadcast-save-highlight', { coordinated_timestamp: d.coordinated_timestamp, clipDuration: d.clipDuration });
+         ipcRenderer.send('broadcast-save-highlight', { coordinated_timestamp: d.coordinated_timestamp, clipDuration: d.clipDuration, triggerSource: d.triggerSource });
 
          // Disable immediately as a fallback — don't wait on a separate cooldown event
          if (!window.highlightCooldownActive) {
@@ -2189,10 +2358,15 @@
         window.socket.on('upload-received', function(d) { hudLog('activity','☁️ '+d.username+' uploaded their clip','success'); });
 
         window.socket.on('auto-capture-start', function(d) {
+          // Only announce if we weren't already in a window — avoids the
+          // spammy repeat when peaks cycle windows rapidly.
+          var wasActive = window.autoCaptureWindowActive;
           window.autoCaptureWindowActive = true;
           acSetActiveWindowVisual(true);
           ipcRenderer.send('auto-capture-active', true);
-          hudLog('activity', '👂 ' + d.username + ' — auto-capture listening for the moment to settle...', 'broadcast');
+          if (!wasActive) {
+            hudLog('activity', '👂 Auto-capture detecting action — recording until it settles...', 'broadcast');
+          }
         });
         window.socket.on('auto-capture-end', function(d) {
           window.autoCaptureWindowActive = false;

@@ -369,7 +369,7 @@
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
-      justify-content: center;
+      justify-content: flex-start;
       background: #0f2318;
       border-left: 2px solid #12251a;
     }
@@ -892,6 +892,111 @@
       text-transform: uppercase;
       letter-spacing: 1px;
     }
+
+    /* ========================
+       HIGHLIGHTS COLUMN — vertical, scrollable H-pill list. Replaces the
+       old horizontal pill row on the scrub bar, which only had room for
+       ~30 before pills ran off-screen unreachable.
+    ======================== */
+    .highlights-column {
+      width: 190px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      background: #0f2318;
+      border-left: 2px solid #12251a;
+    }
+    .highlights-column h3 {
+      color: #39d3a0;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 10px 12px 8px;
+      border-bottom: 1px solid #1e3527;
+      flex-shrink: 0;
+    }
+    .hl-pill-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 0;
+    }
+    .hl-pill-list::-webkit-scrollbar { width: 5px; }
+    .hl-pill-list::-webkit-scrollbar-track { background: #04140d; }
+    .hl-pill-list::-webkit-scrollbar-thumb { background: #24402e; border-radius: 3px; }
+
+    .hl-pill {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      background: #0c1c14;
+      border: 1px solid #24402e;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      color: #8fbfa3;
+      overflow: hidden;
+      transition: border-color 0.15s;
+    }
+    .hl-pill:hover { border-color: #39d3a0; }
+    .hl-pill.active { border-color: #39d3a0; color: #39d3a0; }
+    .hl-pill.selected-delete { border-color: #f0857a; background: #2a1218; color: #f0a5bd; }
+    .hl-pill.locked .hl-select-check { opacity: 0.3; cursor: not-allowed; }
+
+    .hl-pill-fill {
+      position: absolute;
+      left: 0; bottom: 0; top: 0;
+      width: 0%;
+      background: rgba(216, 168, 56, 0.18);
+      z-index: 0;
+      transition: width 1s linear, background 1s linear;
+    }
+    .hl-pill-label { position: relative; z-index: 1; }
+
+    .hl-select-check {
+      position: relative;
+      z-index: 1;
+      width: 18px; height: 18px;
+      border-radius: 4px;
+      border: 1.5px solid #45604f;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px;
+      color: #7a9686;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+    .hl-pill.selected-delete .hl-select-check {
+      background: #f0857a; border-color: #f0857a; color: #2a1218;
+    }
+
+    .hl-delete-bar {
+      display: none;
+      flex-shrink: 0;
+      padding: 10px;
+      border-top: 1px solid #1e3527;
+    }
+    .hl-delete-bar.show { display: block; }
+    .hl-delete-bar button {
+      width: 100%;
+      padding: 8px;
+      background: #3a1622;
+      border: 1px solid #7a3149;
+      color: #f0a5bd;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .hl-delete-bar button:hover { background: #481b2b; }
+    .hl-delete-bar button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .hl-pill-empty { font-size: 11px; color: #3a5244; text-align: center; padding: 20px 8px; }
   </style>
 </head>
 <body>
@@ -961,6 +1066,14 @@
         <div id="audioControls"></div>
       </div>
     </div>
+
+    <div class="highlights-column" id="highlightsColumn" style="display:none;">
+      <h3>Highlights</h3>
+      <div class="hl-pill-list" id="hlPillList"></div>
+      <div class="hl-delete-bar" id="hlDeleteBar">
+        <button onclick="deleteSelectedHighlights()" id="hlDeleteBtn">Delete (<span id="hlDelCount">0</span>)</button>
+      </div>
+    </div>
   </div>
 
   <!-- EXPANDED EXPORT PANEL — opens only when composite/AI reel job is starting -->
@@ -1018,6 +1131,19 @@
       }
     });
 
+    // Background tabs get their setInterval throttled/suspended by the
+    // browser — that's almost certainly why auto-refresh appeared to stop
+    // working. Force a catch-up refresh the moment the tab is visible again.
+    document.addEventListener('visibilitychange', function() {
+      if (!document.hidden && currentSessionCode) refreshUploads();
+    });
+
+    // Fill bars drain purely with elapsed time — repaint them periodically
+    // even with no new uploads, so a pill visibly approaches "locked".
+    setInterval(function() {
+      if (highlights.length > 0) renderHighlightsColumn();
+    }, 30000);
+
     // Allow Enter key to load session
     document.addEventListener('DOMContentLoaded', function() {
       document.getElementById('sessionInput').addEventListener('keydown', function(e) {
@@ -1071,6 +1197,25 @@
 
     let sessionStart = 0;
     let sessionTotalDuration = 0;
+
+    // ========================
+    // HOST CREDENTIALS — only present when the app itself opened this
+    // player for its own logged-in user (see main.js playerUrlFor). Kept
+    // in memory only, never persisted. A viewer who opened a bare shared
+    // link has neither, and simply never sees delete controls — the
+    // server enforces host-only regardless, this is purely UI gating.
+    // ========================
+    let myAuthToken = null;
+    let myUsername = null;
+    let isHost = false;
+    let selectedForDelete = new Set();
+    const DELETE_WINDOW_MS = 4 * 60 * 60 * 1000;
+
+    (function readCredentialsFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      myAuthToken = params.get('t') || null;
+      myUsername = params.get('u') || null;
+    })();
 
     // ========================
     // LOCAL CLIPS
@@ -1429,25 +1574,21 @@
     function renderSessionTimeline() {
       const track = document.getElementById('timelineTrack');
       track.querySelectorAll('.highlight-block').forEach(b => b.remove());
+      if (highlights.length === 0) { updateNeedle(); return; }
 
-      const geo = layoutTimelineBlocks();
-
-      highlights.forEach((hl, i) => {
-        const block = document.createElement('div');
-        block.className = 'highlight-block' + (i === currentHighlightIndex ? ' active' : '');
-        block.dataset.index = i;
-        block.textContent = 'H' + (i + 1);
-
-        block.style.left = geo[i].left.toFixed(2) + '%';
-        block.style.width = geo[i].width.toFixed(2) + '%';
-
-        block.addEventListener('click', e => {
-          e.stopPropagation();
-          switchHighlight(i);
-        });
-
-        track.insertBefore(block, document.getElementById('timelineNeedle'));
-      });
+      // Highlight switching now lives in the sidebar list (renderHighlightsColumn).
+      // This single full-width, invisible block exists ONLY so the existing
+      // scrub math in scrubNeedleToEvent()/updateNeedle() — which reads the
+      // bounds of ".highlight-block.active" — keeps working completely
+      // unchanged. It's not meant to be seen or clicked.
+      const block = document.createElement('div');
+      block.className = 'highlight-block active';
+      block.style.left = '0%';
+      block.style.width = '100%';
+      block.style.background = 'transparent';
+      block.style.border = 'none';
+      block.style.pointerEvents = 'none';
+      track.insertBefore(block, document.getElementById('timelineNeedle'));
 
       updateNeedle();
     }
@@ -1589,8 +1730,143 @@
       renderExportTimeline();
       updateCompositeButton();
       renderSessionTimeline();
+      renderHighlightsColumn();
 
       document.getElementById('timeDisplay').textContent = '0:00 / ' + formatTime(masterDuration);
+    }
+
+    // ========================
+    // HIGHLIGHTS SIDEBAR — vertical pill list. Click a pill to switch to
+    // it (existing behavior). Hosts additionally get a select-check on
+    // each pill for multi-select delete; selecting doesn't switch viewing.
+    // ========================
+    function clusterAgeMs(hl) {
+      let earliest = Infinity;
+      hl.clips.forEach(c => {
+        if (c.uploadedAt) {
+          const t = new Date(c.uploadedAt).getTime();
+          if (isFinite(t) && t < earliest) earliest = t;
+        }
+      });
+      if (!isFinite(earliest)) return 0; // unknown age — never locks, always selectable
+      return Date.now() - earliest;
+    }
+
+    function renderHighlightsColumn() {
+      const list = document.getElementById('hlPillList');
+      if (!list) return;
+      list.innerHTML = '';
+
+      if (highlights.length === 0) {
+        list.innerHTML = '<div class="hl-pill-empty">Highlights appear here as they\'re saved</div>';
+        updateHlDeleteBar();
+        return;
+      }
+
+      highlights.forEach((hl, i) => {
+        const ageMs = clusterAgeMs(hl);
+        const fillPct = Math.min(100, (ageMs / DELETE_WINDOW_MS) * 100);
+        const locked = ageMs >= DELETE_WINDOW_MS;
+
+        const pill = document.createElement('div');
+        pill.className = 'hl-pill' + (i === currentHighlightIndex ? ' active' : '') +
+          (selectedForDelete.has(i) ? ' selected-delete' : '') + (locked ? ' locked' : '');
+
+        const fill = document.createElement('div');
+        fill.className = 'hl-pill-fill';
+        fill.style.width = fillPct + '%';
+        fill.style.background = fillPct < 50
+          ? 'rgba(216, 168, 56, 0.18)'
+          : fillPct < 85
+            ? 'rgba(216, 168, 56, 0.32)'
+            : 'rgba(240, 133, 122, 0.35)';
+        pill.appendChild(fill);
+
+        const label = document.createElement('span');
+        label.className = 'hl-pill-label';
+        label.textContent = 'H' + (i + 1) + (locked ? ' 🔒' : '');
+        pill.appendChild(label);
+
+        if (isHost) {
+          const check = document.createElement('div');
+          check.className = 'hl-select-check';
+          check.textContent = selectedForDelete.has(i) ? '✓' : '';
+          check.title = locked ? 'Past the 4-hour delete window' : (selectedForDelete.has(i) ? 'Remove from selection' : 'Select for deletion');
+          check.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (locked) return;
+            if (selectedForDelete.has(i)) selectedForDelete.delete(i);
+            else selectedForDelete.add(i);
+            renderHighlightsColumn();
+          });
+          pill.appendChild(check);
+        }
+
+        pill.addEventListener('click', function() { switchHighlight(i); });
+        list.appendChild(pill);
+      });
+
+      updateHlDeleteBar();
+    }
+
+    function updateHlDeleteBar() {
+      const bar = document.getElementById('hlDeleteBar');
+      const countEl = document.getElementById('hlDelCount');
+      if (!bar || !countEl) return;
+      countEl.textContent = selectedForDelete.size;
+      bar.classList.toggle('show', isHost && selectedForDelete.size > 0);
+    }
+
+    async function deleteSelectedHighlights() {
+      if (!isHost || selectedForDelete.size === 0 || !currentSessionCode) return;
+
+      const indices = Array.from(selectedForDelete);
+      const count = indices.length;
+      if (!confirm('Delete ' + count + ' highlight' + (count > 1 ? 's' : '') + '? This removes every player\'s clip for the selected moment(s) and cannot be undone.')) return;
+
+      const btn = document.getElementById('hlDeleteBtn');
+      btn.disabled = true;
+      btn.textContent = 'Deleting...';
+
+      const uploadIds = [];
+      indices.forEach(i => {
+        const hl = highlights[i];
+        if (!hl) return;
+        hl.clips.forEach(c => { if (c.uploadId) uploadIds.push(c.uploadId); });
+      });
+
+      let failed = 0;
+      for (const id of uploadIds) {
+        try {
+          const res = await fetch('/sessions/' + currentSessionCode + '/uploads/' + id, {
+            method: 'DELETE',
+            headers: { 'Authorization': 'Bearer ' + myAuthToken }
+          });
+          if (!res.ok) failed++;
+          else allUploads = allUploads.filter(u => u.uploadId !== id);
+        } catch (e) { failed++; }
+      }
+
+      selectedForDelete.clear();
+
+      allUsers = deriveAllUsers();
+      highlights = clusterHighlights();
+      if (currentHighlightIndex >= highlights.length) currentHighlightIndex = Math.max(0, highlights.length - 1);
+      videos = buildVideosForHighlight(currentHighlightIndex);
+      calculateOffsets();
+
+      renderVideoGrid();
+      renderMemberList();
+      renderAudioControls();
+      renderExportTimeline();
+      updateCompositeButton();
+      renderSessionTimeline();
+      renderHighlightsColumn();
+
+      btn.disabled = false;
+      btn.textContent = 'Delete (0)';
+
+      if (failed > 0) alert(failed + ' clip(s) failed to delete (may already be past the 4-hour window).');
     }
 
     function stepHighlight(dir) {
@@ -1655,9 +1931,10 @@
             uploadId: upload.id, videoFile: upload.videoFile,
             videoSrc: upload.videoUrl || null,
             thumbnailSrc: upload.thumbnailUrl || (upload.thumbnailFile ? '/media/' + code + '/' + upload.thumbnailFile : null),
-            offset: 0, nudgeMs: 0, volume: 80, isMuted: true, loaded: false,
+            offset: 0, nudgeMs: 0, volume: 40, isMuted: true, loaded: false,
             missing: false, processing: isProcessing,
-            isLocal: false, originalVideoSrc: null
+            isLocal: false, originalVideoSrc: null,
+            uploadedAt: upload.uploadedAt || null
           });
         }
 
@@ -1681,16 +1958,21 @@
           }
         });
 
+        isHost = !!(myUsername && session.createdBy && myUsername === session.createdBy);
+        selectedForDelete.clear();
+
         renderVideoGrid();
         renderMemberList();
         renderAudioControls();
         renderExportTimeline();
         updateCompositeButton();
         renderSessionTimeline();
+        renderHighlightsColumn();
         showShareLink(code);
 
         document.getElementById('sessionTimeline').style.display = 'flex';
         document.getElementById('rightPanel').style.display = 'flex';
+        document.getElementById('highlightsColumn').style.display = 'flex';
 
         if (refreshInterval) clearInterval(refreshInterval);
         refreshInterval = setInterval(refreshUploads, hasProcessing ? 10000 : 45000);
@@ -1712,6 +1994,7 @@
 
       document.getElementById('sessionTimeline').style.display = 'none';
       document.getElementById('rightPanel').style.display = 'none';
+      document.getElementById('highlightsColumn').style.display = 'none';
       document.getElementById('selectionBar').style.display = 'none';
       const shareBtn = document.getElementById('shareBtn');
       if (shareBtn) shareBtn.style.display = 'none';
@@ -1792,9 +2075,10 @@
               uploadId: upload.id, videoFile: upload.videoFile,
               videoSrc: upload.videoUrl || null,
               thumbnailSrc: upload.thumbnailUrl || (upload.thumbnailFile ? '/media/' + currentSessionCode + '/' + upload.thumbnailFile : null),
-              offset: 0, nudgeMs: 0, volume: 80, isMuted: true, loaded: false,
+              offset: 0, nudgeMs: 0, volume: 40, isMuted: true, loaded: false,
               missing: false, processing: isProcessing,
-              isLocal: false, originalVideoSrc: null
+              isLocal: false, originalVideoSrc: null,
+              uploadedAt: upload.uploadedAt || null
             });
           }
 
@@ -1822,6 +2106,7 @@
           renderExportTimeline();
           updateCompositeButton();
           renderSessionTimeline();
+          renderHighlightsColumn();
         }
 
         if (newRaw.length > 0) console.log('Refresh: added ' + newRaw.length + ' upload(s)');

@@ -254,4 +254,66 @@ function initUploadRoutes(app, io) {
   });
 }
 
+// ================================
+  // DELETE — host-only, and only within a 4-hour window of upload. This is
+  // deliberately NOT tied to tier retention (1-14 days) — it's a short
+  // false-positive cleanup window, not a way to endlessly reuse one session.
+  // Server-enforced: the client can hide the button after 4h, but the real
+  // gate is here. Refund is automatic — clip weight is derived by summing
+  // session.uploads on every read, so removing the record IS the refund.
+  // ================================
+  const DELETE_WINDOW_MS = 4 * 60 * 60 * 1000;
+
+  app.delete('/sessions/:code/uploads/:uploadId', requireAuth, async (req, res) => {
+    const code = sanitizeCode(req.params.code);
+    if (!code) return safeError(res, 400, 'Invalid session code');
+
+    const session = sessions.get(code);
+    if (!session) return safeError(res, 404, 'Session not found');
+
+    const requesterName = sanitizeUsername(req.user.username);
+    if (session.createdBy !== requesterName) {
+      return safeError(res, 403, 'Only the session host can delete clips');
+    }
+
+    const idx = session.uploads.findIndex(u => u.id === req.params.uploadId);
+    if (idx === -1) return safeError(res, 404, 'Clip not found');
+
+    const rec = session.uploads[idx];
+    const ageMs = Date.now() - new Date(rec.uploadedAt).getTime();
+    if (ageMs > DELETE_WINDOW_MS) {
+      return safeError(res, 403, 'This clip is past the 4-hour delete window and can no longer be removed.');
+    }
+
+    // Remove from Spaces if it made it there; local temp files are already
+    // gone by this point in the normal flow (uploadToSpaces deletes on
+    // success), but clean up defensively in case Spaces upload never landed.
+    if (rec.videoKey) await deleteFromSpaces(rec.videoKey);
+    if (rec.thumbnailKey) await deleteFromSpaces(rec.thumbnailKey);
+    if (rec.metadataKey) await deleteFromSpaces(rec.metadataKey);
+
+    const sessionDir = path.join(UPLOADS_DIR, code);
+    [rec.videoFile, rec.metadataFile, rec.thumbnailFile].forEach(f => {
+      if (!f) return;
+      const p = path.join(sessionDir, f);
+      try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (e) {}
+    });
+
+    session.uploads.splice(idx, 1);
+    saveSessionsToDisk();
+
+    const weightedUsed = session.uploads.reduce((sum, u) => sum + (u.clipWeight || 1), 0);
+
+    log('info', 'upload_deleted', { session: code, uploadId: rec.id, deletedBy: requesterName, refundedWeight: rec.clipWeight || 1 });
+
+    io.to(code).emit('highlight-deleted', { uploadId: rec.id });
+    io.to(code).emit('clip-count-update', {
+      used: weightedUsed,
+      max: session.maxClips || MAX_HIGHLIGHTS_PER_SESSION
+    });
+
+    res.json({ message: 'Clip deleted', refundedWeight: rec.clipWeight || 1 });
+  });
+}
+
 module.exports = { initUploadRoutes };

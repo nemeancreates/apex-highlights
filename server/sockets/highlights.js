@@ -32,7 +32,8 @@ function fireCoordinatedHighlight(io, sessionCode, session, username, coordinate
   io.to(sessionCode).emit('coordinated-save-highlight', {
     username,
     coordinated_timestamp,
-    clipDuration
+    clipDuration,
+    triggerSource: source
   });
 
   // NOTE: the clip-count-update the UI listens for is emitted from

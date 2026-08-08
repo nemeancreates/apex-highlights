@@ -73,10 +73,10 @@ const MAX_PENDING_HIGHLIGHTS = 3;    // queued triggers during cooldown lock
 // being filled by freeloaders).
 // ================================
 const TIERS = {
-  t1: { label: 'Free',    canHost: true,  memberCap: 2, clipCap: 20,  sessionsPerMonth: 6,  retentionDays: 1,  hasAiReel: false },
-  t2: { label: 'Creator', canHost: true,  memberCap: 5, clipCap: 75,  sessionsPerMonth: 50, retentionDays: 3,  hasAiReel: false },
-  t3: { label: 'Squad',   canHost: true,  memberCap: 11, clipCap: 175, sessionsPerMonth: 80, retentionDays: 7,  hasAiReel: true  },
-  t4: { label: 'Pro',     canHost: true,  memberCap: 41, clipCap: 300, sessionsPerMonth: 70, retentionDays: 14, hasAiReel: true  }
+t1: { label: 'Free',    canHost: true,  memberCap: 2,  clipCap: 1800,   sessionsPerMonth: 6,  retentionDays: 1,  hasAiReel: false },
+  t2: { label: 'Creator', canHost: true,  memberCap: 5,  clipCap: 43200,  sessionsPerMonth: 50, retentionDays: 3,  hasAiReel: false },
+  t3: { label: 'Squad',   canHost: true,  memberCap: 11, clipCap: 86400,  sessionsPerMonth: 80, retentionDays: 7,  hasAiReel: true  },
+  t4: { label: 'Pro',     canHost: true,  memberCap: 41, clipCap: 144000, sessionsPerMonth: 70, retentionDays: 14, hasAiReel: true  }
 };
 
 // Ordering for tier comparisons — used to stop a timed code from
@@ -103,8 +103,8 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 // Update when a new client build is uploaded to the CDN.
 // ================================
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.36',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.36.exe',
+  version: '0.1.37',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.37.exe',
   releaseNotes: 'Database upgrade for improved reliability at scale.'
 };
 

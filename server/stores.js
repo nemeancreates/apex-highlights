@@ -33,10 +33,36 @@ const sessions = new Map();
 // durationMs can't inflate the cost past what the system actually allows
 // to be recorded.
 // ================================
-const CLIP_WEIGHT_THRESHOLD_MS = 3 * 60 * 1000;
+// Weight is now the clip's duration in whole seconds — the cap becomes
+// "seconds of footage allowed", not a bracket-based clip count. A 15s
+// false positive costs 15, not the same as a 3-minute clip; a bad guess
+// is cheap to make and cheap to delete. No public-facing bracket math.
 function clipWeightForDuration(durationMs) {
   if (typeof durationMs !== 'number' || !isFinite(durationMs) || durationMs <= 0) return 1;
-  return durationMs > CLIP_WEIGHT_THRESHOLD_MS ? 2 : 1;
+  return Math.max(1, Math.round(durationMs / 1000));
+}
+
+// One-time migration: sessions created before this change persisted
+// maxClips as an old bracket-era COUNT (20/75/175/300) and uploads'
+// clipWeight as 1 or 2. Both are now meaningless against the new
+// seconds-based cap — a session capped at "75" would read as instantly
+// exhausted. Map old cap values to their new seconds-based equivalent by
+// value (the four old numbers are unique, so no tier lookup needed), and
+// recompute each upload's weight from its stored durationMs where available.
+const OLD_CAP_MIGRATION = { 20: 1800, 75: 43200, 175: 86400, 300: 144000 };
+function migrateLegacyCaps(session) {
+  let changed = false;
+  if (typeof session.maxClips === 'number' && OLD_CAP_MIGRATION[session.maxClips] !== undefined) {
+    session.maxClips = OLD_CAP_MIGRATION[session.maxClips];
+    changed = true;
+  }
+  for (const u of session.uploads) {
+    if (typeof u.durationMs === 'number' && u.durationMs > 0) {
+      const recomputed = clipWeightForDuration(u.durationMs);
+      if (u.clipWeight !== recomputed) { u.clipWeight = recomputed; changed = true; }
+    }
+  }
+  return changed;
 }
 
 // A session's expiry: prefer its own tier-derived expiresAt, fall back to
@@ -168,7 +194,7 @@ function saveUsersToDisk() {
 // ================================
 function loadSessionsFromDisk() {
   const now = Date.now();
-  let loaded = 0, expired = 0;
+  let loaded = 0, expired = 0, migratedCount = 0;
   for (const row of stmt.allSessions.all()) {
     // Per-session tier retention, with the global TTL as the fallback
     if (now > sessionExpiryMs(row)) {
@@ -177,7 +203,7 @@ function loadSessionsFromDisk() {
       continue;
     }
     const uploads = stmt.uploadsForSession.all(row.code);
-    sessions.set(row.code, {
+    const migratedSession = {
       id: row.id,
       code: row.code,
       createdBy: row.createdBy,
@@ -194,10 +220,12 @@ function loadSessionsFromDisk() {
       pendingHighlights: [],     // transient
       members: [],               // transient
       uploads
-    });
+    };
+    if (migrateLegacyCaps(migratedSession)) migratedCount++;
+    sessions.set(row.code, migratedSession);
     loaded++;
   }
-  log('info', 'sessions_loaded', { loaded, expired });
+  const { isSpacesEnabled, uploadToSpaces, deleteFromSpaces } = require('../spaces');
 }
 
 // Write-through: persist durable parts of every in-memory session.
