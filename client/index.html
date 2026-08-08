@@ -421,7 +421,7 @@
       .hist-meta .exp-dead { color: #f0857a; }
 
       /* ===== Docked web player: reserve room on the right ===== */
-      body.player-docked { align-items: flex-start; }
+      body.player-docked { align-items: flex-start; overflow-x: hidden; }
 
       /* While the player is docked, the native view covers the right side
          of the window and renders ABOVE all web content — any modal
@@ -1658,14 +1658,21 @@
               `dipToCss=${dipToCss.toFixed(3)} viewLeft=${d.viewLeft} viewLeftCss=${viewLeftCss.toFixed(0)} ` +
               `gutter=${window.dockedGutter} dividerWillBeAt=${(viewLeftCss - window.dockedGutter).toFixed(0)}`
             );
+            // Show the controls FIRST. getBoundingClientRect() on a
+            // display:none element returns zeros, so measuring before the
+            // .show class lands gave rect.left=0 on the first dock —
+            // crushing the client column until the divider was nudged.
+            document.body.classList.add('player-docked');
+            if (divider) divider.classList.add('show');
+            if (closeBtn) closeBtn.classList.add('show');
+
             placeDockControlsFromViewLeft(viewLeftCss);
           } else {
+            document.body.classList.add('player-docked');
+            if (divider) divider.classList.add('show');
+            if (closeBtn) closeBtn.classList.add('show');
             placeDockControlsExact(d.reservedRight);
           }
-          document.body.classList.add('player-docked');
-
-          if (divider) divider.classList.add('show');
-          if (closeBtn) closeBtn.classList.add('show');
         } else {
           document.body.classList.remove('player-docked');
           document.body.style.paddingRight = '';
