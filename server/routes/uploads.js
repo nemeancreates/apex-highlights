@@ -16,7 +16,7 @@ const {
   MAX_HIGHLIGHTS_PER_SESSION
 } = require('../config');
 const { sessions, saveSessionsToDisk, users, saveUsersToDisk, clipWeightForDuration } = require('../stores');
-const { isSpacesEnabled, uploadToSpaces } = require('../spaces');
+const { isSpacesEnabled, uploadToSpaces, deleteFromSpaces } = require('../spaces');
 const { enqueueThumbnail } = require('../media');
 const { requireAuth } = require('../auth');
 const { trackBandwidth } = require('../redemption');
@@ -252,9 +252,8 @@ function initUploadRoutes(app, io) {
       });
     });
   });
-}
 
-// ================================
+  // ================================
   // DELETE — host-only, and only within a 4-hour window of upload. This is
   // deliberately NOT tied to tier retention (1-14 days) — it's a short
   // false-positive cleanup window, not a way to endlessly reuse one session.

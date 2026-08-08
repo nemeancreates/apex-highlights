@@ -225,7 +225,11 @@ function loadSessionsFromDisk() {
     sessions.set(row.code, migratedSession);
     loaded++;
   }
-  const { isSpacesEnabled, uploadToSpaces, deleteFromSpaces } = require('../spaces');
+  log('info', 'sessions_loaded', { loaded, expired });
+  if (migratedCount > 0) {
+    log('info', 'sessions_cap_migration', { migrated: migratedCount });
+    saveSessionsToDisk();
+  }
 }
 
 // Write-through: persist durable parts of every in-memory session.
