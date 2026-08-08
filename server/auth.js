@@ -61,6 +61,25 @@ function requireAuth(req, res, next) {
   }
 }
 
+// Same as requireAuth but also accepts the token via ?token= query param.
+// Needed for plain <a href> download links (composite/AI reel exports) —
+// those trigger a browser navigation, not a fetch, so they can't attach an
+// Authorization header. Use this ONLY on download-style GET routes;
+// everything else keeps using header-only requireAuth.
+function requireAuthAny(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = (authHeader && authHeader.startsWith('Bearer '))
+    ? authHeader.slice(7)
+    : req.query.token;
+  if (!token) return safeError(res, 401, 'Authentication required');
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch (err) {
+    return safeError(res, 401, 'Invalid or expired token. Please log in again.');
+  }
+}
+
 // --- Socket.IO middleware ---
 function socketAuth(socket, next) {
   const token = socket.handshake.auth.token;
@@ -188,4 +207,4 @@ function initAuthRoutes(app) {
   });
 }
 
-module.exports = { requireAuth, socketAuth, initAuthRoutes, requireTier, requireAdmin, getEffectiveTier, getMonthKey };
+module.exports = { requireAuth, requireAuthAny, socketAuth, initAuthRoutes, requireTier, requireAdmin, getEffectiveTier, getMonthKey };

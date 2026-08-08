@@ -4,6 +4,7 @@
 // (per-tier upload limits live here — see session.maxClips).
 // ================================
 const fs = require('fs');
+const https = require('https');
 const path = require('path');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
@@ -18,10 +19,15 @@ const {
 const { sessions, saveSessionsToDisk, users, saveUsersToDisk, clipWeightForDuration } = require('../stores');
 const { isSpacesEnabled, uploadToSpaces, deleteFromSpaces } = require('../spaces');
 const { enqueueThumbnail } = require('../media');
-const { requireAuth } = require('../auth');
+const { requireAuth, requireTier } = require('../auth');
 const { trackBandwidth } = require('../redemption');
 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+// Paid tiers allowed to pull raw clip downloads / exports. Matches the
+// "combined web+client login with paid subscription" access decision —
+// same bracket as composite/AI Reel gating.
+const DOWNLOAD_TIERS = ['t2', 't3', 't4'];
 
 // --- Multer: disk storage with sanitized names, whitelist, size cap ---
 const upload = multer({
@@ -73,20 +79,6 @@ function initUploadRoutes(app, io) {
       return res.status(403).json({ error: 'You are not a member of this session' });
     }
 
-    // Tier-based cap: session.maxClips is set at creation from the host's
-    // tier (see routes/sessions.js). Total across all uploaders — not
-    // per-member — matching the "clips per session" tier limits. Sessions
-    // created before tiers shipped won't have maxClips; fall back to the
-    // old per-member formula so they don't suddenly break.
-    //
-    // WEIGHTED CAP: this pre-check runs before the file is even parsed, so
-    // the real duration/weight of THIS upload isn't known yet — it assumes
-    // weight 1 (the common case) as a soft gate. The authoritative weighted
-    // total is written after the file lands (see below), where the actual
-    // durationMs from the metadata sidecar is known. A single clip landing
-    // right at the cap can therefore push the weighted total slightly over;
-    // that's accepted rather than blocking uploads on a size we can't know
-    // in advance without buffering the whole file first.
     const sessionClipCap = session.maxClips || (MAX_HIGHLIGHTS_PER_SESSION * Math.max(session.members.length, 1));
     const weightedSoFar = session.uploads.reduce((sum, u) => sum + (u.clipWeight || 1), 0);
     if (weightedSoFar >= sessionClipCap) {
@@ -112,7 +104,6 @@ function initUploadRoutes(app, io) {
         return safeError(res, 400, 'No video file provided.');
       }
 
-      // Path traversal backstop: file must resolve inside uploads dir
       const resolvedPath = path.resolve(videoFile.path);
       if (!resolvedPath.startsWith(path.resolve(UPLOADS_DIR))) {
         fs.unlinkSync(resolvedPath);
@@ -135,9 +126,6 @@ function initUploadRoutes(app, io) {
           log('warn', 'upload_rejected', { reason: 'invalid_metadata', session: code, username: uploaderName });
           return safeError(res, 400, 'Invalid metadata format.');
         }
-        // Pull durationMs for weight calculation — best-effort. A metadata
-        // read failure here just falls back to weight 1, it doesn't fail
-        // the upload; the video itself already passed verification.
         try {
           const metaJson = JSON.parse(fs.readFileSync(metaFile.path, 'utf8'));
           const d = metaJson.durationMs;
@@ -212,8 +200,6 @@ function initUploadRoutes(app, io) {
       session.uploads.push(uploadRecord);
       saveSessionsToDisk();
 
-      // Bandwidth safeguard — see config.js note on why this tracks upload
-      // bytes rather than true CDN egress.
       trackBandwidth(uploaderName, videoFile.size, users, saveUsersToDisk);
 
       log('info', 'upload_received', {
@@ -236,10 +222,6 @@ function initUploadRoutes(app, io) {
         uploadId: uploadRecord.id
       });
 
-      // Authoritative clip counter: WEIGHTED total, not a flat per-upload
-      // count. A 4-6 minute clip costs 2 against the cap instead of 1 —
-      // this is what actually reflects storage/bandwidth cost now that
-      // clip length varies (batch 3's auto-capture can save up to 6min).
       const weightedUsed = session.uploads.reduce((sum, u) => sum + (u.clipWeight || 1), 0);
       io.to(code).emit('clip-count-update', {
         used: weightedUsed,
@@ -250,6 +232,54 @@ function initUploadRoutes(app, io) {
         message: 'Upload successful',
         uploadId: uploadRecord.id
       });
+    });
+  });
+
+  // ================================
+  // DOWNLOAD — proxy endpoint gated behind login + paid tier (t2+). The
+  // public web player can still STREAM any clip via the CDN videoUrl
+  // embedded in session data — that's the "view/share" surface and stays
+  // open. But the one-click Download affordance in the UI now routes
+  // through here instead of fetching the CDN URL directly, so the actual
+  // download action is behind auth+billing. Same middleware pattern as the
+  // delete endpoint below (requireAuth), plus a tier check.
+  //
+  // Known limitation: since the CDN object itself is public-read (needed
+  // for playback), a technically inclined viewer can still pull the raw
+  // mp4 URL from the network tab. This route stops the casual/UI-driven
+  // download path and gives us a real gate on the by-far heavier exports
+  // (composite, AI reel) — it isn't DRM.
+  // ================================
+  app.get('/sessions/:code/uploads/:uploadId/download', requireAuth, requireTier(DOWNLOAD_TIERS), async (req, res) => {
+    const code = sanitizeCode(req.params.code);
+    if (!code) return safeError(res, 400, 'Invalid session code');
+
+    const session = sessions.get(code);
+    if (!session) return safeError(res, 404, 'Session not found');
+
+    const rec = session.uploads.find(u => u.id === req.params.uploadId);
+    if (!rec) return safeError(res, 404, 'Clip not found');
+
+    const filename = `peak-abu-${rec.username}-${code}.mp4`;
+
+    const localPath = path.join(UPLOADS_DIR, code, rec.videoFile);
+    if (fs.existsSync(localPath)) {
+      return res.download(localPath, filename);
+    }
+
+    if (!rec.videoUrl) return safeError(res, 404, 'Clip not available');
+
+    https.get(rec.videoUrl, (upstream) => {
+      if (upstream.statusCode !== 200) {
+        upstream.resume();
+        return safeError(res, 502, 'Failed to fetch clip');
+      }
+      res.setHeader('Content-Type', 'video/mp4');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      upstream.pipe(res);
+    }).on('error', (e) => {
+      log('error', 'download_proxy_failed', { session: code, uploadId: rec.id, error: e.message });
+      if (!res.headersSent) safeError(res, 502, 'Failed to fetch clip');
     });
   });
 
@@ -284,9 +314,6 @@ function initUploadRoutes(app, io) {
       return safeError(res, 403, 'This clip is past the 4-hour delete window and can no longer be removed.');
     }
 
-    // Remove from Spaces if it made it there; local temp files are already
-    // gone by this point in the normal flow (uploadToSpaces deletes on
-    // success), but clean up defensively in case Spaces upload never landed.
     if (rec.videoKey) await deleteFromSpaces(rec.videoKey);
     if (rec.thumbnailKey) await deleteFromSpaces(rec.thumbnailKey);
     if (rec.metadataKey) await deleteFromSpaces(rec.metadataKey);

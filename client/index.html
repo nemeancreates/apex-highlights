@@ -64,6 +64,16 @@
       .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; align-items: start; }
       .col { display: flex; flex-direction: column; gap: 11px; }
 
+      /* Grid/flex children default to min-width:auto, so a column can never
+         shrink below its widest content — the grid overflows .app instead of
+         fitting inside it, and the overflow lands under the native player
+         view. This is what produced the "cut off mid-word" look. */
+      /* Every descendant, not just direct children — the session card and
+         HUD card have nested flex/grid children that each re-introduce
+         min-width:auto and re-inflate the column's floor. */
+      .grid > .col, .col *, .hud-card * { min-width: 0; }
+      .card, .hud-card { overflow: hidden; }
+
       /* ===== Card ===== */
       .card {
         background: #0f2318; border: 1px solid #1e3527;
@@ -252,6 +262,33 @@
       }
       .clip-duration-display strong { color: #39d3a0; }
 
+      /* ===== Session usage bar — "leafy" shimmering gradient fill ===== */
+      .usage-label { font-size: 12px; color: #8fbfa3; text-align: center; margin-bottom: 5px; }
+      .usage-track {
+        width: 100%; height: 10px; background: #0c1c14;
+        border: 1px solid #24402e; border-radius: 6px; overflow: hidden;
+      }
+      .usage-fill {
+        height: 100%; width: 0%; border-radius: 6px;
+        background-image:
+          repeating-linear-gradient(135deg, rgba(255,255,255,0.10) 0px, rgba(255,255,255,0.10) 4px, transparent 4px, transparent 10px),
+          linear-gradient(90deg, #1d9e75, #4fe0b0, #1d9e75);
+        background-size: 200% 100%, 200% 100%;
+        animation: usageShimmer 5s linear infinite;
+        transition: width 0.4s ease, background-image 0.4s ease;
+      }
+      .usage-fill.warn {
+        background-image:
+          repeating-linear-gradient(135deg, rgba(255,255,255,0.10) 0px, rgba(255,255,255,0.10) 4px, transparent 4px, transparent 10px),
+          linear-gradient(90deg, #b8862c, #e8c058, #b8862c);
+      }
+      .usage-fill.danger {
+        background-image:
+          repeating-linear-gradient(135deg, rgba(255,255,255,0.10) 0px, rgba(255,255,255,0.10) 4px, transparent 4px, transparent 10px),
+          linear-gradient(90deg, #a63a2e, #f0857a, #a63a2e);
+      }
+      @keyframes usageShimmer { 0% { background-position: 0% 50%, 0% 50%; } 100% { background-position: 200% 50%, 200% 50%; } }
+
       /* ===== Monitor active ===== */
       .monitor-active {
         font-size: 13px; color: #39d3a0; text-align: center;
@@ -402,6 +439,20 @@
       @media (max-width: 640px) {
         .grid { grid-template-columns: 1fr; }
       }
+
+      /* Viewport-based media queries can't see the docked client strip —
+         the window is still full width. JS toggles this class off the
+         measured strip width instead. */
+      .app.dock-narrow .grid { grid-template-columns: 1fr; }
+
+      /* The session code's 26px + 6px letter-spacing is the single widest
+         fixed element in the left column — it sets the floor on its own.
+         Scale it down with the strip instead of letting it dictate width. */
+      .app.dock-narrow .session-code { font-size: 20px; letter-spacing: 3px; padding: 8px; }
+      .app.dock-narrow .member-item { font-size: 13px; padding: 6px 8px; }
+      .app.dock-narrow .member-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .app.dock-narrow .hud-tab { width: 32px; height: 32px; font-size: 14px; }
+      .app.dock-narrow .hist-top { font-size: 13px; }
 
       /* ===== Docked player: drag handle + close control =====
          Both are positioned with `right: Npx`, the same coordinate basis
@@ -1535,15 +1586,41 @@
         divider.style.right = 'auto';
         divider.style.width = gutter + 'px';
 
-        closeBtn.style.left = (dividerLeft - 34) + 'px';
+        closeBtn.style.left = (dividerLeft - 26) + 'px';
         closeBtn.style.right = 'auto';
 
         // Client content stops exactly where the divider begins.
         // paddingRight is computed from the divider's ACTUAL on-screen position,
         // not from main's DIP measurements — this is what closes the gap.
         window.dockedContentWidth = dividerLeft;
+        // Reserved width in CSS px. The post-resize nudge below reads this;
+        // it used to only ever be set by positionDockControls(), which is no
+        // longer on the live path — so the nudge sent 0 and main reset the
+        // width to its default.
+        window.dockedTotalWidth = window.innerWidth - dividerLeft;
         var rect = divider.getBoundingClientRect();
         document.body.style.paddingRight = (window.innerWidth - rect.left + 4) + 'px';
+        document.body.style.setProperty('--dock-client-width', rect.left + 'px');
+
+        // Don't rely on flexbox to infer .app's width from paddingRight — force
+        // it directly so the client column visibly tracks every geometry update,
+        // not just ones that happen to trigger a native reflow.
+        // .app already has width:100%; body's paddingRight reserves the
+        // player's space. The only thing stopping it from filling the
+        // remaining strip is the static max-width:720px in CSS. Lift that
+        // cap to 'none' and let normal flow size it — pinning it to a
+        // computed pixel value froze the grid columns instead.
+        var appEl = document.querySelector('.app');
+        if (appEl) {
+          appEl.style.maxWidth = 'none';
+          // Below ~620px the two columns get too cramped to be usable —
+          // stack them. Measured off the real strip width, since a CSS
+          // media query only ever sees the full window.
+          appEl.classList.toggle('dock-narrow', rect.left < 620);
+        }
+        console.log('[dock-app-width] set maxWidth=' + (appEl ? appEl.style.maxWidth : 'NO .app FOUND') +
+         ' computedWidth=' + (appEl ? getComputedStyle(appEl).width : '?') +
+         ' rect.left=' + rect.left.toFixed(0));
         document.body.style.setProperty('--dock-client-width', rect.left + 'px');
 
         console.log(
@@ -1572,14 +1649,6 @@
         if (d && d.docked) {
           if (typeof d.gutter === 'number') window.dockedGutter = d.gutter;
 
-          // main.js already clamped this against the REAL window content
-          // size before positioning the native view — re-clamping here
-          // against window.innerWidth was the bug: any tiny discrepancy
-          // between the two measurements (scrollbars, timing) put the
-          // divider at a different x than where the view actually starts,
-          // leaving a visible dead gap. Trust main's number as-is.
-          // Prefer the real applied geometry; fall back to the reserved
-          // width only if an older main.js didn't send viewLeft.
           if (typeof d.viewLeft === 'number') {
             var dipToCss = (d.contentWidth > 0) ? (window.innerWidth / d.contentWidth) : 1;
             window.dockDipToCss = dipToCss;
@@ -1601,6 +1670,8 @@
           document.body.classList.remove('player-docked');
           document.body.style.paddingRight = '';
           document.body.style.removeProperty('--dock-client-width');
+          var appEl2 = document.querySelector('.app');
+          if (appEl2) { appEl2.style.maxWidth = ''; appEl2.classList.remove('dock-narrow'); }
           if (divider) divider.classList.remove('show');
           if (closeBtn) closeBtn.classList.remove('show');
         }
@@ -2408,14 +2479,34 @@
         ipcRenderer.send('session-disconnected');
       };
 
+      // Backend still tracks everything in raw seconds (clipWeight) — this
+      // only changes how it's DISPLAYED. "682/144000 clips" reads as an
+      // arbitrary wall of digits; "1h 54m of 40h used" is something a
+      // person can actually reason about at a glance.
+      function formatUsageDuration(totalSeconds) {
+        var h = Math.floor(totalSeconds / 3600);
+        var m = Math.floor((totalSeconds % 3600) / 60);
+        if (h > 0 && m > 0) return h + 'h ' + m + 'm';
+        if (h > 0) return h + 'h';
+        return m + 'm';
+      }
+
       function updateClipCounter(used, max) {
         var el = document.getElementById('clipCounter');
         if (!max) { el.style.display = 'none'; return; }
         el.style.display = 'block';
-        var remaining = max - used;
-        el.textContent = used + ' / ' + max + ' clips used this session' + (remaining <= 15 ? ' — ' + remaining + ' left' : '');
-        el.style.color = remaining <= 15 ? '#f0a5bd' : '#5f7a6a';
-        document.getElementById('migrateBtn').style.display = (window.isSessionHost && remaining <= 15) ? 'block' : 'none';
+
+        var pct = Math.max(0, Math.min(100, (used / max) * 100));
+        var remainingSec = Math.max(0, max - used);
+        var tier = pct >= 90 ? 'danger' : pct >= 75 ? 'warn' : '';
+
+        el.innerHTML =
+          '<div class="usage-label">' + formatUsageDuration(used) + ' / ' + formatUsageDuration(max) + ' of highlight time used</div>' +
+          '<div class="usage-track"><div class="usage-fill' + (tier ? ' ' + tier : '') + '" style="width:' + pct.toFixed(1) + '%;"></div></div>';
+
+        // Last 15 minutes of headroom — flat time threshold rather than a
+        // clip count, since "remaining" is now a duration, not an integer.
+        document.getElementById('migrateBtn').style.display = (window.isSessionHost && remainingSec <= 900) ? 'block' : 'none';
       }
 
       window.migrateSession = function() {

@@ -28,9 +28,7 @@
 //   AIREEL_MODEL       — optional; defaults to 'claude-sonnet-4-6'
 //   AIREEL_ENABLED     — set to 'false' to disable the feature entirely
 //
-// NOTE (monetization): endpoints are open during beta. Before public launch,
-// gate POST /sessions/:code/aireel behind requireAuth + user.tier in
-// ('t3','t4'). Grep for "TIER GATE" below.
+//
 // ================================================================
 
 const fs = require('fs');
@@ -39,6 +37,12 @@ const os = require('os');
 const https = require('https');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
+
+const { requireAuth, requireAuthAny, requireTier } = require('./auth');
+
+// Paid tiers allowed to generate/download AI reels — matches existing
+// "T3/T4" beta labeling used in the UI.
+const AIREEL_TIERS = ['t3', 't4'];
 
 const AIREEL_DIR = path.join(os.tmpdir(), 'peak-abu-aireel');
 const PROFILE_FILE = path.join(__dirname, 'aiprofiles.json');
@@ -125,9 +129,7 @@ function getProfileContext(game) {
 function registerRoutes() {
   const { app } = D;
 
-  app.post('/sessions/:code/aireel', (req, res) => {
-    // TIER GATE: before launch, wrap with requireAuth and check
-    // req.user.tier in ('t3','t4'). Open during beta.
+  app.post('/sessions/:code/aireel', requireAuth, requireTier(AIREEL_TIERS), (req, res) => {
     const code = D.sanitizeCode(req.params.code);
     if (!code) return D.safeError(res, 400, 'Invalid session code');
 
@@ -196,7 +198,9 @@ function registerRoutes() {
     });
   });
 
-  app.get('/aireel/:jobId/download', (req, res) => {
+  // Triggered via <a href> click, not fetch — requireAuthAny accepts
+  // ?token= on the query string since a plain link click can't set headers.
+  app.get('/aireel/:jobId/download', requireAuthAny, requireTier(AIREEL_TIERS), (req, res) => {
     const job = jobs.get(req.params.jobId);
     if (!job || job.status !== 'done' || !fs.existsSync(job.outputPath)) {
       return D.safeError(res, 404, 'Reel not ready or expired');

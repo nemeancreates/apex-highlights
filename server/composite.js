@@ -11,12 +11,15 @@ const { log } = require('./logger');
 const { sanitizeCode, downloadToFile } = require('./utils');
 const { UPLOADS_DIR } = require('./config');
 const { sessions } = require('./stores');
+const { requireAuth, requireAuthAny, requireTier } = require('./auth');
+
+// Paid tiers allowed to generate/download combined-view exports.
+const EXPORT_TIERS = ['t2', 't3', 't4'];
 
 const compositeJobs = new Map();
 const COMPOSITE_DIR = path.join(os.tmpdir(), 'peak-abu-composites');
 if (!fs.existsSync(COMPOSITE_DIR)) fs.mkdirSync(COMPOSITE_DIR, { recursive: true });
 
-// Sweep abandoned jobs hourly
 function startCompositeCleanup() {
   setInterval(() => {
     const now = Date.now();
@@ -43,14 +46,14 @@ async function runComposite(session, code, outputPath, jobId) {
   const sessionDir = path.join(UPLOADS_DIR, code);
 
   const clipData = [];
-  const tempDownloads = []; // track for cleanup
+  const tempDownloads = [];
   let earliestStart = Infinity;
 
   for (const upload of uploads) {
     let videoPath = path.join(sessionDir, upload.videoFile);
 
     if (!fs.existsSync(videoPath)) {
-      if (!upload.videoUrl) continue; // truly gone, nothing to composite
+      if (!upload.videoUrl) continue;
       const tempPath = path.join(COMPOSITE_DIR, `src_${jobId}_${upload.videoFile}`);
       try {
         await downloadToFile(upload.videoUrl, tempPath);
@@ -131,9 +134,6 @@ async function runComposite(session, code, outputPath, jobId) {
     '-filter_complex', filterComplex,
     '-map', '[out]',
     '-map', '[aout]',
-    // x264 veryfast: 10-30x faster than SVT-AV1 preset 6 on a 1-vCPU droplet,
-    // universally playable MP4 (AV1+Opus-in-MP4 support is spotty on mobile).
-    // Revisit AV1 for bandwidth savings once encoding moves to a worker queue.
     '-c:v', 'libx264',
     '-preset', 'veryfast',
     '-crf', '23',
@@ -177,7 +177,9 @@ async function runComposite(session, code, outputPath, jobId) {
 
 // --- Routes ---
 function initCompositeRoutes(app) {
-  app.post('/sessions/:code/composite', (req, res) => {
+  // Job creation requires login + paid tier — matches the delete-endpoint
+  // auth pattern, gated to t2+ since this burns real FFmpeg CPU.
+  app.post('/sessions/:code/composite', requireAuth, requireTier(EXPORT_TIERS), (req, res) => {
     const code = sanitizeCode(req.params.code);
     if (!code) return res.status(400).json({ error: 'Invalid session code' });
 
@@ -199,6 +201,7 @@ function initCompositeRoutes(app) {
     runComposite(session, code, outputPath, jobId);
   });
 
+  // Status polling stays open — it only reveals job state/size, not the file.
   app.get('/sessions/:code/composite/:jobId', (req, res) => {
     const job = compositeJobs.get(req.params.jobId);
     if (!job) return res.status(404).json({ error: 'Job not found' });
@@ -210,7 +213,10 @@ function initCompositeRoutes(app) {
     });
   });
 
-  app.get('/composite/:jobId/download', (req, res) => {
+  // Download is triggered by the client via <a href> click (not fetch), so
+  // it can't carry an Authorization header — requireAuthAny also accepts
+  // ?token= on the query string. See auth.js.
+  app.get('/composite/:jobId/download', requireAuthAny, requireTier(EXPORT_TIERS), (req, res) => {
     const job = compositeJobs.get(req.params.jobId);
     if (!job || job.status !== 'done') return res.status(404).json({ error: 'Not ready' });
 

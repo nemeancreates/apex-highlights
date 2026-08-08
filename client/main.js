@@ -279,7 +279,7 @@ let playerView = null;
 let playerWindow = null;
 let playerWindowedMode = false;
 let playerDockedWidth = 0;       // px reserved from the right edge (view + gutter); 0 = not yet computed
-const PLAYER_GUTTER = 4;         // width of the visible drag handle, carved out of the reserved zone
+const PLAYER_GUTTER = 6;         // width of the visible drag handle, carved out of the reserved zone
 const MIN_PLAYER_VIEW = 360;     // floor for the visible player area
 const MIN_CLIENT_WIDTH = 520;    // floor for the client column — this is what stops the squish
 
@@ -318,17 +318,30 @@ function playerUrlFor(code, token, username) {
 
 function layoutPlayerView() {
   if (!playerView || !mainWindow || mainWindow.isDestroyed()) return;
+
+  // Windows fires 'resize' on minimize, and getContentSize() reports a
+  // bogus tiny size while minimized. Laying out against that used to
+  // clamp playerDockedWidth down to the 360px floor and WRITE IT BACK —
+  // so restoring the window left the player collapsed until the user
+  // re-dragged the divider. Skip entirely while minimized.
+  if (mainWindow.isMinimized()) return;
+
   const [w, h] = mainWindow.getContentSize();
+  if (!w || !h || w < 200) return; // defensive: never lay out against a garbage size
 
   if (!playerDockedWidth) playerDockedWidth = defaultPlayerDockedWidth(w);
-  playerDockedWidth = clampPlayerDockedWidth(playerDockedWidth, w);
+
+  // playerDockedWidth is the user's DESIRED width and is never mutated by
+  // layout. The clamp result is local and applies only to this paint, so a
+  // transient narrow window can't destroy the persisted preference.
+  const appliedWidth = clampPlayerDockedWidth(playerDockedWidth, w);
 
   // The reserved zone is [player view][gutter]. The gutter is deliberately
   // NOT covered by the native view, so the renderer's divider/close button
   // (drawn in the base webContents layer) stay visible and clickable —
   // a WebContentsView renders above the window's own content wherever
   // their bounds overlap, so anything drawn under it would be invisible.
-  const viewWidth = playerDockedWidth - PLAYER_GUTTER;
+  const viewWidth = appliedWidth - PLAYER_GUTTER;
   playerView.setBounds({ x: w - viewWidth, y: 0, width: viewWidth, height: h });
 
   // Read back what the view ACTUALLY got rather than trusting what we asked
@@ -340,13 +353,14 @@ function layoutPlayerView() {
   const actualViewWidth = applied.width;
 
   console.log(
-    `[dock] w=${w} viewWidth=${viewWidth} appliedX=${applied.x} appliedW=${applied.width} ` +
-    `reserved=${playerDockedWidth} gutter=${PLAYER_GUTTER} dividerShouldBeAt=${w - playerDockedWidth + PLAYER_GUTTER}`
+    `[dock] w=${w} desired=${playerDockedWidth} applied=${appliedWidth} ` +
+    `viewWidth=${viewWidth} appliedX=${applied.x} appliedW=${applied.width} ` +
+    `gutter=${PLAYER_GUTTER} dividerShouldBeAt=${w - appliedWidth + PLAYER_GUTTER}`
   );
 
   mainWindow.webContents.send('player-docked', {
     docked: true,
-    reservedRight: playerDockedWidth,
+    reservedRight: appliedWidth,
     gutter: PLAYER_GUTTER,
     // Authoritative geometry, straight from the applied bounds
     viewLeft: actualViewLeft,
@@ -2044,6 +2058,12 @@ function createWindow() {
   mainWindow.on('resize', () => layoutPlayerView());
   mainWindow.on('maximize', () => layoutPlayerView());
   mainWindow.on('unmaximize', () => layoutPlayerView());
+  // Coming back from minimize/hide: layoutPlayerView was skipped while the
+  // window was down, so re-assert geometry now that the real content size
+  // is readable again. Without this the view keeps whatever bounds it had
+  // before minimizing and the renderer's padding stays stale.
+  mainWindow.on('restore', () => setTimeout(() => layoutPlayerView(), 50));
+  mainWindow.on('show', () => setTimeout(() => layoutPlayerView(), 50));
   mainWindow.on('closed', () => { closeAnyPlayer(); });
 
   mainWindow.loadFile('index.html');
@@ -2640,6 +2660,14 @@ function createWindow() {
   // clamp be the single source of truth (renderer never has to guess it).
   ipcMain.on('resize-player-width', (event, desiredWidth) => {
     if (!playerView || !mainWindow || mainWindow.isDestroyed()) return;
+    // The renderer's post-resize nudge can send 0/undefined if its cached
+    // width was never populated. Treating that as a real request reset the
+    // width to the 45% default via the `!playerDockedWidth` fallback — just
+    // re-assert current geometry instead.
+    if (typeof desiredWidth !== 'number' || !isFinite(desiredWidth) || desiredWidth <= 0) {
+      layoutPlayerView();
+      return;
+    }
     // Always clamp against a FRESH read of content size, not a cached one —
     // this is what guarantees the value echoed back to the renderer matches
     // where the view is actually placed, even if the window changed size
@@ -2650,6 +2678,8 @@ function createWindow() {
 
   // Fires once on release — persists the chosen width so it survives restart.
   ipcMain.on('resize-player-width-commit', (event, desiredWidth) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (typeof desiredWidth !== 'number' || !isFinite(desiredWidth) || desiredWidth <= 0) return;
     if (!mainWindow || mainWindow.isDestroyed()) return;
     playerDockedWidth = desiredWidth;
     layoutPlayerView();
