@@ -72,12 +72,22 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_uploads_session ON uploads(sessionCode);
 `);
 
--- Quick comments: short timestamped notes anchored to ONE POV clip.
-  -- Deliberately no FOREIGN KEY to sessions(code). A session's row is only
-  -- written by saveSessionsToDisk(), which may not have run yet for a
-  -- brand-new session, and foreign_keys is ON — an FK here would reject the
-  -- first comment on a fresh session. Cleanup is handled by the hourly
-  -- orphan sweep in routes/comments.js instead.
+// ================================
+// QUICK COMMENTS — short timestamped notes anchored to ONE POV clip.
+//
+// Kept in its own db.exec() rather than threaded into the schema template
+// above. New feature schema should go in a standalone block like this:
+// a stray line inside a template literal is invisible until Node refuses
+// to parse the file, and a db.js that won't compile takes the whole
+// server down on boot, not just the feature.
+//
+// Deliberately NO foreign key to sessions(code). A session's row is only
+// written by saveSessionsToDisk(), which may not have run yet for a
+// brand-new session, and foreign_keys is ON above — an FK here would
+// reject the very first comment on a fresh session. Cleanup is handled by
+// the hourly orphan sweep in routes/comments.js instead.
+// ================================
+db.exec(`
   CREATE TABLE IF NOT EXISTS comments (
     id          TEXT PRIMARY KEY,
     sessionCode TEXT NOT NULL,
@@ -91,11 +101,11 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_comments_session ON comments(sessionCode);
   CREATE INDEX IF NOT EXISTS idx_comments_upload  ON comments(uploadId);
 
-  -- Host switch, one row per session. No row = never touched = enabled.
   CREATE TABLE IF NOT EXISTS comment_settings (
     sessionCode TEXT PRIMARY KEY,
     enabled     INTEGER NOT NULL DEFAULT 1
   );
+`);
 
 // ================================
 // MIGRATIONS — additive only, idempotent, safe to run on every boot.
