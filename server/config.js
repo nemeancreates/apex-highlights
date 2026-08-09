@@ -57,6 +57,16 @@ const SOCKET_RATE_WINDOW = 10000;    // 10 seconds
 // --- Highlights ---
 const MAX_PENDING_HIGHLIGHTS = 3;    // queued triggers during cooldown lock
 
+// --- Quick comments ---
+// Short timestamped notes left on a single POV clip. Every one of these is
+// enforced server-side in routes/comments.js — the client's maxlength and
+// disabled buttons are convenience, not enforcement.
+const COMMENT_MAX_LENGTH = 100;        // characters, measured after normalization
+const COMMENT_MAX_PER_CLIP = 100;      // ceiling per uploadId
+const COMMENT_RATE_MAX = 3;            // posts per window, per ACCOUNT (not per IP)
+const COMMENT_RATE_WINDOW = 60000;     // 1 minute
+const COMMENT_MAX_TIMESTAMP_MS = 6 * 60 * 60 * 1000; // sanity bound on the anchor
+
 // ================================
 // TIERS — the single source of truth for what each tier can do.
 // t1 Free / t2 Creator / t3 Squad / t4 Pro (naming matches the TIER GATE
@@ -133,6 +143,11 @@ module.exports = {
   SOCKET_RATE_MAX,
   SOCKET_RATE_WINDOW,
   MAX_PENDING_HIGHLIGHTS,
+  COMMENT_MAX_LENGTH,
+  COMMENT_MAX_PER_CLIP,
+  COMMENT_RATE_MAX,
+  COMMENT_RATE_WINDOW,
+  COMMENT_MAX_TIMESTAMP_MS,
   TIERS,
   TIER_ORDER,
   ADMIN_SECRET,

@@ -685,10 +685,10 @@ function buildEngineLadder() {
 
 function setBelowNormalPriority(pid) {
   try {
-    spawn('powershell.exe', [
-      '-NoProfile', '-Command',
-      `(Get-Process -Id ${pid}).PriorityClass='BelowNormal'`
-    ], { windowsHide: true });
+    // os.setPriority is native and synchronous — the old PowerShell spawn
+    // cost ~150ms of process creation per call, which is absurd for a
+    // helper we now want to call on every extraction process.
+    os.setPriority(pid, os.constants.priority.PRIORITY_BELOW_NORMAL);
   } catch (e) {
     console.log('Priority adjust skipped:', e.message);
   }
@@ -946,7 +946,7 @@ function getPreciseUTC() { return Date.now() + clockOffset; }
 function pruneOldChunks() {
   if (fullSessionMode) return;
   if (autoCaptureLocked) return; // an auto-capture window may be open — don't evict chunks it still needs
-
+  if (extractionInFlight) return;    // don't stat/unlink chunks an extract is reading
   const files = fs.readdirSync(BUFFER_DIR)
     .filter(f => f.endsWith('.mp4'))
     .map(f => ({ name: f, time: fs.statSync(path.join(BUFFER_DIR, f)).mtimeMs }))
@@ -960,6 +960,60 @@ function pruneOldChunks() {
       else console.log('Prune error:', err.message);
     }
   }
+}
+
+// ================================
+// LOW-PRIORITY FFMPEG SPAWN
+// Every extraction/merge process gets nudged below normal so a save can
+// never steal frame time from the game. Capture already did this; the
+// save path did not, which is what made every clip cost a hitch.
+// ================================
+function spawnFFmpegLow(args) {
+  const p = spawn(getFFmpegPath(), args, { windowsHide: true });
+  if (p.pid) setBelowNormalPriority(p.pid);
+  return p;
+}
+
+// ================================
+// ASYNC BATCHED FFMPEG LOG
+// appendFileSync on every stderr chunk was a blocking syscall several
+// times a second for the entire recording session.
+// ================================
+const FFMPEG_LOG_PATH = path.join(os.tmpdir(), 'peakabu-ffmpeg.log');
+let ffmpegLogBuf = '';
+let ffmpegLogTimer = null;
+
+function queueFFmpegLog(text) {
+  ffmpegLogBuf += text;
+  if (ffmpegLogBuf.length > 65536) ffmpegLogBuf = ffmpegLogBuf.slice(-65536);
+  if (ffmpegLogTimer) return;
+  ffmpegLogTimer = setTimeout(() => {
+    const out = ffmpegLogBuf;
+    ffmpegLogBuf = '';
+    ffmpegLogTimer = null;
+    if (out) fs.appendFile(FFMPEG_LOG_PATH, out, () => {});
+  }, 2000);
+}
+
+// ================================
+// PRUNE SCHEDULER
+// Pruning used to run off the stderr firehose — a readdirSync plus one
+// statSync per chunk, twice a second, up to 60 files deep at the 600s
+// buffer setting. It only ever needed to run every few seconds, and it
+// must never run while an extraction is reading those same chunks.
+// ================================
+let extractionInFlight = false;
+let pruneTimer = null;
+
+function startPruneScheduler() {
+  stopPruneScheduler();
+  pruneTimer = setInterval(() => {
+    try { pruneOldChunks(); } catch (e) {}
+  }, 5000);
+}
+
+function stopPruneScheduler() {
+  if (pruneTimer) { clearInterval(pruneTimer); pruneTimer = null; }
 }
 
 function buildCaptureArgs(engine, monitor) {
@@ -1300,7 +1354,10 @@ function startRecording(monitor) {
   }
 
   const engine = engineLadder[engineIndex];
-  const ffmpegArgs = buildCaptureArgs(engine, monitor);
+  // -stats_period cuts FFmpeg's progress output from ~2/sec to 1 every 5s.
+  // parseCaptureHealth only needs a sample, not a firehose. Requires
+  // FFmpeg 5.0+, which the gyan.dev full build satisfies.
+  const ffmpegArgs = ['-hide_banner', '-stats_period', '5', ...buildCaptureArgs(engine, monitor)];
 
   console.log(`Recording monitor ${monitor} with engine [${engine}] — ${ENGINE_LABELS[engine]}`);
   console.log(`Settings: ${recordFps}fps, resolution: ${recordResolution ? recordResolution.width + 'x' + recordResolution.height : 'native'}, buffer: ${maxChunks * CHUNK_SECONDS}s, HDR fix: ${captureHdr}`);
@@ -1345,12 +1402,9 @@ function startRecording(monitor) {
 
   ffmpegProcess.stderr.on('data', (data) => {
     const text = data.toString();
-    console.log('FFmpeg:', text);
-    const logPath = path.join(os.tmpdir(), 'peakabu-ffmpeg.log');
-    fs.appendFileSync(logPath, text);
+    queueFFmpegLog(text);
     stderrTail = (stderrTail + text).slice(-3000);
     parseCaptureHealth(text, engine);
-    pruneOldChunks();
   });
 
   ffmpegProcess.on('close', (code) => {

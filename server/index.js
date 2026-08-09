@@ -26,6 +26,7 @@ const { initAuthRoutes } = require('./auth');
 const { initSessionRoutes } = require('./routes/sessions');
 const { initJoinRoutes } = require('./routes/join');
 const { initUploadRoutes } = require('./routes/uploads');
+const { initCommentRoutes, startCommentCleanup } = require('./routes/comments');
 const { initCompositeRoutes, startCompositeCleanup } = require('./composite');
 const { initSockets } = require('./sockets');
 const { initAiReel } = require('./aireel');
@@ -81,6 +82,7 @@ initAuthRoutes(app);
 initSessionRoutes(app);
 initJoinRoutes(app);
 initUploadRoutes(app, io);
+initCommentRoutes(app, io);
 initCompositeRoutes(app);
 initSockets(io);
 
@@ -92,6 +94,7 @@ retryPendingSpacesUploads();
 startRateLimitCleanup();
 startSessionPurge();
 startCompositeCleanup();
+startCommentCleanup();
 initAiReel({
   app,
   sessions,
