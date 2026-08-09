@@ -1061,7 +1061,7 @@
           <button class="btn btn-small btn-secondary" onclick="selectAllClips()">All</button>
           <button class="btn btn-small" onclick="downloadSelected(event)">&#11015; Download</button>
           <button class="btn btn-small btn-secondary" id="compositeBtn" onclick="openExportPanel('composite')" disabled>&#127916; Combined</button>
-          <button class="btn btn-small btn-secondary" onclick="openExportPanel('aireel')">&#129302; AI Reel</button>
+          <button class="btn btn-small btn-secondary" id="aireelOpenBtn" onclick="openExportPanel('aireel')">&#129302; AI Reel</button>
           <button class="btn-clear-selection" onclick="deselectAllClips()" title="Clear selection">&#x2715;</button>
         </div>
       </div>
@@ -1227,6 +1227,16 @@
       myAuthToken = params.get('t') || null;
       myUsername = params.get('u') || null;
     })();
+
+    // AI Reel is a paid-tier, logged-in feature — hide the entry point
+    // entirely for unauthenticated viewers rather than let them open the
+    // panel and hit the auth error inside startAiReel().
+    document.addEventListener('DOMContentLoaded', function() {
+      if (!myAuthToken) {
+        const btn = document.getElementById('aireelOpenBtn');
+        if (btn) btn.style.display = 'none';
+      }
+    });
 
     // ========================
     // LOCAL CLIPS
