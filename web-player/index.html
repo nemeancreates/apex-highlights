@@ -2318,7 +2318,11 @@
       }
 
       // Export select checkbox
-      if (!v.missing && !v.processing && v.uploadId) {
+      // Export select checkbox — logged-in only. This is the single choke
+      // point for the whole selection bar (Download/Combined/AI Reel all
+      // only render once something's selected), so gating it here hides
+      // all three export paths at once for anonymous viewers.
+      if (!v.missing && !v.processing && v.uploadId && myAuthToken) {
         const checkbox = document.createElement('div');
         const isSel = selectedExportClips.has(v.uploadId);
         checkbox.className = 'pov-export-check' + (isSel ? ' selected' : '');
