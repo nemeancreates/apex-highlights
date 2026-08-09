@@ -458,14 +458,17 @@
 
     .audio-control-row {
       display: flex;
-      align-items: center;
-      gap: 6px;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 4px;
       font-size: 11px;
       color: #8fbfa3;
-      margin-bottom: 4px;
+      margin-bottom: 6px;
     }
-    .audio-control-row label { width: 50px; flex-shrink: 0; }
-    .audio-control-row input[type="range"] { flex: 1; accent-color: #39d3a0; height: 4px; }
+    .audio-control-row label { width: auto; flex-shrink: 0; }
+    .audio-control-row input[type="range"] { width: 100%; accent-color: #39d3a0; height: 4px; }
+    .audio-control-row.buttons-row { flex-direction: row; gap: 6px; }
+    .audio-control-row.buttons-row .mute-btn { flex: 1; }
 
     .mute-btn {
       background: none;
@@ -944,7 +947,21 @@
       font-weight: 600;
       color: #39d3a0;
       transition: border-color 0.15s, color 0.15s;
+      position: relative;
+      overflow: hidden;
     }
+    /* Grows toward the 4h delete-window expiry. Absolutely positioned
+       behind the label/icon so it reads as a fill without disturbing
+       layout — updates every 30s off the existing repaint interval. */
+    .hl-pill-fill {
+      position: absolute;
+      top: 0; left: 0; bottom: 0;
+      background: linear-gradient(90deg, rgba(240,133,122,0.28), rgba(240,133,122,0.5));
+      z-index: 0;
+      transition: width 1s linear;
+      pointer-events: none;
+    }
+    .hl-pill > *:not(.hl-pill-fill) { position: relative; z-index: 1; }
     .hl-pill:hover { border-color: #39d3a0; }
     .hl-pill.active { background: #39d3a0; color: #04140d; border-color: #4fe0b0; }
     /* Still within the 4h delete window — the only state that gets extra
@@ -1767,10 +1784,18 @@
         // Locked (permanent) pills are intentionally bare — plain label,
         // nothing to select since there's no action available on them.
         if (!locked) {
+          const ageMs = clusterAgeMs(hl);
+          const pct = Math.min(100, (ageMs / DELETE_WINDOW_MS) * 100);
+
+          const fill = document.createElement('div');
+          fill.className = 'hl-pill-fill';
+          fill.style.width = pct.toFixed(1) + '%';
+          pill.appendChild(fill);
+
           const icon = document.createElement('span');
           icon.className = 'hl-pill-lock-icon';
           icon.textContent = '🔓';
-          icon.title = 'Deletable for the next ' + Math.max(0, Math.ceil((DELETE_WINDOW_MS - clusterAgeMs(hl)) / 3600000)) + 'h';
+          icon.title = 'Deletable for the next ' + Math.max(0, Math.ceil((DELETE_WINDOW_MS - ageMs) / 3600000)) + 'h';
           pill.appendChild(icon);
         }
 
@@ -2530,7 +2555,7 @@
           volSlider.min = '0'; volSlider.max = '100'; volSlider.value = v.volume;
 
           const muteRow = document.createElement('div');
-          muteRow.className = 'audio-control-row';
+          muteRow.className = 'audio-control-row buttons-row';
 
           const muteBtn = document.createElement('button');
           muteBtn.className = 'mute-btn' + (v.isMuted ? ' muted' : '');
