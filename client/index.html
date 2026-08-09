@@ -1538,7 +1538,7 @@
       // IPC, the on-screen divider/padding/close-button can never squish
       // the client column past this, independent of whatever main decides.
       var CLIENT_MIN_PLAYER_VIEW = 360;
-      var CLIENT_MIN_CLIENT_WIDTH = 520;
+      var CLIENT_MIN_CLIENT_WIDTH = 460;
 
       function clampReservedWidthClient(desired) {
         var w = window.innerWidth;
@@ -2023,9 +2023,20 @@
       var AC_EMIT_THROTTLE_MS = 500;    // don't spam the socket while a loud sound sustains
       var AC_WARMUP_SAMPLES = 200;   // ~10s at 200ms — no peaks can fire until baseline is real
       var AC_SUSTAIN_POLLS = 7;      // loud polls required within the window before a peak is "real"
+      // Once a window is ALREADY active, punctuated combat (individual sword
+      // hits, spaced-out shots) rarely packs 7-of-12 densely enough to keep
+      // re-triggering — the settle timer then expires mid-fight and the next
+      // hit opens a fresh window. Logged: consec repeatedly hit 6 and reset,
+      // sustained never fired, no keep-alive reached the server. Use a much
+      // lighter bar for staying open than for opening in the first place.
+      var AC_SUSTAIN_POLLS_KEEPALIVE = 3;
       var AC_SUSTAIN_WINDOW = 12;    // rolling window size (~600ms at 50ms) — tolerates natural gaps between shots
       var AC_EMA_QUIET = 0.0125;    // baseline adapts fast while below threshold (rescaled 4x for 50ms polling, was 0.05 @ 200ms)
       var AC_EMA_LOUD  = 0.00125;   // ...and 10x slower while above, so loud stretches barely move it (rescaled 4x for 50ms polling, was 0.005 @ 200ms)
+      // How long after a peak the baseline stays frozen. Covers the gaps
+      // between swings/shots so combat lulls can't be mistaken for ambient.
+      var AC_EMA_FREEZE_AFTER_PEAK_MS = 4000;
+
 
       // ===== COLD-START NOISE FLOOR CALIBRATION =====
       // The EMA seeds itself from whatever RMS happened to be playing the
@@ -2063,8 +2074,29 @@
         var threshold = Math.max(state.ema * effectiveMultiplier, AC_FLOOR);
         var isPeak = rms > threshold;
 
-        var alpha = isPeak ? AC_EMA_LOUD : AC_EMA_QUIET;
-        state.ema = state.ema + alpha * (rms - state.ema);
+        // EMA FREEZE — while the server has an ACTIVE auto-capture window
+        // open, the baseline must not move at all. Combat lulls read as
+        // "below threshold" and therefore get the FAST quiet alpha, which
+        // drags the baseline up toward combat-level ambient within seconds.
+        // Threshold rises with it, real peaks stop clearing it, the settle
+        // timer expires, and the window closes mid-fight — producing several
+        // short clips where there should be one. Applies to desktop and mic
+        // alike, since both sources run through this same function.
+        // Freeze while the server window is ACTIVE *or* while a peak fired
+        // recently. The server-window check alone can't help BEFORE a window
+        // opens, and that's where the damage happens: combat lulls sit far
+        // above true idle but below the rising threshold, so they take the
+        // FAST quiet alpha and drag the baseline to combat level long before
+        // `sustained` is ever reached. Logged evidence: ema 0.0005 -> 0.0123
+        // and threshold 0.010 -> 0.062 across a single fight, frozen=false
+        // the entire time.
+        if (isPeak) state.lastPeakTs = Date.now();
+        var recentPeak = state.lastPeakTs && (Date.now() - state.lastPeakTs) < AC_EMA_FREEZE_AFTER_PEAK_MS;
+        var frozen = !!window.autoCaptureWindowActive || recentPeak;
+        if (!frozen) {
+          var alpha = isPeak ? AC_EMA_LOUD : AC_EMA_QUIET;
+          state.ema = state.ema + alpha * (rms - state.ema);
+        }
 
         var warmedUp = state.sampleCount >= AC_WARMUP_SAMPLES;
 
@@ -2082,7 +2114,8 @@
         state.consecutivePeaks = peaksInWindow; // keep debug log field meaningful
 
         // STEP 2: THEN compute sustainedPeak, using the count just updated
-        var sustainedPeak = warmedUp && peaksInWindow >= AC_SUSTAIN_POLLS;
+        var requiredPolls = window.autoCaptureWindowActive ? AC_SUSTAIN_POLLS_KEEPALIVE : AC_SUSTAIN_POLLS;
+        var sustainedPeak = warmedUp && peaksInWindow >= requiredPolls;
 
         // STEP 3: THEN log — everything referenced here is already final
         if (window._acDebug && (isPeak || (state._debugCounter = (state._debugCounter || 0) + 1) % 10 === 0)) {
@@ -2093,7 +2126,8 @@
                       ' ema=' + state.ema.toFixed(4) +
                       ' threshold=' + threshold.toFixed(4) +
                       ' warmedUp=' + warmedUp + ' isPeak=' + isPeak +
-                      ' consec=' + state.consecutivePeaks + ' sustained=' + sustainedPeak);
+                      ' consec=' + state.consecutivePeaks + ' sustained=' + sustainedPeak +
+                      ' frozen=' + frozen);
         }
 
         // STEP 4: THEN act — this is what actually reports to the server,

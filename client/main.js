@@ -281,7 +281,7 @@ let playerWindowedMode = false;
 let playerDockedWidth = 0;       // px reserved from the right edge (view + gutter); 0 = not yet computed
 const PLAYER_GUTTER = 6;         // width of the visible drag handle, carved out of the reserved zone
 const MIN_PLAYER_VIEW = 360;     // floor for the visible player area
-const MIN_CLIENT_WIDTH = 520;    // floor for the client column — this is what stops the squish
+const MIN_CLIENT_WIDTH = 460;    // floor for the client column — this is what stops the squish
 
 function defaultPlayerDockedWidth(winWidth) {
   // Client gets the majority share by default (~55%); drag the divider for more.
@@ -1422,19 +1422,27 @@ function saveHighlight(coordinatedTimestamp = null, clipDurationMs = null, trigg
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('post-capture-started', { postDelay });
     }
-    setTimeout(() => doSaveHighlight(saveTimeUTC, clipChunks, duration, coordinatedTimestamp), postDelay);
+    setTimeout(() => doSaveHighlight(saveTimeUTC, clipChunks, duration, coordinatedTimestamp, 0, triggerSource), postDelay);
   } else {
-    doSaveHighlight(saveTimeUTC, clipChunks, duration, coordinatedTimestamp);
+    doSaveHighlight(saveTimeUTC, clipChunks, duration, coordinatedTimestamp, 0, triggerSource);
   }
 }
 
-function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = null, retryCount = 0) {
+function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = null, retryCount = 0, triggerSource = null) {
   if (wgcCaptureMode && wgcFiles.length > 0) {
     wgcSaveInFlight = true;
 
     const durationSec = durationMs / 1000;
-    const windowStartLocal = (saveTimeUTC - clockOffset) - (0.9 * durationMs);
-    const windowEndLocal = (saveTimeUTC - clockOffset) + (0.1 * durationMs);
+    // Manual anchors a point-in-time button press: 90% before, 10% after.
+    // Auto's "moment" is already the END of a known start-to-end window —
+    // running the same split computes a start 10% INTO the real action.
+    // Auto gets its own math: anchor the exact detected span, no split.
+    const windowStartLocal = triggerSource === 'auto'
+      ? (saveTimeUTC - clockOffset) - durationMs
+      : (saveTimeUTC - clockOffset) - (0.9 * durationMs);
+    const windowEndLocal = triggerSource === 'auto'
+      ? (saveTimeUTC - clockOffset)
+      : (saveTimeUTC - clockOffset) + (0.1 * durationMs);
 
     const covering = wgcFindCoveringFiles(windowStartLocal, windowEndLocal);
     if (!covering) {
@@ -1444,7 +1452,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
         if (retryCount === 0 && mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('post-capture-started', { postDelay: 3000 });
         }
-        setTimeout(() => doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs, retryCount + 1), 3000);
+        setTimeout(() => doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs, retryCount + 1, triggerSource), 3000);
         return;
       }
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1608,8 +1616,12 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   // fight yields a 4-minute clip. Dedup is now by time window, not by file,
   // so consecutive saves never cannibalize each other's footage.
   // ================================
-  const windowStartLocal = (saveTimeUTC - clockOffset) - (0.9 * durationMs);
-  const windowEndLocal   = (saveTimeUTC - clockOffset) + (0.1 * durationMs);
+  const windowStartLocal = triggerSource === 'auto'
+    ? (saveTimeUTC - clockOffset) - durationMs
+    : (saveTimeUTC - clockOffset) - (0.9 * durationMs);
+  const windowEndLocal = triggerSource === 'auto'
+    ? (saveTimeUTC - clockOffset)
+    : (saveTimeUTC - clockOffset) + (0.1 * durationMs);
 
   const allVideoFiles = fs.readdirSync(BUFFER_DIR)
     .filter(f => f.endsWith('.mp4') && !f.startsWith('temp_') && !f.startsWith('fs_') && !f.startsWith('wgc_'))
@@ -1651,7 +1663,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
       if (retryCount === 0 && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('post-capture-started', { postDelay: 3000 });
       }
-      setTimeout(() => doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs, retryCount + 1), 3000);
+      setTimeout(() => doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs, retryCount + 1, triggerSource), 3000);
       return;
     }
 
@@ -2069,8 +2081,12 @@ function createWindow() {
   mainWindow.loadFile('index.html');
   if (!app.isPackaged) mainWindow.webContents.openDevTools();
 
+  // 'media' — desktop/mic capture for recording. clipboard-read/write —
+  // the docked web player's copy-link and paste-code buttons run
+  // navigator.clipboard inside this same session and were hitting this
+  // same gate, denied by default since only 'media' was allowed.
   mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-    callback(permission === 'media');
+    callback(permission === 'media' || permission === 'clipboard-read' || permission === 'clipboard-sanitized-write');
   });
 
   ipcMain.handle('get-auth-state', () => {
