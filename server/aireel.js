@@ -1,34 +1,15 @@
 // ================================================================
-// server/aireel.js — Peak-Abu AI Highlight Reel engine (v0.1.11)
+// server/aireel.js — Peak-Abu AI Highlight Reel engine (v0.1.12)
 // ================================================================
+// v0.1.12: optional comment overlay via ASS subtitles per segment.
+//
 // Pipeline:
 //   1. PREPARE — ensure selected clips exist locally (pull from CDN if purged)
 //   2. ANALYZE — FFmpeg extracts loudness (ebur128) + scene-change density
-//                per clip -> per-second "intensity" scores. Genre-agnostic,
-//                costs $0, runs entirely on the droplet.
-//   3. EDIT    — features (NOT video) go to the Anthropic API which returns
-//                an Edit Decision List + a written editor's report. Falls
-//                back to a built-in heuristic editor if no API key is set
-//                or the AI response is invalid.
-//   4. RENDER  — FFmpeg renders each EDL segment (solo full-frame, or a
-//                2/3/4-tile multi-POV composite for synced moments, carrying
-//                the primary POV's in-game audio), concatenates, serves a
-//                download link.
-//
-// Multi-POV layouts (v0.1.11): segments carry a `members` array of up to
-// MAX_TILES clips. 1 = full frame, 2 = side-by-side, 3-4 = grid. members[0]
-// is always the primary POV and supplies the audio track.
-//
-// Learning loop: user style notes + editor reports accumulate per-game in
-// aiprofiles.json and are fed into future prompts, so the editor improves
-// per game over time. The report is surfaced to the user.
-//
-// Env vars:
-//   ANTHROPIC_API_KEY  — optional; enables the AI editor (heuristic otherwise)
-//   AIREEL_MODEL       — optional; defaults to 'claude-sonnet-4-6'
-//   AIREEL_ENABLED     — set to 'false' to disable the feature entirely
-//
-//
+//                per clip -> per-second "intensity" scores
+//   3. EDIT    — Anthropic API (or heuristic fallback) → Edit Decision List
+//   4. RENDER  — FFmpeg renders each EDL segment (solo/side/grid), with
+//                optional comment overlay, concatenates, serves download
 // ================================================================
 
 const fs = require('fs');
@@ -39,15 +20,15 @@ const { spawn } = require('child_process');
 const crypto = require('crypto');
 
 const { requireAuth, requireAuthAny, requireTier } = require('./auth');
+const { getCommentsForSession } = require('./routes/comments');
+const { generateASS, checkAssFilter, escapeFilterPath } = require('./comment-overlay');
 
-// Paid tiers allowed to generate/download AI reels — matches existing
-// "T3/T4" beta labeling used in the UI.
 const AIREEL_TIERS = ['t3', 't4'];
 
 const AIREEL_DIR = path.join(os.tmpdir(), 'peak-abu-aireel');
 const PROFILE_FILE = path.join(__dirname, 'aiprofiles.json');
 
-const ALLOWED_TARGETS = [15, 30, 60, 90, 120, 180, 300]; // seconds
+const ALLOWED_TARGETS = [15, 30, 60, 90, 120, 180, 300];
 const MAX_CLIPS = 30;
 const SEG_MIN = 4;
 const SEG_MAX = 12;
@@ -59,7 +40,7 @@ const SESSION_COOLDOWN_MS = 2 * 60 * 1000;
 const ANALYZE_TIMEOUT_MS = 3 * 60 * 1000;
 const RENDER_TIMEOUT_MS = 5 * 60 * 1000;
 
-let D = null; // injected deps: { app, sessions, sanitizeCode, safeError, log, UPLOADS_DIR, downloadToFile }
+let D = null;
 
 const jobs = new Map();
 const jobQueue = [];
@@ -82,7 +63,7 @@ function initAiReel(deps) {
   });
 }
 
-// ---------- Game profiles (learning store) ----------
+// ---------- Game profiles ----------
 function loadProfiles() {
   try {
     if (fs.existsSync(PROFILE_FILE)) return JSON.parse(fs.readFileSync(PROFILE_FILE, 'utf8'));
@@ -159,11 +140,12 @@ function registerRoutes() {
 
     const game = typeof body.game === 'string' ? body.game.trim().slice(0, 60) : '';
     const styleNotes = typeof body.styleNotes === 'string' ? body.styleNotes.trim().slice(0, 500) : '';
+    const includeComments = body.includeComments !== false; // default true
 
     const jobId = crypto.randomUUID();
     const job = {
       id: jobId, code, status: 'queued', progress: 'Waiting in queue',
-      createdAt: Date.now(), targetSec, game, styleNotes,
+      createdAt: Date.now(), targetSec, game, styleNotes, includeComments,
       uploads: selected.map(u => ({
         id: u.id, username: u.username,
         videoFile: u.videoFile, videoUrl: u.videoUrl || null,
@@ -171,14 +153,15 @@ function registerRoutes() {
       })),
       outputPath: path.join(AIREEL_DIR, `reel_${jobId}.mp4`),
       workDir: path.join(AIREEL_DIR, `job_${jobId}`),
-      report: null, editorEngine: null, fileSize: null
+      report: null, editorEngine: null, fileSize: null,
+      sessionComments: null // populated in runJob if includeComments
     };
 
     jobs.set(jobId, job);
     lastRunPerSession.set(code, Date.now());
     recordProfileNote(game, styleNotes);
 
-    D.log('info', 'aireel_job_created', { jobId, session: code, clips: selected.length, targetSec, game });
+    D.log('info', 'aireel_job_created', { jobId, session: code, clips: selected.length, targetSec, game, includeComments });
     res.status(202).json({ jobId });
 
     jobQueue.push(job);
@@ -189,8 +172,7 @@ function registerRoutes() {
     const job = jobs.get(req.params.jobId);
     if (!job) return D.safeError(res, 404, 'Job not found');
     res.json({
-      status: job.status,
-      progress: job.progress,
+      status: job.status, progress: job.progress,
       report: job.status === 'done' ? job.report : null,
       editorEngine: job.status === 'done' ? job.editorEngine : null,
       fileSize: job.fileSize,
@@ -198,8 +180,6 @@ function registerRoutes() {
     });
   });
 
-  // Triggered via <a href> click, not fetch — requireAuthAny accepts
-  // ?token= on the query string since a plain link click can't set headers.
   app.get('/aireel/:jobId/download', requireAuthAny, requireTier(AIREEL_TIERS), (req, res) => {
     const job = jobs.get(req.params.jobId);
     if (!job || job.status !== 'done' || !fs.existsSync(job.outputPath)) {
@@ -282,11 +262,19 @@ async function runJob(job) {
     return;
   }
 
-  const syncable = clips.filter(c => c.startTimeUTC != null).length;
-  if (syncable < clips.length) {
-    D.log('warn', 'aireel_missing_starttime', {
-      jobId: job.id, withSync: syncable, total: clips.length
-    });
+  // Fetch comments for overlay (before analysis, which takes time)
+  if (job.includeComments) {
+    const canAss = await checkAssFilter();
+    if (canAss) {
+      job.sessionComments = getCommentsForSession(job.code);
+      if (job.sessionComments.length > 0) {
+        D.log('info', 'aireel_comments_loaded', { jobId: job.id, count: job.sessionComments.length });
+      } else {
+        job.sessionComments = null;
+      }
+    } else {
+      D.log('warn', 'aireel_no_libass', { jobId: job.id });
+    }
   }
 
   // 2. ANALYZE
@@ -331,7 +319,7 @@ async function runJob(job) {
   for (let i = 0; i < edl.length; i++) {
     job.progress = `Rendering segment ${i + 1}/${edl.length}`;
     const segPath = path.join(job.workDir, `seg_${String(i).padStart(2, '0')}.mp4`);
-    const ok = await renderSegment(edl[i], clips, segPath);
+    const ok = await renderSegment(edl[i], clips, segPath, job);
     if (ok) segFiles.push(segPath);
     else D.log('warn', 'aireel_segment_failed', { jobId: job.id, seg: i, layout: edl[i].layout });
   }
@@ -436,8 +424,6 @@ function scoreClip(clip) {
 function round2(n) { return Math.round(n * 100) / 100; }
 function layoutFor(n) { return n >= 3 ? 'grid' : n === 2 ? 'side' : 'solo'; }
 
-// Absolute wall-clock ms for a moment, or null when the clip has no clock sync.
-// Clips without startTimeUTC can never be grouped into a multi-POV tile.
 function absTime(clip, t) {
   return clip.startTimeUTC != null ? clip.startTimeUTC + t * 1000 : null;
 }
@@ -461,7 +447,6 @@ function heuristicEdl(job, clips) {
     total += dur;
   }
 
-  // Chronological; unsynced moments (abs === null) sink to the end.
   chosen.sort((a, b) => (a.abs == null ? 1 : b.abs == null ? -1 : a.abs - b.abs));
 
   const edl = [];
@@ -472,7 +457,6 @@ function heuristicEdl(job, clips) {
     const group = [chosen[i]];
     used.add(i);
 
-    // Gather up to MAX_TILES distinct POVs sharing the same real-world instant.
     for (let j = i + 1; j < chosen.length && group.length < MAX_TILES; j++) {
       if (used.has(j)) continue;
       const b = chosen[j];
@@ -483,7 +467,7 @@ function heuristicEdl(job, clips) {
       used.add(j);
     }
 
-    group.sort((a, b) => b.score - a.score); // best POV leads + carries audio
+    group.sort((a, b) => b.score - a.score);
     const primary = group[0];
     const dur = Math.min(SEG_MAX, Math.max(...group.map(g => g.duration)));
 
@@ -582,8 +566,6 @@ async function tryAnthropicEdl(job, clips) {
   }
 }
 
-// Accepts the v0.1.11 { clipIds[], starts[] } shape and the legacy
-// { clipId, start, partnerClipId, partnerStart } shape.
 function validateEdl(segments, clips, targetSec) {
   if (!Array.isArray(segments)) return null;
   const byId = new Map(clips.map(c => [c.id, c]));
@@ -595,7 +577,7 @@ function validateEdl(segments, clips, targetSec) {
 
     let ids = Array.isArray(s.clipIds) ? s.clipIds.map(String) : [];
     let starts = Array.isArray(s.starts) ? s.starts.map(Number) : [];
-    if (ids.length === 0) { // legacy solo/side shape
+    if (ids.length === 0) {
       ids = [String(s.clipId)];
       starts = [Number(s.start)];
       if (s.partnerClipId) { ids.push(String(s.partnerClipId)); starts.push(Number(s.partnerStart)); }
@@ -671,8 +653,6 @@ function anthropicMessage(apiKey, system, user) {
 const ENC = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
              '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-ac', '2'];
 
-// Tile geometry on a 1280x720 canvas. 2-up is centered vertically;
-// 3-up is two on top with the third centered below; 4-up is a 2x2.
 const TILE_W = 640, TILE_H = 360;
 const GRID_POS = {
   2: [[0, 180], [640, 180]],
@@ -680,10 +660,9 @@ const GRID_POS = {
   4: [[0, 0], [640, 0], [0, 360], [640, 360]]
 };
 
-async function renderSegment(seg, clips, outPath) {
+async function renderSegment(seg, clips, outPath, job) {
   const byId = new Map(clips.map(c => [c.id, c]));
 
-  // Tolerate a legacy EDL entry that has no members array.
   let rawMembers = seg.members;
   if (!Array.isArray(rawMembers) || rawMembers.length === 0) {
     rawMembers = [{ clipId: seg.clipId, start: seg.start }];
@@ -698,13 +677,59 @@ async function renderSegment(seg, clips, outPath) {
   const d = String(seg.duration);
   const primary = members[0];
 
+  // --- Comment overlay ASS for this segment ---
+  let assPath = null;
+  if (job && job.sessionComments && job.sessionComments.length > 0) {
+    const canvasW = 1280, canvasH = 720;
+    const tileMap = {};
+
+    if (members.length === 1) {
+      // Solo: full frame
+      tileMap[primary.clip.id] = {
+        x: 0, y: 0, w: canvasW, h: canvasH,
+        offsetSec: -primary.start // shift so comment timestampMs/1000 - clip.start = segment time
+      };
+    } else {
+      // Multi-tile
+      const pos = GRID_POS[members.length];
+      members.forEach((m, i) => {
+        tileMap[m.clip.id] = {
+          x: pos[i][0], y: pos[i][1],
+          w: TILE_W, h: TILE_H,
+          offsetSec: -m.start
+        };
+      });
+    }
+
+    // Filter session comments to just the ones visible in this segment
+    const segComments = [];
+    for (const c of job.sessionComments) {
+      const tile = tileMap[c.uploadId];
+      if (!tile) continue;
+      const tInSeg = (tile.offsetSec || 0) + c.timestampMs / 1000;
+      if (tInSeg >= -0.5 && tInSeg < seg.duration + 0.5) {
+        segComments.push(c);
+      }
+    }
+
+    if (segComments.length > 0) {
+      const result = generateASS(segComments, tileMap, 1280, 720);
+      if (result.count > 0) {
+        assPath = path.join(job.workDir, `cmt_seg_${path.basename(outPath, '.mp4')}.ass`);
+        fs.writeFileSync(assPath, result.ass, 'utf8');
+      }
+    }
+  }
+
+  const assChain = assPath ? `,ass=${escapeFilterPath(assPath)}` : '';
+
   // --- Single POV: full frame ---
   if (members.length === 1) {
     const args = [
       '-ss', String(primary.start), '-t', d, '-i', primary.clip.path,
       '-f', 'lavfi', '-t', d, '-i', 'anullsrc=r=48000:cl=stereo',
       '-filter_complex',
-      '[0:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v]',
+      `[0:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p${assChain}[v]`,
       '-map', '[v]',
       '-map', primary.clip.hasAudio ? '0:a:0' : '1:a:0',
       '-af', 'aresample=async=1000',
@@ -713,10 +738,10 @@ async function renderSegment(seg, clips, outPath) {
     return runFF(args, RENDER_TIMEOUT_MS);
   }
 
-  // --- 2-4 POVs: composite onto a black canvas via chained overlays ---
+  // --- 2-4 POVs: composite ---
   const pos = GRID_POS[members.length];
-  const baseIdx = members.length;        // the color=black input
-  const silentIdx = members.length + 1;  // the anullsrc input
+  const baseIdx = members.length;
+  const silentIdx = members.length + 1;
 
   const args = [];
   members.forEach(m => args.push('-ss', String(m.start), '-t', d, '-i', m.clip.path));
@@ -731,7 +756,7 @@ async function renderSegment(seg, clips, outPath) {
   members.forEach((m, i) => {
     const last = i === members.length - 1;
     const outLabel = last ? '[v]' : `[b${i}]`;
-    chain.push(`${prev}[t${i}]overlay=${pos[i][0]}:${pos[i][1]}${last ? ',format=yuv420p' : ''}${outLabel}`);
+    chain.push(`${prev}[t${i}]overlay=${pos[i][0]}:${pos[i][1]}${last ? ',format=yuv420p' + assChain : ''}${outLabel}`);
     prev = `[b${i}]`;
   });
 

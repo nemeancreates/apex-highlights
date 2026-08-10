@@ -1890,7 +1890,8 @@
       renderHighlightsColumn();
 
       btn.disabled = false;
-      btn.textContent = 'Delete (0)';
+      const countSpan = document.getElementById('hlDelCount');
+      if (countSpan) countSpan.textContent = '0';
 
       if (failed > 0) alert(failed + ' clip(s) failed to delete (may already be past the 4-hour window).');
     }
@@ -1984,7 +1985,8 @@
           }
         });
 
-        isHost = !!(myUsername && session.createdBy && myUsername === session.createdBy);
+        isHost = !!(myUsername && session.createdBy &&
+        myUsername.toLowerCase() === session.createdBy.toLowerCase());
         selectedForDelete.clear();
 
         renderVideoGrid();
@@ -3076,45 +3078,29 @@
       return (ms > 0 ? '+' : '−') + (Math.abs(ms) / 1000).toFixed(2) + 's';
     }
   </script>
-<!-- ================================
-         QUICK COMMENTS — paste this whole block immediately before the
-         closing </body> tag, AFTER every existing <script> block in
-         web-player/index.html. Nothing else in that file needs to change.
-         ================================ -->
+<!-- QUICK COMMENTS v2 — paste before </body>, after last </script> -->
     <script>
 // ================================
-// QUICK COMMENTS — timestamped notes that surface over the video at the
-// moment they were left for.
+// QUICK COMMENTS v2 — timestamped notes over the video.
 //
-// This block is deliberately self-contained. It reads the player's existing
-// state (videos, highlights, currentSessionCode, myAuthToken, isHost) and
-// wraps renderVideoGrid / renderPOVContainer / switchHighlight / loadSession
-// rather than editing them, so the rest of the file stays untouched.
-//
-// Behaviour:
-//   - a comment belongs to ONE uploadId and only ever draws over that POV
-//   - on a fresh playthrough of a clip, a random handful is chosen to show;
-//     scrubbing does NOT reshuffle, so a moment you rewound to stays put
-//   - placement picks an empty region: HUD corners are avoided outright, and
-//     where the browser allows it, the flattest-looking zone wins
-//   - anyone can switch the overlay off from the gear; the host can switch
-//     commenting off for the whole session
+// v2 adds:
+//   - ◀ ▶ navigation arrows to jump between comment clusters
+//   - anti-overlap: minimum time spread between visible comments per POV
+//   - host drag: host can reposition comments, position persists server-side
+//   - saved positions: comments with positionX/Y bypass zone placement
 // ================================
 (function () {
   'use strict';
 
-  var PA_DISPLAY_MS = 4500;     // how long one comment stays on screen
-  var PA_SAMPLE = 5;            // max comments picked per clip per playthrough
-  var PA_MOMENT_WINDOW_MS = 2500; // +/- window for "comments at this moment"
+  var PA_DISPLAY_MS = 4500;
+  var PA_SAMPLE = 5;
+  var PA_MOMENT_WINDOW_MS = 2500;
   var PA_MAX_LEN = 100;
   var PA_TICK_MS = 100;
   var PA_REFRESH_MS = 60000;
+  var PA_MIN_GAP_MS = 800; // minimum gap between auto-zoned comments on same POV
 
-  // Zone preference, best first. Bottom-left and bottom-right are never used
-  // at all — that's where health/shields and abilities live in almost every
-  // shooter, and covering them is the one thing that actually ruins a review.
   var ZONE_ORDER = ['ml', 'mr', 'tc', 'tr', 'tl', 'cc', 'bc'];
-  // zone -> 3x3 block (row, col) used by the flatness probe
   var ZONE_BLOCK = {
     tl: [0, 0], tc: [0, 1], tr: [0, 2],
     ml: [1, 0], cc: [1, 1], mr: [1, 2],
@@ -3122,35 +3108,31 @@
   };
 
   // --- state ---
-  var paByUpload = new Map();   // uploadId -> [comment, ...] sorted by timestampMs
-  var paSet = new Map();        // uploadId -> [comment, ...] chosen for this playthrough
-  var paLastT = new Map();      // uploadId -> last observed currentTime (seconds)
-  var paVisible = new Map();    // commentId -> { node, zone, layer }
+  var paByUpload = new Map();
+  var paSet = new Map();
+  var paLastT = new Map();
+  var paVisible = new Map();
   var paScrubUntil = 0;
   var paSessionEnabled = true;
   var paOverlayOn = true;
   var paTicker = null;
   var paRefreshTimer = null;
-  var paComposeTarget = null;   // { index, uploadId, username, timestampMs }
+  var paComposeTarget = null;
   var paResumeAfterCompose = false;
-  var paComposeClose = null;    // set while the compose panel is open
+  var paComposeClose = null;
+  var paDragging = null; // { commentId, node, layer, startX, startY }
 
   // ================================
-  // SAFE READS of the player's own globals. These are top-level `let`
-  // bindings in the main script — visible by name here, but wrapped so a
-  // future rename degrades into "no comments" instead of a hard crash.
+  // SAFE READS
   // ================================
   function paVideos() { try { return videos || []; } catch (e) { return []; } }
-  function paHighlights() { try { return highlights || []; } catch (e) { return []; } }
   function paCode() { try { return currentSessionCode || null; } catch (e) { return null; } }
   function paToken() { try { return myAuthToken || null; } catch (e) { return null; } }
   function paMe() { try { return myUsername || null; } catch (e) { return null; } }
   function paHost() { try { return !!isHost; } catch (e) { return false; } }
   function paPlaying() { try { return !!isPlaying; } catch (e) { return false; } }
-
   function paCall(name, args) {
     if (typeof window[name] === 'function') return window[name].apply(window, args || []);
-    return undefined;
   }
 
   // ================================
@@ -3164,6 +3146,8 @@
       'border-left:3px solid #39d3a0;border-radius:6px;padding:4px 8px;font-size:12px;line-height:1.35;color:#e8f5ec;',
       'box-shadow:0 2px 10px rgba(0,0,0,0.45);opacity:0;transition:opacity .25s ease;word-break:break-word;}',
       '.pa-cmt.pa-in{opacity:1;}',
+      '.pa-cmt.pa-draggable{pointer-events:auto;cursor:grab;}',
+      '.pa-cmt.pa-dragging{cursor:grabbing;opacity:0.85;box-shadow:0 4px 16px rgba(57,211,160,0.4);}',
       '.pa-cmt-user{display:block;font-size:10px;font-weight:700;color:#39d3a0;letter-spacing:.4px;margin-bottom:1px;}',
       '.pa-z-tl{top:7%;left:4%;}.pa-z-tr{top:7%;right:4%;}',
       '.pa-z-ml{top:38%;left:4%;}.pa-z-mr{top:38%;right:4%;}',
@@ -3202,7 +3186,8 @@
       '.pa-empty{color:#3a5244;font-size:12px;font-style:italic;text-align:center;padding:16px 0;}',
       '.pa-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;font-size:13px;color:#c8d6cd;}',
       '.pa-toggle input{accent-color:#39d3a0;width:16px;height:16px;cursor:pointer;}',
-      '.pa-note{font-size:11px;color:#5f7a6a;margin:2px 0 10px;line-height:1.4;}'
+      '.pa-note{font-size:11px;color:#5f7a6a;margin:2px 0 10px;line-height:1.4;}',
+      '.pa-nav-btn{padding:4px 8px;font-size:11px;}'
     ].join('');
     var style = document.createElement('style');
     style.id = 'pa-cmt-styles';
@@ -3211,11 +3196,7 @@
   }
 
   // ================================
-  // FLATNESS PROBE — one canvas read at the moment a comment appears, not
-  // per frame. Picks the least-busy of the top candidate zones.
-  // Cross-origin CDN video taints the canvas, which throws on getImageData;
-  // the first failure disables the probe permanently and everything falls
-  // back to the static zone order. Local clips (blob URLs) still get it.
+  // FLATNESS PROBE
   // ================================
   var paProbeCanvas = null, paProbeCtx = null, paProbeDead = false;
 
@@ -3224,8 +3205,7 @@
     try {
       if (!paProbeCanvas) {
         paProbeCanvas = document.createElement('canvas');
-        paProbeCanvas.width = 48;
-        paProbeCanvas.height = 27;
+        paProbeCanvas.width = 48; paProbeCanvas.height = 27;
         paProbeCtx = paProbeCanvas.getContext('2d', { willReadFrequently: true });
       }
       if (!paProbeCtx) { paProbeDead = true; return null; }
@@ -3247,17 +3227,13 @@
         }
       }
       return scores;
-    } catch (e) {
-      paProbeDead = true;
-      return null;
-    }
+    } catch (e) { paProbeDead = true; return null; }
   }
 
   function paPickZone(layer, videoEl) {
     var used = layer.__paZones || (layer.__paZones = {});
     var free = ZONE_ORDER.filter(function (z) { return !used[z]; });
     if (!free.length) return null;
-
     var shortlist = free.slice(0, 4);
     var probe = paProbeZones(videoEl);
     if (probe) {
@@ -3293,7 +3269,6 @@
         if (!d) return;
         paSessionEnabled = d.enabled !== false;
         paIndexComments(d.comments);
-        // Drop any chosen set that references a comment that's now gone.
         paSet.forEach(function (chosen, uploadId) {
           var live = paByUpload.get(uploadId) || [];
           var ids = {};
@@ -3302,27 +3277,96 @@
         });
         paRefreshCounts();
       })
-      .catch(function () { /* transient — next refresh will retry */ });
+      .catch(function () {});
   }
 
   function paChooseSet(uploadId) {
     var all = (paByUpload.get(uploadId) || []).slice();
-    if (all.length > PA_SAMPLE) {
-      // Fisher-Yates on a copy, then take the first PA_SAMPLE
-      for (var i = all.length - 1; i > 0; i--) {
-        var j = Math.floor(Math.random() * (i + 1));
-        var tmp = all[i]; all[i] = all[j]; all[j] = tmp;
+
+    // Anti-overlap: enforce minimum time gap between auto-zoned comments.
+    // Comments with saved positions bypass this since the host placed them
+    // intentionally and they don't compete for zones.
+    var filtered = [];
+    var lastAutoTs = -Infinity;
+    for (var k = 0; k < all.length; k++) {
+      if (all[k].positionX != null && all[k].positionY != null) {
+        filtered.push(all[k]); // saved position — always include
+      } else if (all[k].timestampMs - lastAutoTs >= PA_MIN_GAP_MS) {
+        filtered.push(all[k]);
+        lastAutoTs = all[k].timestampMs;
       }
-      all = all.slice(0, PA_SAMPLE);
     }
-    all.sort(function (a, b) { return a.timestampMs - b.timestampMs; });
-    paSet.set(uploadId, all);
-    return all;
+
+    if (filtered.length > PA_SAMPLE) {
+      for (var i = filtered.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var tmp = filtered[i]; filtered[i] = filtered[j]; filtered[j] = tmp;
+      }
+      filtered = filtered.slice(0, PA_SAMPLE);
+    }
+    filtered.sort(function (a, b) { return a.timestampMs - b.timestampMs; });
+    paSet.set(uploadId, filtered);
+    return filtered;
   }
 
   // ================================
-  // ATTACH — layers + per-POV comment buttons. Called after every grid
-  // render. Wipes and rebuilds, so it's safe to call as often as we like.
+  // NAVIGATION — jump between comment clusters
+  // ================================
+  function paAllTimestamps() {
+    var ts = [];
+    paByUpload.forEach(function (arr) {
+      arr.forEach(function (c) { ts.push(c.timestampMs); });
+    });
+    ts.sort(function (a, b) { return a - b; });
+    // Cluster: merge timestamps within 1.5s of each other
+    var clusters = [];
+    for (var i = 0; i < ts.length; i++) {
+      if (!clusters.length || ts[i] - clusters[clusters.length - 1] > 1500) {
+        clusters.push(ts[i]);
+      }
+    }
+    return clusters;
+  }
+
+  function paJumpToComment(dir) {
+    var clusters = paAllTimestamps();
+    if (!clusters.length) return;
+
+    // Get the current playhead in ms from the first loaded POV
+    var vids = paVideos();
+    var nowMs = 0;
+    for (var i = 0; i < vids.length; i++) {
+      if (vids[i] && vids[i].loaded && vids[i].element) {
+        nowMs = (vids[i].element.currentTime || 0) * 1000;
+        break;
+      }
+    }
+
+    var target = null;
+    if (dir > 0) {
+      for (var k = 0; k < clusters.length; k++) {
+        if (clusters[k] > nowMs + 200) { target = clusters[k]; break; }
+      }
+    } else {
+      for (var k = clusters.length - 1; k >= 0; k--) {
+        if (clusters[k] < nowMs - 200) { target = clusters[k]; break; }
+      }
+    }
+    if (target === null) return;
+
+    // Seek all loaded videos to this timestamp
+    var targetSec = target / 1000;
+    vids.forEach(function (v) {
+      if (!v || v.missing || v.processing || !v.loaded || !v.element) return;
+      var adjusted = targetSec - (v.offset || 0);
+      if (adjusted >= 0 && adjusted <= v.element.duration) {
+        v.element.currentTime = adjusted;
+      }
+    });
+  }
+
+  // ================================
+  // ATTACH
   // ================================
   function paAttachAll() {
     var vids = paVideos();
@@ -3349,7 +3393,7 @@
       }
     }
     paRefreshCounts();
-    paEnsureMomentButton();
+    paEnsureNavControls();
   }
 
   function paBuildCommentButton(index, v) {
@@ -3387,10 +3431,11 @@
   }
 
   // ================================
-  // TICK — decides what should be on screen right now, per POV.
-  // 10Hz. Cheaper than rAF and plenty for text that lives ~4.5s.
+  // TICK
   // ================================
   function paTick() {
+    if (paDragging) return; // freeze rendering while host is dragging
+
     var vids = paVideos();
     var wanted = {};
 
@@ -3407,8 +3452,6 @@
       var prev = paLastT.get(v.uploadId);
       paLastT.set(v.uploadId, t);
 
-      // Fresh playthrough: time jumped backwards to near the start and the
-      // user wasn't scrubbing. Reshuffle which comments get shown this pass.
       var restarted = (prev !== undefined) && (t < prev - 0.4) && (t < 1.2) && (Date.now() > paScrubUntil);
       if (prev === undefined || restarted || !paSet.has(v.uploadId)) {
         paChooseSet(v.uploadId);
@@ -3426,13 +3469,13 @@
       }
     }
 
-    // Remove anything no longer wanted
+    // Remove stale
     var stale = [];
     paVisible.forEach(function (rec, id) { if (!wanted[id]) stale.push(id); });
     stale.forEach(function (id) {
       var rec = paVisible.get(id);
       paVisible.delete(id);
-      if (rec.layer && rec.layer.__paZones) delete rec.layer.__paZones[rec.zone];
+      if (rec.layer && rec.layer.__paZones && rec.zone) delete rec.layer.__paZones[rec.zone];
       if (rec.node) {
         rec.node.classList.remove('pa-in');
         var n = rec.node;
@@ -3440,37 +3483,197 @@
       }
     });
 
-    // Add anything newly wanted
+    // Add new
     Object.keys(wanted).forEach(function (id) {
       if (paVisible.has(id)) return;
       var w = wanted[id];
-      var zone = paPickZone(w.layer, w.videoEl);
-      if (!zone) return; // no free space this pass — skip rather than overlap
-      w.layer.__paZones[zone] = true;
+      var c = w.comment;
 
       var node = document.createElement('div');
-      node.className = 'pa-cmt pa-z-' + zone;
+      var zone = null;
+
+      // Saved position from host drag — bypass zone system entirely
+      if (c.positionX != null && c.positionY != null) {
+        node.className = 'pa-cmt';
+        node.style.left = c.positionX + '%';
+        node.style.top = c.positionY + '%';
+        node.style.right = 'auto';
+        node.style.bottom = 'auto';
+        node.style.transform = 'none';
+      } else {
+        zone = paPickZone(w.layer, w.videoEl);
+        if (!zone) return;
+        w.layer.__paZones[zone] = true;
+        node.className = 'pa-cmt pa-z-' + zone;
+      }
+
+      // Host can drag
+      if (paHost() && paToken()) {
+        node.classList.add('pa-draggable');
+        paMakeDraggable(node, c, w.layer);
+      }
 
       var who = document.createElement('span');
       who.className = 'pa-cmt-user';
-      who.textContent = w.comment.username;
+      who.textContent = c.username;
 
       var body = document.createElement('span');
       body.className = 'pa-cmt-body';
-      body.textContent = w.comment.text; // textContent — never innerHTML
+      body.textContent = c.text;
 
       node.appendChild(who);
       node.appendChild(body);
       w.layer.appendChild(node);
 
-      // next frame so the opacity transition actually runs
       requestAnimationFrame(function () { node.classList.add('pa-in'); });
 
-      paVisible.set(id, { node: node, zone: zone, layer: w.layer });
+      paVisible.set(id, { node: node, zone: zone, layer: w.layer, comment: c });
     });
 
-    paUpdateMomentButton();
+    paUpdateNavControls();
   }
+
+  // ================================
+  // HOST DRAG
+  // ================================
+  function paMakeDraggable(node, comment, layer) {
+  node.addEventListener('pointerdown', function (e) {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+
+    var nodeRect = node.getBoundingClientRect();
+    var layerRect = layer.getBoundingClientRect();
+    paDragging = {
+      commentId: comment.id,
+      node: node,
+      layer: layer,
+      rect: layerRect,
+      offsetX: e.clientX - nodeRect.left,
+      offsetY: e.clientY - nodeRect.top
+    };
+    node.classList.add('pa-dragging');
+
+    function onMove(ev) {
+      if (!paDragging || paDragging.node !== node) return;
+      var r = paDragging.rect;
+      var x = ((ev.clientX - paDragging.offsetX - r.left) / r.width) * 100;
+      var y = ((ev.clientY - paDragging.offsetY - r.top) / r.height) * 100;
+      x = Math.max(0, Math.min(90, x));
+      y = Math.max(0, Math.min(90, y));
+      node.style.left = x + '%';
+      node.style.top = y + '%';
+      node.style.right = 'auto';
+      node.style.bottom = 'auto';
+      node.style.transform = 'none';
+      node.className = node.className.replace(/\bpa-z-\w+\b/g, '').trim();
+    }
+
+    function onUp(ev) {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      if (!paDragging || paDragging.node !== node) return;
+      node.classList.remove('pa-dragging');
+
+      var r = paDragging.rect;
+      var px = ((ev.clientX - paDragging.offsetX - r.left) / r.width) * 100;
+      var py = ((ev.clientY - paDragging.offsetY - r.top) / r.height) * 100;
+      px = Math.max(0, Math.min(90, px));
+      py = Math.max(0, Math.min(90, py));
+
+      var cid = paDragging.commentId;
+      var vis = paVisible.get(cid);
+      if (vis && vis.zone && vis.layer && vis.layer.__paZones) {
+        delete vis.layer.__paZones[vis.zone];
+        vis.zone = null;
+      }
+      paDragging = null;
+
+      paByUpload.forEach(function (arr) {
+        arr.forEach(function (c) {
+          if (c.id === cid) { c.positionX = px; c.positionY = py; }
+        });
+      });
+      paSet.forEach(function (arr) {
+        arr.forEach(function (c) {
+          if (c.id === cid) { c.positionX = px; c.positionY = py; }
+        });
+      });
+
+      fetch('/sessions/' + paCode() + '/comments/' + cid + '/position', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + paToken() },
+        body: JSON.stringify({ positionX: Math.round(px * 100) / 100, positionY: Math.round(py * 100) / 100 })
+      }).catch(function () {});
+    }
+
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+  });
+}
+
+  // ================================
+  // NAV CONTROLS — ◀ 💬 ▶ in the timeline row
+  // ================================
+  function paEnsureNavControls() {
+    var row = document.querySelector('#sessionTimeline .timeline-top-row');
+    if (!row || document.getElementById('paMomentBtn')) return;
+
+    var prev = document.createElement('button');
+    prev.id = 'paNavPrev';
+    prev.className = 'btn btn-small btn-secondary pa-nav-btn';
+    prev.title = 'Previous comment cluster';
+    prev.textContent = '\u25C0';
+    prev.addEventListener('click', function () { paJumpToComment(-1); });
+
+    var moment = document.createElement('button');
+    moment.id = 'paMomentBtn';
+    moment.className = 'btn btn-small btn-secondary';
+    moment.title = 'All comments at this moment';
+    moment.textContent = '\uD83D\uDCAC 0';
+    moment.addEventListener('click', paOpenMomentPanel);
+
+    var next = document.createElement('button');
+    next.id = 'paNavNext';
+    next.className = 'btn btn-small btn-secondary pa-nav-btn';
+    next.title = 'Next comment cluster';
+    next.textContent = '\u25B6';
+    next.addEventListener('click', function () { paJumpToComment(1); });
+
+    row.appendChild(prev);
+    row.appendChild(moment);
+    row.appendChild(next);
+  }
+
+  function paUpdateNavControls() {
+   var clusters = paAllTimestamps();
+   var hasAnyComments = clusters.length > 0;
+
+   var p = document.getElementById('paNavPrev');
+   var n = document.getElementById('paNavNext');
+   var btn = document.getElementById('paMomentBtn');
+
+   // Hide nav arrows entirely when there are no comments to navigate
+   if (p) p.style.display = hasAnyComments ? '' : 'none';
+   if (n) n.style.display = hasAnyComments ? '' : 'none';
+
+   if (btn) btn.textContent = '\uD83D\uDCAC ' + paMomentComments().length;
+
+   if (!hasAnyComments) return;
+
+   var vids = paVideos();
+   var nowMs = 0;
+   for (var i = 0; i < vids.length; i++) {
+     if (vids[i] && vids[i].loaded && vids[i].element) {
+       nowMs = (vids[i].element.currentTime || 0) * 1000;
+       break;
+     }
+  }
+  var hasPrev = clusters.some(function (t) { return t < nowMs - 200; });
+  var hasNext = clusters.some(function (t) { return t > nowMs + 200; });
+  if (p) p.disabled = !hasPrev;
+  if (n) n.disabled = !hasNext;
+}
 
   // ================================
   // "COMMENTS AT THIS MOMENT"
@@ -3493,24 +3696,6 @@
     return out;
   }
 
-  function paEnsureMomentButton() {
-    var row = document.querySelector('#sessionTimeline .timeline-top-row');
-    if (!row || document.getElementById('paMomentBtn')) return;
-    var btn = document.createElement('button');
-    btn.id = 'paMomentBtn';
-    btn.className = 'btn btn-small btn-secondary';
-    btn.title = 'Every comment at this moment';
-    btn.textContent = '\uD83D\uDCAC 0';
-    btn.addEventListener('click', paOpenMomentPanel);
-    row.appendChild(btn);
-  }
-
-  function paUpdateMomentButton() {
-    var btn = document.getElementById('paMomentBtn');
-    if (!btn) return;
-    btn.textContent = '\uD83D\uDCAC ' + paMomentComments().length;
-  }
-
   // ================================
   // PANELS
   // ================================
@@ -3519,7 +3704,6 @@
     if (el) el.remove();
   }
 
-  // Only one panel at a time — stacking them over the video is unreadable.
   function paCloseAll() {
     if (paComposeClose) { paComposeClose(); }
     paClosePanel('paMomentPanel');
@@ -3531,7 +3715,6 @@
     var panel = document.createElement('div');
     panel.className = 'pa-panel';
     panel.id = id;
-
     var head = document.createElement('div');
     head.className = 'pa-panel-head';
     var h = document.createElement('h3');
@@ -3540,14 +3723,10 @@
     x.className = 'pa-panel-x';
     x.textContent = '\u2715';
     x.addEventListener('click', function () { paClosePanel(id); });
-    head.appendChild(h);
-    head.appendChild(x);
-
+    head.appendChild(h); head.appendChild(x);
     var body = document.createElement('div');
     body.className = 'pa-panel-body';
-
-    panel.appendChild(head);
-    panel.appendChild(body);
+    panel.appendChild(head); panel.appendChild(body);
     document.body.appendChild(panel);
     return { panel: panel, body: body };
   }
@@ -3564,22 +3743,9 @@
     paCloseAll();
     var v = paVideos()[index];
     if (!v || !v.uploadId) return;
-
-    if (!paToken()) {
-      alert('Sign in through the Peak-Abu app to leave comments. Any account works, including Free.');
-      return;
-    }
-    if (!paSessionEnabled) {
-      alert('The host has turned comments off for this session.');
-      return;
-    }
-    // A comment is only meaningful if there's a real playhead to anchor it
-    // to — on an unloaded POV currentTime is always 0, which would silently
-    // pin every comment to the first frame.
-    if (!v.loaded || !v.element) {
-      alert('Click this POV to load it first, then leave your comment at the moment you want.');
-      return;
-    }
+    if (!paToken()) { alert('Sign in through the Peak-Abu app to leave comments. Any account works, including Free.'); return; }
+    if (!paSessionEnabled) { alert('The host has turned comments off for this session.'); return; }
+    if (!v.loaded || !v.element) { alert('Click this POV to load it first, then leave your comment at the moment you want.'); return; }
 
     paResumeAfterCompose = paPlaying();
     if (paResumeAfterCompose) paCall('pauseAll');
@@ -3588,46 +3754,27 @@
     paComposeTarget = { index: index, uploadId: v.uploadId, username: v.username, timestampMs: tMs };
 
     var ui = paBuildPanel('paComposePanel', 'Leave a comment');
-
     var meta = document.createElement('div');
     meta.className = 'pa-meta';
-    meta.innerHTML = '';
-    var m1 = document.createElement('span');
-    m1.textContent = 'On ';
-    var m2 = document.createElement('b');
-    m2.textContent = v.username + "'s POV";
-    var m3 = document.createElement('span');
-    m3.textContent = ' at ';
-    var m4 = document.createElement('b');
-    m4.textContent = paFmt(tMs);
+    var m1 = document.createElement('span'); m1.textContent = 'On ';
+    var m2 = document.createElement('b'); m2.textContent = v.username + "'s POV";
+    var m3 = document.createElement('span'); m3.textContent = ' at ';
+    var m4 = document.createElement('b'); m4.textContent = paFmt(tMs);
     meta.appendChild(m1); meta.appendChild(m2); meta.appendChild(m3); meta.appendChild(m4);
 
     var input = document.createElement('textarea');
-    input.className = 'pa-input';
-    input.rows = 2;
+    input.className = 'pa-input'; input.rows = 2;
     input.maxLength = PA_MAX_LEN;
     input.placeholder = 'Plain text, ' + PA_MAX_LEN + ' characters';
-
-    var err = document.createElement('div');
-    err.className = 'pa-err';
-
-    var row = document.createElement('div');
-    row.className = 'pa-row';
-    var counter = document.createElement('span');
-    counter.className = 'pa-counter';
+    var err = document.createElement('div'); err.className = 'pa-err';
+    var row = document.createElement('div'); row.className = 'pa-row';
+    var counter = document.createElement('span'); counter.className = 'pa-counter';
     counter.textContent = '0 / ' + PA_MAX_LEN;
     var actions = document.createElement('div');
-    var cancel = document.createElement('button');
-    cancel.className = 'btn btn-small btn-secondary';
-    cancel.textContent = 'Cancel';
-    cancel.style.marginRight = '6px';
-    var post = document.createElement('button');
-    post.className = 'btn btn-small';
-    post.textContent = 'Post';
-    actions.appendChild(cancel);
-    actions.appendChild(post);
-    row.appendChild(counter);
-    row.appendChild(actions);
+    var cancel = document.createElement('button'); cancel.className = 'btn btn-small btn-secondary'; cancel.textContent = 'Cancel'; cancel.style.marginRight = '6px';
+    var post = document.createElement('button'); post.className = 'btn btn-small'; post.textContent = 'Post';
+    actions.appendChild(cancel); actions.appendChild(post);
+    row.appendChild(counter); row.appendChild(actions);
 
     input.addEventListener('input', function () {
       counter.textContent = input.value.length + ' / ' + PA_MAX_LEN;
@@ -3648,31 +3795,17 @@
     function submit() {
       var text = input.value.trim();
       if (!text) { err.textContent = 'Type something first.'; return; }
-      post.disabled = true;
-      post.textContent = 'Posting...';
-      err.textContent = '';
+      post.disabled = true; post.textContent = 'Posting...'; err.textContent = '';
 
       fetch('/sessions/' + paCode() + '/comments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + paToken() },
-        body: JSON.stringify({
-          uploadId: paComposeTarget.uploadId,
-          timestampMs: paComposeTarget.timestampMs,
-          text: text
-        })
+        body: JSON.stringify({ uploadId: paComposeTarget.uploadId, timestampMs: paComposeTarget.timestampMs, text: text })
       }).then(function (r) {
         return r.json().then(function (d) { return { ok: r.ok, data: d }; });
       }).then(function (res) {
-        if (!res.ok) {
-          err.textContent = (res.data && res.data.error) || 'Could not post that comment.';
-          post.disabled = false;
-          post.textContent = 'Post';
-          return;
-        }
-        // Re-fetch rather than splicing locally — keeps one source of truth.
+        if (!res.ok) { err.textContent = (res.data && res.data.error) || 'Could not post.'; post.disabled = false; post.textContent = 'Post'; return; }
         return paFetchComments().then(function () {
-          // Make sure the new one is actually in this playthrough's set,
-          // otherwise you post a comment and never see it appear.
           var chosen = paSet.get(paComposeTarget.uploadId) || [];
           var added = res.data && res.data.comment;
           if (added && !chosen.some(function (c) { return c.id === added.id; })) {
@@ -3682,20 +3815,12 @@
           }
           close();
         });
-      }).catch(function () {
-        err.textContent = 'Could not reach the server.';
-        post.disabled = false;
-        post.textContent = 'Post';
-      });
+      }).catch(function () { err.textContent = 'Could not reach the server.'; post.disabled = false; post.textContent = 'Post'; });
     }
 
     cancel.addEventListener('click', close);
     post.addEventListener('click', submit);
-
-    ui.body.appendChild(meta);
-    ui.body.appendChild(input);
-    ui.body.appendChild(err);
-    ui.body.appendChild(row);
+    ui.body.appendChild(meta); ui.body.appendChild(input); ui.body.appendChild(err); ui.body.appendChild(row);
     setTimeout(function () { input.focus(); }, 30);
   }
 
@@ -3704,66 +3829,36 @@
     paCloseAll();
     var items = paMomentComments();
     var ui = paBuildPanel('paMomentPanel', 'Comments at this moment');
-
     if (!items.length) {
-      var empty = document.createElement('div');
-      empty.className = 'pa-empty';
+      var empty = document.createElement('div'); empty.className = 'pa-empty';
       empty.textContent = 'Nothing left here yet.';
-      ui.body.appendChild(empty);
-      return;
+      ui.body.appendChild(empty); return;
     }
-
     items.forEach(function (it) {
-      ui.body.appendChild(paBuildListItem(it.comment, it.pov, function () {
-        paOpenMomentPanel(); // rebuild after a delete
-      }));
+      ui.body.appendChild(paBuildListItem(it.comment, it.pov, function () { paOpenMomentPanel(); }));
     });
   }
 
   function paBuildListItem(c, povName, onChanged) {
-    var row = document.createElement('div');
-    row.className = 'pa-list-item';
-
-    var when = document.createElement('div');
-    when.className = 'pa-list-when';
-    when.textContent = paFmt(c.timestampMs);
-
-    var main = document.createElement('div');
-    main.className = 'pa-list-main';
-
-    var who = document.createElement('span');
-    who.className = 'pa-list-who';
-    who.textContent = c.username;
-
-    var pov = document.createElement('span');
-    pov.className = 'pa-list-pov';
-    pov.textContent = ' on ' + povName + "'s POV";
-
-    var text = document.createElement('div');
-    text.className = 'pa-list-text';
-    text.textContent = c.text;
-
-    var head = document.createElement('div');
-    head.appendChild(who);
-    head.appendChild(pov);
-    main.appendChild(head);
-    main.appendChild(text);
-
-    row.appendChild(when);
-    row.appendChild(main);
+    var row = document.createElement('div'); row.className = 'pa-list-item';
+    var when = document.createElement('div'); when.className = 'pa-list-when'; when.textContent = paFmt(c.timestampMs);
+    var main = document.createElement('div'); main.className = 'pa-list-main';
+    var who = document.createElement('span'); who.className = 'pa-list-who'; who.textContent = c.username;
+    var pov = document.createElement('span'); pov.className = 'pa-list-pov'; pov.textContent = ' on ' + povName + "'s POV";
+    var text = document.createElement('div'); text.className = 'pa-list-text'; text.textContent = c.text;
+    var head = document.createElement('div'); head.appendChild(who); head.appendChild(pov);
+    main.appendChild(head); main.appendChild(text);
+    row.appendChild(when); row.appendChild(main);
 
     var me = (paMe() || '').toLowerCase();
     var canDelete = paToken() && (paHost() || (c.username || '').toLowerCase() === me);
     if (canDelete) {
-      var del = document.createElement('button');
-      del.className = 'pa-list-del';
-      del.textContent = '\u2715';
-      del.title = 'Remove this comment';
+      var del = document.createElement('button'); del.className = 'pa-list-del';
+      del.textContent = '\u2715'; del.title = 'Remove this comment';
       del.addEventListener('click', function () {
         if (!confirm('Remove this comment?')) return;
         fetch('/sessions/' + paCode() + '/comments/' + c.id, {
-          method: 'DELETE',
-          headers: { 'Authorization': 'Bearer ' + paToken() }
+          method: 'DELETE', headers: { 'Authorization': 'Bearer ' + paToken() }
         }).then(function (r) {
           if (!r.ok) { alert('Could not remove that comment.'); return; }
           return paFetchComments().then(function () {
@@ -3776,7 +3871,6 @@
       });
       row.appendChild(del);
     }
-
     return row;
   }
 
@@ -3785,10 +3879,8 @@
     var actions = document.querySelector('.header-actions');
     if (!actions || document.getElementById('paGearBtn')) return;
     var btn = document.createElement('button');
-    btn.id = 'paGearBtn';
-    btn.className = 'btn btn-secondary btn-icon';
-    btn.title = 'Comment settings';
-    btn.textContent = '\u2699';
+    btn.id = 'paGearBtn'; btn.className = 'btn btn-secondary btn-icon';
+    btn.title = 'Comment settings'; btn.textContent = '\u2699';
     btn.addEventListener('click', paOpenSettings);
     actions.appendChild(btn);
   }
@@ -3797,52 +3889,32 @@
     paCloseAll();
     var ui = paBuildPanel('paSettingsPanel', 'Comments');
 
-    // Everyone: overlay on/off
-    var t1 = document.createElement('label');
-    t1.className = 'pa-toggle';
-    var l1 = document.createElement('span');
-    l1.textContent = 'Show comments over the video';
-    var c1 = document.createElement('input');
-    c1.type = 'checkbox';
-    c1.checked = paOverlayOn;
+    var t1 = document.createElement('label'); t1.className = 'pa-toggle';
+    var l1 = document.createElement('span'); l1.textContent = 'Show comments over the video';
+    var c1 = document.createElement('input'); c1.type = 'checkbox'; c1.checked = paOverlayOn;
     c1.addEventListener('change', function () {
       paOverlayOn = c1.checked;
       try { localStorage.setItem('pa_comments_overlay', paOverlayOn ? '1' : '0'); } catch (e) {}
-      document.querySelectorAll('.pa-cmt-layer').forEach(function (l) {
-        l.style.display = paOverlayOn ? '' : 'none';
-      });
+      document.querySelectorAll('.pa-cmt-layer').forEach(function (l) { l.style.display = paOverlayOn ? '' : 'none'; });
     });
-    t1.appendChild(l1);
-    t1.appendChild(c1);
-
-    var n1 = document.createElement('div');
-    n1.className = 'pa-note';
+    t1.appendChild(l1); t1.appendChild(c1);
+    var n1 = document.createElement('div'); n1.className = 'pa-note';
     n1.textContent = 'Turn this off for a clean watch. Your choice only, saved on this device.';
+    ui.body.appendChild(t1); ui.body.appendChild(n1);
 
-    ui.body.appendChild(t1);
-    ui.body.appendChild(n1);
-
-    // Host only: allow commenting at all
     if (paHost() && paToken()) {
       var hr = document.createElement('hr');
       hr.style.cssText = 'border:none;border-top:1px solid #1e3527;margin:6px 0 10px;';
       ui.body.appendChild(hr);
 
-      var t2 = document.createElement('label');
-      t2.className = 'pa-toggle';
-      var l2 = document.createElement('span');
-      l2.textContent = 'Allow comments in this session';
-      var c2 = document.createElement('input');
-      c2.type = 'checkbox';
-      c2.checked = paSessionEnabled;
-
-      var n2 = document.createElement('div');
-      n2.className = 'pa-note';
-      n2.textContent = 'Host control. Turning this off hides the comment buttons for everyone and blocks new comments. Existing comments stay.';
+      var t2 = document.createElement('label'); t2.className = 'pa-toggle';
+      var l2 = document.createElement('span'); l2.textContent = 'Allow comments in this session';
+      var c2 = document.createElement('input'); c2.type = 'checkbox'; c2.checked = paSessionEnabled;
+      var n2 = document.createElement('div'); n2.className = 'pa-note';
+      n2.textContent = 'Host control. Turning this off hides comment buttons for everyone and blocks new comments.';
 
       c2.addEventListener('change', function () {
-        var want = c2.checked;
-        c2.disabled = true;
+        var want = c2.checked; c2.disabled = true;
         fetch('/sessions/' + paCode() + '/comments-enabled', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + paToken() },
@@ -3852,16 +3924,18 @@
           paSessionEnabled = want;
           n2.textContent = want ? 'Comments are on for this session.' : 'Comments are off for this session.';
           paApplyEnabledState();
-        }).catch(function () {
-          c2.checked = !want;
-          n2.textContent = 'Could not save that. Try again.';
-        }).then(function () { c2.disabled = false; });
+        }).catch(function () { c2.checked = !want; n2.textContent = 'Could not save that. Try again.'; })
+        .then(function () { c2.disabled = false; });
       });
 
-      t2.appendChild(l2);
-      t2.appendChild(c2);
-      ui.body.appendChild(t2);
-      ui.body.appendChild(n2);
+      t2.appendChild(l2); t2.appendChild(c2);
+      ui.body.appendChild(t2); ui.body.appendChild(n2);
+
+      // Drag hint for host
+      var dh = document.createElement('div'); dh.className = 'pa-note';
+      dh.style.marginTop = '8px';
+      dh.textContent = 'Tip: as host you can grab and drag any comment on the video to reposition it. The position saves for everyone.';
+      ui.body.appendChild(dh);
     }
   }
 
@@ -3889,30 +3963,20 @@
 
   function paInit() {
     paInjectStyles();
-
-    try {
-      paOverlayOn = localStorage.getItem('pa_comments_overlay') !== '0';
-    } catch (e) { paOverlayOn = true; }
+    try { paOverlayOn = localStorage.getItem('pa_comments_overlay') !== '0'; } catch (e) { paOverlayOn = true; }
 
     paWrap('renderVideoGrid', function () { paAttachAll(); paApplyEnabledState(); });
     paWrap('renderPOVContainer', function () { paAttachAll(); paApplyEnabledState(); });
     paWrap('switchHighlight', function () {
-      // New highlight is a fresh playthrough by definition — clear the
-      // chosen sets so each clip re-rolls its sample.
-      paSet.clear();
-      paLastT.clear();
-      paAttachAll();
-      paApplyEnabledState();
+      paSet.clear(); paLastT.clear();
+      paAttachAll(); paApplyEnabledState();
     });
     paWrap('loadSession', function () {
       paEnsureGear();
-      paSet.clear();
-      paLastT.clear();
+      paSet.clear(); paLastT.clear();
       paFetchComments().then(function () { paAttachAll(); paApplyEnabledState(); });
     });
 
-    // Scrubbing / nudging must NOT re-roll the sample — capture phase so we
-    // see it before the player's own handlers run.
     document.addEventListener('pointerdown', function (e) {
       var t = e.target;
       if (!t || !t.closest) return;
@@ -3921,7 +3985,6 @@
       }
     }, true);
 
-    // Close panels on Escape
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape') return;
       paCloseAll();
@@ -3931,17 +3994,80 @@
     paTicker = setInterval(paTick, PA_TICK_MS);
 
     if (paRefreshTimer) clearInterval(paRefreshTimer);
-    paRefreshTimer = setInterval(function () {
-      if (paCode()) paFetchComments();
-    }, PA_REFRESH_MS);
+    paRefreshTimer = setInterval(function () { if (paCode()) paFetchComments(); }, PA_REFRESH_MS);
 
     paEnsureGear();
+
+    // --- Export overlay toggle ---
+    // Inject a "Include comments on video" checkbox into the export panel
+    // and intercept the fetch calls to pass the flag to the server.
+    window._paExportComments = true;
+
+    paWrap('openExportPanel', function () {
+      setTimeout(function () {
+        paInjectExportCheckbox('compositeSection');
+        paInjectExportCheckbox('aireelSection');
+      }, 50);
+    });
+
+    // Intercept composite/aireel POST requests to include the flag.
+    // Composite currently sends no body; aireel already sends JSON.
+    var _paOrigFetch = window.fetch;
+    window.fetch = function (url, opts) {
+      if (typeof url === 'string' && opts && opts.method === 'POST') {
+        var want = window._paExportComments !== false;
+
+        // Composite POST — add JSON body with the flag
+        if (url.match(/\/sessions\/[A-Z0-9]+\/composite$/i)) {
+          opts = Object.assign({}, opts);
+          opts.headers = Object.assign({}, opts.headers || {}, { 'Content-Type': 'application/json' });
+          opts.body = JSON.stringify({ includeComments: want });
+          return _paOrigFetch.call(window, url, opts);
+        }
+
+        // AI Reel POST — merge flag into existing JSON body
+        if (url.match(/\/sessions\/[A-Z0-9]+\/aireel$/i) && opts.body) {
+          try {
+            var body = JSON.parse(opts.body);
+            body.includeComments = want;
+            opts = Object.assign({}, opts);
+            opts.body = JSON.stringify(body);
+          } catch (e) {}
+          return _paOrigFetch.call(window, url, opts);
+        }
+      }
+      return _paOrigFetch.apply(window, arguments);
+    };
   }
 
-  // Runs synchronously, NOT on DOMContentLoaded. The main script registers
-  // its own DOMContentLoaded handler that auto-loads a ?code= session — if
-  // the wraps below waited for that same event they'd be installed too late
-  // and the first load would never fetch its comments.
+  function paInjectExportCheckbox(sectionId) {
+    var section = document.getElementById(sectionId);
+    if (!section || section.querySelector('.pa-export-toggle')) return;
+    var toggle = document.createElement('label');
+    toggle.className = 'pa-toggle pa-export-toggle';
+    toggle.style.cssText = 'width:100%;padding:6px 0;font-size:12px;border-bottom:1px solid #24402e;margin-bottom:6px;';
+    var label = document.createElement('span');
+    label.textContent = 'Include comments on video';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = window._paExportComments !== false;
+    cb.addEventListener('change', function () {
+      window._paExportComments = cb.checked;
+      // Sync the other section's checkbox if it exists
+      document.querySelectorAll('.pa-export-toggle input').forEach(function (other) {
+        other.checked = cb.checked;
+      });
+    });
+    toggle.appendChild(label);
+    toggle.appendChild(cb);
+    // Insert after the first child (the title/description row)
+    if (section.children.length > 0) {
+      section.insertBefore(toggle, section.children[0]);
+    } else {
+      section.appendChild(toggle);
+    }
+  }
+
   paInit();
 })();
 

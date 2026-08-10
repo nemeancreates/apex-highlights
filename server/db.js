@@ -145,5 +145,8 @@ addColumnIfMissing('sessions', 'detectedGame', 'TEXT');
 // uploads — duration-based clip weight (batch 2: 3min=1, 6min=2, hard cap)
 addColumnIfMissing('uploads', 'durationMs', 'INTEGER');
 addColumnIfMissing('uploads', 'clipWeight', "INTEGER NOT NULL DEFAULT 1");
+// comments — host-dragged position (null = auto-zone)
+addColumnIfMissing('comments', 'positionX', 'REAL');
+addColumnIfMissing('comments', 'positionY', 'REAL');
 
 module.exports = db;

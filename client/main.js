@@ -1392,6 +1392,7 @@ function startRecording(monitor) {
   let stderrTail = '';
 
   startBufferReadyWatcher();
+  startPruneScheduler();      
   if (fullSessionMode) startDiskWatcher();
 
   ffmpegProcess.on('error', (err) => {
@@ -1537,8 +1538,8 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     };
 
     const encoderArgs = useCpuEncoder
-      ? ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23']
-      : ['-c:v', 'h264_nvenc', '-preset', 'p4', '-tune', 'hq', '-b:v',
+      ? ['-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23']
+      : ['-c:v', 'h264_nvenc', '-preset', 'p1', '-b:v',
          recordResolution ? (recordResolution.height <= 480 ? '3M' : '5M') : '8M'];
 
     function wgcExtractFail(msg) {
@@ -1555,7 +1556,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
 
       console.log(`WGC save: single file extract — ss=${ssOffset.toFixed(3)}s, t=${durationSec}s from ${file.fileId}`);
 
-      const extract = spawn(getFFmpegPath(), [
+      const extract = spawnFFmpegLow([
         '-fflags', '+genpts+igndts',
         '-i', file.path,
         '-ss', ssOffset.toFixed(3),
@@ -1565,7 +1566,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
         '-fps_mode', 'cfr', '-r', String(recordFps),
         '-movflags', '+faststart',
         '-y', outputPath
-      ], { windowsHide: true });
+      ]);
 
       extract.stderr.on('data', d => console.log('WGC extract:', d.toString()));
       extract.on('close', (code) => {
@@ -1591,7 +1592,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
 
       console.log(`WGC save: straddle — older ss=${olderSs.toFixed(3)}s dur=${splitPoint.toFixed(3)}s, newer dur=${newerDur.toFixed(3)}s`);
 
-      const extractA = spawn(getFFmpegPath(), [
+      const extractA = spawnFFmpegLow([
         '-fflags', '+genpts+igndts',
         '-i', older.path,
         '-ss', olderSs.toFixed(3),
@@ -1601,7 +1602,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
         '-fps_mode', 'cfr', '-r', String(recordFps),
         '-movflags', '+faststart',
         '-y', tempA
-      ], { windowsHide: true });
+      ]);
 
       extractA.stderr.on('data', d => console.log('WGC extractA:', d.toString()));
       extractA.on('close', (codeA) => {
@@ -1611,7 +1612,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
           return;
         }
 
-        const extractB = spawn(getFFmpegPath(), [
+        const extractB = spawnFFmpegLow([
           '-fflags', '+genpts+igndts',
           '-t', newerDur.toFixed(3),
           '-i', newer.path,
@@ -1620,7 +1621,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
           '-fps_mode', 'cfr', '-r', String(recordFps),
           '-movflags', '+faststart',
           '-y', tempB
-        ], { windowsHide: true });
+        ]);
 
         extractB.stderr.on('data', d => console.log('WGC extractB:', d.toString()));
         extractB.on('close', (codeB) => {
@@ -1794,9 +1795,12 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   const micSkipSec = Math.max(0, micDeltaSec);
   const micDelaySec = Math.max(0, -micDeltaSec);
 
+  // p1 instead of p4/hq: this re-encodes already-encoded footage,
+  // and every ms the trim holds an NVENC session is a ms the live
+  // capture has to time-slice against it.
   const trimEncoderArgs = useCpuEncoder
-    ? ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23']
-    : ['-c:v', 'h264_nvenc', '-preset', 'p4', '-tune', 'hq', '-b:v',
+    ? ['-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23']
+    : ['-c:v', 'h264_nvenc', '-preset', 'p1', '-b:v',
        recordResolution ? (recordResolution.height <= 480 ? '3M' : '5M') : '8M'];
 
   function cleanupTemps() {
@@ -1846,7 +1850,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
 
     // STEP 2: trim to the exact window. This is the step that lets clip
     // length match the real ACTIVE window instead of snapping to 10s.
-    const trim = spawn(getFFmpegPath(), [
+    const trim = spawnFFmpegLow([
       '-fflags', '+genpts+igndts',
       '-i', tempConcatPath,
       '-ss', trimOffsetSec.toFixed(3),
@@ -2379,6 +2383,7 @@ function createWindow() {
 
   ipcMain.on('stop-recording', async () => {
     stopBufferReadyWatcher();
+    stopPruneScheduler();        
     if (ffmpegProcess) {
       stoppingIntentionally = true;
       const dying = ffmpegProcess;
@@ -3138,6 +3143,7 @@ function archiveFullSession() {
 
 function stopRecordingInternal() {
   stopBufferReadyWatcher();
+  stopPruneScheduler();
   stopDiskWatcher();
 
   const wasRecording = !!ffmpegProcess;
