@@ -51,10 +51,11 @@ function createSessionForUser(rawUsername) {
     expiresAt: now + tierConfig.retentionDays * 24 * 60 * 60 * 1000,
     maxMembers: tierConfig.memberCap,
     maxClips: tierConfig.clipCap,
-    clipDuration: 30000,        // default 30s — host can change
-    highlightLockedUntil: 0,    // timestamp when session-wide lock expires
-    highlightCount: 0,          // coordinated highlight triggers this session
-    pendingHighlights: [],      // triggers that arrived during lock — fired in order
+    clipDuration: 30000,
+    commentSettings: JSON.stringify({ filterMode: 'all', topN: 0 }),
+    highlightLockedUntil: 0,
+    highlightCount: 0,
+    pendingHighlights: [],
     members: [],
     uploads: []
   };

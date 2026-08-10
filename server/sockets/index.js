@@ -83,9 +83,8 @@ function initSockets(io) {
         clipDuration: session.clipDuration,
         expiresAt: session.expiresAt || null,
         maxClips: session.maxClips || null,
-        clipsUsed: weightedClipsUsed,
-        title: session.title || null,
-        detectedGame: session.detectedGame || null,
+        clipsUsed: session.highlightCount || 0,
+        commentSettings: session.commentSettings ? JSON.parse(session.commentSettings) : { filterMode: 'all', topN: 0 },
         members: session.members.map(m => ({
           username: m.username,
           isRecording: m.isRecording
@@ -143,6 +142,49 @@ function initSockets(io) {
       log('info', 'session_game_detected', { session: sessionCode, game: clean, by: socket.username });
 
       io.to(sessionCode).emit('session-game-detected', { game: clean });
+    });
+
+    // ================================
+    // COMMENT SETTINGS — host only
+    // Filter mode controls what comments viewers see during playback.
+    // Modes: 'all' | 'host-only' | 'top-1' | 'top-5' | 'top-10' | 'top-20'
+    // ================================
+    socket.on('set-comment-settings', ({ filterMode, topN }) => {
+      if (!checkSocketRate(socket.id)) return;
+      const sessionCode = socket.sessionCode;
+      if (!sessionCode) return;
+
+      const session = sessions.get(sessionCode);
+      if (!session) return;
+
+      // Only the session creator can change comment settings
+      if (session.createdBy !== socket.username) {
+        socket.emit('error-message', { message: 'Only the session host can change comment settings' });
+        return;
+      }
+
+      // Validate input
+      const validModes = ['all', 'host-only', 'top-1', 'top-5', 'top-10', 'top-20'];
+      if (!validModes.includes(filterMode)) {
+        socket.emit('error-message', { message: 'Invalid comment filter mode' });
+        return;
+      }
+
+      // Store as JSON string in DB
+      session.commentSettings = JSON.stringify({ filterMode, topN: topN || 0 });
+      saveSessionsToDisk();
+
+      log('info', 'comment_settings_changed', {
+        session: sessionCode,
+        filterMode,
+        setBy: socket.username
+      });
+
+      // Tell everyone in the session
+      io.to(sessionCode).emit('comment-settings-changed', {
+        filterMode,
+        setBy: socket.username
+      });
     });
 
     // ================================

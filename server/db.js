@@ -139,6 +139,7 @@ addColumnIfMissing('sessions', 'hostTier', 'TEXT');
 addColumnIfMissing('sessions', 'expiresAt', 'INTEGER');
 addColumnIfMissing('sessions', 'maxMembers', 'INTEGER');
 addColumnIfMissing('sessions', 'maxClips', 'INTEGER');
+addColumnIfMissing('sessions', 'commentSettings', 'TEXT');
 addColumnIfMissing('sessions', 'title', 'TEXT');
 addColumnIfMissing('sessions', 'detectedGame', 'TEXT');
 

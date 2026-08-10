@@ -1207,6 +1207,7 @@
     let refreshInterval = null;
 
     let sessionStart = 0;
+    let commentSettings = { filterMode: 'all', topN: 0 };
     let sessionTotalDuration = 0;
 
     // ========================
@@ -1890,8 +1891,10 @@
       renderHighlightsColumn();
 
       btn.disabled = false;
-      const countSpan = document.getElementById('hlDelCount');
-      if (countSpan) countSpan.textContent = '0';
+      // textContent = 'Deleting...' above nuked the counter span — rebuild the
+      // whole label, don't try to write into a span that no longer exists.
+      btn.innerHTML = 'Delete (<span id="hlDelCount">0</span>)';
+      updateHlDeleteBar();
 
       if (failed > 0) alert(failed + ' clip(s) failed to delete (may already be past the 4-hour window).');
     }
