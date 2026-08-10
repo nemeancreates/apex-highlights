@@ -36,7 +36,7 @@ const SESSIONS_FILE = path.join(__dirname, 'sessions.json');
 // --- Capacity limits ---
 const MAX_SESSIONS = 100;
 const MAX_MEMBERS_PER_SESSION = 30;
-const MAX_HIGHLIGHTS_PER_SESSION = 200;
+const MAX_HIGHLIGHTS_PER_SESSION = 1800; // fallback in seconds, matches t1 Free floor
 
 // --- Clip durations (ms) ---
 const ALLOWED_CLIP_DURATIONS = [15000, 30000, 60000, 180000];
@@ -82,8 +82,9 @@ const COMMENT_MAX_TIMESTAMP_MS = 6 * 60 * 60 * 1000; // sanity bound on the anch
 // members can be in one session (prevents a Pro host's 41 seats from
 // being filled by freeloaders).
 // ================================
+// NEW — clipCap in seconds of highlight time per session
 const TIERS = {
-t1: { label: 'Free',    canHost: true,  memberCap: 2,  clipCap: 1800,   sessionsPerMonth: 6,  retentionDays: 1,  hasAiReel: false },
+  t1: { label: 'Free',    canHost: true,  memberCap: 2,  clipCap: 1800,   sessionsPerMonth: 6,  retentionDays: 1,  hasAiReel: false },
   t2: { label: 'Creator', canHost: true,  memberCap: 5,  clipCap: 43200,  sessionsPerMonth: 50, retentionDays: 3,  hasAiReel: false },
   t3: { label: 'Squad',   canHost: true,  memberCap: 11, clipCap: 86400,  sessionsPerMonth: 80, retentionDays: 7,  hasAiReel: true  },
   t4: { label: 'Pro',     canHost: true,  memberCap: 41, clipCap: 144000, sessionsPerMonth: 70, retentionDays: 14, hasAiReel: true  }
@@ -113,8 +114,8 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 // Update when a new client build is uploaded to the CDN.
 // ================================
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.37',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.37.exe',
+  version: '0.1.39',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.39.exe',
   releaseNotes: 'Database upgrade for improved reliability at scale.'
 };
 
