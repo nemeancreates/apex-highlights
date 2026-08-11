@@ -17,12 +17,14 @@
     --border-soft:#24402e;
     --teal:#39d3a0;
     --teal-dim:#1d9e75;
+    --teal-dark:#146a4d;
+    --pupil:#0b1a13;
     --violet:#6c4fd8;
     --violet-dim:#7d61e6;
     --amber:#d8a838;
     --amber-dim:#4a2417;
     --rose:#f0a5bd;
-    --patreon:#FF424D;
+    --kickstarter:#05CE78;
     --text:#e8f5ec;
     --text-soft:#c8d6cd;
     --text-dim:#8fbfa3;
@@ -62,6 +64,18 @@
   }
   .eyebrow::before{ content:''; width:6px; height:6px; border-radius:50%; background:var(--teal); box-shadow:0 0 0 4px rgba(57,211,160,0.15); }
 
+  /* ===== Construction banner ===== */
+  .construction-banner{
+    background:var(--card-soft); border-bottom:1px solid var(--border-soft);
+    color:var(--text-dim); font-family:var(--mono); font-size:12px; letter-spacing:0.02em;
+    text-align:center; padding:9px 16px;
+  }
+  .construction-banner .cb-dot{
+    display:inline-block; width:6px; height:6px; border-radius:50%;
+    background:var(--amber); margin-right:8px; box-shadow:0 0 0 3px rgba(216,168,56,0.18);
+  }
+  .construction-banner strong{ color:var(--amber); font-weight:600; }
+
   /* ===== NAV ===== */
   header.nav{
     position:sticky; top:0; z-index:50;
@@ -70,25 +84,34 @@
   }
   .nav-inner{ display:flex; align-items:center; justify-content:space-between; padding:14px 24px; max-width:1120px; margin:0 auto; }
   .brand{ display:flex; align-items:center; gap:10px; font-family:var(--display); font-weight:700; font-size:18px; color:var(--text); }
-  .brand-mark{ width:30px; height:30px; }
   .nav-links{ display:flex; gap:28px; font-size:14px; color:var(--text-dim); }
   .nav-links a:hover{ color:var(--teal); }
-  .nav-cta{
-    font-size:13px; font-weight:600; padding:9px 18px; border-radius:8px;
-    background:var(--teal-dim); color:#04140d; box-shadow:0 0 0 1px var(--teal);
-    transition:background .15s, box-shadow .15s;
-  }
-  .nav-cta:hover{ background:var(--teal); box-shadow:0 0 0 1px #4fe0b0; }
-  .nav-actions{ display:flex; align-items:center; gap:10px; }
-  .patreon-cta{
-    font-size:13px; font-weight:600; padding:9px 16px; border-radius:8px;
-    background:var(--card); color:var(--text-dim); border:1px solid var(--border-soft);
-    display:flex; align-items:center; gap:7px;
-    transition:background .15s, color .15s, border-color .15s;
-  }
-  .patreon-cta svg{ width:14px; height:14px; fill:currentColor; }
-  .patreon-cta:hover{ background:var(--patreon); color:#fff; border-color:var(--patreon); }
   @media(max-width:760px){ .nav-links{ display:none; } }
+
+  /* ===== Brand mark (see-no-evil icon) ===== */
+  .brand-mark, .foot-brand svg{ width:39px; height:39px; flex-shrink:0; }
+  .foot-brand svg{ width:29px; height:29px; }
+  @keyframes glowpulse{
+    0%,100%{ filter:drop-shadow(0 0 0px var(--gc,rgba(57,211,160,0.5))); }
+    50%{ filter:drop-shadow(0 0 5px var(--gc,rgba(57,211,160,0.5))); }
+  }
+  .glow{ animation:glowpulse 3.2s ease-in-out infinite; }
+  @keyframes pawwink{
+    0%,68%,100%{ transform:translateY(0); }
+    80%,88%{ transform:translateY(-4.5px); }
+  }
+  .paw-wink{ transform-box:fill-box; transform-origin:center; animation:pawwink 5.2s ease-in-out infinite; }
+  @keyframes eyewink{
+    0%,68%,100%{ opacity:0; transform:scaleY(1); }
+    78%{ opacity:1; transform:scaleY(1); }
+    83%{ opacity:1; transform:scaleY(0.15); }
+    88%{ opacity:1; transform:scaleY(1); }
+    93%,100%{ opacity:0; transform:scaleY(1); }
+  }
+  .eye-wink{ transform-box:fill-box; transform-origin:center; animation:eyewink 5.2s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce){
+    .glow, .paw-wink, .eye-wink{ animation:none; }
+  }
 
   /* ===== HERO ===== */
   .hero{ padding:88px 0 60px; }
@@ -110,6 +133,11 @@
   .btn-primary:hover{ background:var(--teal); box-shadow:0 0 0 1px #4fe0b0; }
   .btn-ghost{ background:var(--card); color:var(--text-dim); border:1px solid var(--border-soft); }
   .btn-ghost:hover{ border-color:var(--teal); color:var(--teal); }
+  .btn-disabled{
+    background:var(--card-soft); color:var(--text-muted); border:1px solid var(--border-soft);
+    cursor:not-allowed; pointer-events:none; opacity:0.65;
+  }
+  .btn-disabled .btn-note{ font-family:var(--mono); font-size:10.5px; margin-left:2px; opacity:0.8; }
 
   .patent-note{ margin-top:22px; font-family:var(--mono); font-size:11.5px; color:var(--text-muted); }
 
@@ -124,54 +152,43 @@
     pointer-events:none;
   }
   .syncviz-label{ font-family:var(--mono); font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:18px; }
-  .syncviz-stage{ position:relative; height:150px; display:flex; align-items:flex-end; justify-content:center; gap:22px; }
-  .sync-bar{
-    width:16px; border-radius:5px 5px 0 0;
-    animation: floatbar 3.2s ease-in-out infinite;
-  }
-  .sync-bar.b1{ background:var(--teal); animation-delay:0s; }
-  .sync-bar.b2{ background:var(--violet); animation-delay:.5s; }
-  .sync-bar.b3{ background:var(--amber); animation-delay:1s; }
-  .sync-bar.b4{ background:var(--rose); animation-delay:1.5s; }
 
-  @keyframes floatbar{
-    0%{ height:46px; }
-    35%{ height:98px; }
-    50%{ height:60px; }
-    65%{ height:112px; }
-    100%{ height:46px; }
+  .syncsvg{ width:100%; height:auto; display:block; overflow:visible; }
+  .track{ stroke:var(--border-soft); stroke-width:1.5; }
+  .pulse-line{
+    stroke:var(--teal); stroke-width:2; fill:none;
+    stroke-dasharray:210; stroke-dashoffset:210; opacity:0;
+    transition:stroke-dashoffset .45s ease, opacity .15s ease;
   }
-  /* pause independent drift and snap to aligned height around the save pulse */
-  .sync-bar{ animation-name: floatbar; }
-  .syncviz-stage.snap .sync-bar{ animation: none; height:104px; transition:height .35s ease; }
+  .pulse-line.active{ opacity:1; stroke-dashoffset:0; }
 
-  .save-line{
-    position:absolute; left:50%; top:10px; bottom:0; width:1px;
-    background:linear-gradient(to bottom, transparent, var(--teal), transparent);
-    opacity:0.5;
+  .node circle{
+    fill:var(--card-soft); stroke:var(--border-soft); stroke-width:1.6;
+    transition:fill .3s ease, stroke .3s ease, filter .3s ease;
   }
-  .save-marker{
-    position:absolute; left:50%; top:2px; transform:translateX(-50%) rotate(45deg);
-    width:14px; height:14px; background:var(--teal); border-radius:3px;
-    box-shadow:0 0 0 5px rgba(57,211,160,0.12);
-    animation: pulse 3.2s ease-in-out infinite;
+  .node text{ font-family:var(--mono); font-size:9px; fill:var(--text-dim); pointer-events:none; }
+  .node-label{ font-family:var(--mono); font-size:8px; letter-spacing:0.08em; fill:var(--text-muted); }
+
+  .player-node.is-presser circle{ stroke:var(--teal); filter:drop-shadow(0 0 6px rgba(57,211,160,0.55)); }
+  .player-node.is-synced circle{ fill:var(--teal-dim); stroke:var(--teal); }
+  .player-node.is-synced text{ fill:#04140d; }
+
+  .server-node circle{ transition:stroke .3s ease, filter .3s ease; }
+  .server-node.is-active circle{ stroke:var(--teal); filter:drop-shadow(0 0 8px rgba(57,211,160,0.6)); }
+  .server-node path{ stroke:var(--teal-dim); stroke-width:1.6; fill:none; stroke-linecap:round; transition:stroke .3s ease; }
+  .server-node.is-active path{ stroke:var(--teal); }
+
+  @media (prefers-reduced-motion: reduce){
+    .pulse-line{ transition:none; }
+    .node circle, .server-node path{ transition:none; }
   }
-  @keyframes pulse{
-    0%,40%{ opacity:0.35; }
-    48%{ opacity:1; box-shadow:0 0 0 9px rgba(57,211,160,0.22); }
-    56%{ opacity:0.35; box-shadow:0 0 0 5px rgba(57,211,160,0.12); }
-    100%{ opacity:0.35; }
-  }
+
   .syncviz-caption{
     display:flex; justify-content:space-between; margin-top:18px; padding-top:16px;
     border-top:1px solid var(--border); font-family:var(--mono); font-size:11.5px; color:var(--text-muted);
+    gap:12px; flex-wrap:wrap;
   }
   .syncviz-caption strong{ color:var(--teal); font-weight:500; }
-
-  @media (prefers-reduced-motion: reduce){
-    .sync-bar{ animation:none; height:80px; }
-    .save-marker{ animation:none; opacity:0.8; }
-  }
 
   /* ===== Section shell ===== */
   section{ padding:76px 0; border-top:1px solid var(--border); }
@@ -207,6 +224,93 @@
   }
   .step h3{ font-size:16.5px; margin-bottom:4px; }
   .step p{ font-size:14.5px; color:var(--text-dim); }
+
+  /* ===== Under the hood (pipeline) ===== */
+  .flow-outer{ overflow-x:auto; padding:8px 8px 12px; margin:0 -8px; }
+  .flow-outer::-webkit-scrollbar{ height:3px; }
+  .flow-outer::-webkit-scrollbar-track{ background:transparent; }
+  .flow-outer::-webkit-scrollbar-thumb{ background:var(--border-soft); border-radius:2px; }
+
+  .flow{ display:flex; gap:16px; min-width:900px; }
+
+  .stage{ flex:1; position:relative; min-height:280px; border-radius:16px; padding:2px; cursor:pointer; opacity:0.55; transition:opacity .3s; }
+  .stage:hover{ opacity:0.85; }
+  .stage.active{ opacity:1; }
+  .stage.active:hover{ opacity:1; }
+  .stage::before{
+    content:''; position:absolute; inset:0; border-radius:16px; padding:2px;
+    background:conic-gradient(from 0deg, var(--border-soft), var(--border-soft));
+    -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor; mask-composite:exclude;
+    transition:background 1.2s;
+  }
+  .stage.active::before{
+    background:conic-gradient(from var(--rot,0deg), var(--accent-c1), var(--accent-c2), var(--border-soft) 40%, var(--border-soft));
+    animation:pipe-spin 6.8s linear infinite;
+  }
+  @keyframes pipe-spin{ to{ --rot:360deg; } }
+  @property --rot{ syntax:'<angle>'; inherits:false; initial-value:0deg; }
+
+  .stage-inner{
+    position:relative; height:100%; background:var(--card); border-radius:14px;
+    padding:24px 20px 22px; display:flex; flex-direction:column; overflow:hidden;
+    transition:transform .18s;
+  }
+  .stage:hover .stage-inner{ transform:translateY(-2px); }
+  .stage-inner::before{
+    content:''; position:absolute; inset:0;
+    background:radial-gradient(circle at 50% 0%, rgba(57,211,160,0.05), transparent 65%);
+    pointer-events:none; opacity:0; transition:opacity .3s;
+  }
+  .stage.active .stage-inner::before{ opacity:1; }
+
+  .stage-teal{ --accent-c1:#39d3a0; --accent-c2:#1d9e75; }
+  .stage-violet{ --accent-c1:#7d61e6; --accent-c2:#6c4fd8; }
+  .stage-amber{ --accent-c1:#e8bd5e; --accent-c2:#d8a838; }
+  .stage-rose{ --accent-c1:#f0a5bd; --accent-c2:#d97696; }
+
+  .stage-step{ font-family:var(--mono); font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:var(--text-muted); margin-bottom:18px; }
+  .stage-icon{ width:44px; height:44px; margin-bottom:20px; display:flex; align-items:center; justify-content:center; border-radius:11px; }
+  .stage-teal .stage-icon{ background:rgba(57,211,160,0.1); color:var(--teal); }
+  .stage-violet .stage-icon{ background:rgba(108,79,216,0.13); color:var(--violet-dim); }
+  .stage-amber .stage-icon{ background:rgba(216,168,56,0.11); color:var(--amber); }
+  .stage-rose .stage-icon{ background:rgba(240,165,189,0.1); color:var(--rose); }
+
+  .stage-title{ font-family:var(--display); font-size:16px; font-weight:600; color:var(--text); line-height:1.28; margin-bottom:10px; }
+  .stage-desc{ font-size:12.5px; color:var(--text-dim); line-height:1.65; flex:1; }
+  .stage-tag{ display:inline-block; margin-top:16px; align-self:flex-start; font-family:var(--mono); font-size:10px; letter-spacing:0.05em; padding:4px 9px; border-radius:6px; }
+  .stage-tags{ display:flex; gap:6px; flex-wrap:wrap; margin-top:16px; }
+  .stage-tags .stage-tag{ margin-top:0; }
+  .stage-tag.beta{ background:rgba(216,168,56,0.12); color:var(--amber); }
+  .stage-teal .stage-tag{ background:rgba(57,211,160,0.09); color:var(--teal); }
+  .stage-violet .stage-tag{ background:rgba(108,79,216,0.14); color:var(--violet-dim); }
+  .stage-amber .stage-tag{ background:rgba(216,168,56,0.09); color:var(--amber); }
+  .stage-rose .stage-tag{ background:rgba(240,165,189,0.09); color:var(--rose); }
+
+  .stack-dots{ position:absolute; top:16px; right:16px; display:flex; gap:3px; }
+  .sdot{ width:7px; height:7px; border-radius:50%; border:1.5px solid var(--card); }
+
+  .nav-row{ display:flex; align-items:center; justify-content:center; gap:18px; margin-top:22px; }
+  .nav-btn{
+    width:34px; height:34px; border-radius:50%; background:var(--card); border:1px solid var(--border-soft);
+    color:var(--text-dim); display:flex; align-items:center; justify-content:center; cursor:pointer;
+    transition:border-color .15s, color .15s, background .15s;
+  }
+  .nav-btn:hover{ border-color:var(--teal); color:var(--teal); }
+  .nav-btn:active{ transform:scale(.94); }
+  .dots{ display:flex; gap:7px; }
+  .navdot{ width:7px; height:7px; border-radius:50%; background:var(--border-soft); cursor:pointer; transition:background .2s, transform .2s; }
+  .navdot.on{ background:var(--teal); transform:scale(1.3); }
+
+  .detail{ margin-top:22px; background:var(--card-soft); border:1px solid var(--border-soft); border-radius:14px; padding:26px 28px; display:flex; gap:20px; min-height:118px; }
+  .d-icon{ flex:0 0 42px; height:42px; border-radius:10px; display:flex; align-items:center; justify-content:center; transition:background .3s; }
+  .d-step{ font-family:var(--mono); font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:var(--text-muted); margin-bottom:5px; }
+  .d-title{ font-family:var(--display); font-size:17px; font-weight:600; color:var(--text); margin-bottom:8px; line-height:1.25; }
+  .d-body{ font-size:14px; color:var(--text-dim); line-height:1.72; }
+  .chips{ display:flex; flex-wrap:wrap; gap:7px; margin-top:13px; }
+  .chip{ font-family:var(--mono); font-size:10.5px; padding:3px 10px; border-radius:6px; background:rgba(57,211,160,0.07); color:var(--teal-dim); border:1px solid rgba(57,211,160,0.13); }
+
+  @media(prefers-reduced-motion:reduce){ .stage.active::before{ animation:none; } }
 
   /* ===== Feature grid ===== */
   .feat-grid{ display:grid; grid-template-columns:1fr; gap:16px; }
@@ -266,7 +370,6 @@
   .foot-inner{ display:flex; flex-direction:column; gap:16px; align-items:center; text-align:center; }
   @media(min-width:700px){ .foot-inner{ flex-direction:row; justify-content:space-between; text-align:left; } }
   .foot-brand{ display:flex; align-items:center; gap:9px; font-family:var(--display); font-weight:600; color:var(--text-dim); font-size:14px; }
-  .foot-brand svg{ width:20px; height:20px; }
   .foot-meta{ font-family:var(--mono); font-size:11.5px; color:var(--text-muted); line-height:1.7; }
   .foot-links{ display:flex; gap:20px; font-size:13.5px; color:var(--text-dim); }
   .foot-links a:hover{ color:var(--teal); }
@@ -275,13 +378,21 @@
 </head>
 <body>
 
+<div class="construction-banner">
+  <span class="cb-dot"></span><strong>Splash page</strong> — this site is still under construction. Follow along and back the project on Kickstarter.
+</div>
+
 <header class="nav">
   <div class="nav-inner">
     <div class="brand">
-      <svg class="brand-mark" viewBox="0 0 32 32" fill="none">
-        <rect x="2" y="10" width="14" height="14" rx="4" fill="#39d3a0" opacity="0.9"/>
-        <rect x="10" y="6" width="14" height="14" rx="4" fill="#6c4fd8" opacity="0.85"/>
-        <rect x="16" y="14" width="14" height="14" rx="4" fill="#d8a838" opacity="0.85"/>
+      <svg class="brand-mark glow" viewBox="0 0 64 64" style="--gc:rgba(57,211,160,0.5)">
+        <circle cx="32" cy="32" r="29" fill="var(--card-soft)" stroke="var(--teal)" stroke-width="1.4" opacity="0.9"/>
+        <circle cx="18.5" cy="27.5" r="7" fill="var(--teal)"/>
+        <circle cx="45.5" cy="27.5" r="7" fill="var(--teal)"/>
+        <circle cx="32" cy="36" r="15.5" fill="var(--teal)"/>
+        <ellipse cx="26" cy="33" rx="6.1" ry="5.5" fill="var(--teal-dark)"/>
+        <circle class="eye-wink" cx="38" cy="33" r="2.6" fill="var(--pupil)"/>
+        <ellipse class="paw-wink" cx="38" cy="33" rx="6.1" ry="5.5" fill="var(--teal-dark)"/>
       </svg>
       Peak-Abu
     </div>
@@ -291,13 +402,6 @@
       <a href="#security">Security</a>
       <a href="#squads">Squads</a>
     </nav>
-    <div class="nav-actions">
-      <a class="patreon-cta" href="https://www.patreon.com/c/nemeancreates/membership" target="_blank" rel="noopener">
-        <svg viewBox="0 0 24 24"><circle cx="15" cy="9.5" r="6.5"/><rect x="2" y="2" width="4" height="20"/></svg>
-        Patreon
-      </a>
-      <a class="nav-cta" href="https://peakabu.app">Get Started</a>
-    </div>
   </div>
 </header>
 
@@ -311,7 +415,7 @@
         <h1>Every angle.<br>One save. <span class="accent">Perfectly synced.</span></h1>
         <p class="lead">Peak-Abu captures every teammate's point of view during a match and locks them to the same clock. One save gives your whole squad the same highlight — frame for frame, from every seat.</p>
         <div class="hero-ctas">
-          <a class="btn btn-primary" href="https://peakabu.app">Get Peak-Abu</a>
+          <span class="btn btn-disabled" aria-disabled="true">Get Peak-Abu <span class="btn-note">— coming soon</span></span>
           <a class="btn btn-ghost" href="#demo">Watch it in action</a>
         </div>
         <div class="patent-note">Sync &amp; coordinated-save protocol — patent pending, USPTO App #64/111,818</div>
@@ -319,17 +423,36 @@
 
       <div class="syncviz">
         <div class="syncviz-label">Coordinated Save — Live Concept</div>
-        <div class="syncviz-stage" id="syncStage">
-          <div class="save-line"></div>
-          <div class="save-marker"></div>
-          <div class="sync-bar b1"></div>
-          <div class="sync-bar b2"></div>
-          <div class="sync-bar b3"></div>
-          <div class="sync-bar b4"></div>
-        </div>
-        <div class="syncviz-caption">
-          <span>4 POVs, independent buffers</span>
-          <span><strong>▸</strong> one save, one instant</span>
+        <svg class="syncsvg" id="syncSvg" viewBox="0 0 320 172" preserveAspectRatio="xMidYMid meet">
+          <line x1="160" y1="34" x2="46" y2="132" class="track"/>
+          <line x1="160" y1="34" x2="114" y2="132" class="track"/>
+          <line x1="160" y1="34" x2="206" y2="132" class="track"/>
+          <line x1="160" y1="34" x2="274" y2="132" class="track"/>
+
+          <line id="upline-0" x1="46" y1="132" x2="160" y2="34" class="pulse-line"/>
+          <line id="upline-1" x1="114" y1="132" x2="160" y2="34" class="pulse-line"/>
+          <line id="upline-2" x1="206" y1="132" x2="160" y2="34" class="pulse-line"/>
+          <line id="upline-3" x1="274" y1="132" x2="160" y2="34" class="pulse-line"/>
+
+          <line id="dnline-0" x1="160" y1="34" x2="46" y2="132" class="pulse-line"/>
+          <line id="dnline-1" x1="160" y1="34" x2="114" y2="132" class="pulse-line"/>
+          <line id="dnline-2" x1="160" y1="34" x2="206" y2="132" class="pulse-line"/>
+          <line id="dnline-3" x1="160" y1="34" x2="274" y2="132" class="pulse-line"/>
+
+          <text x="160" y="12" text-anchor="middle" class="node-label">SERVER</text>
+          <g id="serverNode" class="node server-node">
+            <circle cx="160" cy="30" r="13"/>
+            <path d="M154.5 30h11M160 24.5v11"/>
+          </g>
+
+          <g id="player-0" class="node player-node"><circle cx="46" cy="140" r="11"/><text x="46" y="144" text-anchor="middle">1</text></g>
+          <g id="player-1" class="node player-node"><circle cx="114" cy="140" r="11"/><text x="114" y="144" text-anchor="middle">2</text></g>
+          <g id="player-2" class="node player-node"><circle cx="206" cy="140" r="11"/><text x="206" y="144" text-anchor="middle">3</text></g>
+          <g id="player-3" class="node player-node"><circle cx="274" cy="140" r="11"/><text x="274" y="144" text-anchor="middle">4</text></g>
+        </svg>
+        <div class="syncviz-caption" id="syncCaption">
+          <span>Any of 4 players hits save</span>
+          <span><strong>▸</strong> server pings, every POV locks to that instant</span>
         </div>
       </div>
     </div>
@@ -341,7 +464,7 @@
       <div class="section-head">
         <div class="eyebrow">See it, don't just read about it</div>
         <h2>A highlight, captured from every seat</h2>
-        <p>Two players, two POVs, one synced save — this is the entire idea in under a minute.</p>
+        <p>Three players, three POVs, one synced save — this is the entire idea in under a minute.</p>
       </div>
       <div class="videoframe" style="max-width:640px; margin:0 auto;">
         <div class="chrome">
@@ -349,7 +472,7 @@
           <span class="chrome-title">peakabu.app/player — session demo</span>
         </div>
         <div class="video-body">
-          <iframe src="https://www.youtube.com/embed/Bi_0jopE5h4" title="Peak-Abu 2-POV synced highlight demo" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+          <iframe src="https://www.youtube.com/embed/AJfdR4zguQA" title="Peak-Abu 3-POV synced highlight demo" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
         </div>
       </div>
     </div>
@@ -394,6 +517,111 @@
           <div class="video-body">
             <iframe src="https://www.youtube.com/embed/gfh-q2WgRyM" title="Peak-Abu 3-POV usage flow demo" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
           </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- UNDER THE HOOD -->
+  <section id="pipeline">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Under the hood</div>
+        <h2>From game window to shared replay</h2>
+        <p>Every clip follows the same five-stage path — whether it's one player grabbing a clutch moment or a full squad locking in a synchronized multi-POV save.</p>
+      </div>
+
+      <div class="flow-outer">
+        <div class="flow" id="flow">
+
+          <div class="stage stage-teal" id="s0" onclick="showStage(0)">
+            <div class="stage-inner">
+              <div class="stack-dots">
+                <div class="sdot" style="background:var(--teal)"></div>
+                <div class="sdot" style="background:var(--violet)"></div>
+                <div class="sdot" style="background:var(--amber)"></div>
+              </div>
+              <div class="stage-step">01 · capture</div>
+              <div class="stage-icon">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="1" y="5" width="8" height="8" rx="2" fill="currentColor" opacity=".95"/><rect x="6" y="3" width="8" height="8" rx="2" fill="currentColor" opacity=".6"/><rect x="11" y="8" width="8" height="8" rx="2" fill="currentColor" opacity=".35"/></svg>
+              </div>
+              <div class="stage-title">Local ring buffer</div>
+              <div class="stage-desc">Each player's client silently records their game window into a rolling buffer — save it manually, or let auto-capture trigger it for you.</div>
+              <div class="stage-tags">
+                <span class="stage-tag">per player · local</span>
+                <span class="stage-tag beta">auto-capture · testing</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="stage stage-violet" id="s1" onclick="showStage(1)">
+            <div class="stage-inner">
+              <div class="stage-step">02 · sync</div>
+              <div class="stage-icon">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.6"/><path d="M10 5.5v4.5l3 1.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              </div>
+              <div class="stage-title">Coordinated save</div>
+              <div class="stage-desc">The server broadcasts a server-stamped timestamp to every connected client — locking every POV to the identical moment.</div>
+              <span class="stage-tag">patent pending</span>
+            </div>
+          </div>
+
+          <div class="stage stage-teal" id="s2" onclick="showStage(2)">
+            <div class="stage-inner">
+              <div class="stage-step">03 · extract</div>
+              <div class="stage-icon">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 10h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M13 6.5l3.5 3.5-3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 3v14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity=".4"/></svg>
+              </div>
+              <div class="stage-title">Buffer extraction</div>
+              <div class="stage-desc">Each client runs FFmpeg locally to slice the clip. Raw footage never leaves your machine unprocessed.</div>
+              <span class="stage-tag">local · ffmpeg</span>
+            </div>
+          </div>
+
+          <div class="stage stage-amber" id="s3" onclick="showStage(3)">
+            <div class="stage-inner">
+              <div class="stage-step">04 · store</div>
+              <div class="stage-icon">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 12.5V4.5M7 7.5l3-3 3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.5 14.5s0 3 6.5 3 6.5-3 6.5-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              </div>
+              <div class="stage-title">Cloud storage</div>
+              <div class="stage-desc">Encoded clips upload directly to cloud storage. The server indexes them, then optionally renders a composite or AI reel.</div>
+              <span class="stage-tag">DO Spaces · indexed</span>
+            </div>
+          </div>
+
+          <div class="stage stage-rose" id="s4" onclick="showStage(4)">
+            <div class="stage-inner">
+              <div class="stage-step">05 · share</div>
+              <div class="stage-icon">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.6"/><path d="M8.5 7l5 3-5 3V7z" fill="currentColor" opacity=".85"/></svg>
+              </div>
+              <div class="stage-title">Web player</div>
+              <div class="stage-desc">A shareable link serves synchronized multi-POV playback in any browser — with timestamped Quick Comments over top.</div>
+              <span class="stage-tag">shareable · no login</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="nav-row">
+        <div class="nav-btn" onclick="prevStage()" aria-label="Previous stage">
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M12.5 5l-5 5 5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="dots" id="pipelineDots"></div>
+        <div class="nav-btn" onclick="nextStage()" aria-label="Next stage">
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M7.5 5l5 5-5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+
+      <div class="detail" id="pipelineDetail">
+        <div class="d-icon" id="d-icon"></div>
+        <div style="flex:1;">
+          <div class="d-step" id="d-step">01 · local capture</div>
+          <div class="d-title" id="d-title">Rolling ring buffer — always on, zero footprint</div>
+          <div class="d-body" id="d-body">Loading detail…</div>
+          <div class="chips" id="d-chips"></div>
         </div>
       </div>
     </div>
@@ -516,8 +744,8 @@
         <h2>Every save, from every seat.</h2>
         <p>Free to start. No cloud storage bill sneaking up on you. Just synced highlights, whenever your squad needs one.</p>
         <div class="hero-ctas">
-          <a class="btn btn-primary" href="https://peakabu.app">Get Peak-Abu</a>
-          <a class="btn btn-ghost" href="https://www.patreon.com/c/nemeancreates/membership" target="_blank" rel="noopener">Support on Patreon</a>
+          <span class="btn btn-disabled" aria-disabled="true">Get Peak-Abu <span class="btn-note">— coming soon</span></span>
+          <a class="btn btn-ghost" href="https://www.kickstarter.com/projects/nemeancreates/peak-abu-multi-pov-highlight-capture-tool?ref=ds77gp&token=718f494a" target="_blank" rel="noopener">Back us on Kickstarter</a>
         </div>
       </div>
     </div>
@@ -528,10 +756,14 @@
 <footer>
   <div class="wrap foot-inner">
     <div class="foot-brand">
-      <svg viewBox="0 0 32 32" fill="none">
-        <rect x="2" y="10" width="14" height="14" rx="4" fill="#39d3a0" opacity="0.9"/>
-        <rect x="10" y="6" width="14" height="14" rx="4" fill="#6c4fd8" opacity="0.85"/>
-        <rect x="16" y="14" width="14" height="14" rx="4" fill="#d8a838" opacity="0.85"/>
+      <svg class="glow" viewBox="0 0 64 64" style="--gc:rgba(57,211,160,0.5)">
+        <circle cx="32" cy="32" r="29" fill="var(--card-soft)" stroke="var(--teal)" stroke-width="1.4" opacity="0.9"/>
+        <circle cx="18.5" cy="27.5" r="7" fill="var(--teal)"/>
+        <circle cx="45.5" cy="27.5" r="7" fill="var(--teal)"/>
+        <circle cx="32" cy="36" r="15.5" fill="var(--teal)"/>
+        <ellipse cx="26" cy="33" rx="6.1" ry="5.5" fill="var(--teal-dark)"/>
+        <circle class="eye-wink" cx="38" cy="33" r="2.6" fill="var(--pupil)"/>
+        <ellipse class="paw-wink" cx="38" cy="33" rx="6.1" ry="5.5" fill="var(--teal-dark)"/>
       </svg>
       Peak-Abu
     </div>
@@ -539,20 +771,143 @@
       <a href="#features">Features</a>
       <a href="#security">Security</a>
       <a href="https://peakabu.app">peakabu.app</a>
-      <a href="https://www.patreon.com/c/nemeancreates/membership" target="_blank" rel="noopener">Patreon</a>
+      <a href="https://www.kickstarter.com/projects/nemeancreates/peak-abu-multi-pov-highlight-capture-tool?ref=ds77gp&token=718f494a" target="_blank" rel="noopener">Kickstarter</a>
     </div>
     <div class="foot-meta">© 2026 Peak-Abu<br>Sync protocol patent pending — USPTO App #64/111,818</div>
   </div>
 </footer>
 
 <script>
-  // Occasionally snap the sync bars flush to visually punctuate the "save" pulse
-  const stage = document.getElementById('syncStage');
-  if (stage && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    setInterval(() => {
-      stage.classList.add('snap');
-      setTimeout(() => stage.classList.remove('snap'), 700);
-    }, 3200);
+  // Coordinated-save concept: any of the 4 players can be the one who
+  // hits save. The sequence: that player's pulse travels up to the
+  // server, the server pings, then broadcasts back out to all 4 players
+  // simultaneously — that's the "one save, one instant, every POV" idea.
+  const syncSvg = document.getElementById('syncSvg');
+  if (syncSvg && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const serverNode = document.getElementById('serverNode');
+
+    function resetSync(){
+      document.querySelectorAll('.pulse-line').forEach(l => l.classList.remove('active'));
+      document.querySelectorAll('.player-node').forEach(n => n.classList.remove('is-presser', 'is-synced'));
+      serverNode.classList.remove('is-active');
+    }
+
+    function runSyncCycle(){
+      resetSync();
+      const idx = Math.floor(Math.random() * 4);
+      const presser = document.getElementById('player-' + idx);
+
+      presser.classList.add('is-presser');
+
+      setTimeout(() => {
+        document.getElementById('upline-' + idx).classList.add('active');
+      }, 300);
+
+      setTimeout(() => {
+        serverNode.classList.add('is-active');
+      }, 780);
+
+      setTimeout(() => {
+        [0, 1, 2, 3].forEach(i => document.getElementById('dnline-' + i).classList.add('active'));
+      }, 1080);
+
+      setTimeout(() => {
+        [0, 1, 2, 3].forEach(i => document.getElementById('player-' + i).classList.add('is-synced'));
+      }, 1550);
+
+      setTimeout(runSyncCycle, 3600);
+    }
+
+    runSyncCycle();
+  }
+</script>
+
+<script>
+  // Under-the-hood pipeline: 5 stages, click/arrow/dot navigable,
+  // auto-advances every 10s and pauses on hover or when tab is hidden.
+  const PIPELINE_STAGES = [
+    {
+      bg:'rgba(57,211,160,0.1)', color:'var(--teal)',
+      svg:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="1" y="5" width="8" height="8" rx="2" fill="currentColor" opacity=".95"/><rect x="6" y="3" width="8" height="8" rx="2" fill="currentColor" opacity=".6"/><rect x="11" y="8" width="8" height="8" rx="2" fill="currentColor" opacity=".35"/></svg>',
+      step:'01 · local capture',
+      title:'Rolling ring buffer — always on, zero footprint',
+      body:'The Electron client continuously records your game window into a circular buffer in local memory. Nothing is saved until a save fires — manually, or automatically. Auto-capture (currently in testing) runs a rolling audio-percentile detector that listens across frequency bands for spikes like gunfire or callouts and triggers the same buffer extraction on its own, no hotkey required.',
+      chips:['WGC game capture','configurable buffer length','local only','no upload until save','auto-capture — in testing']
+    },
+    {
+      bg:'rgba(108,79,216,0.13)', color:'var(--violet-dim)',
+      svg:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.6"/><path d="M10 5.5v4.5l3 1.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+      step:'02 · coordinated save (patent pending)',
+      title:'One save. Every angle. The same moment.',
+      body:'When a save is triggered, the server broadcasts a server-stamped timestamp to every connected client simultaneously. Accounting for clock drift and network latency, each POV is extracted from the exact same instant in game time.',
+      chips:['server clock authority','drift-corrected sync','USPTO App. #64/111,818']
+    },
+    {
+      bg:'rgba(57,211,160,0.1)', color:'var(--teal)',
+      svg:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 10h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M13 6.5l3.5 3.5-3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 3v14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity=".4"/></svg>',
+      step:'03 · buffer extraction',
+      title:'FFmpeg slices the moment — still on your machine',
+      body:'Each client receives the sync timestamp and instructs its local FFmpeg process to slice the correct segment from the ring buffer, encoding with GPU hardware acceleration. Only the finished clip transmits — raw footage never leaves your PC.',
+      chips:['NVENC hardware encoding','local FFmpeg process','async · non-blocking']
+    },
+    {
+      bg:'rgba(216,168,56,0.11)', color:'var(--amber)',
+      svg:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 12.5V4.5M7 7.5l3-3 3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.5 14.5s0 3 6.5 3 6.5-3 6.5-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+      step:'04 · cloud storage & optional processing',
+      title:'Uploaded to the cloud, indexed by the server',
+      body:'Each clip uploads directly from the player\'s machine to cloud storage. The server tracks every upload and can kick off optional jobs: a composite render stitching all POVs, or an AI Reel auto-editing across angles. Clips expire per your plan\'s retention window.',
+      chips:['DigitalOcean Spaces','composite render (opt.)','AI Reel — T3/T4 only']
+    },
+    {
+      bg:'rgba(240,165,189,0.1)', color:'var(--rose)',
+      svg:'<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.6"/><path d="M8.5 7l5 3-5 3V7z" fill="currentColor" opacity=".85"/></svg>',
+      step:'05 · web player',
+      title:'One link. Every POV. Perfectly in sync.',
+      body:'A shareable session link serves the multi-POV web player to anyone with the URL — no account required to watch. Stored timestamps keep streams synchronized as you scrub or switch angles. Signed-in viewers can drop timestamped Quick Comments directly on a POV clip, which surface as overlays at the exact moment they were left — handy for a coach or IGL calling out a specific frame. Composite and AI Reel exports stay gated to paid tiers.',
+      chips:['no account to view','synchronized scrubbing','quick comments — overlay']
+    }
+  ];
+
+  let pipelineCur = 0;
+
+  function buildPipelineDots(){
+    const dotsEl = document.getElementById('pipelineDots');
+    if (!dotsEl) return;
+    dotsEl.innerHTML = PIPELINE_STAGES.map((_, i) => `<div class="navdot" onclick="showStage(${i})"></div>`).join('');
+  }
+
+  function showStage(i){
+    const prevEl = document.getElementById('s' + pipelineCur);
+    if (prevEl) prevEl.classList.remove('active');
+    pipelineCur = i;
+    const nextEl = document.getElementById('s' + i);
+    if (nextEl) nextEl.classList.add('active');
+
+    document.querySelectorAll('#pipelineDots .navdot').forEach((d, idx) => d.classList.toggle('on', idx === i));
+
+    const d = PIPELINE_STAGES[i];
+    const iconEl = document.getElementById('d-icon');
+    iconEl.style.background = d.bg;
+    iconEl.innerHTML = `<span style="color:${d.color}">${d.svg}</span>`;
+    document.getElementById('d-step').textContent = d.step;
+    document.getElementById('d-title').textContent = d.title;
+    document.getElementById('d-body').textContent = d.body;
+    document.getElementById('d-chips').innerHTML = d.chips.map(c => `<span class="chip">${c}</span>`).join('');
+  }
+
+  function nextStage(){ showStage((pipelineCur + 1) % PIPELINE_STAGES.length); }
+  function prevStage(){ showStage((pipelineCur - 1 + PIPELINE_STAGES.length) % PIPELINE_STAGES.length); }
+
+  const pipelineFlow = document.getElementById('flow');
+  if (pipelineFlow) {
+    buildPipelineDots();
+    showStage(0);
+
+    let pipelineAuto = setInterval(nextStage, 10000);
+    pipelineFlow.addEventListener('mouseenter', () => clearInterval(pipelineAuto));
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) clearInterval(pipelineAuto);
+    });
   }
 </script>
 
