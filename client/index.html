@@ -546,7 +546,7 @@
               </svg>
             </button>
           </div>
-          <span class="version-tag">v0.1.37</span>
+          <span class="version-tag">v0.1.39</span>
         </div>
         <button class="btn-secondary btn-sm" onclick="openSettings()">⚙ Settings</button>
       </div>
@@ -1480,6 +1480,29 @@
         }
       }
 
+      // Auto-capture window open: the Save button changes meaning from
+      // "grab the last N seconds" to "cut the running window here."
+      // Single owner of the Save button's label and enabled state. Every
+      // path that used to write btn.innerHTML directly calls this instead —
+      // four independent writers was how the label drifted out of sync.
+      function updateSaveButtonLabel() {
+        var btn = document.getElementById('saveBtn');
+        if (!btn) return;
+        if (window.highlightCooldownActive) return; // the countdown owns the label
+
+        if (window.autoCaptureWindowActive) {
+          btn.innerHTML = '⏹ Save Auto-Capture Now';
+          btn.disabled = !window.isRecordingActive;
+          return;
+        }
+
+        var hk = '<span id="saveBtnHotkey">' + window.currentHotkey + '</span>';
+        btn.innerHTML = window.autoCaptureEnabled
+          ? '💾 Save Last ' + formatDuration(window.sessionClipDuration) + ' (' + hk + ')'
+          : '💾 Save Highlight (or press ' + hk + ')';
+        btn.disabled = !(window.isRecordingActive && window.bufferReady);
+      }
+      
 
       // =====================
       // CLIP DURATION
@@ -2347,6 +2370,7 @@
         window.autoCaptureEnabled = enabled;
         ipcRenderer.invoke('set-user-pref', 'autoCaptureEnabled', enabled);
         document.getElementById('acSubSettings').style.display = enabled ? 'block' : 'none';
+        updateSaveButtonLabel();
         hudLog('system', enabled ? '👂 Auto-Highlight Detection enabled' : 'Auto-Highlight Detection disabled', 'info');
         if (enabled && window.isRecordingActive) {
           if (window._liveDesktopStream) window.acAttachDesktop(window._liveDesktopStream);
@@ -2509,9 +2533,8 @@
         window.socket.on('highlight-unlocked', function() {
           if (window.highlightCooldownTimer) { clearInterval(window.highlightCooldownTimer); window.highlightCooldownTimer = null; }
           window.highlightCooldownActive = false;
-          var btn = document.getElementById('saveBtn');
-          btn.innerHTML = '💾 Save Highlight (or press <span id="saveBtnHotkey">'+window.currentHotkey+'</span>)';
-          btn.disabled = !(window.isRecordingActive && window.bufferReady);
+          updateSaveButtonLabel();
+          // The countdown interval was the only thing that restored the status
           // The countdown interval was the only thing that restored the status
           // line. Killing it early left "Buffering..." on screen forever.
           restoreReadyStatus();
@@ -2525,6 +2548,7 @@
           var wasActive = window.autoCaptureWindowActive;
           window.autoCaptureWindowActive = true;
           acSetActiveWindowVisual(true);
+          updateSaveButtonLabel();
           ipcRenderer.send('auto-capture-active', true);
           if (!wasActive) {
             hudLog('activity', '👂 Auto-capture detecting action — recording until it settles...', 'broadcast');
@@ -2535,17 +2559,25 @@
           acSetActiveWindowVisual(false);
           ipcRenderer.send('auto-capture-active', false);
           hudLog('activity', '🎬 Auto-capture window closed (' + (d.elapsedMs/1000).toFixed(0) + 's) — saving...', 'broadcast');
+          updateSaveButtonLabel();
         });
+
         window.socket.on('auto-capture-cancel', function(d) {
           window.autoCaptureWindowActive = false;
           acSetActiveWindowVisual(false);
           ipcRenderer.send('auto-capture-active', false);
           hudLog('system', '👂 Auto-capture: false alarm, too short to save', 'info');
+          updateSaveButtonLabel();
         });
 
+        var FATAL_SESSION_ERRORS = /session not found|session is full|username already taken|already in a session|invalid session code/i;
         window.socket.on('error-message', function(d) {
-          if (d.message && d.message.includes('cooldown')) { hudLog('activity','⏳ '+d.message,'info'); return; }
-          alert('Session error: '+d.message);
+          var msg = (d && d.message) || 'Unknown error';
+          if (!FATAL_SESSION_ERRORS.test(msg)) {
+            hudLog('activity', '⏳ ' + msg, 'info');
+            return;
+          }
+          alert('Session error: ' + msg);
           if (window.socket) { window.socket.disconnect(); window.socket = null; }
         });
 
@@ -2745,7 +2777,7 @@
         document.getElementById('statusText').textContent = '● Ready — save a highlight anytime';
         document.getElementById('statusText').className = 'status-bar ready';
         document.getElementById('statusHelp').textContent = 'Click Save or press ' + window.currentHotkey + ' to capture the last ' + formatDuration(window.sessionClipDuration) + ' of gameplay';
-        if (!window.highlightCooldownActive) document.getElementById('saveBtn').disabled = false;
+        updateSaveButtonLabel();
         hudLog('system','🎬 Buffer ready — highlights can be saved','success');
       });
 
@@ -3070,6 +3102,14 @@
       // SAVE HIGHLIGHT
       // =====================
       window.saveHighlight = function() {
+        // Auto-capture is mid-window: Save means "cut it here", saving from
+        // the moment detection started up to now. Falls through to the normal
+        // fixed-duration save when no window is open.
+        if (window.autoCaptureWindowActive && window.socket && window.currentSessionCode && window.isRecordingActive) {
+          window.socket.emit('auto-capture-commit');
+          hudLog('activity', '⏹ Cutting auto-capture window here — saving...', 'broadcast');
+          return;
+        }
         if (window.highlightCooldownActive) return;
         if (!window.isRecordingActive) return;
         if (!window.bufferReady) { hudLog('system','⏳ Buffer not ready yet','error'); return; }
@@ -3093,8 +3133,7 @@
        var btn = document.getElementById('saveBtn');
        btn.innerHTML = '⏳ '+remaining+'s before next save';
        btn.disabled = true;
-        
-       // Update status bar to reflect cooldown
+
        document.getElementById('statusText').textContent = '● Cooldown — buffer refilling...';
        document.getElementById('statusText').className = 'status-bar buffering';
        document.getElementById('statusHelp').textContent = 'Next highlight available in ' + remaining + ' seconds';
@@ -3105,9 +3144,7 @@
            clearInterval(window.highlightCooldownTimer);
            window.highlightCooldownTimer = null;
            window.highlightCooldownActive = false;
-           btn.innerHTML = '💾 Save Highlight (or press <span id="saveBtnHotkey">'+window.currentHotkey+'</span>)';
-           btn.disabled = !(window.isRecordingActive && window.bufferReady);
-
+           updateSaveButtonLabel();
            restoreReadyStatus();
          } else {
            btn.innerHTML = '⏳ '+remaining+'s before next save';
@@ -3482,10 +3519,10 @@
 
       window.updateSettings = function() {
        ipcRenderer.send('update-settings', {
-         bufferSeconds: '180',
-         fps: parseInt(document.getElementById('fpsSelect').value),
-         resolution: document.getElementById('resolutionSelect').value,
-         hdr: document.getElementById('hdrSelect').value === 'hdr'
+        bufferSeconds: 40,
+        fps: parseInt(document.getElementById('fpsSelect').value),
+        resolution: document.getElementById('resolutionSelect').value,
+        hdr: document.getElementById('hdrSelect').value === 'hdr'
        });
       };
       window.addEventListener('DOMContentLoaded', function() {

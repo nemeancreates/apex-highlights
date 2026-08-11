@@ -83,7 +83,7 @@ function initSockets(io) {
         clipDuration: session.clipDuration,
         expiresAt: session.expiresAt || null,
         maxClips: session.maxClips || null,
-        clipsUsed: session.highlightCount || 0,
+        clipsUsed: weightedClipsUsed,
         commentSettings: session.commentSettings ? JSON.parse(session.commentSettings) : { filterMode: 'all', topN: 0 },
         members: session.members.map(m => ({
           username: m.username,

@@ -49,7 +49,7 @@ function clipWeightForDuration(durationMs) {
 // exhausted. Map old cap values to their new seconds-based equivalent by
 // value (the four old numbers are unique, so no tier lookup needed), and
 // recompute each upload's weight from its stored durationMs where available.
-const OLD_CAP_MIGRATION = { 20: 1800, 75: 43200, 175: 86400, 300: 144000 };
+const OLD_CAP_MIGRATION = { 20: 3600, 75: 43200, 175: 86400, 300: 144000 };
 function migrateLegacyCaps(session) {
   let changed = false;
   if (typeof session.maxClips === 'number' && OLD_CAP_MIGRATION[session.maxClips] !== undefined) {

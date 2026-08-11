@@ -97,7 +97,7 @@ function initSessionRoutes(app) {
       clipDuration: session.clipDuration,
       maxMembers: session.maxMembers || MAX_MEMBERS_PER_SESSION,
       maxClips: session.maxClips || null,
-      clipsUsed: session.highlightCount || 0,
+      clipsUsed: (session.uploads || []).reduce((sum, u) => sum + (u.clipWeight || 1), 0),
       members: session.members.map(m => ({
         username: m.username,
         isRecording: m.isRecording,

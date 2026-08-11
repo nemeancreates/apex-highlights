@@ -24,6 +24,12 @@ const DEFAULT_SETTLE_MS = 3000;                 // fallback if a client omits se
 const MIN_SETTLE_MS = 1000;                     // sanity floor — a hostile/buggy client can't set this to 0
 const MAX_SETTLE_MS = 20000;                    // sanity ceiling — matches the longest planned genre window (battle royale)
 
+// A manual commit arriving seconds after detection opened would otherwise
+// produce a 2-second clip. Floor it at the session's normal clip length so
+// a fast press still yields something watchable — same footage the button
+// would have grabbed if auto-capture were off.
+const MIN_COMMIT_MS = 30000;
+
 // Auto-capture-only tier gate. Free-tier hosts never get auto-capture,
 // regardless of who in the squad is triggering peaks — matches "if the
 // host isn't t2+, silently ignore" from the design discussion.
@@ -47,9 +53,12 @@ function resetAutoCaptureState(session) {
   session.autoCapturePeakTs = 0;
 }
 
-// Fires when the settle timer expires (quiet long enough) OR the hard cap
-// is hit. Either path ends up here; `forced` distinguishes them for logging.
-function endAutoCapture(io, sessionCode, session, forced) {
+// Fires when the settle timer expires (quiet long enough), the hard cap is
+// hit, or a member presses Save mid-window. `forced` distinguishes timer
+// expiry from the other two for logging; `ignoreMinActive` is set only by
+// an explicit press — the press IS the signal that this is worth keeping,
+// so the noise floor doesn't apply.
+function endAutoCapture(io, sessionCode, session, forced, ignoreMinActive) {
   if (!session.autoCaptureActive) return;
 
   const now = Date.now();
@@ -58,7 +67,7 @@ function endAutoCapture(io, sessionCode, session, forced) {
 
   clearAutoCaptureTimers(session);
 
-  if (elapsed < minActive) {
+  if (!ignoreMinActive && elapsed < minActive) {
     // Too short to be worth a clip — a single shot or door slam, not a
     // real moment. Reset silently, no save, no squad notification beyond
     // the cancel event (lets clients drop any "listening" UI state).
@@ -68,11 +77,15 @@ function endAutoCapture(io, sessionCode, session, forced) {
     return;
   }
 
-  const cappedElapsed = Math.min(elapsed, MAX_AUTO_CAPTURE_MS);
+  const cappedElapsed = Math.min(
+    MAX_AUTO_CAPTURE_MS,
+    ignoreMinActive ? Math.max(elapsed, MIN_COMMIT_MS) : elapsed
+  );
   const startTs = session.autoCaptureStartTs;
 
   log('info', 'auto_capture_end', {
-    session: sessionCode, elapsedMs: cappedElapsed, forced: !!forced,
+    session: sessionCode, elapsedMs: cappedElapsed, rawElapsedMs: elapsed,
+    forced: !!forced, committed: !!ignoreMinActive,
     triggeredBy: session._autoTriggerUsername
   });
 
@@ -85,11 +98,9 @@ function endAutoCapture(io, sessionCode, session, forced) {
   const username = session._autoTriggerUsername || session.createdBy;
   resetAutoCaptureState(session);
 
-  // Anchor the save at the END of the window (startTs + elapsed) — this
-  // reuses fireCoordinatedHighlight's existing 90/10 split logic (10%
-  // post-capture after the trigger moment), which for a duration equal
-  // to the full ACTIVE window means clients extract back from "now"
-  // across the whole span that was actually active.
+  // Anchor the save at the END of the window. main.js's 'auto' branch cuts
+  // [end - duration, end], so passing the full window length makes every
+  // client extract the exact span that was active.
   fireCoordinatedHighlight(io, sessionCode, session, username, startTs + cappedElapsed, cappedElapsed, 'auto');
 }
 
@@ -97,8 +108,7 @@ function registerAutoCaptureHandlers(io, socket) {
   // ================================
   // auto-peak — a member's client detected an audio spike. Starts the
   // ACTIVE window if idle, or extends/resets the settle timer if already
-  // active. This is the ONLY inbound auto-capture event; everything else
-  // is server-driven timers broadcasting out.
+  // active.
   // ================================
   socket.on('auto-peak', (payload) => {
     if (!checkSocketRate(socket.id)) return;
@@ -122,7 +132,6 @@ function registerAutoCaptureHandlers(io, socket) {
     minActiveMs = Math.min(60000, Math.max(5000, minActiveMs));
 
     if (!session.autoCaptureActive) {
-      // Entering ACTIVE for the first time this cycle.
       session.autoCaptureActive = true;
       session.autoCaptureStartTs = now;
       session.autoCapturePeakTs = now;
@@ -136,26 +145,45 @@ function registerAutoCaptureHandlers(io, socket) {
       // regardless of how many more peaks reset the settle timer.
       session._autoHardCapTimer = setTimeout(() => {
         const current = sessions.get(sessionCode);
-        if (current) endAutoCapture(io, sessionCode, current, true);
+        if (current) endAutoCapture(io, sessionCode, current, true, false);
       }, MAX_AUTO_CAPTURE_MS);
     } else {
       session.autoCapturePeakTs = now;
     }
 
     // (Re)schedule the settle timer off THIS peak — any member's peak
-    // resets it, which is what "holds the state for the whole squad"
-    // means in practice: the window only ends once EVERYONE has been
-    // quiet for settleMs.
+    // resets it, so the window only ends once EVERYONE has been quiet.
     if (session._autoSettleTimer) clearTimeout(session._autoSettleTimer);
     session._autoSettleTimer = setTimeout(() => {
       const current = sessions.get(sessionCode);
-      if (current) endAutoCapture(io, sessionCode, current, false);
+      if (current) endAutoCapture(io, sessionCode, current, false, false);
     }, settleMs);
   });
 
+  // ================================
+  // auto-capture-commit — a member pressed Save while an ACTIVE window was
+  // open. Ends the window immediately and saves from where detection began
+  // to now, instead of the fixed clip duration. minActiveMs is deliberately
+  // bypassed: an explicit press is the strongest possible signal.
+  // ================================
+  socket.on('auto-capture-commit', () => {
+    if (!checkSocketRate(socket.id)) return;
+    const sessionCode = socket.sessionCode;
+    if (!sessionCode) return;
+    const session = sessions.get(sessionCode);
+    if (!session || !session.autoCaptureActive) return;
+
+    log('info', 'auto_capture_commit', {
+      session: sessionCode,
+      by: socket.username,
+      elapsedMs: Date.now() - session.autoCaptureStartTs
+    });
+    endAutoCapture(io, sessionCode, session, true, true);
+  });
+
   // Defensive cleanup: if the triggering member disconnects mid-window,
-  // the window itself keeps running (other members' peaks still count),
-  // but if the WHOLE session empties out, don't leave orphaned timers.
+  // the window keeps running (other members' peaks still count), but if
+  // the WHOLE session empties out, don't leave orphaned timers.
   socket.on('disconnect', () => {
     const sessionCode = socket.sessionCode;
     if (!sessionCode) return;
