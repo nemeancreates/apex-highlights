@@ -444,8 +444,8 @@ const RESOLUTION_MAP = {
 };
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.40',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.40.exe',
+  version: '0.1.41',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.41.exe',
   releaseNotes: 'Discord Integration.'
 };
 

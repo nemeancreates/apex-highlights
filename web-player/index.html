@@ -908,6 +908,11 @@
       flex-direction: column;
       background: #0f2318;
       border-left: 2px solid #12251a;
+      /* Without these the column grows to fit all pills instead of clamping
+         to the layout height, so .hl-pill-list's overflow-y never engages
+         and the list just runs off the bottom of the window. */
+      min-height: 0;
+      overflow: hidden;
     }
 
     /* Panels on the left. row-reverse mirrors the whole layout in one move —

@@ -557,7 +557,7 @@
               </svg>
             </button>
           </div>
-          <span class="version-tag">v0.1.40</span>
+          <span class="version-tag">v0.1.41</span>
         </div>
         <button class="btn-secondary btn-sm" onclick="openSettings()">⚙ Settings</button>
       </div>
@@ -2480,6 +2480,7 @@
           document.getElementById('sessionCodeDisplay').textContent = data.code;
           document.getElementById('playerLink').href = 'https://peakabu.app/player?code=' + data.code;
           updateClipDurationUI(data.clipDuration || 30000, window.isSessionHost);
+          window.sessionMemberCount = (data.members || []).length;
           updateMemberList(data.members);
           hudLog('squad','Joined session ' + data.code,'success');
           reportBufferCapacity();
@@ -2518,8 +2519,14 @@
           if (window.currentSessionCode) setSessionHistoryGame(window.currentSessionCode, d.game);
         });
 
-        window.socket.on('member-joined', function(d) { addMember(d.username, false); hudLog('squad',d.username+' joined','success'); });
-        window.socket.on('member-left', function(d) { removeMember(d.username); hudLog('squad',d.username+' left','info'); });
+        window.socket.on('member-joined', function(d) {
+          window.sessionMemberCount = (window.sessionMemberCount || 1) + 1;
+          addMember(d.username, false); hudLog('squad',d.username+' joined','success');
+        });
+        window.socket.on('member-left', function(d) {
+          window.sessionMemberCount = Math.max(1, (window.sessionMemberCount || 2) - 1);
+          removeMember(d.username); hudLog('squad',d.username+' left','info');
+        });
         window.socket.on('clip-count-update', function(d) { updateClipCounter(d.used, d.max); });
         window.socket.on('session-migrated', function(d) {
           hudLog('squad', 'Host started a new session — moving to ' + d.newCode, 'broadcast');
@@ -2780,7 +2787,12 @@
         window.isRecordingActive = true;
         window.bufferReady = false;
 
-        document.getElementById('startBtn').textContent = '↺ Switch Monitor';
+        // Switch Monitor re-entered startRecording() on a live capture — the
+        // exact path that spawned a second ddagrab session. Main guards it
+        // now, but it never reliably switched anything. End the session and
+        // start again to change monitor.
+        document.getElementById('startBtn').textContent = '\u25CF Recording...';
+        document.getElementById('startBtn').disabled = true;
         document.getElementById('stopBtn').disabled = false;
         document.getElementById('monitorActive').style.display = 'block';
         document.getElementById('monitorActiveName').textContent = sourceLabel;
@@ -2823,6 +2835,21 @@
         } catch (e) {}
       };
 
+      // Main sends this when capture stops on its own — crash past the
+      // restart limit, disk-critical auto-stop. Without it the UI would sit
+      // on a disabled "Recording..." button with no way back.
+      ipcRenderer.on('recording-stopped', function() {
+        if (!window.isRecordingActive) return;
+        window.isRecordingActive = false;
+        window.bufferReady = false;
+        document.getElementById('startBtn').textContent = '▶ Start Highlight Session';
+        document.getElementById('startBtn').disabled = false;
+        document.getElementById('stopBtn').disabled = true;
+        document.getElementById('saveBtn').disabled = true;
+        document.getElementById('monitorActive').style.display = 'none';
+        restoreReadyStatus();
+      });
+
       ipcRenderer.on('buffer-ready', function() {
         if (!window.isRecordingActive) return;
         window.bufferReady = true;
@@ -2846,6 +2873,7 @@
       window.autoCaptureWindowActive = false;
       ipcRenderer.send('auto-capture-active', false);
       document.getElementById('startBtn').textContent = '▶ Start Highlight Session';
+      document.getElementById('startBtn').disabled = false;
       document.getElementById('stopBtn').disabled = true;
       document.getElementById('saveBtn').disabled = true;
       document.getElementById('monitorActive').style.display = 'none';
@@ -3508,8 +3536,16 @@
       ipcRenderer.on('highlight-error', function(ev, msg) { hudLog('activity','❌ '+msg,'error'); });
 
       ipcRenderer.on('clip-clamped', function(ev, d) {
-        hudLog('activity', '⚠ Only ' + d.actualSec + 's of the requested ' + d.requestedSec +
-          's was still in your buffer — lost ' + d.lostSec + 's off the start. This POV will start later than your squad\'s.', 'error');
+        // Solo sessions have no squad to desync from — the clip is just
+        // shorter than asked for, which is worth saying plainly without
+        // implying a sync problem that can't exist with one POV.
+        var solo = !window.sessionMemberCount || window.sessionMemberCount < 2;
+        var msg = '⚠ Only ' + d.actualSec + 's of the requested ' + d.requestedSec +
+          's was in your buffer — lost ' + d.lostSec + 's off the start.';
+        msg += solo
+          ? ' Buffer was still filling; wait a bit longer after starting.'
+          : ' This POV will start later than your squad\'s.';
+        hudLog('activity', msg, 'error');
       });
 
       ipcRenderer.on('upload-progress', function(ev, pct) {
