@@ -2749,6 +2749,19 @@
         }).catch(function() {});
       }
 
+      // Buffer depth grows as a session runs and collapses to zero on a
+      // mid-session capture restart, so a one-shot report at join goes stale
+      // in both directions. Re-report on a slow interval.
+      window._bufCapTimer = null;
+      function startBufferCapacityReports() {
+        stopBufferCapacityReports();
+        reportBufferCapacity();
+        window._bufCapTimer = setInterval(reportBufferCapacity, 20000);
+      }
+      function stopBufferCapacityReports() {
+        if (window._bufCapTimer) { clearInterval(window._bufCapTimer); window._bufCapTimer = null; }
+      }
+
       window.startRecording = async function() {
         var monitorIndex = parseInt(document.getElementById('monitorSelect').value);
         var sourceLabel = document.getElementById('monitorSelect').options[document.getElementById('monitorSelect').selectedIndex].textContent;
@@ -2789,7 +2802,7 @@
 
         if (window.socket) {
           window.socket.emit('recording-status', { isRecording: true });
-          reportBufferCapacity();
+          startBufferCapacityReports();
         }
 
         // Best-effort game label for the session history row + squad view.
@@ -2839,6 +2852,7 @@
       document.getElementById('statusText').textContent = '● Idle';
       document.getElementById('statusText').className = 'status-bar idle';
       document.getElementById('statusHelp').textContent = 'Start recording to begin buffering gameplay';
+      stopBufferCapacityReports();
       if (window.socket) window.socket.emit('recording-status', { isRecording: false });
     };
 

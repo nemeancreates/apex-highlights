@@ -909,6 +909,16 @@
       background: #0f2318;
       border-left: 2px solid #12251a;
     }
+
+    /* Panels on the left. row-reverse mirrors the whole layout in one move —
+       highlights, then players/audio, then video. The separator borders have
+       to swap sides too or they end up on the outer edge of the window. */
+    .main-layout.panels-left { flex-direction: row-reverse; }
+    .main-layout.panels-left .right-panel,
+    .main-layout.panels-left .highlights-column {
+      border-left: none;
+      border-right: 2px solid #12251a;
+    }
     .highlights-column h3 {
       color: #39d3a0;
       font-size: 12px;
@@ -2195,9 +2205,15 @@
       // Clock hands off to the next still-playing POV when the current one
       // ends or gets parked — a frozen master time made the drift corrector
       // snap longer POVs back to it forever.
-      const clock = loaded.find(v => !v.element.ended && !v.element.paused)
-                 || loaded.find(v => !v.element.ended)
-                 || loaded[0];
+      // Pick by OFFSET, not array order. Master time is currentTime+offset,
+      // so handing the clock between POVs with different offsets teleports
+      // the timeline by the offset delta — forward when a late POV grabs it,
+      // backward when it ends and an early one takes over. Anchoring on the
+      // earliest-starting POV keeps master time monotonic.
+      const byOffset = loaded.slice().sort((a, b) => (a.offset || 0) - (b.offset || 0));
+      const clock = byOffset.find(v => !v.element.ended && !v.element.paused)
+                 || byOffset.find(v => !v.element.ended)
+                 || byOffset[0];
       return (clock.element.currentTime || 0) + (clock.offset || 0);
     }
 
@@ -2815,10 +2831,16 @@
         // Clock source: first POV still playing. When the shortest POV ends
         // first, the clock hands off instead of freezing — a frozen master
         // time made the corrector loop longer POVs on their final seconds.
-        const clock = loaded.find(v => !v.element.ended && !v.element.paused)
-                   || loaded.find(v => !v.element.ended)
-                   || loaded[0];
-        const masterTime = (clock.element.currentTime || 0) + (clock.offset || 0);
+        // Pick by OFFSET, not array order. Master time is currentTime+offset,
+      // so handing the clock between POVs with different offsets teleports
+      // the timeline by the offset delta — forward when a late POV grabs it,
+      // backward when it ends and an early one takes over. Anchoring on the
+      // earliest-starting POV keeps master time monotonic.
+      const byOffset = loaded.slice().sort((a, b) => (a.offset || 0) - (b.offset || 0));
+      const clock = byOffset.find(v => !v.element.ended && !v.element.paused)
+                 || byOffset.find(v => !v.element.ended)
+                 || byOffset[0];
+      const masterTime = (clock.element.currentTime || 0) + (clock.offset || 0);
         document.getElementById('timeDisplay').textContent = formatTime(masterTime) + ' / ' + formatTime(masterDuration);
         updateNeedle();
 
@@ -2830,7 +2852,21 @@
             if (v.missing || v.processing || !v.loaded || v === clock) return;
             if (v.element.ended || v.element.seeking) return;
             const target = masterTime - v.offset;
-            if (target < 0 || target > v.element.duration) return;
+            // A POV whose window hasn't started (or has finished) must be
+            // held still. Returning early left it free-running from its own
+            // frame 0 while the rest of the squad played the real moment.
+            if (target < 0) {
+              if (!v.element.paused) v.element.pause();
+              if (v.element.currentTime > 0.05) v.element.currentTime = 0;
+              return;
+            }
+            if (target > v.element.duration) {
+              if (!v.element.paused) v.element.pause();
+              return;
+            }
+            if (v.element.paused && isPlaying && !v.element.ended) {
+              v.element.play().catch(() => {});
+            }
             const drift = v.element.currentTime - target;
             const absDrift = Math.abs(drift);
             if (absDrift > HARD_RESYNC) {
@@ -3877,6 +3913,16 @@
     return row;
   }
 
+  // --- panel side (left/right), persisted per device ---
+  function paApplyPanelSide() {
+    var left = false;
+    try { left = localStorage.getItem('pa_panels_left') === '1'; } catch (e) {}
+    var layout = document.querySelector('.main-layout');
+    if (layout) layout.classList.toggle('panels-left', left);
+    return left;
+  }
+  paApplyPanelSide();
+
   // --- settings gear ---
   function paEnsureGear() {
     var actions = document.querySelector('.header-actions');
@@ -3890,7 +3936,7 @@
 
   function paOpenSettings() {
     paCloseAll();
-    var ui = paBuildPanel('paSettingsPanel', 'Comments');
+    var ui = paBuildPanel('paSettingsPanel', 'Settings');
 
     var t1 = document.createElement('label'); t1.className = 'pa-toggle';
     var l1 = document.createElement('span'); l1.textContent = 'Show comments over the video';
@@ -3904,6 +3950,26 @@
     var n1 = document.createElement('div'); n1.className = 'pa-note';
     n1.textContent = 'Turn this off for a clean watch. Your choice only, saved on this device.';
     ui.body.appendChild(t1); ui.body.appendChild(n1);
+
+    var hrL = document.createElement('hr');
+    hrL.style.cssText = 'border:none;border-top:1px solid #1e3527;margin:6px 0 10px;';
+    ui.body.appendChild(hrL);
+
+   // Distinct names — the host block below re-declares t2/l2/c2/n2 with
+    // var, which is function-scoped, so sharing them made this checkbox's
+    // closure read the host's comments-enabled box instead of its own.
+    var tSide = document.createElement('label'); tSide.className = 'pa-toggle';
+    var lSide = document.createElement('span'); lSide.textContent = 'Panels on the left side';
+    var cSide = document.createElement('input'); cSide.type = 'checkbox';
+    try { cSide.checked = localStorage.getItem('pa_panels_left') === '1'; } catch (e) {}
+    cSide.addEventListener('change', function () {
+      try { localStorage.setItem('pa_panels_left', cSide.checked ? '1' : '0'); } catch (e) {}
+      paApplyPanelSide();
+    });
+    tSide.appendChild(lSide); tSide.appendChild(cSide);
+    var nSide = document.createElement('div'); nSide.className = 'pa-note';
+    nSide.textContent = 'Moves Highlights and Players/Audio to the left of the video. Saved on this device.';
+    ui.body.appendChild(tSide); ui.body.appendChild(nSide);
 
     if (paHost() && paToken()) {
       var hr = document.createElement('hr');

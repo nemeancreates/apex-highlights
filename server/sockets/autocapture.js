@@ -103,11 +103,14 @@ function endAutoCapture(io, sessionCode, session, forced, ignoreMinActive) {
     capMs,
     ignoreMinActive ? Math.max(elapsed, MIN_COMMIT_MS) : elapsed
   );
+  // The hard-cap timer fires at exactly capMs, so elapsed === cappedElapsed
+  // and a naive `<` comparison misses the very case this flag exists for.
+  const buffCapped = (cappedElapsed < elapsed) || (!!forced && !ignoreMinActive);
   const startTs = session.autoCaptureStartTs;
 
   log('info', 'auto_capture_end', {
     session: sessionCode, elapsedMs: cappedElapsed, rawElapsedMs: elapsed,
-    capMs, buffCapped: cappedElapsed < elapsed,
+    capMs, buffCapped,
     forced: !!forced, committed: !!ignoreMinActive,
     triggeredBy: session._autoTriggerUsername
   });
@@ -117,7 +120,7 @@ function endAutoCapture(io, sessionCode, session, forced, ignoreMinActive) {
     elapsedMs: cappedElapsed,
     rawElapsedMs: elapsed,
     capMs,
-    buffCapped: cappedElapsed < elapsed,
+    buffCapped,
     forced: !!forced
   });
 

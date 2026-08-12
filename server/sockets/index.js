@@ -226,6 +226,27 @@ function initSockets(io) {
       });
     });
 
+    // ================================
+    // BUFFER CAPACITY — seconds of history this client's ring buffer holds.
+    // Auto-capture caps its window to the smallest value among recording
+    // members so every POV can produce the full span; without it, a
+    // short-buffer client silently clamps its extraction and desyncs.
+    // ================================
+    socket.on('buffer-capacity', ({ bufferSeconds }) => {
+      if (!checkSocketRate(socket.id)) return;
+      const sessionCode = socket.sessionCode;
+      if (!sessionCode) return;
+      const session = sessions.get(sessionCode);
+      if (!session) return;
+      if (typeof bufferSeconds !== 'number' || !isFinite(bufferSeconds)) return;
+
+      const clean = Math.min(3600, Math.max(10, Math.round(bufferSeconds)));
+      const member = session.members.find(m => m.socketId === socket.id);
+      if (member) member.bufferSeconds = clean;
+
+      log('info', 'buffer_capacity', { session: sessionCode, username: socket.username, bufferSeconds: clean });
+    });
+
     socket.on('recording-status', ({ isRecording }) => {
       if (!checkSocketRate(socket.id)) return;
       const sessionCode = socket.sessionCode;

@@ -664,6 +664,7 @@ let engineLadder = [];
 let engineIndex = 0;
 let stoppingIntentionally = false;
 let midSessionRestarts = 0;
+let midRestartTimer = null;
 const MAX_MID_SESSION_RESTARTS = 3;
 
 const ENGINE_LABELS = {
@@ -1315,6 +1316,23 @@ function parseCaptureHealth(text, engine) {
 
 function startRecording(monitor) {
   ensureFolders();
+
+  // Two ddagrab sessions on one monitor is not a supported configuration —
+  // they starve each other (dup= climbs), one eventually dies, and the
+  // orphan keeps writing chunks under its own session tag that the save
+  // path then mixes into a concat. Kill first, spawn second, never both.
+  if (ffmpegProcess && ffmpegProcess.exitCode === null) {
+    console.log('startRecording called while capture is still alive — killing the old process first');
+    const dying = ffmpegProcess;
+    ffmpegProcess = null;
+    stoppingIntentionally = true;
+    killFFmpegTree(dying).then(() => {
+      stoppingIntentionally = false;
+      startRecording(monitor);
+    });
+    return;
+  }
+
   currentMonitor = monitor;
 
   if (wgcCaptureMode && wgcSourceId) {
@@ -1456,7 +1474,9 @@ function startRecording(monitor) {
         mainWindow.webContents.send('capture-engine',
           `⚠ Capture process died — auto-restarting (${midSessionRestarts}/${MAX_MID_SESSION_RESTARTS})`);
       }
-      setTimeout(() => {
+      if (midRestartTimer) clearTimeout(midRestartTimer);
+      midRestartTimer = setTimeout(() => {
+        midRestartTimer = null;
         if (!stoppingIntentionally) {
           recordingSessionTag = Date.now();
           startRecording(currentMonitor);
@@ -1701,7 +1721,11 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     : (saveTimeUTC - clockOffset) + (0.1 * durationMs);
 
   const allVideoFiles = fs.readdirSync(BUFFER_DIR)
-    .filter(f => f.endsWith('.mp4') && !f.startsWith('temp_') && !f.startsWith('fs_') && !f.startsWith('wgc_'))
+    // Match the CURRENT session tag only. The birth-time filter below can't
+    // separate two captures that started ~2s apart, which is how a chunk
+    // still being written by an orphaned process ended up in a concat
+    // filelist ("moov atom not found" -> Failed to save highlight).
+    .filter(f => f.startsWith('chunk_' + recordingSessionTag + '_') && f.endsWith('.mp4'))
     .map(f => {
       const st = fs.statSync(path.join(BUFFER_DIR, f));
       return {
@@ -2398,6 +2422,10 @@ function createWindow() {
   ipcMain.on('session-disconnected', () => { currentSession = null; });
 
   ipcMain.on('start-recording', async (event, { monitorIndex, windowTitle }) => {
+    // A queued mid-session restart would spawn a SECOND capture ~1.5s after
+    // this one. ffmpegProcess is already null during that window, so the
+    // kill below sees nothing to kill.
+    if (midRestartTimer) { clearTimeout(midRestartTimer); midRestartTimer = null; }
     if (ffmpegProcess) {
       stoppingIntentionally = true;
       const dying = ffmpegProcess;
@@ -2443,6 +2471,7 @@ function createWindow() {
   });
 
   ipcMain.on('stop-recording', async () => {
+    if (midRestartTimer) { clearTimeout(midRestartTimer); midRestartTimer = null; }
     stopBufferReadyWatcher();
     stopPruneScheduler();        
     if (ffmpegProcess) {
@@ -2705,7 +2734,25 @@ function createWindow() {
     return clean.length >= 4 ? `https://peakabu.app/join/${clean}` : null;
   });
 
-  ipcMain.handle('get-buffer-seconds', () => maxChunks * CHUNK_SECONDS);
+  // Nominal buffer size (maxChunks * CHUNK_SECONDS) is a LIE for the first
+  // few minutes of a session and after any mid-session capture restart —
+  // recordingStartTime resets and every older chunk stops matching the
+  // birth-time filter in doSaveHighlight. Reporting the theoretical max
+  // there is what lets the server hand out a window this client cannot
+  // possibly fill, producing a short clip with a late startTimeUTC that
+  // the web player faithfully renders as a desynced POV.
+  ipcMain.handle('get-buffer-seconds', () => {
+    const nominal = maxChunks * CHUNK_SECONDS;
+    if (wgcCaptureMode) {
+      const usable = wgcFiles.filter(f => f.startUTC && fs.existsSync(f.path));
+      if (!usable.length) return 10;
+      const oldest = Math.min(...usable.map(f => f.startUTC));
+      return Math.max(10, Math.floor((Date.now() - oldest) / 1000));
+    }
+    if (!recordingStartTime) return 10;
+    const sinceStart = Math.floor((Date.now() - recordingStartTime) / 1000);
+    return Math.max(10, Math.min(nominal, sinceStart));
+  });
   ipcMain.handle('get-current-hotkey', () => customHotkey);
   ipcMain.handle('get-hotkey-registered', () => startupHotkeyRegistered);
 
