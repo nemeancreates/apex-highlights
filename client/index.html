@@ -352,6 +352,17 @@
       /* ===== Hotkey (hidden capture input) ===== */
       input#hotkeyCapture { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
       .hotkey-display { display: none; }
+      .hotkey-ctl { display: flex; flex-direction: column; align-items: center; gap: 3px; flex-shrink: 0; }
+      .hotkey-current { font-size: 10px; color: #5f7a6a; font-family: 'Consolas', monospace; letter-spacing: 0.5px; }
+      .hotkey-inline-hint {
+        display: none; margin-top: 8px; padding: 6px 9px; border-radius: 6px;
+        font-size: 12px; line-height: 1.35; background: #0c1c14;
+        border: 1px solid #24402e; color: #8fbfa3;
+      }
+      .hotkey-inline-hint.show { display: block; }
+      .hotkey-inline-hint.listening { border-color: #39d3a0; color: #39d3a0; }
+      .hotkey-inline-hint.ok { border-color: #1d9e75; color: #39d3a0; }
+      .hotkey-inline-hint.err { border-color: #7a3149; color: #f0a5bd; }
 
       /* ===== Upload progress ===== */
       .upload-progress-wrap { margin: 10px 0 0; display: none; }
@@ -801,9 +812,13 @@
               <div style="flex:1;">
                 <div class="status-bar idle" id="statusText">● Idle</div>
               </div>
-              <button class="btn-icon" id="hotkeyBtn" title="Change highlight hotkey" onclick="toggleHotkeyCapture()"
-                      style="width:36px;height:36px;font-size:18px;flex-shrink:0;">⌨</button>
+              <div class="hotkey-ctl">
+                <button class="btn-icon" id="hotkeyBtn" title="Change highlight hotkey" onclick="toggleHotkeyCapture()"
+                        style="width:36px;height:36px;font-size:18px;flex-shrink:0;">⌨</button>
+                <div class="hotkey-current" id="hotkeyCurrent">F9</div>
+              </div>
             </div>
+            <div class="hotkey-inline-hint" id="hotkeyInlineHint"></div>
 
             <!-- GAMEPAD BINDING -->
             <div style="margin-top:10px;padding-top:10px;border-top:1px solid #1e3527;">
@@ -1907,6 +1922,8 @@
         document.getElementById('hotkeyDisplay').textContent = hk;
         var span = document.getElementById('saveBtnHotkey');
         if (span) span.textContent = hk;
+        var cur = document.getElementById('hotkeyCurrent');
+        if (cur) cur.textContent = hk;
       }
 
       document.addEventListener('keydown', function(e) {
@@ -1929,18 +1946,38 @@
         parts.push(keyName);
         var hotkey = parts.join('+');
         window.capturingHotkey = false;
-        window.currentHotkey = hotkey;
+        // Do NOT adopt the new key yet. Main is the only thing that knows
+        // whether Windows actually granted it — claiming it here and then
+        // failing left the client showing a key main had never registered,
+        // which is why setting a key sometimes took two tries to stick.
+        window._hotkeyPending = hotkey;
         document.getElementById('hotkeyCapture').blur();
-        updateHotkeyDisplay(hotkey);
         document.getElementById('hotkeyDisplay').classList.remove('listening');
         document.getElementById('hotkeyBtn').textContent = 'Change';
-        document.getElementById('hotkeyHint').textContent = 'Hotkey saved';
+        document.getElementById('hotkeyHint').textContent = 'Registering ' + hotkey + '…';
         ipcRenderer.send('update-settings', { hotkey: hotkey });
       });
 
       ipcRenderer.on('hotkey-error', function(ev, msg) {
-        document.getElementById('hotkeyHint').textContent = '⚠ ' + msg;
+        window._hotkeyPending = null;
         updateHotkeyDisplay(window.currentHotkey);
+        updateSaveButtonLabel();
+        document.getElementById('hotkeyHint').textContent =
+          '⚠ ' + msg + ' Still using ' + window.currentHotkey + '.';
+      });
+
+      // Main confirms the key is actually registered with Windows. Only now
+      // does the client adopt it.
+      ipcRenderer.on('hotkey-updated', function(ev, hk) {
+        window._hotkeyPending = null;
+        window.currentHotkey = hk;
+        updateHotkeyDisplay(hk);
+        updateSaveButtonLabel();
+        document.getElementById('hotkeyHint').textContent = '✓ Hotkey set to ' + hk;
+        setTimeout(function() {
+          var el = document.getElementById('hotkeyInlineHint');
+          if (el && /✓ Hotkey set/.test(el.textContent)) el.classList.remove('show');
+        }, 2500);
       });
 
       // =====================
@@ -2445,6 +2482,7 @@
           updateClipDurationUI(data.clipDuration || 30000, window.isSessionHost);
           updateMemberList(data.members);
           hudLog('squad','Joined session ' + data.code,'success');
+          reportBufferCapacity();
           ipcRenderer.send('session-connected', { code: data.code, username: username });
           addSessionToHistory(data.code, window.isSessionHost ? 'host' : 'member', data.expiresAt);
           updateClipCounter(data.clipsUsed, data.maxClips);
@@ -2538,7 +2576,12 @@
           window.autoCaptureWindowActive = false;
           acSetActiveWindowVisual(false);
           ipcRenderer.send('auto-capture-active', false);
-          hudLog('activity', '🎬 Auto-capture window closed (' + (d.elapsedMs/1000).toFixed(0) + 's) — saving...', 'broadcast');
+          var closeMsg = '🎬 Auto-capture window closed (' + (d.elapsedMs/1000).toFixed(0) + 's) — saving...';
+          if (d.buffCapped) {
+            closeMsg = '🎬 Auto-capture ran ' + (d.rawElapsedMs/1000).toFixed(0) + 's — trimmed to ' +
+              (d.elapsedMs/1000).toFixed(0) + 's to fit the squad\'s buffer. Saving...';
+          }
+          hudLog('activity', closeMsg, 'broadcast');
           updateSaveButtonLabel();
         });
 
@@ -2693,6 +2736,19 @@
         } catch(err) { console.log('Audio capture failed:', err.name, err.message); }
       }
 
+      // Tells the server how many seconds of history this client's ring
+      // buffer holds. Auto-capture caps its window to the smallest value
+      // among recording members — a longer window would make short-buffer
+      // clients silently clamp their extraction and land out of sync.
+      function reportBufferCapacity() {
+        if (!window.socket || !window.currentSessionCode) return;
+        ipcRenderer.invoke('get-buffer-seconds').then(function(sec) {
+          if (window.socket && typeof sec === 'number') {
+            window.socket.emit('buffer-capacity', { bufferSeconds: sec });
+          }
+        }).catch(function() {});
+      }
+
       window.startRecording = async function() {
         var monitorIndex = parseInt(document.getElementById('monitorSelect').value);
         var sourceLabel = document.getElementById('monitorSelect').options[document.getElementById('monitorSelect').selectedIndex].textContent;
@@ -2731,7 +2787,10 @@
         await startAudioCapture();
         await startMicCapture();
 
-        if (window.socket) window.socket.emit('recording-status', { isRecording: true });
+        if (window.socket) {
+          window.socket.emit('recording-status', { isRecording: true });
+          reportBufferCapacity();
+        }
 
         // Best-effort game label for the session history row + squad view.
         // First detection wins server-side (see session-game-detected
@@ -3434,6 +3493,11 @@
       ipcRenderer.on('highlight-saved', function(ev, fp) { hudLog('activity','✅ Saved: '+fp,'success'); });
       ipcRenderer.on('highlight-error', function(ev, msg) { hudLog('activity','❌ '+msg,'error'); });
 
+      ipcRenderer.on('clip-clamped', function(ev, d) {
+        hudLog('activity', '⚠ Only ' + d.actualSec + 's of the requested ' + d.requestedSec +
+          's was still in your buffer — lost ' + d.lostSec + 's off the start. This POV will start later than your squad\'s.', 'error');
+      });
+
       ipcRenderer.on('upload-progress', function(ev, pct) {
         var wrap = document.getElementById('uploadProgressWrap');
         var fill = document.getElementById('uploadProgressFill');
@@ -3746,16 +3810,24 @@
 
         // The hotkey hint text now surfaces in the status help line while capturing,
         // since there's no dedicated hint element visible. Mirror hotkeyHint -> statusHelp.
+        // Hotkey feedback used to be mirrored into statusHelp, which lives in
+        // the Recording card at the bottom of the page — nowhere near the ⌨
+        // button being pressed. Route it to a hint line directly under the
+        // button instead.
         var hint = document.getElementById('hotkeyHint');
-        var statusHelp = document.getElementById('statusHelp');
-        if (hint && statusHelp) {
+        var inline = document.getElementById('hotkeyInlineHint');
+        if (hint && inline) {
           Object.defineProperty(hint, 'textContent', {
             configurable: true,
             set: function(v) {
               hint.setAttribute('data-text', v);
-              if (window.capturingHotkey || /Listening|Add Ctrl|not supported|saved|⚠/.test(v)) {
-                statusHelp.textContent = v;
-              }
+              inline.className = 'hotkey-inline-hint';
+              if (!v) return;
+              if (/^Listening|^Registering/.test(v)) inline.classList.add('listening');
+              else if (/^✓/.test(v)) inline.classList.add('ok');
+              else if (/^⚠|not supported|Add Ctrl/.test(v)) inline.classList.add('err');
+              inline.textContent = v;
+              inline.classList.add('show');
             },
             get: function() { return hint.getAttribute('data-text') || ''; }
           });

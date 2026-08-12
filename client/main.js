@@ -1764,6 +1764,24 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
 
   const effStart = Math.max(windowStartLocal, availableStart);
   const effEnd = Math.min(windowEndLocal, availableEnd);
+
+  // The buffer may not hold the whole requested window — short buffer setting,
+  // or a mid-session capture restart reset recordingStartTime and orphaned the
+  // older chunks. Clamping is silent by default, and produces a shorter clip
+  // with a LATER startTimeUTC than the rest of the squad: exactly the shape of
+  // a desynced POV. Never let this happen quietly again.
+  const clampedMs = Math.max(0, (windowEndLocal - windowStartLocal) - (effEnd - effStart));
+  if (clampedMs > 1500) {
+    console.log(`CLIP CLAMPED: requested ${((windowEndLocal - windowStartLocal) / 1000).toFixed(1)}s, ` +
+      `buffer held ${((effEnd - effStart) / 1000).toFixed(1)}s — lost ${(clampedMs / 1000).toFixed(1)}s off the start`);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('clip-clamped', {
+        requestedSec: +((windowEndLocal - windowStartLocal) / 1000).toFixed(1),
+        actualSec: +((effEnd - effStart) / 1000).toFixed(1),
+        lostSec: +(clampedMs / 1000).toFixed(1)
+      });
+    }
+  }
   const trimOffsetSec = Math.max(0, (effStart - availableStart) / 1000);
   const trimDurationSec = Math.max(0.5, (effEnd - effStart) / 1000);
 
@@ -1805,6 +1823,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     frameRate: recordFps,
     clockOffsetMs: clockOffset,
     syncUncertaintyMs: clockUncertaintyMs,
+    clampedMs: Math.round(clampedMs),
     userId: null,
     sessionId: currentSession ? currentSession.code : null,
     coordinated_timestamp: coordinatedTs || null
@@ -2525,6 +2544,7 @@ function createWindow() {
         prefs.hotkey = customHotkey;
         saveUserPreferences(prefs);
         console.log(`Hotkey set to: ${customHotkey}`);
+        mainWindow.webContents.send('hotkey-updated', customHotkey);
       } else {
         if (previousHotkey) globalShortcut.register(previousHotkey, onHotkeyPressed);
         mainWindow.webContents.send('hotkey-error', `Failed to register ${settings.hotkey}. Another app may be using it.`);
@@ -2685,6 +2705,7 @@ function createWindow() {
     return clean.length >= 4 ? `https://peakabu.app/join/${clean}` : null;
   });
 
+  ipcMain.handle('get-buffer-seconds', () => maxChunks * CHUNK_SECONDS);
   ipcMain.handle('get-current-hotkey', () => customHotkey);
   ipcMain.handle('get-hotkey-registered', () => startupHotkeyRegistered);
 

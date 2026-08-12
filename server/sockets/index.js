@@ -65,6 +65,7 @@ function initSockets(io) {
         username: cleanUsername,
         tier: joinerTier,
         isRecording: false,
+        bufferSeconds: null,   // reported by the client via 'buffer-capacity'
         joinedAt: new Date().toISOString()
       };
 

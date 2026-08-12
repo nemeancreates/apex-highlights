@@ -18,11 +18,20 @@ const { checkSocketRate } = require('../ratelimit');
 const { getEffectiveTier } = require('../auth');
 const { fireCoordinatedHighlight } = require('./highlights');
 
-const MAX_AUTO_CAPTURE_MS = 6 * 60 * 1000;      // hard cap — forces a save regardless of settle state
+const MAX_AUTO_CAPTURE_MS = 3 * 60 * 1000;      // absolute hard cap — forces a save regardless of settle state
 const DEFAULT_MIN_ACTIVE_MS = 20 * 1000;        // floor below which a peak-then-quiet is discarded as noise
 const DEFAULT_SETTLE_MS = 3000;                 // fallback if a client omits settleMs
 const MIN_SETTLE_MS = 1000;                     // sanity floor — a hostile/buggy client can't set this to 0
 const MAX_SETTLE_MS = 20000;                    // sanity ceiling — matches the longest planned genre window (battle royale)
+
+// Every client extracts from a finite ring buffer. A window longer than the
+// SMALLEST recording member's buffer makes that client silently clamp to
+// whatever history it still holds — producing a shorter clip with a LATER
+// startTimeUTC than everyone else, which the player faithfully renders as a
+// desynced POV. Cap every window to what the whole squad can deliver.
+const BUFFER_SAFETY_MS = 25000;   // postDelay (11.5s) + partially-consumed oldest chunk (10s) + slack
+const MIN_SQUAD_CAP_MS = 30000;   // never cap below a normal manual clip
+const REARM_COOLDOWN_MS = 4000;   // ignore peaks briefly after a window closes
 
 // A manual commit arriving seconds after detection opened would otherwise
 // produce a 2-second clip. Floor it at the session's normal clip length so
@@ -39,6 +48,18 @@ function hostMeetsAutoCaptureTier(session) {
   const hostUser = users.get(session.createdBy.toLowerCase());
   const tier = getEffectiveTier(hostUser);
   return tier === 't2' || tier === 't3' || tier === 't4';
+}
+
+// Smallest usable buffer among members who are actually recording. Members
+// who never reported a buffer size are ignored rather than assumed — an old
+// client that doesn't send 'buffer-capacity' shouldn't drag the cap down to
+// a guess, and a non-recording member's buffer is irrelevant.
+function squadCapMs(session) {
+  const caps = (session.members || [])
+    .filter(m => m.isRecording && typeof m.bufferSeconds === 'number' && m.bufferSeconds > 0)
+    .map(m => (m.bufferSeconds * 1000) - BUFFER_SAFETY_MS);
+  if (caps.length === 0) return MAX_AUTO_CAPTURE_MS;
+  return Math.max(MIN_SQUAD_CAP_MS, Math.min(MAX_AUTO_CAPTURE_MS, Math.min(...caps)));
 }
 
 function clearAutoCaptureTimers(session) {
@@ -77,14 +98,16 @@ function endAutoCapture(io, sessionCode, session, forced, ignoreMinActive) {
     return;
   }
 
+  const capMs = squadCapMs(session);
   const cappedElapsed = Math.min(
-    MAX_AUTO_CAPTURE_MS,
+    capMs,
     ignoreMinActive ? Math.max(elapsed, MIN_COMMIT_MS) : elapsed
   );
   const startTs = session.autoCaptureStartTs;
 
   log('info', 'auto_capture_end', {
     session: sessionCode, elapsedMs: cappedElapsed, rawElapsedMs: elapsed,
+    capMs, buffCapped: cappedElapsed < elapsed,
     forced: !!forced, committed: !!ignoreMinActive,
     triggeredBy: session._autoTriggerUsername
   });
@@ -92,11 +115,15 @@ function endAutoCapture(io, sessionCode, session, forced, ignoreMinActive) {
   io.to(sessionCode).emit('auto-capture-end', {
     startTs,
     elapsedMs: cappedElapsed,
+    rawElapsedMs: elapsed,
+    capMs,
+    buffCapped: cappedElapsed < elapsed,
     forced: !!forced
   });
 
   const username = session._autoTriggerUsername || session.createdBy;
   resetAutoCaptureState(session);
+  session._autoRearmUntil = Date.now() + REARM_COOLDOWN_MS;
 
   // Anchor the save at the END of the window. main.js's 'auto' branch cuts
   // [end - duration, end], so passing the full window length makes every
@@ -119,7 +146,17 @@ function registerAutoCaptureHandlers(io, socket) {
 
     if (!hostMeetsAutoCaptureTier(session)) return; // silent — client shows its own upgrade prompt
 
+    // Nobody recording means nothing to extract from. Without this, windows
+    // open and fire coordinated saves at members with empty buffers, who burn
+    // the retry loop and error out.
+    if (!(session.members || []).some(m => m.isRecording)) return;
+
     const now = Date.now();
+
+    // Brief cooldown after a window closes. Sustained combat audio otherwise
+    // reopens a window milliseconds after the last one closed, chaining
+    // multi-minute captures back to back.
+    if (session._autoRearmUntil && now < session._autoRearmUntil) return;
 
     // Sanitize client-supplied timing so a bad/hostile client can't set an
     // absurd settle window or hold the squad's session in a weird state.
@@ -138,15 +175,16 @@ function registerAutoCaptureHandlers(io, socket) {
       session._autoMinActiveMs = minActiveMs;
       session._autoTriggerUsername = socket.username;
 
-      log('info', 'auto_capture_start', { session: sessionCode, username: socket.username, settleMs, minActiveMs });
-      io.to(sessionCode).emit('auto-capture-start', { startTs: now, username: socket.username });
+      const capMs = squadCapMs(session);
+      log('info', 'auto_capture_start', { session: sessionCode, username: socket.username, settleMs, minActiveMs, capMs });
+      io.to(sessionCode).emit('auto-capture-start', { startTs: now, username: socket.username, capMs });
 
-      // Hard cap: fires once, MAX_AUTO_CAPTURE_MS after ACTIVE began,
-      // regardless of how many more peaks reset the settle timer.
+      // Hard cap: fires once, capMs after ACTIVE began, regardless of how
+      // many more peaks reset the settle timer.
       session._autoHardCapTimer = setTimeout(() => {
         const current = sessions.get(sessionCode);
         if (current) endAutoCapture(io, sessionCode, current, true, false);
-      }, MAX_AUTO_CAPTURE_MS);
+      }, capMs);
     } else {
       session.autoCapturePeakTs = now;
     }
