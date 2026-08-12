@@ -546,7 +546,7 @@
               </svg>
             </button>
           </div>
-          <span class="version-tag">v0.1.39</span>
+          <span class="version-tag">v0.1.40</span>
         </div>
         <button class="btn-secondary btn-sm" onclick="openSettings()">⚙ Settings</button>
       </div>
@@ -2061,26 +2061,64 @@
         return window._acAudioCtx;
       }
 
+      // ===== BAND SPLIT =====
+      // One broadband RMS number can't distinguish "gunfire is loud" from
+      // "something new just happened while gunfire was loud". Splitting the
+      // spectrum into four bands and running the percentile machinery on
+      // EACH means a kill ding in the 3-8kHz band can clear its own
+      // threshold even while the 1-3kHz gunfire band is fully saturated.
+      // At 48kHz with fftSize 2048 there are 1024 bins of ~23.4Hz each.
+      var AC_BANDS = [
+        { name: 'sub',  loHz: 20,   hiHz: 200  },  // explosions, ordnance thump
+        { name: 'low',  loHz: 200,  hiHz: 800  },  // voices, engines, footsteps
+        { name: 'mid',  loHz: 800,  hiHz: 3000 },  // gunfire body — saturates first
+        { name: 'high', loHz: 3000, hiHz: 8000 }   // hitmarkers, dings, glass
+      ];
+
       function acCreateAnalyzer(stream) {
         var ctx = acGetAudioCtx();
         var source = ctx.createMediaStreamSource(stream);
         var analyser = ctx.createAnalyser();
-        analyser.fftSize = 512;
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0;   // we do our own smoothing downstream
         source.connect(analyser);
-        return { source: source, analyser: analyser, data: new Uint8Array(analyser.fftSize), rolling: [], lastEmit: 0, timer: null };
+
+        // Bin ranges are derived from the CONTEXT's real sample rate, not an
+        // assumed 48kHz — a 44.1kHz device would otherwise have every band
+        // shifted about 9% high.
+        var nyquist = ctx.sampleRate / 2;
+        var binCount = analyser.frequencyBinCount;
+        var bands = AC_BANDS.map(function(b) {
+          return {
+            name: b.name,
+            lo: Math.max(1, Math.floor(b.loHz / nyquist * binCount)),
+            hi: Math.min(binCount - 1, Math.ceil(b.hiHz / nyquist * binCount)),
+            ring: null, ringCap: 0, ringLen: 0, ringIdx: 0,
+            sortBuf: null, threshold: undefined,
+            peakHistory: [], debugPct: 0, debugMedian: 0, lastVal: 0
+          };
+        });
+
+        return {
+          source: source, analyser: analyser,
+          freq: new Uint8Array(binCount),
+          bands: bands, sampleCount: 0, lastEmit: 0, timer: null
+        };
       }
 
-      function acReadRms(state) {
-        state.analyser.getByteTimeDomainData(state.data);
-        var sum = 0;
-        for (var i = 0; i < state.data.length; i++) {
-          var v = (state.data[i] - 128) / 128;
-          sum += v * v;
+      // Mean magnitude across each band's bins, normalized to 0-1 so the
+      // existing AC_FLOOR constants stay on the same scale they were tuned on.
+      function acReadBands(state) {
+        state.analyser.getByteFrequencyData(state.freq);
+        for (var b = 0; b < state.bands.length; b++) {
+          var band = state.bands[b];
+          var sum = 0;
+          for (var i = band.lo; i <= band.hi; i++) sum += state.freq[i];
+          band.lastVal = (sum / (band.hi - band.lo + 1)) / 255;
         }
-        return Math.sqrt(sum / state.data.length);
       }
 
-      window._acDebug = false; // flip to false once tuned
+      window._acDebug = true; // per-band tuning logs — set false before release
 
       var AC_POLL_MS = 50;                   // analyser poll interval, referenced by the ring sizing below
       var AC_FLOOR = 0.010;                  // absolute floor — near-silence can never trigger
@@ -2103,107 +2141,106 @@
       var AC_MIC_EXTRA_MULTIPLIER = 2.3; // mic median gate on top of the profile's
 
 
-      // ===== COLD-START NOISE FLOOR CALIBRATION =====
-      // The EMA seeds itself from whatever RMS happened to be playing the
-      // instant a source attaches — if that's mid-fight or mid-rotation the
-      // baseline starts inflated and every threshold after it is wrong until
-      // the EMA slowly drifts down. This samples actual quiet stretches over
-      // the opening minutes and REPLACES the seed with the true floor.
-      // Every 2 min, a 10s window, 5 checks => covers the first 10 min.
-      // Each window is only accepted if it stayed genuinely quiet (below a
-      // loose ceiling), so a check landing on a fight is discarded, not forced.
-      // The MINIMUM of valid samples becomes the anchor.
-      var AC_CAL_INTERVAL_MS   = 120000; // 2 min between checks
-      var AC_CAL_WINDOW_MS     = 10000;  // 10s sampling window
-      var AC_CAL_TOTAL_CHECKS  = 5;      // 5 checks => first 10 min
-      var AC_CAL_QUIET_CEILING = 3;      // window valid only if avg RMS < 3 * AC_FLOOR
+      
 
       // Fixed-capacity ring of recent RMS values. Overwrites oldest in place
       // so there's no array churn at 20 polls/sec.
-      function acPushSample(state, rms) {
-        if (!state.ring) {
-          state.ringCap = Math.max(50, Math.round(AC_PCT_WINDOW_MS / AC_POLL_MS));
-          state.ring = new Float32Array(state.ringCap);
-          state.ringLen = 0;
-          state.ringIdx = 0;
+      function acPushSample(band, val) {
+        if (!band.ring) {
+          band.ringCap = Math.max(50, Math.round(AC_PCT_WINDOW_MS / AC_POLL_MS));
+          band.ring = new Float32Array(band.ringCap);
+          band.ringLen = 0;
+          band.ringIdx = 0;
         }
-        state.ring[state.ringIdx] = rms;
-        state.ringIdx = (state.ringIdx + 1) % state.ringCap;
-        if (state.ringLen < state.ringCap) state.ringLen++;
+        band.ring[band.ringIdx] = val;
+        band.ringIdx = (band.ringIdx + 1) % band.ringCap;
+        if (band.ringLen < band.ringCap) band.ringLen++;
       }
 
       // Sorts a copy of the ring and pulls the percentile + median. Called
       // once every AC_PCT_RECALC_EVERY polls, not every poll — a 900-element
       // TypedArray sort twice a second is nothing, 20x a second is waste.
-      function acRecomputeThreshold(state, profile, isMic) {
-        var n = state.ringLen;
-        if (n < 10) { state.threshold = Infinity; return; }
+      function acRecomputeThreshold(band, profile, isMic) {
+        var n = band.ringLen;
+        if (n < 10) { band.threshold = Infinity; return; }
 
-        if (!state.sortBuf || state.sortBuf.length !== n) state.sortBuf = new Float32Array(n);
-        state.sortBuf.set(state.ring.subarray(0, n));
-        state.sortBuf.sort(); // TypedArray sort is numeric ascending by default
+        if (!band.sortBuf || band.sortBuf.length !== n) band.sortBuf = new Float32Array(n);
+        band.sortBuf.set(band.ring.subarray(0, n));
+        band.sortBuf.sort(); // TypedArray sort is numeric ascending by default
 
         var pct = isMic ? Math.min(0.995, profile.pct + 0.02) : profile.pct;
-        var pctVal = state.sortBuf[Math.min(n - 1, Math.floor(pct * n))];
-        var median = state.sortBuf[Math.floor(0.5 * n)];
+        var pctVal = band.sortBuf[Math.min(n - 1, Math.floor(pct * n))];
+        var median = band.sortBuf[Math.floor(0.5 * n)];
 
         var medMult = profile.medianMult * (isMic ? AC_MIC_EXTRA_MULTIPLIER : 1);
         var floor = isMic ? AC_FLOOR_MIC : AC_FLOOR;
 
         // All three gates must be cleared. pctVal handles quiet stretches,
         // median*mult handles uniformly-loud stretches, floor handles silence.
-        state.threshold = Math.max(pctVal, median * medMult, floor);
-        state.debugPct = pctVal;
-        state.debugMedian = median;
+        band.threshold = Math.max(pctVal, median * medMult, floor);
+        band.debugPct = pctVal;
+        band.debugMedian = median;
       }
 
       function acPollSource(sourceName, state) {
         if (!state) return;
         var isMic = (sourceName === 'mic');
-        var rms = acReadRms(state);
         var profile = AUTO_CAPTURE_PROFILES[window.autoCaptureSensitivity] || AUTO_CAPTURE_PROFILES.medium;
 
-        state.sampleCount = (state.sampleCount || 0) + 1;
+        acReadBands(state);
+        state.sampleCount++;
 
-        // Freeze the baseline while a capture window is open. Without this the
-        // ring fills with combat audio during a long fight, the percentile
-        // climbs, real peaks stop clearing it, and the window closes mid-fight
-        // — the exact failure the old EMA freeze existed to prevent.
-        if (!window.autoCaptureWindowActive) acPushSample(state, rms);
+        var recalc = (state.sampleCount % AC_PCT_RECALC_EVERY === 0);
+        var requiredPolls = window.autoCaptureWindowActive ? AC_SUSTAIN_POLLS_KEEPALIVE : AC_SUSTAIN_POLLS;
+        var anyPeak = false;
+        var anySustained = false;
+        var warmedUp = false;
 
-        if (state.threshold === undefined ||
-            state.sampleCount % AC_PCT_RECALC_EVERY === 0) {
-          acRecomputeThreshold(state, profile, isMic);
+        for (var b = 0; b < state.bands.length; b++) {
+          var band = state.bands[b];
+
+          // Freeze the baseline while a capture window is open, same reason
+          // as before: otherwise the ring fills with combat audio, the
+          // percentile climbs, and the window closes mid-fight.
+          if (!window.autoCaptureWindowActive) acPushSample(band, band.lastVal);
+
+          if (band.threshold === undefined || recalc) {
+            acRecomputeThreshold(band, profile, isMic);
+          }
+
+          var isPeak = band.lastVal > band.threshold;
+          if (isPeak) anyPeak = true;
+          if (band.ringLen >= AC_PCT_MIN_FILL) warmedUp = true;
+
+          // Rolling sustain window, per band — counting peaks across a recent
+          // span tolerates the sub-100ms gaps between shots.
+          band.peakHistory.push(isPeak ? 1 : 0);
+          if (band.peakHistory.length > AC_SUSTAIN_WINDOW) band.peakHistory.shift();
+          var inWin = 0;
+          for (var pi = 0; pi < band.peakHistory.length; pi++) inWin += band.peakHistory[pi];
+          band.peaksInWindow = inWin;
+
+          // ANY band sustaining is enough to trigger. Deliberately permissive
+          // while tuning — the delete window covers false positives, and
+          // per-band logs tell us which band actually carries each game.
+          if (inWin >= requiredPolls) anySustained = true;
         }
 
-        var isPeak = rms > state.threshold;
-        var warmedUp = state.ringLen >= AC_PCT_MIN_FILL;
+        var sustainedPeak = warmedUp && anySustained;
 
-        // Rolling sustain window — unchanged, this part worked. Counting peaks
-        // across a recent span tolerates the sub-100ms gaps between shots that
-        // a strict-consecutive counter kept tripping over.
-        if (!state.peakHistory) state.peakHistory = [];
-        state.peakHistory.push(isPeak ? 1 : 0);
-        if (state.peakHistory.length > AC_SUSTAIN_WINDOW) state.peakHistory.shift();
-        var peaksInWindow = 0;
-        for (var pi = 0; pi < state.peakHistory.length; pi++) peaksInWindow += state.peakHistory[pi];
-        state.consecutivePeaks = peaksInWindow;
-
-        var requiredPolls = window.autoCaptureWindowActive ? AC_SUSTAIN_POLLS_KEEPALIVE : AC_SUSTAIN_POLLS;
-        var sustainedPeak = warmedUp && peaksInWindow >= requiredPolls;
-
-        if (window._acDebug && (isPeak || (state._debugCounter = (state._debugCounter || 0) + 1) % 20 === 0)) {
+        if (window._acDebug && (anyPeak || (state._debugCounter = (state._debugCounter || 0) + 1) % 20 === 0)) {
+          var parts = state.bands.map(function(bd) {
+            return bd.name + '=' + bd.lastVal.toFixed(4) +
+                   '/' + (isFinite(bd.threshold) ? bd.threshold.toFixed(4) : 'inf') +
+                   '(' + (bd.peaksInWindow || 0) + ')';
+          }).join(' ');
           console.log('[ac-' + sourceName + '] sens=' + window.autoCaptureSensitivity +
-                      ' rms=' + rms.toFixed(4) +
-                      ' thr=' + (isFinite(state.threshold) ? state.threshold.toFixed(4) : 'inf') +
-                      ' p=' + (state.debugPct || 0).toFixed(4) +
-                      ' med=' + (state.debugMedian || 0).toFixed(4) +
-                      ' fill=' + state.ringLen + '/' + (state.ringCap || 0) +
-                      ' isPeak=' + isPeak + ' inWin=' + peaksInWindow +
+                      ' ' + parts +
+                      ' fill=' + state.bands[0].ringLen + '/' + (state.bands[0].ringCap || 0) +
                       ' sustained=' + sustainedPeak);
         }
 
-        if (isPeak) acFlashMonkey(sourceName);
+        if (anyPeak) acFlashMonkey(sourceName);
 
         if (sustainedPeak) {
           var now = Date.now();
@@ -2214,60 +2251,7 @@
         }
       }
 
-      // ---- Cold-start calibration lifecycle (per source state) ----
-      function acStartCalibration(sourceName, state) {
-        state.calChecksDone = 0;
-        state.calValidSamples = [];
-        state.calDone = false;
-        state.calWindowActive = false;
-        if (state.calTimer) clearTimeout(state.calTimer);
-        acScheduleNextCalCheck(sourceName, state);
-      }
-
-      function acScheduleNextCalCheck(sourceName, state) {
-        if (state.calChecksDone >= AC_CAL_TOTAL_CHECKS) { acFinalizeCalibration(sourceName, state); return; }
-        state.calTimer = setTimeout(function() {
-          // Open a 10s window; acPollSource folds RMS in while it's active.
-          state.calWindowActive = true;
-          state.calWindowRmsSum = 0;
-          state.calWindowRmsCount = 0;
-          state.calTimer = setTimeout(function() { acCloseCalWindow(sourceName, state); }, AC_CAL_WINDOW_MS);
-        }, AC_CAL_INTERVAL_MS);
-      }
-
-      function acCloseCalWindow(sourceName, state) {
-        state.calWindowActive = false;
-        state.calChecksDone++;
-        if (state.calWindowRmsCount > 0) {
-          var avg = state.calWindowRmsSum / state.calWindowRmsCount;
-          var ceiling = AC_FLOOR * AC_CAL_QUIET_CEILING;
-          if (avg < ceiling) {
-            state.calValidSamples.push(avg);
-            if (window._acDebug) console.log('[ac-cal] ' + sourceName + ' check ' + state.calChecksDone + '/' + AC_CAL_TOTAL_CHECKS + ' ACCEPTED avg=' + avg.toFixed(4) + ' (ceiling=' + ceiling.toFixed(4) + ')');
-          } else if (window._acDebug) {
-            console.log('[ac-cal] ' + sourceName + ' check ' + state.calChecksDone + '/' + AC_CAL_TOTAL_CHECKS + ' REJECTED avg=' + avg.toFixed(4) + ' (too loud, ceiling=' + ceiling.toFixed(4) + ')');
-          }
-        }
-        acScheduleNextCalCheck(sourceName, state);
-      }
-
-      function acFinalizeCalibration(sourceName, state) {
-        state.calDone = true;
-        if (!state.calValidSamples.length) {
-          if (window._acDebug) console.log('[ac-cal] ' + sourceName + ' NO valid quiet samples — keeping adaptive EMA as-is');
-          return;
-        }
-        var floor = Math.min.apply(null, state.calValidSamples);
-        // REPLACE the cold-start seed. The EMA can still drift from here if
-        // the game's genuine ambient level changes after minute 10.
-        state.ema = floor;
-        if (window._acDebug) console.log('[ac-cal] ' + sourceName + ' CALIBRATED — EMA reset to floor=' + floor.toFixed(4) + ' from ' + state.calValidSamples.length + ' valid sample(s)');
-      }
-
-      function acStopCalibration(state) {
-        if (state && state.calTimer) { clearTimeout(state.calTimer); state.calTimer = null; }
-        if (state) state.calWindowActive = false;
-      }
+   
 
 
       function acReportPeak(profile) {
@@ -2303,7 +2287,6 @@
         var state = acCreateAnalyzer(stream);
         state.timer = setInterval(function() { acPollSource('desktop', state); }, AC_POLL_MS); // TEMP: was 200ms — testing sampling-gap theory
         window._acDesktop = state;
-        acStartCalibration('desktop', state);
         acSetMonkeyListening('desktop', true);
       };
       window.acAttachMic = function(stream) {
@@ -2312,13 +2295,11 @@
         var state = acCreateAnalyzer(stream);
         state.timer = setInterval(function() { acPollSource('mic', state); }, AC_POLL_MS); // TEMP: was 200ms — testing sampling-gap theory
         window._acMic = state;
-        acStartCalibration('mic', state);
         acSetMonkeyListening('mic', true);
       };
       function acDetachDesktop() {
         if (window._acDesktop) {
           clearInterval(window._acDesktop.timer);
-          acStopCalibration(window._acDesktop);
           try { window._acDesktop.source.disconnect(); } catch (e) {}
           window._acDesktop = null;
         }
@@ -2327,7 +2308,6 @@
       function acDetachMic() {
         if (window._acMic) {
           clearInterval(window._acMic.timer);
-          acStopCalibration(window._acMic);
           try { window._acMic.source.disconnect(); } catch (e) {}
           window._acMic = null;
         }

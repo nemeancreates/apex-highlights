@@ -444,8 +444,8 @@ const RESOLUTION_MAP = {
 };
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.39',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.39.exe',
+  version: '0.1.40',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.40.exe',
   releaseNotes: 'Discord Integration.'
 };
 
@@ -504,6 +504,19 @@ let wgcFileStreams = {};
 let wgcFiles = [];
 let wgcRolloverTimer = null;
 let wgcSaveInFlight = false;
+let pipelineBusy = false;
+const pendingSaveQueue = [];
+
+function releaseSavePipeline() {
+  if (!pipelineBusy) return; // already released, avoid double-drain
+  pipelineBusy = false;
+  wgcSaveInFlight = false;
+  if (pendingSaveQueue.length > 0) {
+    const next = pendingSaveQueue.shift();
+    console.log(`Save pipeline free — starting queued ${next.triggerSource || 'manual'} save`);
+    doSaveHighlight(next.saveTimeUTC, next.clipChunks, next.durationMs, next.coordinatedTs, 0, next.triggerSource);
+  }
+}
 let wgcMidSessionRestarts = 0;
 const WGC_MAX_RESTARTS = 3;
 
@@ -1484,6 +1497,17 @@ function saveHighlight(coordinatedTimestamp = null, clipDurationMs = null, trigg
 }
 
 function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = null, retryCount = 0, triggerSource = null) {
+  if (retryCount === 0) {
+    if (pipelineBusy) {
+      console.log(`Save pipeline busy — queuing ${triggerSource || 'manual'} save`);
+      pendingSaveQueue.push({ saveTimeUTC, clipChunks, durationMs, coordinatedTs, triggerSource });
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('save-queued', { triggerSource: triggerSource || 'manual' });
+      }
+      return;
+    }
+    pipelineBusy = true;
+  }
   if (wgcCaptureMode && wgcFiles.length > 0) {
     wgcSaveInFlight = true;
 
@@ -1501,7 +1525,6 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
 
     const covering = wgcFindCoveringFiles(windowStartLocal, windowEndLocal);
     if (!covering) {
-      wgcSaveInFlight = false;
       console.log(`WGC save: no covering buffer files, retry=${retryCount}`);
       if (retryCount < 4) {
         if (retryCount === 0 && mainWindow && !mainWindow.isDestroyed()) {
@@ -1510,6 +1533,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
         setTimeout(() => doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs, retryCount + 1, triggerSource), 3000);
         return;
       }
+      releaseSavePipeline();
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('highlight-error', 'Window capture buffer not ready yet');
       }
@@ -1543,7 +1567,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
          recordResolution ? (recordResolution.height <= 480 ? '3M' : '5M') : '8M'];
 
     function wgcExtractFail(msg) {
-      wgcSaveInFlight = false;
+      releaseSavePipeline();
       console.log('WGC save failed:', msg);
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('highlight-error', msg);
@@ -1570,7 +1594,6 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
 
       extract.stderr.on('data', d => console.log('WGC extract:', d.toString()));
       extract.on('close', (code) => {
-        wgcSaveInFlight = false;
         if (code === 0 && fs.existsSync(outputPath)) {
           wgcFinishSave(outputPath, metadataPath, metadata, durationMs, windowStartLocal);
         } else {
@@ -1640,7 +1663,6 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
 
           concat.stderr.on('data', d => console.log('WGC concat:', d.toString()));
           concat.on('close', (codeC) => {
-            wgcSaveInFlight = false;
             cleanupParts();
             if (codeC === 0 && fs.existsSync(outputPath)) {
               wgcFinishSave(outputPath, metadataPath, metadata, durationMs, windowStartLocal);
@@ -1723,6 +1745,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     }
 
     console.log('No covering chunks after retries');
+    releaseSavePipeline();
     if (mainWindow && !mainWindow.isDestroyed()) {
       const dead = !(ffmpegProcess && ffmpegProcess.exitCode === null);
       mainWindow.webContents.send('highlight-error', dead
@@ -1744,6 +1767,18 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   const trimOffsetSec = Math.max(0, (effStart - availableStart) / 1000);
   const trimDurationSec = Math.max(0.5, (effEnd - effStart) / 1000);
 
+  // Capture writes a keyframe every 1.000s (-g fps -keyint_min fps) and every
+  // chunk is exactly 10.000s, so flooring the offset lands dead on a keyframe
+  // in the concatenated file. That lets STEP 2 be a stream copy instead of a
+  // full NVENC re-encode — no second encoder session fighting live capture.
+  // Cost: up to 1s of extra footage on the head. The web player aligns POVs
+  // purely on metadata.startTimeUTC, so sync stays exact as long as we report
+  // the REAL first frame (realStart), not the requested one (effStart).
+  const alignedOffsetSec = Math.floor(trimOffsetSec);
+  const headExtraSec = trimOffsetSec - alignedOffsetSec;
+  const realStart = effStart - (headExtraSec * 1000);
+  const copyDurationSec = trimDurationSec + headExtraSec;
+
   // Time-window dedup: remember where this clip ended so a later save can
   // tell if it's genuinely re-covering old ground. Chunks are NOT consumed.
   lastHighlightBoundary = effEnd;
@@ -1758,12 +1793,12 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   const outputPath = path.join(CLIPS_DIR, `highlight-${timestamp}.mp4`);
   const metadataPath = path.join(CLIPS_DIR, `highlight-${timestamp}.json`);
 
-  const realDurationMs = Math.round(trimDurationSec * 1000);
+  const realDurationMs = Math.round(copyDurationSec * 1000);
   const metadata = {
     clipId: crypto.randomUUID(),
     version: 2,
     saveTimeUTC,
-    startTimeUTC: Math.round(effStart + clockOffset),
+    startTimeUTC: Math.round(realStart + clockOffset),
     endTimeUTC: Math.round(effEnd + clockOffset),
     durationMs: realDurationMs,
     clipDurationMs: durationMs,
@@ -1787,11 +1822,11 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   // Audio offsets now key off the TRIMMED video start (effStart), not chunk
   // index math — the old `firstChunkNum * CHUNK_SECONDS` calculation assumed
   // the clip began exactly on a chunk boundary, which trimming breaks.
-  const clipSpanSec = trimDurationSec + 1.0;
-  const audioDeltaSec = audioFirstChunkTime ? (effStart - audioFirstChunkTime) / 1000 : 0;
+  const clipSpanSec = copyDurationSec + 1.0;
+  const audioDeltaSec = audioFirstChunkTime ? (realStart - audioFirstChunkTime) / 1000 : 0;
   const audioSkipSec = Math.max(0, audioDeltaSec);
   const audioDelaySec = Math.max(0, -audioDeltaSec);
-  const micDeltaSec = micFirstChunkTime ? (effStart - micFirstChunkTime) / 1000 : 0;
+  const micDeltaSec = micFirstChunkTime ? (realStart - micFirstChunkTime) / 1000 : 0;
   const micSkipSec = Math.max(0, micDeltaSec);
   const micDelaySec = Math.max(0, -micDeltaSec);
 
@@ -1815,6 +1850,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('highlight-saved', outputPath);
     }
+    releaseSavePipeline();
     uploadHighlight(outputPath, metadataPath);
   }
 
@@ -1826,6 +1862,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
       finishSuccess();
     } catch (e) {
       cleanupTemps();
+      releaseSavePipeline();
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('highlight-error', 'Failed to save highlight');
       }
@@ -1833,15 +1870,17 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   }
 
   // STEP 1: concat covering chunks (stream copy — fast, no quality loss)
-  const concatVideo = spawn(getFFmpegPath(), [
+  const concatVideo = spawnFFmpegLow([
+    '-hide_banner', '-nostats', '-loglevel', 'error',
     '-f', 'concat', '-safe', '0', '-i', videoListPath,
     '-c', 'copy', '-y', tempConcatPath
-  ], { windowsHide: true });
-  concatVideo.stderr.on('data', d => console.log('ConcatVideo:', d.toString()));
+  ]);
+  concatVideo.stderr.on('data', d => queueFFmpegLog('ConcatVideo: ' + d.toString()));
 
   concatVideo.on('close', (concatCode) => {
     if (concatCode !== 0 || !fs.existsSync(tempConcatPath)) {
       cleanupTemps();
+      releaseSavePipeline();
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('highlight-error', 'Failed to concat video');
       }
@@ -1851,15 +1890,14 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     // STEP 2: trim to the exact window. This is the step that lets clip
     // length match the real ACTIVE window instead of snapping to 10s.
     const trim = spawnFFmpegLow([
-      '-fflags', '+genpts+igndts',
+      '-ss', alignedOffsetSec.toFixed(3),
       '-i', tempConcatPath,
-      '-ss', trimOffsetSec.toFixed(3),
-      '-t', trimDurationSec.toFixed(3),
-      ...trimEncoderArgs,
-      '-fps_mode', 'cfr', '-r', String(recordFps),
-      '-an', '-movflags', '+faststart',
+      '-t', copyDurationSec.toFixed(3),
+      '-c', 'copy', '-an',
+      '-avoid_negative_ts', 'make_zero',
+      '-movflags', '+faststart',
       '-y', tempVideoPath
-    ], { windowsHide: true });
+    ]);
 
     trim.stderr.on('data', d => console.log('TrimVideo:', d.toString()));
     trim.on('close', (trimCode) => {
@@ -1868,6 +1906,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
 
       if (trimCode !== 0 || !fs.existsSync(tempVideoPath)) {
         cleanupTemps();
+        releaseSavePipeline();
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('highlight-error', 'Failed to trim highlight to window');
         }
@@ -1881,14 +1920,15 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
 
       // STEP 3: audio repair + merge (unchanged behavior, new offsets)
       console.log(`Audio sync: skip=${audioSkipSec.toFixed(3)}s delay=${audioDelaySec.toFixed(3)}s span=${clipSpanSec.toFixed(1)}s`);
-      const repairAudio = spawn(getFFmpegPath(), [
+      const repairAudio = spawnFFmpegLow([
+        '-hide_banner', '-nostats', '-loglevel', 'error',
         '-fflags', '+genpts+igndts', '-err_detect', 'ignore_err',
         '-i', hlAudioPath,
         '-af', 'aresample=async=1000:first_pts=0',
         '-ss', audioSkipSec.toFixed(3), '-t', clipSpanSec.toFixed(3),
         '-c:a', 'aac', '-b:a', '192k', '-y', tempAudioPath
-      ], { windowsHide: true });
-      repairAudio.stderr.on('data', d => console.log('RepairAudio:', d.toString()));
+      ]);
+      repairAudio.stderr.on('data', d => queueFFmpegLog('RepairAudio: ' + d.toString()));
 
       repairAudio.on('close', (repairCode) => {
         if (repairCode !== 0 || !fs.existsSync(tempAudioPath)) {
@@ -1897,14 +1937,15 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
         }
 
         if (hasMic && tempMicPath) {
-          const repairMic = spawn(getFFmpegPath(), [
+          const repairMic = spawnFFmpegLow([
+            '-hide_banner', '-nostats', '-loglevel', 'error',
             '-fflags', '+genpts+igndts', '-err_detect', 'ignore_err',
             '-i', hlMicPath,
             '-af', 'aresample=async=1000:first_pts=0',
             '-ss', micSkipSec.toFixed(3), '-t', clipSpanSec.toFixed(3),
             '-c:a', 'aac', '-b:a', '192k', '-y', tempMicPath
-          ], { windowsHide: true });
-          repairMic.stderr.on('data', d => console.log('RepairMic:', d.toString()));
+          ]);
+          repairMic.stderr.on('data', d => queueFFmpegLog('RepairMic: ' + d.toString()));
           repairMic.on('close', (micCode) => {
             runMerge(micCode === 0 && fs.existsSync(tempMicPath));
           });
@@ -1914,7 +1955,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
       });
 
       function runMerge(includeMic) {
-        const mergeArgs = ['-i', tempVideoPath];
+        const mergeArgs = ['-hide_banner', '-nostats', '-loglevel', 'error', '-i', tempVideoPath];
         mergeArgs.push('-itsoffset', audioDelaySec.toFixed(3), '-i', tempAudioPath);
 
         if (includeMic && tempMicPath) {
@@ -1933,8 +1974,8 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
         mergeArgs.push('-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
           '-movflags', '+faststart', '-shortest', '-y', outputPath);
 
-        const merge = spawn(getFFmpegPath(), mergeArgs, { windowsHide: true });
-        merge.stderr.on('data', d => console.log('Merge:', d.toString()));
+        const merge = spawnFFmpegLow(mergeArgs);
+        merge.stderr.on('data', d => queueFFmpegLog('Merge: ' + d.toString()));
         merge.on('close', (mergeCode) => {
           if (mergeCode === 0 && fs.existsSync(outputPath)) {
             cleanupTemps();
@@ -1958,6 +1999,7 @@ function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVi
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('highlight-saved', finalPath);
     }
+    releaseSavePipeline();
     uploadHighlight(finalPath, metadataPath);
   }
 
