@@ -1149,7 +1149,7 @@
       // =====================
      // SESSION HISTORY
     // =====================
-    const SESSION_HISTORY_MAX = 20;
+    const SESSION_HISTORY_MAX = 40;
 
     function loadSessionHistory() {
       try {
@@ -3663,6 +3663,56 @@
        }
       }
 
+      // Pull server-side hosted-session history and merge it into the local
+      // localStorage list. Server is authoritative for code/title/game/
+      // expiry/role; local is authoritative for localNote (client-only) and
+      // any local rename the user made. So we fill in missing entries and
+      // refresh server-owned fields WITHOUT clobbering a local note.
+      async function syncServerSessionHistory() {
+        if (!window.authToken) return;
+        try {
+          var res = await fetch('https://peakabu.app/sessions/mine', {
+            headers: { 'Authorization': 'Bearer ' + window.authToken }
+          });
+          if (!res.ok) return;
+          var data = await res.json();
+          var serverSessions = (data && data.sessions) || [];
+          if (!serverSessions.length) return;
+
+          var history = loadSessionHistory();
+          serverSessions.forEach(function(s) {
+            var entry = history.find(function(h) { return h.code === s.code; });
+            if (entry) {
+              // Refresh server-owned fields; keep localNote and any local title.
+              entry.expiresAt = (typeof s.expiresAt === 'number') ? s.expiresAt : entry.expiresAt;
+              if (s.detectedGame) entry.game = s.detectedGame;
+              // Only take the server title if the user hasn't set a local one.
+              if (s.title && !entry.title) entry.title = s.title;
+              entry.role = entry.role || 'host';
+            } else {
+              history.push({
+                code: s.code,
+                role: s.role || 'host',
+                username: window.authUsername,
+                timestamp: s.createdAt || new Date().toISOString(),
+                expiresAt: (typeof s.expiresAt === 'number') ? s.expiresAt : null,
+                game: s.detectedGame || null,
+                title: s.title || null,
+                localNote: null
+              });
+            }
+          });
+
+          // Newest first, then re-cap and persist through the normal path.
+          history.sort(function(a, b) {
+            return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+          });
+          while (history.length > SESSION_HISTORY_MAX) history.pop();
+          saveSessionHistory(history);
+          renderSessionHistory();
+        } catch (e) { /* offline or server error — local history still shows */ }
+      }
+
       window.registerUser = async function() {
       var confirmWrap = document.getElementById('authConfirmWrap');
       if (confirmWrap.style.display === 'none' || confirmWrap.style.display === '') {
@@ -3740,6 +3790,7 @@
         document.getElementById('authBarName').textContent = username;
         document.getElementById('sessionPanel').style.display = 'flex';
         if (window.consumePendingDeepLink) window.consumePendingDeepLink();
+        syncServerSessionHistory();
       }
       function showAuthLoggedOut() {
         document.getElementById('authPanel').style.display = 'block';

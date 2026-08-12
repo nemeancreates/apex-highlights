@@ -70,6 +70,7 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_uploads_session ON uploads(sessionCode);
+  CREATE INDEX IF NOT EXISTS idx_sessions_createdBy ON sessions(createdBy);
 `);
 
 // ================================

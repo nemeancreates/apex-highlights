@@ -135,7 +135,15 @@ const stmt = {
       thumbnailFile = excluded.thumbnailFile,
       durationMs = excluded.durationMs, clipWeight = excluded.clipWeight
   `),
-  uploadsForSession: db.prepare(`SELECT * FROM uploads WHERE sessionCode = ?`)
+  uploadsForSession: db.prepare(`SELECT * FROM uploads WHERE sessionCode = ?`),
+  sessionsByUser: db.prepare(`
+    SELECT s.*,
+      (SELECT COALESCE(SUM(u.clipWeight), 0) FROM uploads u WHERE u.sessionCode = s.code) AS clipsUsed
+    FROM sessions s
+    WHERE s.createdBy = ?
+    ORDER BY s.createdAt DESC
+    LIMIT ?
+  `)
 };
 
 // ================================
@@ -347,6 +355,32 @@ function startSessionPurge() {
   }, 60 * 60 * 1000);
 }
 
+// ================================
+// PER-USER SESSION HISTORY — durable, survives reinstall.
+// Reads straight from SQLite (not the in-memory Map) so it works even after
+// a session is pruned from memory, and filters out anything already past its
+// tier-based expiry so the client never shows dead codes. Hosted sessions
+// only — a joined-but-not-hosted session isn't in sessions.createdBy.
+// ================================
+function getSessionsByUser(username, limit = 50) {
+  if (!username) return [];
+  const now = Date.now();
+  const rows = stmt.sessionsByUser.all(username, limit);
+  return rows
+    .filter(r => now <= sessionExpiryMs(r))
+    .map(r => ({
+      code: r.code,
+      title: r.title ?? null,
+      detectedGame: r.detectedGame ?? null,
+      expiresAt: (typeof r.expiresAt === 'number' && r.expiresAt > 0)
+        ? r.expiresAt
+        : sessionExpiryMs(r),
+      createdAt: r.createdAt,
+      clipsUsed: r.clipsUsed || 0,
+      role: 'host'
+    }));
+}
+
 module.exports = {
   users,
   sessions,
@@ -356,5 +390,6 @@ module.exports = {
   saveSessionsToDisk,
   retryPendingSpacesUploads,
   startSessionPurge,
-  clipWeightForDuration
+  clipWeightForDuration,
+  getSessionsByUser
 };

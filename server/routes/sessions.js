@@ -8,7 +8,7 @@ const { v4: uuidv4 } = require('uuid');
 const { log } = require('../logger');
 const { sanitizeUsername, sanitizeCode, safeError, generateCode } = require('../utils');
 const { MAX_SESSIONS, MAX_MEMBERS_PER_SESSION, TIERS } = require('../config');
-const { sessions, users, saveUsersToDisk } = require('../stores');
+const { sessions, users, saveUsersToDisk, getSessionsByUser } = require('../stores');
 const { requireAuth, getEffectiveTier, getMonthKey } = require('../auth');
 
 // Shared by POST /sessions and the migrate-session socket handler.
@@ -80,6 +80,21 @@ function initSessionRoutes(app) {
       maxClips: s.maxClips,
       expiresAt: s.expiresAt
     });
+  });
+
+  // Durable per-account session history. The client's localStorage list is
+  // machine-local and lost on reinstall; this is the server-side truth so a
+  // fresh install (or a second PC) logging into the same account gets its
+  // hosted sessions back. Hosted only — see getSessionsByUser.
+  // MUST be registered before '/sessions/:code' or Express matches "mine"
+  // as a :code param and this route never fires.
+  app.get('/sessions/mine', requireAuth, (req, res) => {
+    try {
+      const list = getSessionsByUser(req.user.username, 50);
+      res.json({ sessions: list });
+    } catch (err) {
+      res.status(500).json({ error: 'Could not load session history' });
+    }
   });
 
   app.get('/sessions/:code', (req, res) => {
