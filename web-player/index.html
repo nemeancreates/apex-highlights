@@ -953,6 +953,12 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      /* Column flex items default to flex-shrink:1, so pills squeezed
+         themselves thinner as the list grew instead of overflowing —
+         which meant .hl-pill-list's overflow-y never had anything to
+         scroll. Pinning shrink keeps them at natural height and pushes
+         the excess into the scroll region. */
+      flex-shrink: 0;
       padding: 4px 7px;
       background: #0c1c14;
       border: 1px solid #24402e;
