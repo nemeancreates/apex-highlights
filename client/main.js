@@ -281,7 +281,7 @@ let playerWindowedMode = false;
 let playerDockedWidth = 0;       // px reserved from the right edge (view + gutter); 0 = not yet computed
 const PLAYER_GUTTER = 6;         // width of the visible drag handle, carved out of the reserved zone
 const MIN_PLAYER_VIEW = 360;     // floor for the visible player area
-const MIN_CLIENT_WIDTH = 460;    // floor for the client column — this is what stops the squish
+const MIN_CLIENT_WIDTH = 260;    // floor for the client column — this is what stops the squish
 
 function defaultPlayerDockedWidth(winWidth) {
   // Client gets the majority share by default (~55%); drag the divider for more.
