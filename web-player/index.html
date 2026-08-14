@@ -3230,6 +3230,12 @@
   var paComposeClose = null;
   var paDragging = null; // { commentId, node, layer, startX, startY }
   var paSeenCounts = new Map(); // uploadId -> count this viewer has already acknowledged
+  var PA_CMT_SCALES = { large: 1, medium: 0.7, small: 0.49 }; // each step is -30% of the previous
+
+  function paApplyCommentSize(size) {
+    var scale = PA_CMT_SCALES[size] || 1;
+    document.documentElement.style.setProperty('--pa-cmt-scale', scale);
+  }
 
   // ================================
   // SAFE READS
@@ -3252,12 +3258,13 @@
     var css = [
       '.pa-cmt-layer{position:absolute;inset:0;pointer-events:none;z-index:9;overflow:hidden;}',
       '.pa-cmt{position:absolute;max-width:62%;background:rgba(10,22,17,0.86);border:2px solid rgba(57,211,160,0.5);',
-      'border-left:6px solid #39d3a0;border-radius:10px;padding:10px 16px;font-size:24px;line-height:1.3;color:#e8f5ec;',
-      'box-shadow:0 4px 18px rgba(0,0,0,0.5);opacity:0;transition:opacity .25s ease;word-break:break-word;}',
+      'border-left:calc(6px * var(--pa-cmt-scale,1)) solid #39d3a0;border-radius:calc(10px * var(--pa-cmt-scale,1));',
+      'padding:calc(10px * var(--pa-cmt-scale,1)) calc(16px * var(--pa-cmt-scale,1));font-size:calc(24px * var(--pa-cmt-scale,1));',
+      'line-height:1.3;color:#e8f5ec;box-shadow:0 4px 18px rgba(0,0,0,0.5);opacity:0;transition:opacity .25s ease;word-break:break-word;}',
       '.pa-cmt.pa-in{opacity:1;}',
       '.pa-cmt.pa-draggable{pointer-events:auto;cursor:grab;}',
       '.pa-cmt.pa-dragging{cursor:grabbing;opacity:0.85;box-shadow:0 4px 16px rgba(57,211,160,0.4);}',
-      '.pa-cmt-user{display:block;font-size:15px;font-weight:700;color:#39d3a0;letter-spacing:.4px;margin-bottom:3px;}',
+      '.pa-cmt-user{display:block;font-size:calc(15px * var(--pa-cmt-scale,1));font-weight:700;color:#39d3a0;letter-spacing:.4px;margin-bottom:3px;}',
       '.pa-z-tl{top:7%;left:4%;}.pa-z-tr{top:7%;right:4%;}',
       '.pa-z-ml{top:38%;left:4%;}.pa-z-mr{top:38%;right:4%;}',
       '.pa-z-tc{top:5%;left:50%;}.pa-z-cc{top:45%;left:50%;}.pa-z-bc{bottom:24%;left:50%;}',
@@ -3274,6 +3281,8 @@
       'align-items:center;justify-content:center;cursor:pointer;line-height:1;transition:all .15s;}',
       '.pa-fs-btn:hover{border-color:#39d3a0;color:#39d3a0;background:rgba(18,37,26,0.95);}',
       '.pov-container:fullscreen,.focused-main:fullscreen{width:100vw;height:100vh;background:#000;}',
+      '.pa-pseudo-fs{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;z-index:9999!important;background:#000;}',
+      'body.pa-pseudo-fs-active{overflow:hidden;}',
       '.pa-cmt-count{position:absolute;top:-7px;right:-7px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;',
       'background:#39d3a0;color:#04140d;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;}',
       '.pa-panel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#0c1c14;border:1px solid #24402e;',
@@ -3535,6 +3544,16 @@
     return btn;
   }
 
+  function paEnterPseudoFullscreen(container) {
+    container.classList.add('pa-pseudo-fs');
+    document.body.classList.add('pa-pseudo-fs-active');
+  }
+  function paExitPseudoFullscreen() {
+    var el = document.querySelector('.pa-pseudo-fs');
+    if (el) el.classList.remove('pa-pseudo-fs');
+    document.body.classList.remove('pa-pseudo-fs-active');
+  }
+
   function paBuildFullscreenButton(index) {
     var btn = document.createElement('div');
     btn.className = 'pa-fs-btn';
@@ -3542,15 +3561,34 @@
     btn.textContent = '\u26F6';
     btn.addEventListener('click', function (e) {
       e.stopPropagation();
-      if (document.fullscreenElement) { document.exitFullscreen(); return; }
       var container = document.getElementById('pov-container-' + index);
+      if (!container) return;
+
+      if (document.fullscreenElement || document.querySelector('.pa-pseudo-fs')) {
+        if (document.fullscreenElement) document.exitFullscreen().catch(function () {});
+        paExitPseudoFullscreen();
+        return;
+      }
+
       // Fullscreen the CONTAINER, not the <video>. The comment layer and
       // nudge bar are siblings of the video element — fullscreening the
       // video alone drops every overlay.
-      if (container && container.requestFullscreen) container.requestFullscreen();
+      if (container.requestFullscreen) {
+        container.requestFullscreen().catch(function () {
+          // Docked WebContentsView can reject native fullscreen — this
+          // CSS-only fallback always works regardless.
+          paEnterPseudoFullscreen(container);
+        });
+      } else {
+        paEnterPseudoFullscreen(container);
+      }
     });
     return btn;
   }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && document.querySelector('.pa-pseudo-fs')) paExitPseudoFullscreen();
+  });
 
   // Read by renderHighlightsColumn() to put a 💬 on H-pills that have comments.
   window.paCommentCountForUpload = function (uploadId) {
@@ -3656,11 +3694,18 @@
         node.className = 'pa-cmt pa-z-' + zone;
       }
 
+      
       // Host can drag
       if (paHost() && paToken()) {
         node.classList.add('pa-draggable');
         paMakeDraggable(node, c, w.layer);
       }
+
+      // A drag ends in a native 'click' on this node that bubbles to the
+      // POV container's own click handler — the exact thing that flips it
+      // out of focused/large view back to the grid. Comments never need
+      // that click to reach the container.
+      node.addEventListener('click', function (e) { e.stopPropagation(); });
 
       var who = document.createElement('span');
       who.className = 'pa-cmt-user';
@@ -4064,6 +4109,30 @@
     n1.textContent = 'Turn this off for a clean watch. Your choice only, saved on this device.';
     ui.body.appendChild(t1); ui.body.appendChild(n1);
 
+    var sizeLabel = document.createElement('div');
+    sizeLabel.style.cssText = 'font-size:13px;color:#c8d6cd;margin-bottom:6px;';
+    sizeLabel.textContent = 'Comment size';
+    ui.body.appendChild(sizeLabel);
+
+    var sizeRow = document.createElement('div');
+    sizeRow.style.cssText = 'display:flex;gap:6px;margin-bottom:10px;';
+    var currentSize = 'large';
+    try { currentSize = localStorage.getItem('pa_comment_size') || 'large'; } catch (e) {}
+    ['small', 'medium', 'large'].forEach(function (sz) {
+      var b = document.createElement('button');
+      b.className = 'btn btn-small' + (sz === currentSize ? '' : ' btn-secondary');
+      b.textContent = sz.charAt(0).toUpperCase() + sz.slice(1);
+      b.style.flex = '1';
+      b.addEventListener('click', function () {
+        try { localStorage.setItem('pa_comment_size', sz); } catch (e) {}
+        paApplyCommentSize(sz);
+        sizeRow.querySelectorAll('button').forEach(function (o) { o.className = 'btn btn-small btn-secondary'; });
+        b.className = 'btn btn-small';
+      });
+      sizeRow.appendChild(b);
+    });
+    ui.body.appendChild(sizeRow);
+
     var hrL = document.createElement('hr');
     hrL.style.cssText = 'border:none;border-top:1px solid #1e3527;margin:6px 0 10px;';
     ui.body.appendChild(hrL);
@@ -4146,6 +4215,9 @@
   function paInit() {
     paInjectStyles();
     try { paOverlayOn = localStorage.getItem('pa_comments_overlay') !== '0'; } catch (e) { paOverlayOn = true; }
+    var savedSize = 'large';
+    try { savedSize = localStorage.getItem('pa_comment_size') || 'large'; } catch (e) {}
+    paApplyCommentSize(savedSize);
 
     paWrap('renderVideoGrid', function () { paAttachAll(); paApplyEnabledState(); });
     paWrap('renderPOVContainer', function () { paAttachAll(); paApplyEnabledState(); });

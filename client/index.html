@@ -68,10 +68,10 @@
       .collapse-toggle {
         background: none; border: none; color: #5f7a6a; cursor: pointer;
         font-size: 13px; padding: 2px 6px; line-height: 1; width: auto;
-        transition: color 0.15s, transform 0.2s;
+        transition: color 0.15s;
+        order: -1; margin-right: 6px;
       }
       .collapse-toggle:hover { background: none; color: #39d3a0; }
-      .collapse-toggle.collapsed { transform: rotate(-90deg); }
       .collapse-body.collapsed { display: none; }
 
       .panel-collapse-btn {
@@ -288,7 +288,10 @@
         padding: 9px; background: #0c1c14; border: 1px solid #24402e; border-radius: 7px; margin: 12px 0 0;
       }
       .clip-duration-display strong { color: #39d3a0; }
-
+      .mini-highlight-row { display: none; gap: 8px; align-items: center; margin-top: 10px; }
+      .mini-highlight-row select { width: auto; flex-shrink: 0; padding: 8px; font-size: 12px; margin: 0; }
+      .mini-highlight-row #miniClipDurationDisplay { font-size: 12px; color: #8fbfa3; white-space: nowrap; flex-shrink: 0; }
+      .mini-highlight-row .btn-save { flex: 1; margin: 0; }
       /* ===== Session usage bar — "leafy" shimmering gradient fill ===== */
       .usage-label { font-size: 12px; color: #8fbfa3; text-align: center; margin-bottom: 5px; }
       .usage-track {
@@ -770,7 +773,7 @@
         <div class="card" id="sessionPanel" style="display:none;flex-direction:column;">
           <div class="section-header" onclick="toggleCollapse('session')">
             <h3>Squad Session</h3>
-            <button class="collapse-toggle" id="collapseBtn-session" onclick="event.stopPropagation();toggleCollapse('session')">▾</button>
+            <button class="collapse-toggle" id="collapseBtn-session" onclick="event.stopPropagation();toggleCollapse('session')">◂</button>
           </div>
           <div class="collapse-body" id="collapse-session">
           <div id="sessionPanel-disconnected">
@@ -815,7 +818,7 @@
         <!-- SESSION HUD — lives under the session card, fills the left column -->
         <div class="section-header" style="margin: 8px 0 4px;" onclick="toggleCollapse('hud')">
           <h3 style="font-size:13px;">Session HUD</h3>
-          <button class="collapse-toggle" id="collapseBtn-hud" onclick="event.stopPropagation();toggleCollapse('hud')">▾</button>
+          <button class="collapse-toggle" id="collapseBtn-hud" onclick="event.stopPropagation();toggleCollapse('hud')">◂</button>
         </div>
         <div class="collapse-body" id="collapse-hud">
         <div class="hud-card">
@@ -845,7 +848,7 @@
           <div class="card">
             <div class="section-header" onclick="toggleCollapse('highlight')">
               <h3>Highlight</h3>
-              <button class="collapse-toggle" id="collapseBtn-highlight" onclick="event.stopPropagation();toggleCollapse('highlight')">▾</button>
+              <button class="collapse-toggle" id="collapseBtn-highlight" onclick="event.stopPropagation();toggleCollapse('highlight')">◂</button>
             </div>
             <div class="collapse-body" id="collapse-highlight">
             <div class="save-head">
@@ -912,12 +915,25 @@
               </div>
             </div>
             </div>
+            <div class="mini-highlight-row" id="miniHighlightRow" style="display:none;">
+              <select id="miniClipDurationSelect" onchange="onMiniClipDurationChange()" style="display:none;">
+                <option value="15000">15s</option>
+                <option value="30000" selected>30s</option>
+                <option value="60000">1 min</option>
+                <option value="180000">3 min</option>
+              </select>
+              <span id="miniClipDurationDisplay" style="display:none;"></span>
+              <button class="btn-save" onclick="saveHighlight()" style="padding:10px;font-size:13px;">💾 Save Highlight</button>
+            </div>
           </div>
 
           <!-- RECORDING -->
           <div class="card" style="position:relative;">
             <div class="rec-head">
-              <h3>Recording</h3>
+              <div style="display:flex;align-items:center;">
+                <button class="collapse-toggle" id="collapseBtn-recording" onclick="toggleCollapse('recording')" style="margin-right:8px;">◂</button>
+                <h3 style="margin:0;">Recording</h3>
+              </div>
               <div style="display:flex;align-items:center;gap:8px;">
                 <div class="ac-monkeys" title="Auto-Highlight Detection status">
                   <span class="ac-monkey" id="acMonkeyDesktop">🙉</span>
@@ -925,7 +941,6 @@
                 </div>
                 <button class="btn-icon" id="micMenuBtn" title="Audio settings" onclick="toggleMicMenu()"
                         style="width:38px;height:36px;font-size:17px;">🎤</button>
-                <button class="collapse-toggle" id="collapseBtn-recording" onclick="toggleCollapse('recording')">▾</button>
               </div>
             </div>
 
@@ -1199,10 +1214,14 @@
         var btn = document.getElementById('collapseBtn-' + key);
         if (!body || !btn) return;
         var collapsed = body.classList.toggle('collapsed');
-        btn.classList.toggle('collapsed', collapsed);
+        btn.textContent = collapsed ? '▸' : '◂';
         var state = loadCollapseState();
         state[key] = collapsed;
         localStorage.setItem('peak_abu_collapse_state', JSON.stringify(state));
+        if (key === 'highlight') {
+          var mini = document.getElementById('miniHighlightRow');
+          if (mini) mini.style.display = collapsed ? 'flex' : 'none';
+        }
       };
       window.addEventListener('DOMContentLoaded', function() {
         var state = loadCollapseState();
@@ -1211,7 +1230,11 @@
           var body = document.getElementById('collapse-' + key);
           var btn = document.getElementById('collapseBtn-' + key);
           if (body) body.classList.add('collapsed');
-          if (btn) btn.classList.add('collapsed');
+          if (btn) btn.textContent = '▸';
+          if (key === 'highlight') {
+            var mini = document.getElementById('miniHighlightRow');
+            if (mini) mini.style.display = 'flex';
+          }
         });
       });
 
@@ -1603,16 +1626,28 @@
         window.socket.emit('set-clip-duration', { duration: duration });
       };
 
+      window.onMiniClipDurationChange = function() {
+        var duration = parseInt(document.getElementById('miniClipDurationSelect').value);
+        if (!window.socket || !window.currentSessionCode) return;
+        window.socket.emit('set-clip-duration', { duration: duration });
+      };
+
       function updateClipDurationUI(duration, isHost) {
         window.sessionClipDuration = duration;
         if (isHost) {
           document.getElementById('clipDurationHost').style.display = 'flex';
           document.getElementById('clipDurationMember').style.display = 'none';
           document.getElementById('clipDurationSelect').value = String(duration);
+          document.getElementById('miniClipDurationSelect').style.display = 'block';
+          document.getElementById('miniClipDurationDisplay').style.display = 'none';
+          document.getElementById('miniClipDurationSelect').value = String(duration);
         } else {
           document.getElementById('clipDurationHost').style.display = 'none';
           document.getElementById('clipDurationMember').style.display = 'block';
           document.getElementById('clipDurationValue').textContent = formatDuration(duration);
+          document.getElementById('miniClipDurationSelect').style.display = 'none';
+          document.getElementById('miniClipDurationDisplay').style.display = 'inline';
+          document.getElementById('miniClipDurationDisplay').textContent = formatDuration(duration);
         }
       }
 
@@ -4176,9 +4211,19 @@
       })();
 
       // ===== Mic popover: toggle + close on outside click =====
+      // Fixed-position off the button's real screen rect — this escapes
+      // .card's overflow:hidden clip, which cut the popover off once the
+      // Recording card collapsed shorter than the popover itself.
       window.toggleMicMenu = function() {
         var m = document.getElementById('micMenu');
-        m.classList.toggle('show');
+        var btn = document.getElementById('micMenuBtn');
+        if (m.classList.contains('show')) { m.classList.remove('show'); return; }
+        var rect = btn.getBoundingClientRect();
+        m.style.position = 'fixed';
+        m.style.top = (rect.bottom + 6) + 'px';
+        m.style.right = (window.innerWidth - rect.right) + 'px';
+        m.style.left = 'auto';
+        m.classList.add('show');
       };
       document.addEventListener('click', function(e) {
         var menu = document.getElementById('micMenu');
