@@ -557,7 +557,7 @@
               </svg>
             </button>
           </div>
-          <span class="version-tag">v0.1.41</span>
+          <span class="version-tag">v0.1.42</span>
         </div>
         <button class="btn-secondary btn-sm" onclick="openSettings()">⚙ Settings</button>
       </div>
@@ -2161,9 +2161,35 @@
       var AC_FLOOR = 0.010;                  // absolute floor — near-silence can never trigger
       var AC_FLOOR_MIC = 0.020;              // mic sits closer to its own noise, needs more headroom
       var AC_EMIT_THROTTLE_MS = 500;         // don't spam the socket while a loud sound sustains
-      var AC_SUSTAIN_POLLS = 7;              // loud polls required within the window to OPEN a capture
+      var AC_SUSTAIN_POLLS = 5;              // loud polls required within the window to OPEN a capture
       var AC_SUSTAIN_POLLS_KEEPALIVE = 3;    // much lighter bar to KEEP one open through combat lulls
       var AC_SUSTAIN_WINDOW = 12;            // ~600ms at 50ms — tolerates gaps between shots
+
+      // A sample 0.08% over threshold counted the same as one at double, so
+      // ambient audio hovering at p97 produced a steady drip of technically-
+      // true peaks. Require real headroom before a poll counts.
+      // Margin is now derived per-source from measured dynamic range rather
+      // than fixed. Apex needed 1.05, Mistfall floods at anything below 1.15,
+      // and Silksong sits between — so no single constant works.
+      var AC_MARGIN_MIN   = 1.05;  // dense/compressed audio (continuous combat)
+      var AC_MARGIN_MAX   = 1.15;  // sparse audio (quiet baseline, loud events)
+      // Measured mid-band p97/median across test sessions:
+      //   Apex 1.61 (dense) | Silksong 2.21 (mid) | Mistfall 2.75 (sparse)
+      var AC_RATIO_DENSE  = 1.6;
+      var AC_RATIO_SPARSE = 2.8;
+      var AC_MARGIN_EMA   = 0.005; // ~10s time constant at 50ms polls
+
+      // Ceiling reference for the reachability clamp. A threshold that sits
+      // above what the ring actually contains can never be cleared, so
+      // detection dies silently — mic sub/low did exactly this in Apex
+      // (thresholds of 1.19 against values that cannot exceed 1.0).
+      var AC_CEIL_PCT = 1.0;
+
+      // Opening on ANY single band let bass rumble alone start a capture with
+      // the other three bands at zero. A real moment moves more than one band.
+      // Keepalive stays at 1 — combat that has already opened a window
+      // shouldn't have to keep proving itself.
+      var AC_BANDS_REQUIRED_OPEN = 2;
 
       // ===== ROLLING PERCENTILE BASELINE =====
       // Replaces the EMA. An EMA converges on whatever is playing most, so in
@@ -2176,6 +2202,11 @@
       var AC_PCT_RECALC_EVERY = 10;     // recompute thresholds every N polls (~500ms)
       var AC_PCT_MIN_FILL    = 200;     // samples needed before anything can fire (~10s)
       var AC_MIC_EXTRA_MULTIPLIER = 2.3; // mic median gate on top of the profile's
+
+      // Server's absolute ceiling is MAX_AUTO_CAPTURE_MS (180s). This sits
+      // well past it so the client watchdog can never pre-empt a legitimate
+      // server-side end — it only recovers from an end event that never came.
+      var AC_WINDOW_WATCHDOG_MS = 210000;
 
 
       
@@ -2197,7 +2228,7 @@
       // Sorts a copy of the ring and pulls the percentile + median. Called
       // once every AC_PCT_RECALC_EVERY polls, not every poll — a 900-element
       // TypedArray sort twice a second is nothing, 20x a second is waste.
-      function acRecomputeThreshold(band, profile, isMic) {
+      function acRecomputeThreshold(band, profile, isMic, margin) {
         var n = band.ringLen;
         if (n < 10) { band.threshold = Infinity; return; }
 
@@ -2214,9 +2245,49 @@
 
         // All three gates must be cleared. pctVal handles quiet stretches,
         // median*mult handles uniformly-loud stretches, floor handles silence.
-        band.threshold = Math.max(pctVal, median * medMult, floor);
+        var raw = Math.max(pctVal, median * medMult, floor);
+
+        // Dynamic range of this band's recent history. High = quiet baseline
+        // with loud events sticking out (sparse). Low = everything is loud
+        // (dense). Drives the adaptive margin; see acUpdateMargin.
+        band.dynRatio = (median > 0.001) ? (pctVal / median) : AC_RATIO_SPARSE;
+
+        // Rescue a threshold the signal literally cannot reach. Clamping to
+        // the ring's absolute max left exactly one eligible sample, which can
+        // never satisfy AC_SUSTAIN_POLLS — target p95 so a usable slice stays
+        // above the bar.
+        var ringMax = band.sortBuf[n - 1];
+        var ceilVal = band.sortBuf[Math.min(n - 1, Math.floor(0.95 * n))];
+        var ceiling = ceilVal / margin;
+
+        band.threshold = (raw * margin > ringMax)
+          ? Math.max(floor, ceiling)
+          : raw;
         band.debugPct = pctVal;
         band.debugMedian = median;
+        band.debugRaw = raw;
+        band.debugClamped = (raw * margin > ringMax);
+      }
+
+      // Maps measured dynamic range onto a peak margin, EMA-smoothed so it
+      // drifts over ~10s instead of jittering poll to poll. Uses the mid band
+      // (800-3000Hz) as the reference: it carries combat in every game tested
+      // and is far less noisy than sub or high.
+      function acUpdateMargin(state) {
+        var mid = null;
+        for (var i = 0; i < state.bands.length; i++) {
+          if (state.bands[i].name === 'mid') { mid = state.bands[i]; break; }
+        }
+        if (!mid || !isFinite(mid.dynRatio)) return;
+        if (mid.ringLen < AC_PCT_MIN_FILL) return; // ratio is meaningless until warm
+
+        var t = (mid.dynRatio - AC_RATIO_DENSE) / (AC_RATIO_SPARSE - AC_RATIO_DENSE);
+        t = Math.max(0, Math.min(1, t));
+        var target = AC_MARGIN_MIN + t * (AC_MARGIN_MAX - AC_MARGIN_MIN);
+
+        state.margin = isFinite(state.margin)
+          ? state.margin * (1 - AC_MARGIN_EMA) + target * AC_MARGIN_EMA
+          : target;
       }
 
       function acPollSource(sourceName, state) {
@@ -2224,28 +2295,76 @@
         var isMic = (sourceName === 'mic');
         var profile = AUTO_CAPTURE_PROFILES[window.autoCaptureSensitivity] || AUTO_CAPTURE_PROFILES.medium;
 
+        // ===== WINDOW WATCHDOG =====
+        // autoCaptureWindowActive is only ever cleared by a server event
+        // (auto-capture-end / -cancel). A dropped socket or a server restart
+        // mid-window leaves it stuck true for the rest of the session, which
+        // pins the frozen thresholds in place and makes the detector fire
+        // continuously. Self-clear only well past the server's hard cap.
+        if (window.autoCaptureWindowActive) {
+          if (!window._acWindowOpenedAt) window._acWindowOpenedAt = Date.now();
+          if (Date.now() - window._acWindowOpenedAt > AC_WINDOW_WATCHDOG_MS) {
+            console.log('[ac-watchdog] window stuck open ' +
+                        ((Date.now() - window._acWindowOpenedAt) / 1000).toFixed(0) +
+                        's with no server end event — self-clearing');
+            window.autoCaptureWindowActive = false;
+            window._acDesktopWindowActive = false;
+            window._acWindowOpenedAt = 0;
+            acSetActiveWindowVisual(false);
+            ipcRenderer.send('auto-capture-active', false);
+            updateSaveButtonLabel();
+            hudLog('system', '👂 Auto-capture window reset — no end signal from server', 'error');
+          }
+        } else {
+          window._acWindowOpenedAt = 0;
+        }
+
+        var windowActive = !!window.autoCaptureWindowActive;
+
         acReadBands(state);
         state.sampleCount++;
 
         var recalc = (state.sampleCount % AC_PCT_RECALC_EVERY === 0);
-        var requiredPolls = window.autoCaptureWindowActive ? AC_SUSTAIN_POLLS_KEEPALIVE : AC_SUSTAIN_POLLS;
+        // Default to the conservative end until the ring warms up — a too-tight
+        // margin only costs a late trigger, a too-loose one floods.
+        if (!isFinite(state.margin)) state.margin = AC_MARGIN_MAX;
+        var margin = state.margin;
+
+        var requiredPolls = windowActive ? AC_SUSTAIN_POLLS_KEEPALIVE : AC_SUSTAIN_POLLS;
         var anyPeak = false;
-        var anySustained = false;
+        var bandsSustaining = 0;
         var warmedUp = false;
 
         for (var b = 0; b < state.bands.length; b++) {
           var band = state.bands[b];
 
-          // Freeze the baseline while a capture window is open, same reason
-          // as before: otherwise the ring fills with combat audio, the
-          // percentile climbs, and the window closes mid-fight.
-          if (!window.autoCaptureWindowActive) acPushSample(band, band.lastVal);
+          // The ring ALWAYS ingests now. Freezing it while a window was open
+          // was the bug: the baseline stayed at a pre-combat snapshot, every
+          // band cleared it on every poll, and the 500ms emit throttle kept
+          // resetting the server's settle timer — so a window could only ever
+          // end at the hard cap, then immediately reopen against the same
+          // stale ring.
+          acPushSample(band, band.lastVal);
 
           if (band.threshold === undefined || recalc) {
-            acRecomputeThreshold(band, profile, isMic);
+            acRecomputeThreshold(band, profile, isMic, margin);
           }
 
-          var isPeak = band.lastVal > band.threshold;
+          // Snapshot the threshold as it stood when the window opened, and
+          // compare against that snapshot for as long as the window is open.
+          // Preserves the original intent — combat audio must not raise the
+          // bar and close a window mid-fight — while the decision to OPEN is
+          // always made against a current baseline.
+          if (windowActive) {
+            if (!isFinite(band.frozenThreshold)) band.frozenThreshold = band.threshold;
+          } else if (band.frozenThreshold !== undefined) {
+            band.frozenThreshold = undefined;
+          }
+
+          var effThreshold = (windowActive && isFinite(band.frozenThreshold))
+            ? band.frozenThreshold : band.threshold;
+
+          var isPeak = band.lastVal > effThreshold * margin;
           if (isPeak) anyPeak = true;
           if (band.ringLen >= AC_PCT_MIN_FILL) warmedUp = true;
 
@@ -2257,33 +2376,55 @@
           for (var pi = 0; pi < band.peakHistory.length; pi++) inWin += band.peakHistory[pi];
           band.peaksInWindow = inWin;
 
-          // ANY band sustaining is enough to trigger. Deliberately permissive
-          // while tuning — the delete window covers false positives, and
-          // per-band logs tell us which band actually carries each game.
-          if (inWin >= requiredPolls) anySustained = true;
+          // ANY band sustaining is still enough to trigger. Left permissive
+          // on purpose — revisit only after confirming the always-ingest ring
+          // fixes the runaway triggering on its own.
+          if (inWin >= requiredPolls) bandsSustaining++;
         }
 
-        var sustainedPeak = warmedUp && anySustained;
+        acUpdateMargin(state);
+
+        var requiredBands = windowActive ? 1 : AC_BANDS_REQUIRED_OPEN;
+        var sustainedPeak = warmedUp && (bandsSustaining >= requiredBands);
 
         if (window._acDebug && (anyPeak || (state._debugCounter = (state._debugCounter || 0) + 1) % 20 === 0)) {
           var parts = state.bands.map(function(bd) {
+            var eff = (windowActive && isFinite(bd.frozenThreshold)) ? bd.frozenThreshold : bd.threshold;
+            // While a window is open, prints effective~live so the log shows
+            // the ring still moving underneath the frozen comparison.
             return bd.name + '=' + bd.lastVal.toFixed(4) +
-                   '/' + (isFinite(bd.threshold) ? bd.threshold.toFixed(4) : 'inf') +
+                   '/' + (isFinite(eff) ? eff.toFixed(4) : 'inf') +
+                   (windowActive ? '~' + (isFinite(bd.threshold) ? bd.threshold.toFixed(4) : 'inf') : '') +
+                   '[p' + (bd.debugPct || 0).toFixed(3) + ' m' + (bd.debugMedian || 0).toFixed(3) +
+                   (bd.debugClamped ? ' CLAMP' : '') + ']' +
                    '(' + (bd.peaksInWindow || 0) + ')';
           }).join(' ');
           console.log('[ac-' + sourceName + '] sens=' + window.autoCaptureSensitivity +
+                      (windowActive ? ' WINDOW' : '') +
                       ' ' + parts +
                       ' fill=' + state.bands[0].ringLen + '/' + (state.bands[0].ringCap || 0) +
+                      ' margin=' + margin.toFixed(3) +
+                      ' bands=' + bandsSustaining + '/' + requiredBands +
                       ' sustained=' + sustainedPeak);
         }
 
         if (anyPeak) acFlashMonkey(sourceName);
 
         if (sustainedPeak) {
-          var now = Date.now();
-          if (now - state.lastEmit >= AC_EMIT_THROTTLE_MS) {
-            state.lastEmit = now;
-            acReportPeak(profile);
+          // The mic is a reinforcer, not an independent trigger.
+          // Human speech is, by every measure the detector has, a strong
+          // sustained broadband event — sub+low light up whenever you talk —
+          // so an independent mic gate fired on ordinary conversation without
+          // fail. The mic may only emit once DESKTOP audio has already opened
+          // a window; it then extends/reinforces, but can't open one alone.
+          var micBlocked = (sourceName === 'mic') && !window._acDesktopWindowActive;
+          if (!micBlocked) {
+            var now = Date.now();
+            if (now - state.lastEmit >= AC_EMIT_THROTTLE_MS) {
+              state.lastEmit = now;
+              if (sourceName === 'desktop') window._acDesktopOpenedRecently = Date.now();
+              acReportPeak(profile);
+            }
           }
         }
       }
@@ -2545,6 +2686,13 @@
         });
 
         window.socket.on('coordinated-save-highlight', function(d) {
+         // Members who aren't recording have no buffer to cut from — forwarding
+         // this to main just burns the retry loop and surfaces an error. Note
+         // the save happened, but don't attempt it. Applies to manual saves too.
+         if (!window.isRecordingActive) {
+           hudLog('activity', '⚡ ' + d.username + ' saved a highlight (you\'re not recording)', 'info');
+           return;
+         }
          hudLog('activity','⚡ '+d.username+' triggered highlight — syncing all POVs...','broadcast');
          ipcRenderer.send('broadcast-save-highlight', { coordinated_timestamp: d.coordinated_timestamp, clipDuration: d.clipDuration, triggerSource: d.triggerSource });
 
@@ -2568,10 +2716,22 @@
         window.socket.on('upload-received', function(d) { hudLog('activity','☁️ '+d.username+' uploaded their clip','success'); });
 
         window.socket.on('auto-capture-start', function(d) {
+          // Not recording = nothing to extract from, so don't show the
+          // "listening" visuals either. A member idling in the session
+          // shouldn't see pulsing mic indicators for someone else's capture.
+          if (!window.isRecordingActive) return;
           // Only announce if we weren't already in a window — avoids the
           // spammy repeat when peaks cycle windows rapidly.
           var wasActive = window.autoCaptureWindowActive;
           window.autoCaptureWindowActive = true;
+          // Was this window opened by desktop audio? Only then is the mic
+          // allowed to reinforce it. A recent desktop emit is the signal —
+          // the mic can't have opened it, since it's blocked from emitting
+          // unless this flag is already set.
+          if (window._acDesktopOpenedRecently &&
+              (Date.now() - window._acDesktopOpenedRecently) < 1500) {
+            window._acDesktopWindowActive = true;
+          }
           acSetActiveWindowVisual(true);
           updateSaveButtonLabel();
           ipcRenderer.send('auto-capture-active', true);
@@ -2579,10 +2739,13 @@
             hudLog('activity', '👂 Auto-capture detecting action — recording until it settles...', 'broadcast');
           }
         });
+
         window.socket.on('auto-capture-end', function(d) {
           window.autoCaptureWindowActive = false;
+          window._acDesktopWindowActive = false;
           acSetActiveWindowVisual(false);
           ipcRenderer.send('auto-capture-active', false);
+          if (!window.isRecordingActive) { updateSaveButtonLabel(); return; }
           var closeMsg = '🎬 Auto-capture window closed (' + (d.elapsedMs/1000).toFixed(0) + 's) — saving...';
           if (d.buffCapped) {
             closeMsg = '🎬 Auto-capture ran ' + (d.rawElapsedMs/1000).toFixed(0) + 's — trimmed to ' +
@@ -2594,8 +2757,10 @@
 
         window.socket.on('auto-capture-cancel', function(d) {
           window.autoCaptureWindowActive = false;
+          window._acDesktopWindowActive = false;
           acSetActiveWindowVisual(false);
           ipcRenderer.send('auto-capture-active', false);
+          if (!window.isRecordingActive) { updateSaveButtonLabel(); return; }
           hudLog('system', '👂 Auto-capture: false alarm, too short to save', 'info');
           updateSaveButtonLabel();
         });
