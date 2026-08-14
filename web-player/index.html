@@ -3276,13 +3276,6 @@
       '.pa-cmt-btn.pa-new{border-color:#d8a838;color:#d8a838;background:rgba(58,40,10,0.9);animation:pa-newpulse 1.6s ease-in-out infinite;}',
       '.pa-cmt-btn.pa-new .pa-cmt-count{background:#d8a838;}',
       '@keyframes pa-newpulse{0%,100%{box-shadow:0 0 0 0 rgba(216,168,56,0.5);}50%{box-shadow:0 0 0 5px rgba(216,168,56,0);}}',
-      '.pa-fs-btn{position:absolute;top:6px;left:38px;z-index:12;width:26px;height:26px;border-radius:6px;',
-      'background:rgba(18,37,26,0.85);border:2px solid #45604f;color:#7a9686;font-size:13px;display:flex;',
-      'align-items:center;justify-content:center;cursor:pointer;line-height:1;transition:all .15s;}',
-      '.pa-fs-btn:hover{border-color:#39d3a0;color:#39d3a0;background:rgba(18,37,26,0.95);}',
-      '.pov-container:fullscreen,.focused-main:fullscreen{width:100vw;height:100vh;background:#000;}',
-      '.pa-pseudo-fs{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;z-index:9999!important;background:#000;}',
-      'body.pa-pseudo-fs-active{overflow:hidden;}',
       '.pa-cmt-count{position:absolute;top:-7px;right:-7px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;',
       'background:#39d3a0;color:#04140d;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;}',
       '.pa-panel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#0c1c14;border:1px solid #24402e;',
@@ -3517,9 +3510,6 @@
       if (!container.querySelector('.pa-cmt-btn')) {
         container.appendChild(paBuildCommentButton(i, v));
       }
-      if (!container.querySelector('.pa-fs-btn')) {
-        container.appendChild(paBuildFullscreenButton(i));
-      }
     }
     paRefreshCounts();
     paEnsureNavControls();
@@ -3543,52 +3533,6 @@
     });
     return btn;
   }
-
-  function paEnterPseudoFullscreen(container) {
-    container.classList.add('pa-pseudo-fs');
-    document.body.classList.add('pa-pseudo-fs-active');
-  }
-  function paExitPseudoFullscreen() {
-    var el = document.querySelector('.pa-pseudo-fs');
-    if (el) el.classList.remove('pa-pseudo-fs');
-    document.body.classList.remove('pa-pseudo-fs-active');
-  }
-
-  function paBuildFullscreenButton(index) {
-    var btn = document.createElement('div');
-    btn.className = 'pa-fs-btn';
-    btn.title = 'Fullscreen this POV';
-    btn.textContent = '\u26F6';
-    btn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      var container = document.getElementById('pov-container-' + index);
-      if (!container) return;
-
-      if (document.fullscreenElement || document.querySelector('.pa-pseudo-fs')) {
-        if (document.fullscreenElement) document.exitFullscreen().catch(function () {});
-        paExitPseudoFullscreen();
-        return;
-      }
-
-      // Fullscreen the CONTAINER, not the <video>. The comment layer and
-      // nudge bar are siblings of the video element — fullscreening the
-      // video alone drops every overlay.
-      if (container.requestFullscreen) {
-        container.requestFullscreen().catch(function () {
-          // Docked WebContentsView can reject native fullscreen — this
-          // CSS-only fallback always works regardless.
-          paEnterPseudoFullscreen(container);
-        });
-      } else {
-        paEnterPseudoFullscreen(container);
-      }
-    });
-    return btn;
-  }
-
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && document.querySelector('.pa-pseudo-fs')) paExitPseudoFullscreen();
-  });
 
   // Read by renderHighlightsColumn() to put a 💬 on H-pills that have comments.
   window.paCommentCountForUpload = function (uploadId) {

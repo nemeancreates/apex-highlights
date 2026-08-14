@@ -63,7 +63,7 @@
 
 
       /* ===== Collapsible sections ===== */
-      .section-header { display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; }
+      .section-header { display: flex; align-items: center; justify-content: flex-start; gap: 6px; cursor: pointer; user-select: none; }
       .section-header h3 { margin: 0; }
       .collapse-toggle {
         background: none; border: none; color: #5f7a6a; cursor: pointer;
@@ -586,7 +586,19 @@
           </div>
           <span class="version-tag">v0.1.44</span>
         </div>
-        <button class="btn-secondary btn-sm" onclick="openSettings()">⚙ Settings</button>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="redeem-wrap">
+            <button class="btn-secondary btn-sm" onclick="toggleRedeemPanel()" title="Redeem a subscription code">🎟 Redeem</button>
+            <div class="redeem-panel" id="redeemPanel">
+              <div class="uc-label">Redeem a code</div>
+              <input type="text" id="redeemInput" placeholder="PA-T3-XXXXXXXX" maxlength="20"
+                     onkeydown="if(event.key==='Enter')submitRedeem()" />
+              <button class="btn-save" style="padding:9px;font-size:14px;" onclick="submitRedeem()">Activate</button>
+              <div class="redeem-msg" id="redeemMsg"></div>
+            </div>
+          </div>
+          <button class="btn-secondary btn-sm" onclick="openSettings()">⚙ Settings</button>
+        </div>
       </div>
 
       <!-- SETTINGS MODAL -->
@@ -748,21 +760,9 @@
 
       <!-- AUTH BAR (shown after login — compact) -->
       <div class="auth-bar" id="authBar" style="display:none;">
-        <span class="user-label">Logged in as <strong id="authBarName"></strong></span>
-        <div class="auth-bar-right">
-          <span class="tier-badge t1" id="tierBadge">Free</span>
-          <div class="redeem-wrap">
-            <button class="btn-secondary" onclick="toggleRedeemPanel()" title="Redeem a subscription code">🎟 Redeem</button>
-            <div class="redeem-panel" id="redeemPanel">
-              <div class="uc-label">Redeem a code</div>
-              <input type="text" id="redeemInput" placeholder="PA-T3-XXXXXXXX" maxlength="20"
-                     onkeydown="if(event.key==='Enter')submitRedeem()" />
-              <button class="btn-save" style="padding:9px;font-size:14px;" onclick="submitRedeem()">Activate</button>
-              <div class="redeem-msg" id="redeemMsg"></div>
-            </div>
-          </div>
-          <button onclick="logoutUser()">Log Out</button>
-        </div>
+        <span class="user-label">Logged in as <strong id="authBarName"></strong>
+          <span class="tier-badge t1" id="tierBadge" style="margin-left:8px;">Free</span>
+        </span>
       </div>
 
       <!-- MAIN GRID -->
