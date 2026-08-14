@@ -50,15 +50,42 @@
       .header .brand { display: flex; flex-direction: column; gap: 1px; }
       .brand-row { display: flex; align-items: center; gap: 10px; }
       .version-tag { font-size: 11px; color: #3a5244; margin-left: 36px; line-height: 1; }
-      .patreon-btn {
+      .ks-btn {
         display: flex; align-items: center; justify-content: center;
-        width: 24px; height: 24px; padding: 0; margin: 0;
-        border: none; border-radius: 50%; cursor: pointer;
-        background: #1e3527; color: #7a9686;
-        transition: background 0.15s ease, color 0.15s ease;
+        width: 26px; height: 26px; padding: 4px; margin: 0;
+        border: none; border-radius: 6px; cursor: pointer;
+        background: #1e3527;
+        transition: background 0.15s ease;
       }
-      .patreon-btn svg { fill: currentColor; }
-      .patreon-btn:hover { background: #FF424D; color: #ffffff; }
+      .ks-btn img { width: 100%; height: 100%; object-fit: contain; display: block; opacity: 0.75; transition: opacity 0.15s ease; }
+      .ks-btn:hover { background: #05CE78; }
+      .ks-btn:hover img { opacity: 1; }
+
+
+      /* ===== Collapsible sections ===== */
+      .section-header { display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; }
+      .section-header h3 { margin: 0; }
+      .collapse-toggle {
+        background: none; border: none; color: #5f7a6a; cursor: pointer;
+        font-size: 13px; padding: 2px 6px; line-height: 1; width: auto;
+        transition: color 0.15s, transform 0.2s;
+      }
+      .collapse-toggle:hover { background: none; color: #39d3a0; }
+      .collapse-toggle.collapsed { transform: rotate(-90deg); }
+      .collapse-body.collapsed { display: none; }
+
+      .panel-collapse-btn {
+       width: 100%; background: #0c1c14; border: none; border-bottom: 1px solid #1e3527;
+       color: #5f7a6a; font-size: 11px; padding: 5px; cursor: pointer; text-align: center; flex-shrink: 0;
+      }
+       .panel-collapse-btn:hover { color: #39d3a0; }
+       .right-panel.collapsed, .highlights-column.collapsed { width: 26px; }
+       .right-panel.collapsed .panel-section, .highlights-column.collapsed h3,
+       .highlights-column.collapsed .hl-pill-list, .highlights-column.collapsed .hl-delete-bar { display: none; }
+       .right-panel.collapsed .panel-collapse-btn, .highlights-column.collapsed .panel-collapse-btn {
+         writing-mode: vertical-rl; height: 100%; padding: 10px 4px;
+     }
+  
 
       /* ===== Grid ===== */
       .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; align-items: start; }
@@ -550,14 +577,11 @@
           <div class="brand-row">
             <span style="font-size:26px;line-height:1;">🙈</span>
             <h1>Peak-Abu</h1>
-            <button class="patreon-btn" onclick="openPatreon()" title="Support Peak-Abu on Patreon" aria-label="Support Peak-Abu on Patreon">
-              <svg viewBox="0 0 569 546" width="16" height="16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <circle cx="362.589996" cy="204.589996" r="204.589996"/>
-                <rect height="545.799988" width="100" x="0" y="0"/>
-              </svg>
+            <button class="ks-btn" onclick="openKickstarter()" title="Back Peak-Abu on Kickstarter" aria-label="Back Peak-Abu on Kickstarter">
+              <img src="assets/kickstarter.png" alt="Kickstarter" />
             </button>
           </div>
-          <span class="version-tag">v0.1.42</span>
+          <span class="version-tag">v0.1.44</span>
         </div>
         <button class="btn-secondary btn-sm" onclick="openSettings()">⚙ Settings</button>
       </div>
@@ -744,7 +768,11 @@
         <!-- LEFT COLUMN: SESSION -->
         <div class="col" id="leftCol">
         <div class="card" id="sessionPanel" style="display:none;flex-direction:column;">
-          <h3>Squad Session</h3>
+          <div class="section-header" onclick="toggleCollapse('session')">
+            <h3>Squad Session</h3>
+            <button class="collapse-toggle" id="collapseBtn-session" onclick="event.stopPropagation();toggleCollapse('session')">▾</button>
+          </div>
+          <div class="collapse-body" id="collapse-session">
           <div id="sessionPanel-disconnected">
             <button class="btn-save" onclick="createSession()">Create New Session</button>
             <div class="divider">— or join a friend —</div>
@@ -781,9 +809,15 @@
             <button class="btn-secondary" id="migrateBtn" onclick="migrateSession()" style="display:none;margin-bottom:6px;">↺ Start New Session for Squad</button>
             <button class="btn-leave" onclick="leaveSession()">Leave Session</button>
           </div>
+          </div>
         </div>
 
         <!-- SESSION HUD — lives under the session card, fills the left column -->
+        <div class="section-header" style="margin: 8px 0 4px;" onclick="toggleCollapse('hud')">
+          <h3 style="font-size:13px;">Session HUD</h3>
+          <button class="collapse-toggle" id="collapseBtn-hud" onclick="event.stopPropagation();toggleCollapse('hud')">▾</button>
+        </div>
+        <div class="collapse-body" id="collapse-hud">
         <div class="hud-card">
           <div class="hud-rail">
             <button class="hud-tab active" id="hudTab-activity" onclick="switchHudTab('activity')" title="Activity">⚡<span class="tab-badge" id="hudBadge-activity" style="display:none;">0</span></button>
@@ -802,12 +836,18 @@
           </div>
         </div>
         </div>
+        </div>
 
         <!-- RIGHT COLUMN: STATUS/SAVE + RECORDING -->
         <div class="col">
 
           <!-- STATUS + SAVE -->
           <div class="card">
+            <div class="section-header" onclick="toggleCollapse('highlight')">
+              <h3>Highlight</h3>
+              <button class="collapse-toggle" id="collapseBtn-highlight" onclick="event.stopPropagation();toggleCollapse('highlight')">▾</button>
+            </div>
+            <div class="collapse-body" id="collapse-highlight">
             <div class="save-head">
               <div style="flex:1;">
                 <div class="status-bar idle" id="statusText">● Idle</div>
@@ -871,6 +911,7 @@
                 <div class="upload-progress-fill" id="uploadProgressFill"></div>
               </div>
             </div>
+            </div>
           </div>
 
           <!-- RECORDING -->
@@ -884,6 +925,7 @@
                 </div>
                 <button class="btn-icon" id="micMenuBtn" title="Audio settings" onclick="toggleMicMenu()"
                         style="width:38px;height:36px;font-size:17px;">🎤</button>
+                <button class="collapse-toggle" id="collapseBtn-recording" onclick="toggleCollapse('recording')">▾</button>
               </div>
             </div>
 
@@ -904,6 +946,7 @@
               </select>
             </div>
 
+            <div class="collapse-body" id="collapse-recording">
             <div class="row" style="margin-bottom:4px;">
               <button class="btn-start" id="startBtn" onclick="startRecording()">▶ Start Highlight Session</button>
               <button class="btn-end" id="stopBtn" onclick="stopRecording()" disabled>⏹ End Session</button>
@@ -1002,6 +1045,7 @@
               </div>
             </div>
             <div class="disk-banner" id="diskBanner"></div>
+            </div>
           </div>
 
         </div>
@@ -1014,8 +1058,8 @@
       const { ipcRenderer, clipboard, shell } = require('electron');
       const io = require('socket.io-client');
 
-      window.openPatreon = function() {
-        shell.openExternal('https://www.patreon.com/16368967/join');
+      window.openKickstarter = function() {
+        shell.openExternal('https://www.kickstarter.com/projects/nemeancreates/peak-abu-multi-pov-highlight-capture-tool?ref=ds77gp&token=718f494a');
       };
 
       // State
@@ -1145,6 +1189,32 @@
        badge.style.display = 'none';
        badge.textContent = '0';
      };
+
+     // ===== Collapsible sections =====
+      function loadCollapseState() {
+        try { return JSON.parse(localStorage.getItem('peak_abu_collapse_state') || '{}'); } catch (e) { return {}; }
+      }
+      window.toggleCollapse = function(key) {
+        var body = document.getElementById('collapse-' + key);
+        var btn = document.getElementById('collapseBtn-' + key);
+        if (!body || !btn) return;
+        var collapsed = body.classList.toggle('collapsed');
+        btn.classList.toggle('collapsed', collapsed);
+        var state = loadCollapseState();
+        state[key] = collapsed;
+        localStorage.setItem('peak_abu_collapse_state', JSON.stringify(state));
+      };
+      window.addEventListener('DOMContentLoaded', function() {
+        var state = loadCollapseState();
+        Object.keys(state).forEach(function(key) {
+          if (!state[key]) return;
+          var body = document.getElementById('collapse-' + key);
+          var btn = document.getElementById('collapseBtn-' + key);
+          if (body) body.classList.add('collapsed');
+          if (btn) btn.classList.add('collapsed');
+        });
+      });
+
 
       // =====================
      // SESSION HISTORY
@@ -2678,6 +2748,11 @@
           connectToSession(d.newCode, window.authUsername);
         });
         window.socket.on('member-recording-update', function(d) { updateMemberRecording(d.username, d.isRecording); });
+
+        window.socket.on('session-closed', function(d) {
+          hudLog('squad', '👑 ' + ((d && d.reason) || 'Host left') + ' — session closed', 'broadcast');
+          window.leaveSession();
+        });
 
         window.socket.on('clip-duration-changed', function(d) {
           window.sessionClipDuration = d.duration;

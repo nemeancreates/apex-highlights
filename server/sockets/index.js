@@ -51,6 +51,15 @@ function initSockets(io) {
       const session = sessions.get(sessionCode);
       if (!session) { socket.emit('error-message', { message: 'Session not found' }); return; }
 
+      if (session.closed) {
+        if (cleanUsername === session.createdBy) {
+          session.closed = false; // host reconnecting reopens it
+        } else {
+          socket.emit('error-message', { message: 'Host has left this session. Ask them to host a new one.' });
+          return;
+        }
+      }
+
       const memberCap = session.maxMembers || MAX_MEMBERS_PER_SESSION;
       if (session.members.length >= memberCap) { socket.emit('error-message', { message: 'Session is full' }); return; }
       if (session.members.some(m => m.username === cleanUsername)) { socket.emit('error-message', { message: 'Username already taken in this session' }); return; }
@@ -307,10 +316,25 @@ function initSockets(io) {
       const session = sessions.get(sessionCode);
       if (!session) return;
 
+      const wasHost = session.createdBy === socket.username;
+
       session.members = session.members.filter(m => m.socketId !== socket.id);
       log('info', 'member_left', { session: sessionCode, username: socket.username, remaining: session.members.length });
 
       socket.to(sessionCode).emit('member-left', { username: socket.username });
+
+      // Host leaving ends the session for everyone still connected, and
+      // blocks new joins (see join-session) until the host reconnects with
+      // the same username. Web player is unaffected — it reads via HTTP,
+      // not this socket path.
+      if (wasHost) {
+        session.closed = true;
+        if (session.members.length > 0) {
+          log('info', 'session_closed_by_host', { session: sessionCode, host: socket.username, kicked: session.members.length });
+          io.to(sessionCode).emit('session-closed', { reason: 'Host left the session' });
+          session.members = [];
+        }
+      }
 
       if (session.members.length === 0) {
         setTimeout(() => {

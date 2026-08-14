@@ -29,7 +29,7 @@ const AIREEL_DIR = path.join(os.tmpdir(), 'peak-abu-aireel');
 const PROFILE_FILE = path.join(__dirname, 'aiprofiles.json');
 
 const ALLOWED_TARGETS = [15, 30, 60, 90, 120, 180, 300];
-const MAX_CLIPS = 30;
+const MAX_CLIPS = 50;
 const SEG_MIN = 4;
 const SEG_MAX = 12;
 const SEG_DEFAULT = 8;
