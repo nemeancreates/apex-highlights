@@ -3238,6 +3238,7 @@
   var paResumeAfterCompose = false;
   var paComposeClose = null;
   var paDragging = null; // { commentId, node, layer, startX, startY }
+  var paMomentTickCount = 0;
   var PA_CMT_SCALES = { large: 1, medium: 0.7, small: 0.49 }; // each step is -30% of the previous
 
   function paApplyCommentSize(size) {
