@@ -67,6 +67,14 @@ const COMMENT_RATE_MAX = 3;            // posts per window, per ACCOUNT (not per
 const COMMENT_RATE_WINDOW = 60000;     // 1 minute
 const COMMENT_MAX_TIMESTAMP_MS = 6 * 60 * 60 * 1000; // sanity bound on the anchor
 
+// --- Redemption attempt limiting ---
+const REDEEM_ATTEMPT_MAX = 10;           // failed attempts per window, per ACCOUNT
+const REDEEM_ATTEMPT_WINDOW = 3600000;   // 1 hour
+
+// --- Registration limiting ---
+const REGISTER_IP_MAX = 5;               // new accounts per window, per IP
+const REGISTER_IP_WINDOW = 86400000;     // 24 hours
+
 // ================================
 // TIERS — the single source of truth for what each tier can do.
 // t1 Free / t2 Creator / t3 Squad / t4 Pro (naming matches the TIER GATE
@@ -114,8 +122,8 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 // Update when a new client build is uploaded to the CDN.
 // ================================
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.46',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.46.exe',
+  version: '0.1.48',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.48.exe',
   releaseNotes: 'Database upgrade for improved reliability at scale.'
 };
 
@@ -154,5 +162,9 @@ module.exports = {
   ADMIN_SECRET,
   REDEMPTION_CODES_FILE,
   BANDWIDTH_ALERT_BYTES,
-  LATEST_CLIENT_VERSION
+  LATEST_CLIENT_VERSION,
+  REDEEM_ATTEMPT_MAX,
+  REDEEM_ATTEMPT_WINDOW,
+  REGISTER_IP_MAX,
+  REGISTER_IP_WINDOW
 };

@@ -7,7 +7,9 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { log } = require('./logger');
 const { safeError } = require('./utils');
-const { JWT_SECRET, JWT_EXPIRY, BCRYPT_ROUNDS, TIERS, TIER_ORDER, ADMIN_SECRET } = require('./config');
+const { JWT_SECRET, JWT_EXPIRY, BCRYPT_ROUNDS, TIERS, TIER_ORDER, ADMIN_SECRET,
+        REDEEM_ATTEMPT_MAX, REDEEM_ATTEMPT_WINDOW,
+        REGISTER_IP_MAX, REGISTER_IP_WINDOW } = require('./config');
 const { users, saveUsersToDisk } = require('./stores');
 const { generateRedemptionCodes, redeemCode, peekCode } = require('./redemption');
 
@@ -22,6 +24,67 @@ function getEffectiveTier(user) {
 }
 
 function getMonthKey() { return new Date().toISOString().slice(0, 7); }
+
+// ================================
+// ABUSE LIMITERS — both in-memory and volatile on purpose. A restart
+// forgiving a few attempts is an acceptable tradeoff; neither of these
+// needs to survive one, and keeping them off disk avoids write churn.
+// ================================
+
+// Failed redemption attempts per account. Only FAILURES count — a valid
+// redemption clears the counter, so normal users never hit this. Guards
+// against brute-forcing the 8-char code space across many attempts.
+const redeemAttempts = new Map(); // usernameLower -> { count, resetAt }
+
+function checkRedeemRate(usernameLower) {
+  const now = Date.now();
+  const entry = redeemAttempts.get(usernameLower);
+  if (!entry || now > entry.resetAt) {
+    redeemAttempts.set(usernameLower, { count: 0, resetAt: now + REDEEM_ATTEMPT_WINDOW });
+    return true;
+  }
+  return entry.count < REDEEM_ATTEMPT_MAX;
+}
+
+function recordRedeemFailure(usernameLower) {
+  const entry = redeemAttempts.get(usernameLower);
+  if (entry) entry.count++;
+}
+
+function clearRedeemAttempts(usernameLower) {
+  redeemAttempts.delete(usernameLower);
+}
+
+// New accounts per IP per day. Account creation is the enabler for most
+// other abuse here (code brute-forcing, socket flooding, session
+// squatting), so capping it starves those vectors of throwaway accounts.
+// NOTE: households/LANs share a public IP — 5/day is well above normal
+// legitimate use (a squad signing up together) without being permissive.
+const registerAttempts = new Map(); // ip -> { count, resetAt }
+
+function checkRegisterRate(ip) {
+  const now = Date.now();
+  const entry = registerAttempts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    registerAttempts.set(ip, { count: 0, resetAt: now + REGISTER_IP_WINDOW });
+    return true;
+  }
+  return entry.count < REGISTER_IP_MAX;
+}
+
+function recordRegistration(ip) {
+  const entry = registerAttempts.get(ip);
+  if (entry) entry.count++;
+}
+
+// Stale entry cleanup for both maps — same pattern as the socket rate
+// limiter. Without this, every IP/account that ever hit these endpoints
+// stays resident for the life of the process.
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of redeemAttempts) if (now > v.resetAt) redeemAttempts.delete(k);
+  for (const [k, v] of registerAttempts) if (now > v.resetAt) registerAttempts.delete(k);
+}, 10 * 60 * 1000);
 
 // Route middleware: requires the user's effective tier to be in allowedTiers.
 // Always re-reads from the store (never trusts the JWT) so a redemption
@@ -95,6 +158,12 @@ function socketAuth(socket, next) {
 // --- Routes ---
 function initAuthRoutes(app) {
   app.post('/auth/register', async (req, res) => {
+    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+    if (!checkRegisterRate(ip)) {
+      log('warn', 'register_rate_limited', { ip });
+      return safeError(res, 429, 'Too many accounts created from this network today. Try again tomorrow.');
+    }
+
     const { username, password } = req.body || {};
     const clean = (username || '').trim().replace(/[^a-zA-Z0-9_\-]/g, '');
     if (!clean || clean.length < 2 || clean.length > 24) {
@@ -115,8 +184,11 @@ function initAuthRoutes(app) {
     };
     users.set(clean.toLowerCase(), user);
     saveUsersToDisk();
+    // Only count SUCCESSFUL registrations — a typo'd username or a taken
+    // name shouldn't burn someone's daily allowance.
+    recordRegistration(ip);
     const token = jwt.sign({ username: clean }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
-    log('info', 'user_registered', { username: clean });
+    log('info', 'user_registered', { username: clean, ip });
     return res.status(201).json({ token, username: clean, tier: 't1' });
   });
 
@@ -147,12 +219,21 @@ function initAuthRoutes(app) {
     const { code } = req.body || {};
     if (!code) return safeError(res, 400, 'Code required');
 
+    const usernameLower = req.user.username.toLowerCase();
+    if (!checkRedeemRate(usernameLower)) {
+      log('warn', 'redeem_rate_limited', { username: req.user.username });
+      return safeError(res, 429, 'Too many failed code attempts. Try again in an hour.');
+    }
+
     // Peek first (no mutation) — "is this code even usable" has to be
     // answered before "does this tier make sense for this account".
     const preview = peekCode(code, req.user.username);
-    if (!preview.ok) return safeError(res, 400, preview.error);
+    if (!preview.ok) {
+      recordRedeemFailure(usernameLower);
+      return safeError(res, 400, preview.error);
+    }
 
-    const user = users.get(req.user.username.toLowerCase());
+    const user = users.get(usernameLower);
     const currentTier = getEffectiveTier(user);
     const hasActivePlan = currentTier !== 't1';
 
@@ -164,44 +245,45 @@ function initAuthRoutes(app) {
     // those are hand-issued (friends/family, big backers) not sold in bulk.
     if (preview.durationDays && hasActivePlan &&
         TIER_ORDER.indexOf(preview.tier) <= TIER_ORDER.indexOf(currentTier)) {
+      // Not a brute-force signal — this is a legitimate code the user
+      // simply can't apply yet, so it doesn't count against the limiter.
       return safeError(res, 400,
         `You already have an active ${TIERS[currentTier].label} plan. Timed codes can't stack on an active subscription — wait for it to expire, or redeem a code for a higher tier to upgrade now.`);
     }
 
     const result = redeemCode(code, req.user.username);
-    if (!result.ok) return safeError(res, 400, result.error);
+    if (!result.ok) {
+      recordRedeemFailure(usernameLower);
+      return safeError(res, 400, result.error);
+    }
+
+    clearRedeemAttempts(usernameLower);
 
     // Carry over unused time from the current plan on an upgrade — the user
     // already paid for those remaining days via their prior code, so an
     // upgrade shouldn't silently forfeit them. Only applies when the new
     // grant is timed; a lifetime grant makes carryover moot.
     const remainingMs = (user.tierExpiresAt && user.tierExpiresAt > Date.now())
-     ? user.tierExpiresAt - Date.now()
-     : 0;
+      ? user.tierExpiresAt - Date.now()
+      : 0;
 
     user.tier = result.tier;
     user.tierSource = 'redeemed';
     user.tierExpiresAt = result.durationDays
       ? Date.now() + result.durationDays * 24 * 60 * 60 * 1000 + remainingMs
-     : null; // null = lifetime
+      : null; // null = lifetime
 
     saveUsersToDisk();
     log('info', 'tier_granted', {
       username: req.user.username, tier: result.tier, source: 'redeemed',
-     durationDays: result.durationDays, tierExpiresAt: user.tierExpiresAt,
-     carriedOverMs: remainingMs
+      durationDays: result.durationDays, tierExpiresAt: user.tierExpiresAt,
+      carriedOverMs: remainingMs
     });
-return res.json({
-  tier: result.tier,
-  tierExpiresAt: user.tierExpiresAt,
-  daysCarriedOver: remainingMs > 0 ? Math.round(remainingMs / (24 * 60 * 60 * 1000)) : 0
-});
-    saveUsersToDisk();
-    log('info', 'tier_granted', {
-      username: req.user.username, tier: result.tier, source: 'redeemed',
-      durationDays: result.durationDays, tierExpiresAt: user.tierExpiresAt
+    return res.json({
+      tier: result.tier,
+      tierExpiresAt: user.tierExpiresAt,
+      daysCarriedOver: remainingMs > 0 ? Math.round(remainingMs / (24 * 60 * 60 * 1000)) : 0
     });
-    return res.json({ tier: result.tier, tierExpiresAt: user.tierExpiresAt });
   });
 
   // Admin-only — generate codes for Kickstarter batches etc. Not for

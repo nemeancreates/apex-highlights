@@ -34,6 +34,10 @@ const { loadCodesFromDisk } = require('./redemption');
 
 // --- App + HTTP + Socket.IO ---
 const app = express();
+// nginx sits in front of this server, so req.ip would otherwise report
+// the proxy's address (127.0.0.1) for every request — making per-IP
+// limits global instead of per-client. '1' = trust exactly one hop.
+app.set('trust proxy', 1);
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {

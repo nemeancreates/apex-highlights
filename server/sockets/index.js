@@ -13,6 +13,21 @@ const { registerHighlightHandlers } = require('./highlights');
 const { registerAutoCaptureHandlers } = require('./autocapture');
 const { createSessionForUser } = require('../routes/sessions');
 
+const socketsPerIp = new Map(); // ip -> count
+const MAX_SOCKETS_PER_IP = 15;
+
+io.use((socket, next) => {
+  const ip = socket.handshake.address;
+  const count = socketsPerIp.get(ip) || 0;
+  if (count >= MAX_SOCKETS_PER_IP) return next(new Error('too_many_connections'));
+  socketsPerIp.set(ip, count + 1);
+  socket.on('disconnect', () => {
+    const c = (socketsPerIp.get(ip) || 1) - 1;
+    if (c <= 0) socketsPerIp.delete(ip); else socketsPerIp.set(ip, c);
+  });
+  next();
+});
+
 function initSockets(io) {
   io.use(socketAuth);
 
