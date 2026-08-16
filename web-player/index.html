@@ -3633,7 +3633,7 @@
 
     // Throttled to ~3x/sec — cheap enough, and the moment panel needs to
     // track playhead position (scrubbing/playing), not just new server data.
-    paMomentTickCount = (paMomentTickCount || 0) + 1;
+    paMomentTickCount++;
     if (paMomentTickCount % 3 === 0) paRefreshMomentPanelIfChanged();
 
     // Remove stale
@@ -3949,8 +3949,9 @@
     if (!paSessionEnabled) { alert('The host has turned comments off for this session.'); return; }
     if (!v.loaded || !v.element) { alert('Click this POV to load it first, then leave your comment at the moment you want.'); return; }
 
-    paSeenCounts.set(v.uploadId, (paByUpload.get(v.uploadId) || []).length);
-    paRefreshCounts();
+    // Seen-tracking moved to a single session-wide total (paMarkCommentsSeen)
+    // when the ping moved off individual POV tiles onto the moment button.
+    paMarkCommentsSeen();
 
     paResumeAfterCompose = paPlaying();
     if (paResumeAfterCompose) paCall('pauseAll');

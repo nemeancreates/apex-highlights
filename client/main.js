@@ -384,6 +384,11 @@ function openDockedPlayer(code, token, username) {
   mainWindow.contentView.addChildView(playerView);
   playerView.webContents.loadURL(playerUrlFor(code, token, username));
   layoutPlayerView();
+  // The player view is a separate WebContents from mainWindow — the
+  // devtools-on-launch line up top never covers it. Open its own devtools
+  // in dev builds so player-side JS errors (comments, playback) are
+  // actually visible instead of silently swallowed.
+  if (!app.isPackaged) playerView.webContents.openDevTools({ mode: 'detach' });
   console.log('Web player docked into main window');
 }
 
