@@ -223,6 +223,7 @@ function loadSessionsFromDisk() {
       expiresAt: row.expiresAt ?? null,
       maxMembers: row.maxMembers ?? null,
       maxClips: row.maxClips ?? null,
+      closed: !!row.closed,
       title: row.title ?? null,
       detectedGame: row.detectedGame ?? null,
       // SQLite has no boolean type — stored 0/1, surfaced as a bool.
