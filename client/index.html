@@ -2894,13 +2894,13 @@
           updateSaveButtonLabel();
         });
 
-        var FATAL_SESSION_ERRORS = /session not found|session is full|username already taken|already in a session|invalid session code/i;
+        var FATAL_SESSION_ERRORS = /session not found|session is full|username already taken|already in a session|invalid session code|waiting on the host/i;
         window.socket.on('error-message', function(d) {
-          var msg = (d && d.message) || 'Unknown error';
-          if (!FATAL_SESSION_ERRORS.test(msg)) {
+        var msg = (d && d.message) || 'Unknown error';
+         if (!FATAL_SESSION_ERRORS.test(msg)) {
             hudLog('activity', '⏳ ' + msg, 'info');
-            return;
-          }
+           return;
+         }
           alert('Session error: ' + msg);
           if (window.socket) { window.socket.disconnect(); window.socket = null; }
         });
