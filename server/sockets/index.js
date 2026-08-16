@@ -74,7 +74,7 @@ function initSockets(io) {
           session.closed = false; // host reconnecting reopens it
           saveSessionsToDisk();
         } else {
-          socket.emit('error-message', { message: 'Host has left this session. Ask them to host a new one.' });
+          socket.emit('error-message', { message: 'Waiting on the host to reconnect — or ask them to start a new session.' });
           return;
         }
       }

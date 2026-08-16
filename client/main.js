@@ -197,11 +197,12 @@ const NON_GAME_PROCESSES = new Set([
   'windowsterminal','cmd','powershell','pwsh','conhost','wt','git-gui','gitkraken',
   'photoshop','illustrator','afterfx','premiere pro','blender','figma','krita','gimp',
   // Misc utilities
-  '7zfm','winrar','calculator','snippingtool','sndvol','mspaint','msedgewebview2'
+  '7zfm','winrar','calculator','calculatorapp','snippingtool','sndvol','mspaint','msedgewebview2'
 ]);
 
 // Titles that are always shell chrome, regardless of process
 const NON_GAME_TITLE_PATTERNS = [
+  /^calculator$/i,
   /^program manager$/i,
   /^windows input experience$/i,
   /^microsoft text input application$/i,
