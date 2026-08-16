@@ -86,8 +86,8 @@ const COMMENT_MAX_TIMESTAMP_MS = 6 * 60 * 60 * 1000; // sanity bound on the anch
 const TIERS = {
   t1: { label: 'Free',    canHost: true,  memberCap: 2,  clipCap: 3600,   sessionsPerMonth: 6,  retentionDays: 1,  hasAiReel: false },
   t2: { label: 'Creator', canHost: true,  memberCap: 5,  clipCap: 43200,  sessionsPerMonth: 50, retentionDays: 3,  hasAiReel: false },
-  t3: { label: 'Squad',   canHost: true,  memberCap: 11, clipCap: 86400,  sessionsPerMonth: 80, retentionDays: 7,  hasAiReel: true  },
-  t4: { label: 'Pro',     canHost: true,  memberCap: 41, clipCap: 144000, sessionsPerMonth: 70, retentionDays: 14, hasAiReel: true  }
+  t3: { label: 'Squad',   canHost: true,  memberCap: 11, clipCap: 86400,  sessionsPerMonth: 60, retentionDays: 14,  hasAiReel: true  },
+  t4: { label: 'Pro',     canHost: true,  memberCap: 41, clipCap: 144000, sessionsPerMonth: 80, retentionDays: 21, hasAiReel: true  }
 };
 
 // Ordering for tier comparisons — used to stop a timed code from

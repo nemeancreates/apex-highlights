@@ -1492,18 +1492,71 @@ function startRecording(monitor) {
   });
 }
 
+// A manual save's window ends at saveTime + 10% of duration, which usually
+// lands inside the chunk FFmpeg is still writing — and the extractor can
+// only read CLOSED chunks. Waiting a flat 10% therefore drops that tail,
+// up to a full segment. Compute when the covering chunk actually closes,
+// off real birth times on disk rather than assumed boundaries.
+function computeManualPostDelay(saveTimeUTC, durationMs) {
+  const minPost = Math.ceil(durationMs * 0.1);
+  const maxPost = (CHUNK_SECONDS * 1000) + 1500;
+  try {
+    const births = fs.readdirSync(BUFFER_DIR)
+      .filter(f => f.startsWith('chunk_' + recordingSessionTag + '_') && f.endsWith('.mp4'))
+      .map(f => fs.statSync(path.join(BUFFER_DIR, f)).birthtimeMs)
+      .sort((a, b) => a - b);
+    if (!births.length) return minPost;
+
+    const newestBirth = births[births.length - 1];
+    const windowEndLocal = (saveTimeUTC - clockOffset) + minPost;
+
+    let closeAt = newestBirth + (CHUNK_SECONDS * 1000);
+    while (closeAt < windowEndLocal) closeAt += CHUNK_SECONDS * 1000;
+
+    return Math.max(minPost, Math.min(maxPost, (closeAt - Date.now()) + 1500));
+  } catch (e) {
+    return minPost;
+  }
+}
+
+// Computes how long a manual save must wait for the chunk covering its
+// window end to finish writing. Derived from real chunk birth times on
+// disk rather than recordingStartTime — FFmpeg's first segment doesn't
+// begin exactly at spawn, so assumed boundaries drift from actual ones.
+function computeManualPostDelay(saveTimeUTC, durationMs) {
+  const minPost = Math.ceil(durationMs * 0.1);
+  const maxPost = (CHUNK_SECONDS * 1000) + 1500;
+  try {
+    const births = fs.readdirSync(BUFFER_DIR)
+      .filter(f => f.startsWith('chunk_' + recordingSessionTag + '_') && f.endsWith('.mp4'))
+      .map(f => fs.statSync(path.join(BUFFER_DIR, f)).birthtimeMs)
+      .sort((a, b) => a - b);
+    if (!births.length) return minPost;
+
+    const newestBirth = births[births.length - 1];
+    const windowEndLocal = (saveTimeUTC - clockOffset) + minPost;
+
+    let closeAt = newestBirth + (CHUNK_SECONDS * 1000);
+    while (closeAt < windowEndLocal) closeAt += CHUNK_SECONDS * 1000;
+
+    return Math.max(minPost, Math.min(maxPost, (closeAt - Date.now()) + 1500));
+  } catch (e) {
+    return minPost;
+  }
+}
+
+
 function saveHighlight(coordinatedTimestamp = null, clipDurationMs = null, triggerSource = null) {
   const duration = clipDurationMs || 30000;
-  // The buffer writes 10s segments and the save path drops the in-progress
-  // one (it's mid-write). For auto-capture that discarded chunk holds the
-  // END of the fight — the exact moment worth keeping — so wait for it to
-  // close instead of the 10% post-roll, which is far too short to cover a
-  // full segment. Manual saves keep the snappy 10% behavior.
-  const postDelay = (triggerSource === 'auto')
-    ? (CHUNK_SECONDS * 1000) + 1500
-    : Math.ceil(duration * 0.1);
   const clipChunks = Math.ceil(duration / (CHUNK_SECONDS * 1000));
   const saveTimeUTC = coordinatedTimestamp || getPreciseUTC();
+  // Both paths wait for the chunk covering the window end to close — the
+  // extractor can only read CLOSED chunks, and a flat 10% post-roll almost
+  // always ends mid-segment, silently dropping that tail. Auto always waits
+  // a full segment; manual waits only as long as it actually needs to.
+  const postDelay = (triggerSource === 'auto')
+    ? (CHUNK_SECONDS * 1000) + 1500
+    : computeManualPostDelay(saveTimeUTC, duration);
 
   if (postDelay > 500) {
     console.log(`Post-capture: waiting ${postDelay}ms for remaining footage (${(duration / 1000)}s clip, ${clipChunks} chunks)...`);
@@ -1800,10 +1853,12 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
       `buffer held ${((effEnd - effStart) / 1000).toFixed(1)}s — lost ${(clampedMs / 1000).toFixed(1)}s off the start`);
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('clip-clamped', {
-        requestedSec: +((windowEndLocal - windowStartLocal) / 1000).toFixed(1),
-        actualSec: +((effEnd - effStart) / 1000).toFixed(1),
-        lostSec: +(clampedMs / 1000).toFixed(1)
-      });
+          requestedSec: +((windowEndLocal - windowStartLocal) / 1000).toFixed(1),
+          actualSec: +((effEnd - effStart) / 1000).toFixed(1),
+          lostSec: +(clampedMs / 1000).toFixed(1),
+          lostAtStart: +Math.max(0, (effStart - windowStartLocal) / 1000).toFixed(1),
+          lostAtEnd: +Math.max(0, (windowEndLocal - effEnd) / 1000).toFixed(1)
+        });
     }
   }
   const trimOffsetSec = Math.max(0, (effStart - availableStart) / 1000);
@@ -1827,9 +1882,13 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
 
   const hasAudio = !!(hlAudioPath && hlAudioChunkCount > 0 && fs.existsSync(hlAudioPath));
   const hasMic = !!(hlMicPath && hlMicChunkCount > 0 && !micMuted && fs.existsSync(hlMicPath));
-  console.log(`Saving highlight: ${videoFiles.length} chunk(s) covering window, ` +
+  const saveDiag = `Saving highlight: ${videoFiles.length} chunk(s) covering window, ` +
     `trim ss=${trimOffsetSec.toFixed(3)}s t=${trimDurationSec.toFixed(3)}s ` +
-    `(requested ${(durationMs / 1000).toFixed(1)}s), audio=${hasAudio} (${hlAudioChunkCount}), mic=${hasMic} (${hlMicChunkCount})`);
+    `(requested ${(durationMs / 1000).toFixed(1)}s), audio=${hasAudio} (${hlAudioChunkCount}), mic=${hasMic} (${hlMicChunkCount})`;
+  console.log(saveDiag);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('save-diagnostic', saveDiag);
+  }
 
   const timestamp = new Date(saveTimeUTC).toISOString().replace(/[:.]/g, '-');
   const outputPath = path.join(CLIPS_DIR, `highlight-${timestamp}.mp4`);
@@ -1933,6 +1992,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     // STEP 2: trim to the exact window. This is the step that lets clip
     // length match the real ACTIVE window instead of snapping to 10s.
     const trim = spawnFFmpegLow([
+      '-threads', '2',
       '-ss', alignedOffsetSec.toFixed(3),
       '-i', tempConcatPath,
       '-t', copyDurationSec.toFixed(3),

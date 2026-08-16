@@ -135,12 +135,12 @@ function initAuthRoutes(app) {
     }
     const token = jwt.sign({ username: user.username }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
     log('info', 'user_login', { username: user.username, tier: getEffectiveTier(user) });
-    return res.status(200).json({ token, username: user.username, tier: getEffectiveTier(user) });
+    return res.status(200).json({ token, username: user.username, tier: getEffectiveTier(user), tierExpiresAt: user.tierExpiresAt || null });
   });
 
   app.get('/auth/me', requireAuth, (req, res) => {
     const user = users.get(req.user.username.toLowerCase());
-    return res.json({ username: req.user.username, tier: getEffectiveTier(user) });
+    return res.json({ username: req.user.username, tier: getEffectiveTier(user), tierExpiresAt: user.tierExpiresAt || null });
   });
 
   app.post('/auth/redeem', requireAuth, (req, res) => {
@@ -171,11 +171,31 @@ function initAuthRoutes(app) {
     const result = redeemCode(code, req.user.username);
     if (!result.ok) return safeError(res, 400, result.error);
 
+    // Carry over unused time from the current plan on an upgrade — the user
+    // already paid for those remaining days via their prior code, so an
+    // upgrade shouldn't silently forfeit them. Only applies when the new
+    // grant is timed; a lifetime grant makes carryover moot.
+    const remainingMs = (user.tierExpiresAt && user.tierExpiresAt > Date.now())
+     ? user.tierExpiresAt - Date.now()
+     : 0;
+
     user.tier = result.tier;
     user.tierSource = 'redeemed';
     user.tierExpiresAt = result.durationDays
-      ? Date.now() + result.durationDays * 24 * 60 * 60 * 1000
-      : null; // null = lifetime
+      ? Date.now() + result.durationDays * 24 * 60 * 60 * 1000 + remainingMs
+     : null; // null = lifetime
+
+    saveUsersToDisk();
+    log('info', 'tier_granted', {
+      username: req.user.username, tier: result.tier, source: 'redeemed',
+     durationDays: result.durationDays, tierExpiresAt: user.tierExpiresAt,
+     carriedOverMs: remainingMs
+    });
+return res.json({
+  tier: result.tier,
+  tierExpiresAt: user.tierExpiresAt,
+  daysCarriedOver: remainingMs > 0 ? Math.round(remainingMs / (24 * 60 * 60 * 1000)) : 0
+});
     saveUsersToDisk();
     log('info', 'tier_granted', {
       username: req.user.username, tier: result.tier, source: 'redeemed',

@@ -182,6 +182,8 @@
       .tier-badge.t2 { background: #2a2145; color: #a98fe8; }
       .tier-badge.t3 { background: #14342a; color: #39d3a0; }
       .tier-badge.t4 { background: #3d2f10; color: #d8a838; }
+      .tier-days { font-size: 10px; color: #5f7a6a; margin-left: 5px; white-space: nowrap; }
+      .tier-days.soon { color: #d8a838; }
       .redeem-wrap { position: relative; }
       .redeem-panel {
         display: none; position: absolute; top: 38px; right: 0; width: 250px;
@@ -581,7 +583,7 @@
             <span style="font-size:26px;line-height:1;">🙈</span>
             <h1>Peak-Abu</h1>
             <button class="ks-btn" onclick="openKickstarter()" title="Back Peak-Abu on Kickstarter" aria-label="Back Peak-Abu on Kickstarter">
-              <img src="assets/kickstarter.png" alt="Kickstarter" />
+              <img src="assets/kickstarter.png" alt="kickstarter" />
             </button>
           </div>
           <span class="version-tag">v0.1.46</span>
@@ -760,9 +762,11 @@
 
       <!-- AUTH BAR (shown after login — compact) -->
       <div class="auth-bar" id="authBar" style="display:none;">
-        <span class="user-label">Logged in as <strong id="authBarName"></strong>
-          <span class="tier-badge t1" id="tierBadge" style="margin-left:8px;">Free</span>
-        </span>
+       <span class="user-label">Logged in as <strong id="authBarName"></strong>
+        <span class="tier-badge t1" id="tierBadge" style="margin-left:8px;">Free</span>
+        <span class="tier-days" id="tierDays" style="display:none;"></span>
+       </span>
+       <button class="btn-secondary btn-sm" onclick="logoutUser()">Log Out</button>
       </div>
 
       <!-- MAIN GRID -->
@@ -1605,9 +1609,24 @@
         }
 
         var hk = '<span id="saveBtnHotkey">' + window.currentHotkey + '</span>';
-        btn.innerHTML = window.autoCaptureEnabled
-          ? '💾 Save Last ' + formatDuration(window.sessionClipDuration) + ' (' + hk + ')'
-          : '💾 Save Highlight (or press ' + hk + ')';
+
+        // main.js flags "buffer ready" after a fixed 15s regardless of the
+        // configured clip duration — that's a floor for SOME footage
+        // existing, not a guarantee the full requested length is available.
+        // Surface the real gap instead of letting a save silently clamp short.
+        var elapsedSec = window.recordingStartedAtClient
+          ? (Date.now() - window.recordingStartedAtClient) / 1000 : 0;
+        var neededSec = window.sessionClipDuration / 1000;
+        var shortfallSec = Math.max(0, Math.ceil(neededSec - elapsedSec));
+
+        if (window.isRecordingActive && window.bufferReady && shortfallSec > 0) {
+          btn.innerHTML = '💾 Save (' + formatDuration(window.sessionClipDuration) +
+            ' in ' + shortfallSec + 's — or press ' + hk + ' now for a shorter clip)';
+        } else {
+          btn.innerHTML = window.autoCaptureEnabled
+            ? '💾 Save Last ' + formatDuration(window.sessionClipDuration) + ' (' + hk + ')'
+            : '💾 Save Highlight (or press ' + hk + ')';
+        }
         btn.disabled = !(window.isRecordingActive && window.bufferReady);
       }
       
@@ -3044,6 +3063,8 @@
         if (window._bufCapTimer) { clearInterval(window._bufCapTimer); window._bufCapTimer = null; }
       }
 
+      window.recordingStartedAtClient = 0;
+
       window.startRecording = async function() {
         var monitorIndex = parseInt(document.getElementById('monitorSelect').value);
         var sourceLabel = document.getElementById('monitorSelect').options[document.getElementById('monitorSelect').selectedIndex].textContent;
@@ -3061,6 +3082,7 @@
         }
         window.isRecordingActive = true;
         window.bufferReady = false;
+        window.recordingStartedAtClient = Date.now();
 
         // Switch Monitor re-entered startRecording() on a live capture — the
         // exact path that spawned a second ddagrab session. Main guards it
@@ -3125,6 +3147,21 @@
         restoreReadyStatus();
       });
 
+      window._bufferCountdownTimer = null;
+      function startBufferCountdown() {
+        stopBufferCountdown();
+        window._bufferCountdownTimer = setInterval(function() {
+          if (!window.isRecordingActive || window.highlightCooldownActive) return;
+          var elapsedSec = window.recordingStartedAtClient
+            ? (Date.now() - window.recordingStartedAtClient) / 1000 : 0;
+          if (elapsedSec >= window.sessionClipDuration / 1000) { stopBufferCountdown(); }
+          updateSaveButtonLabel();
+        }, 1000);
+      }
+      function stopBufferCountdown() {
+        if (window._bufferCountdownTimer) { clearInterval(window._bufferCountdownTimer); window._bufferCountdownTimer = null; }
+      }
+
       ipcRenderer.on('buffer-ready', function() {
         if (!window.isRecordingActive) return;
         window.bufferReady = true;
@@ -3132,6 +3169,7 @@
         document.getElementById('statusText').className = 'status-bar ready';
         document.getElementById('statusHelp').textContent = 'Click Save or press ' + window.currentHotkey + ' to capture the last ' + formatDuration(window.sessionClipDuration) + ' of gameplay';
         updateSaveButtonLabel();
+        startBufferCountdown();
         hudLog('system','🎬 Buffer ready — highlights can be saved','success');
       });
 
@@ -3139,6 +3177,7 @@
       ipcRenderer.send('stop-recording');
       window.isRecordingActive = false;
       window.bufferReady = false;
+      stopBufferCountdown();
       if (window.mediaRecorder && window.mediaRecorder.state !== 'inactive') { window.mediaRecorder.stop(); window.mediaRecorder = null; }
       wgcStopAll();
       stopMicCapture();
@@ -3808,6 +3847,7 @@
        hudLog('system', '🎥 Capture: ' + label, 'info');
       });
       ipcRenderer.on('highlight-saved', function(ev, fp) { hudLog('activity','✅ Saved: '+fp,'success'); });
+      ipcRenderer.on('save-diagnostic', function(ev, msg) { hudLog('system', '🔧 ' + msg, 'info'); });
       ipcRenderer.on('highlight-error', function(ev, msg) { hudLog('activity','❌ '+msg,'error'); });
 
       ipcRenderer.on('clip-clamped', function(ev, d) {
@@ -3815,11 +3855,16 @@
         // shorter than asked for, which is worth saying plainly without
         // implying a sync problem that can't exist with one POV.
         var solo = !window.sessionMemberCount || window.sessionMemberCount < 2;
+        var where = (d.lostAtEnd > d.lostAtStart) ? 'end' : 'start';
         var msg = '⚠ Only ' + d.actualSec + 's of the requested ' + d.requestedSec +
-          's was in your buffer — lost ' + d.lostSec + 's off the start.';
-        msg += solo
-          ? ' Buffer was still filling; wait a bit longer after starting.'
-          : ' This POV will start later than your squad\'s.';
+          's was available — lost ' + d.lostSec + 's off the ' + where + '.';
+        if (where === 'end') {
+          msg += ' The final segment was still being written.';
+        } else {
+          msg += solo
+            ? ' Buffer was still filling; wait a bit longer after starting.'
+            : ' This POV will start later than your squad\'s.';
+        }
         hudLog('activity', msg, 'error');
       });
 
@@ -3929,7 +3974,7 @@
         
        try {
          var res = await fetch('https://peakabu.app/auth/me', { headers: { 'Authorization':'Bearer '+window.authToken } });
-         if (res.ok) { var d = await res.json(); updateTierBadge(d.tier); showAuthLoggedIn(d.username); }
+         if (res.ok) { var d = await res.json(); updateTierBadge(d.tier, d.tierExpiresAt); showAuthLoggedIn(d.username); }
          else if (res.status === 401) { clearAuthState(); showAuthLoggedOut(); }
          else { if (window.authUsername) showAuthLoggedIn(window.authUsername); else showAuthLoggedOut(); }
        } catch(e) {
@@ -4009,7 +4054,7 @@
           var data = await res.json();
           if (!res.ok) { showAuthError(data.error||'Registration failed'); return; }
           storeAuthState(data.token, data.username);
-          updateTierBadge(data.tier || 't1');
+          updateTierBadge(data.tier, data.tierExpiresAt);
           showAuthLoggedIn(data.username);
         } catch(e) { showAuthError('Could not reach server'); }
       };
@@ -4026,7 +4071,7 @@
           var data = await res.json();
           if (!res.ok) { showAuthError(data.error||'Login failed'); return; }
           storeAuthState(data.token, data.username);
-          updateTierBadge(data.tier);
+          updateTierBadge(data.tier || 't1', data.tierExpiresAt);
           showAuthLoggedIn(data.username);
         } catch(e) { showAuthError('Could not reach server'); }
       };
@@ -4086,14 +4131,26 @@
       window.currentTier = 't1';
       var TIER_LABELS = { t1: 'Free', t2: 'Creator', t3: 'Squad', t4: 'Pro' };
 
-      function updateTierBadge(tier) {
+      function updateTierBadge(tier, tierExpiresAt) {
         window.currentTier = tier || 't1';
         var badge = document.getElementById('tierBadge');
         if (badge) {
-          badge.className = 'tier-badge ' + window.currentTier;
-          badge.textContent = TIER_LABELS[window.currentTier] || 'Free';
+         badge.className = 'tier-badge ' + window.currentTier;
+         badge.textContent = TIER_LABELS[window.currentTier] || 'Free';
+       }
+       var daysEl = document.getElementById('tierDays');
+       if (daysEl) {
+        if (window.currentTier === 't1' || !tierExpiresAt) {
+         daysEl.style.display = 'none';
+        } else {
+         var msLeft = tierExpiresAt - Date.now();
+         var daysLeft = Math.max(0, Math.ceil(msLeft / (24 * 60 * 60 * 1000)));
+         daysEl.textContent = daysLeft <= 0 ? 'expires today' : daysLeft + 'd left';
+         daysEl.className = 'tier-days' + (daysLeft <= 3 ? ' soon' : '');
+         daysEl.style.display = 'inline';
         }
-        acUpdateTierGate();
+       }
+       acUpdateTierGate();
       }
 
       function acUpdateTierGate() {
@@ -4138,7 +4195,7 @@
             msg.textContent = data.error || 'Could not redeem that code';
             return;
           }
-          updateTierBadge(data.tier);
+          updateTierBadge(data.tier, data.tierExpiresAt);
           input.value = '';
           msg.className = 'redeem-msg ok';
           msg.textContent = '✅ ' + (TIER_LABELS[data.tier] || data.tier) + ' unlocked!';

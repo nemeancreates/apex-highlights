@@ -2215,12 +2215,17 @@
         if (placeholder) { placeholder.className = 'pov-loading'; placeholder.textContent = 'Loading...'; }
       }
 
+      // Poster shows instantly while the video decodes — no black flash.
+      if (v.thumbnailSrc) v.element.poster = v.thumbnailSrc;
       v.element.src = v.videoSrc;
       v.element.preload = 'auto';
 
+      // loadedmetadata only confirms dimensions/duration are known — a frame
+      // may not have decoded yet, which is the black-screen window. loadeddata
+      // guarantees HAVE_CURRENT_DATA (readyState 2): a real frame exists.
       await new Promise(resolve => {
-        if (v.element.readyState >= 1) { resolve(); return; }
-        v.element.addEventListener('loadedmetadata', resolve, { once: true });
+        if (v.element.readyState >= 2) { resolve(); return; }
+        v.element.addEventListener('loadeddata', resolve, { once: true });
         v.element.addEventListener('error', resolve, { once: true });
       });
 
