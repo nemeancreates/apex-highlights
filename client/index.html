@@ -683,6 +683,24 @@
         </div>
       </div>
 
+      <!-- BEGIN RECORDING PROMPT — shown after an invite auto-joins a
+           session, so capture never starts without an explicit click. -->
+      <div id="beginRecordingModal" class="modal">
+        <div class="modal-content" style="max-width:400px;">
+          <div class="modal-header">
+            <h2>▶ Start recording?</h2>
+            <button class="modal-close" onclick="cancelBeginRecording()">×</button>
+          </div>
+          <p style="font-size:13px;line-height:1.5;color:#c8d6cd;margin-bottom:14px;">
+            You've joined <strong id="beginRecordingCode">the session</strong>. Start the rolling buffer now so you're ready to save highlights?
+          </p>
+          <div class="row">
+            <button class="btn-start" onclick="confirmBeginRecording()">▶ Begin Rolling Buffer</button>
+            <button class="btn-secondary" onclick="cancelBeginRecording()">Not yet</button>
+          </div>
+        </div>
+      </div>
+
       <!-- AUTO-CAPTURE DISCLOSURE — shown once, first time the toggle is enabled -->
       <div id="acDisclosureModal" class="modal">
         <div class="modal-content" style="max-width:420px;">
@@ -1397,9 +1415,21 @@
           window.renameSessionHistory(h.code);
         });
 
+        // Watch/comment on a past session without rejoining it. Works even
+        // once the session is locked to new joins.
+        var play = document.createElement('button');
+        play.className = 'hist-edit';
+        play.textContent = '🌐';
+        play.title = 'Open this session in the web player';
+        play.addEventListener('click', function(e) {
+          e.stopPropagation();
+          window.openPlayerForCode(h.code);
+        });
+
         top.appendChild(role);
         top.appendChild(code);
         top.appendChild(name);
+        top.appendChild(play);
         top.appendChild(edit);
 
         var meta = document.createElement('div');
@@ -1969,15 +1999,25 @@
         });
       })();
 
+      // Opens the player for an EXPLICIT code, independent of whether the
+      // client is currently joined to that session. This is what keeps
+      // comments/downloads reachable after a host leaves and the session
+      // locks: being in the socket session was never what authorized those
+      // features — the account is. Server still enforces every permission.
+      window.openPlayerForCode = function(code) {
+        if (!code) return;
+        if (!window.authToken) { hudLog('system', '🔒 Log in to open the player with your account', 'error'); return; }
+        ipcRenderer.invoke('open-player', { code: code, token: window.authToken, username: window.authUsername })
+          .then(function(r) {
+            hudLog('system', '🌐 Player opened for ' + code +
+              (r.mode === 'docked' ? ' alongside the client' : ' in its own window'), 'info');
+          });
+      };
+
       window.openWebPlayer = function(e) {
         if (e) e.preventDefault();
         if (!window.currentSessionCode) return;
-        ipcRenderer.invoke('open-player', { code: window.currentSessionCode, token: window.authToken, username: window.authUsername })
-          .then(function(r) {
-            hudLog('system', r.mode === 'docked'
-              ? '🌐 Web player opened alongside the client'
-              : '🌐 Web player opened in its own window', 'info');
-          });
+        window.openPlayerForCode(window.currentSessionCode);
       };
       document.getElementById('settingsModal').addEventListener('click', function(e) { if (e.target.id==='settingsModal') closeSettings(); });
 
@@ -2648,6 +2688,15 @@
         document.getElementById('autoCaptureToggle').checked = false;
       };
 
+      window.confirmBeginRecording = function() {
+        document.getElementById('beginRecordingModal').classList.remove('show');
+        autoStartRecordingSafe();
+      };
+      window.cancelBeginRecording = function() {
+        document.getElementById('beginRecordingModal').classList.remove('show');
+        hudLog('system', 'Joined session — press Start Highlight Session whenever you\'re ready to record', 'info');
+      };
+
       function acCommitEnabled(enabled) {
         window.autoCaptureEnabled = enabled;
         ipcRenderer.invoke('set-user-pref', 'autoCaptureEnabled', enabled);
@@ -2764,7 +2813,16 @@
 
           if (window.autoStartAfterJoin) {
             window.autoStartAfterJoin = false;
-            autoStartRecordingSafe();
+            // Don't start capture on the user's behalf, even from an invite
+            // link they clicked deliberately. Joining a session and turning
+            // on a rolling buffer are different consents — ask for the
+            // second one explicitly.
+            if (window.isRecordingActive) {
+              hudLog('system', 'Already recording — invite joined without restarting capture', 'info');
+            } else {
+              document.getElementById('beginRecordingCode').textContent = data.code;
+              document.getElementById('beginRecordingModal').classList.add('show');
+            }
           }
         });
 
@@ -4089,6 +4147,11 @@
         ipcRenderer.send('auth-token-updated', null);
         ipcRenderer.send('session-disconnected');
         document.getElementById('authConfirmWrap').style.display = 'none';
+        // The player view is a separate page holding its own copy of the
+        // token/username baked into its URL at open time — logging out here
+        // doesn't reach it. Close it rather than leave it able to post
+        // comments as the account that's no longer logged in.
+        ipcRenderer.invoke('close-player').catch(function() {});
       };
 
       function storeAuthState(token, username) {

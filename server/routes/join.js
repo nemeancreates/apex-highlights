@@ -92,15 +92,18 @@ function page({ code, host, memberCount, valid, reason }) {
     `}
   </div>
 ${valid ? `<script>
-  // Auto-handoff on load. Browsers may require a gesture for custom
-  // schemes, so the button above stays the reliable path.
-  setTimeout(function(){ window.location.href = ${JSON.stringify(deepLink)}; }, 400);
-  // Browsers block window.close() on tabs the user navigated to, so the
-  // best we can do is tell them the tab has done its job.
-  setTimeout(function(){
-    var h = document.getElementById('handoff');
-    if (h) h.style.display = 'block';
-  }, 2200);
+  // No auto-handoff. The user picks one of the two buttons below —
+  // "Open Peak-Abu & Join" or "Watch in browser instead" — nothing fires
+  // on its own. Clicking the primary button navigates to the deep link
+  // (browser-native <a href>), which is also the trigger main.js listens
+  // for to route the join and, separately, decide whether to auto-start
+  // recording.
+  document.getElementById('openBtn').addEventListener('click', function() {
+    setTimeout(function(){
+      var h = document.getElementById('handoff');
+      if (h) h.style.display = 'block';
+    }, 1200);
+  });
 
   function copyCode(){
     navigator.clipboard.writeText(${JSON.stringify(code)}).then(function(){

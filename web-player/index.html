@@ -3238,7 +3238,6 @@
   var paResumeAfterCompose = false;
   var paComposeClose = null;
   var paDragging = null; // { commentId, node, layer, startX, startY }
-  var paSeenCounts = new Map(); // uploadId -> count this viewer has already acknowledged
   var PA_CMT_SCALES = { large: 1, medium: 0.7, small: 0.49 }; // each step is -30% of the previous
 
   function paApplyCommentSize(size) {
@@ -3284,6 +3283,7 @@
       '.pa-cmt-btn:hover{border-color:#39d3a0;color:#39d3a0;background:rgba(18,37,26,0.95);}',
       '.pa-cmt-btn.pa-new{border-color:#d8a838;color:#d8a838;background:rgba(58,40,10,0.9);animation:pa-newpulse 1.6s ease-in-out infinite;}',
       '.pa-cmt-btn.pa-new .pa-cmt-count{background:#d8a838;}',
+      '#paMomentBtn.pa-new{border-color:#d8a838;color:#d8a838;background:rgba(58,40,10,0.85);animation:pa-newpulse 1.6s ease-in-out infinite;}',
       '@keyframes pa-newpulse{0%,100%{box-shadow:0 0 0 0 rgba(216,168,56,0.5);}50%{box-shadow:0 0 0 5px rgba(216,168,56,0);}}',
       '.pa-cmt-count{position:absolute;top:-7px;right:-7px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;',
       'background:#39d3a0;color:#04140d;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;}',
@@ -3548,6 +3548,30 @@
     return (paByUpload.get(uploadId) || []).length;
   };
 
+  function paTotalCommentCount() {
+    var total = 0;
+    paByUpload.forEach(function (arr) { total += arr.length; });
+    return total;
+  }
+
+  // The "new" indicator now lives ONLY on the bottom-right moment button —
+  // one signal for the whole session instead of pulsing scattered across
+  // every video tile. First sight sets the baseline so an existing backlog
+  // isn't announced as new.
+  function paUpdateMomentPing() {
+    var btn = document.getElementById('paMomentBtn');
+    if (!btn) return;
+    var total = paTotalCommentCount();
+    if (window._paSeenTotal === undefined) window._paSeenTotal = total;
+    btn.classList.toggle('pa-new', total > window._paSeenTotal);
+  }
+
+  function paMarkCommentsSeen() {
+    window._paSeenTotal = paTotalCommentCount();
+    var btn = document.getElementById('paMomentBtn');
+    if (btn) btn.classList.remove('pa-new');
+  }
+
   function paRefreshCounts() {
     var vids = paVideos();
     for (var i = 0; i < vids.length; i++) {
@@ -3561,12 +3585,9 @@
       var n = (paByUpload.get(uploadId) || []).length;
       badge.textContent = n > 99 ? '99+' : String(n);
       badge.style.display = n > 0 ? 'flex' : 'none';
-
-      // First sight of a POV sets its baseline, so an existing backlog isn't
-      // announced as "new" — only comments that land after you're looking.
-      if (!paSeenCounts.has(uploadId)) paSeenCounts.set(uploadId, n);
-      btn.classList.toggle('pa-new', n > paSeenCounts.get(uploadId));
+      // Count badge only, no pulse — see paUpdateMomentPing for the ping.
     }
+    paUpdateMomentPing();
     if (typeof renderHighlightsColumn === 'function') renderHighlightsColumn();
   }
 
@@ -3608,6 +3629,11 @@
         }
       }
     }
+
+    // Throttled to ~3x/sec — cheap enough, and the moment panel needs to
+    // track playhead position (scrubbing/playing), not just new server data.
+    paMomentTickCount = (paMomentTickCount || 0) + 1;
+    if (paMomentTickCount % 3 === 0) paRefreshMomentPanelIfChanged();
 
     // Remove stale
     var stale = [];
@@ -3843,6 +3869,34 @@
     return out;
   }
 
+  // Re-renders the open moment panel's body only when the actual set of
+  // comments at the current moment has changed — cheap signature compare
+  // instead of a full teardown/rebuild on every call.
+  var paLastMomentSig = null;
+  function paRefreshMomentPanelIfChanged() {
+    if (!document.getElementById('paMomentPanel')) return;
+    var items = paMomentComments();
+    var sig = items.map(function (it) { return it.comment.id; }).join(',');
+    if (sig === paLastMomentSig) return;
+    paLastMomentSig = sig;
+
+    var body = document.querySelector('#paMomentPanel .pa-panel-body');
+    if (!body) return;
+    body.innerHTML = '';
+    if (!items.length) {
+      var empty = document.createElement('div'); empty.className = 'pa-empty';
+      empty.textContent = 'Nothing left here yet.';
+      body.appendChild(empty);
+      return;
+    }
+    items.forEach(function (it) {
+      body.appendChild(paBuildListItem(it.comment, it.pov, function () {
+        paLastMomentSig = null; // force a rebuild after a delete
+        paRefreshMomentPanelIfChanged();
+      }));
+    });
+  }
+
   // ================================
   // PANELS
   // ================================
@@ -3977,16 +4031,10 @@
   // --- moment list ---
   function paOpenMomentPanel() {
     paCloseAll();
-    var items = paMomentComments();
-    var ui = paBuildPanel('paMomentPanel', 'Comments at this moment');
-    if (!items.length) {
-      var empty = document.createElement('div'); empty.className = 'pa-empty';
-      empty.textContent = 'Nothing left here yet.';
-      ui.body.appendChild(empty); return;
-    }
-    items.forEach(function (it) {
-      ui.body.appendChild(paBuildListItem(it.comment, it.pov, function () { paOpenMomentPanel(); }));
-    });
+    paMarkCommentsSeen();
+    paBuildPanel('paMomentPanel', 'Comments at this moment');
+    paLastMomentSig = null; // force the first render
+    paRefreshMomentPanelIfChanged();
   }
 
   function paBuildListItem(c, povName, onChanged) {
