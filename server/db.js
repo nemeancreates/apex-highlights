@@ -46,7 +46,8 @@ db.exec(`
     maxMembers          INTEGER,
     maxClips            INTEGER,
     title               TEXT,
-    detectedGame        TEXT
+    detectedGame        TEXT,
+    closed              INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS uploads (
@@ -143,6 +144,9 @@ addColumnIfMissing('sessions', 'maxClips', 'INTEGER');
 addColumnIfMissing('sessions', 'commentSettings', 'TEXT');
 addColumnIfMissing('sessions', 'title', 'TEXT');
 addColumnIfMissing('sessions', 'detectedGame', 'TEXT');
+// closed — host-left flag. Previously in-memory only, so it was lost on
+// every restart, silently reopening sessions to anyone holding the code.
+addColumnIfMissing('sessions', 'closed', 'INTEGER NOT NULL DEFAULT 0');
 
 // uploads — duration-based clip weight (batch 2: 3min=1, 6min=2, hard cap)
 addColumnIfMissing('uploads', 'durationMs', 'INTEGER');

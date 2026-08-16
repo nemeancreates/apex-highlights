@@ -103,11 +103,11 @@ const stmt = {
   upsertSession: db.prepare(`
     INSERT INTO sessions (
       code, id, createdBy, createdAt, clipDuration, highlightCount,
-      hostTier, expiresAt, maxMembers, maxClips, title, detectedGame
+      hostTier, expiresAt, maxMembers, maxClips, title, detectedGame, closed
     )
     VALUES (
       @code, @id, @createdBy, @createdAt, @clipDuration, @highlightCount,
-      @hostTier, @expiresAt, @maxMembers, @maxClips, @title, @detectedGame
+      @hostTier, @expiresAt, @maxMembers, @maxClips, @title, @detectedGame, @closed
     )
     ON CONFLICT(code) DO UPDATE SET
       clipDuration = excluded.clipDuration,
@@ -117,7 +117,8 @@ const stmt = {
       maxMembers = excluded.maxMembers,
       maxClips = excluded.maxClips,
       title = excluded.title,
-      detectedGame = excluded.detectedGame
+      detectedGame = excluded.detectedGame,
+      closed = excluded.closed
   `),
   deleteSession: db.prepare(`DELETE FROM sessions WHERE code = ?`),
   allSessions: db.prepare(`SELECT * FROM sessions`),
@@ -224,6 +225,10 @@ function loadSessionsFromDisk() {
       maxClips: row.maxClips ?? null,
       title: row.title ?? null,
       detectedGame: row.detectedGame ?? null,
+      // SQLite has no boolean type — stored 0/1, surfaced as a bool.
+      // A session whose host left stays closed to new joins across a
+      // restart; without this it silently reopened to anyone with the code.
+      closed: !!row.closed,
       highlightLockedUntil: 0,   // transient — rebuilt live
       pendingHighlights: [],     // transient
       members: [],               // transient
@@ -257,7 +262,8 @@ function saveSessionsToDisk() {
         maxMembers: s.maxMembers ?? null,
         maxClips: s.maxClips ?? null,
         title: s.title ?? null,
-        detectedGame: s.detectedGame ?? null
+        detectedGame: s.detectedGame ?? null,
+        closed: s.closed ? 1 : 0
       });
       for (const u of s.uploads) {
         stmt.upsertUpload.run({
