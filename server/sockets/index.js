@@ -72,6 +72,7 @@ function initSockets(io) {
       if (session.closed) {
         if (cleanUsername === session.createdBy) {
           session.closed = false; // host reconnecting reopens it
+          saveSessionsToDisk();
         } else {
           socket.emit('error-message', { message: 'Host has left this session. Ask them to host a new one.' });
           return;
@@ -218,10 +219,6 @@ function initSockets(io) {
     // ================================
     // CLIP DURATION — host only
     // ================================
-
-    // ================================
-    // CLIP DURATION — host only
-    // ================================
     socket.on('set-clip-duration', ({ duration }) => {
       if (!checkSocketRate(socket.id)) return;
       const sessionCode = socket.sessionCode;
@@ -347,6 +344,11 @@ function initSockets(io) {
       // not this socket path.
       if (wasHost) {
         session.closed = true;
+        // Persist immediately — a restart between here and the delayed
+        // archive below would otherwise reopen the session to anyone
+        // holding the code (closed is a durable column now, not
+        // in-memory-only, but it still has to actually be written).
+        saveSessionsToDisk();
         if (session.members.length > 0) {
           log('info', 'session_closed_by_host', { session: sessionCode, host: socket.username, kicked: session.members.length });
           io.to(sessionCode).emit('session-closed', { reason: 'Host left the session' });
