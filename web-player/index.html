@@ -1775,13 +1775,17 @@
         }
       });
 
-      const hasLoaded = videos.some(v => !v.missing && !v.processing && v.loaded);
-      if (!hasLoaded) {
+      // buildVideosForHighlight returns the SAME clip objects out of
+      // allUploads, so `loaded` stays true on anything opened earlier in the
+      // session. The old guard therefore read true for a highlight whose own
+      // POVs were all cold, and skipped loading entirely — nothing appeared
+      // until a tile was clicked directly. Only a POV in THIS highlight that
+      // actually has a source attached counts as warm.
+      const alreadyLoaded = videos.find(v =>
+        !v.missing && !v.processing && v.loaded && v.element && v.element.src);
+      if (!alreadyLoaded) {
         const first = videos.find(v => !v.missing && !v.processing);
-        if (first) {
-          const idx = videos.indexOf(first);
-          loadPOV(idx, true);
-        }
+        if (first) loadPOV(videos.indexOf(first), true);
       }
 
       renderVideoGrid();
