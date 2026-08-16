@@ -1775,18 +1775,14 @@
         }
       });
 
-      // Must check whether THIS highlight has a loaded POV. The old check hit
-      // `videos.some(...)` after buildVideosForHighlight had already swapped
-      // in the new clip objects — but any clip opened earlier in the session
-      // keeps loaded=true on its shared object, so the guard read true and
-      // skipped loading entirely. That's the "click between highlights before
-      // they load" behavior: nothing loads until a tile is clicked directly.
-      const alreadyLoaded = videos.find(v => !v.missing && !v.processing && v.loaded);
-      if (!alreadyLoaded) {
+      const hasLoaded = videos.some(v => !v.missing && !v.processing && v.loaded);
+      if (!hasLoaded) {
         const first = videos.find(v => !v.missing && !v.processing);
-        if (first) loadPOV(videos.indexOf(first), true);
+        if (first) {
+          const idx = videos.indexOf(first);
+          loadPOV(idx, true);
+        }
       }
-      primePOVs();
 
       renderVideoGrid();
       renderMemberList();
@@ -2035,7 +2031,6 @@
 
         const firstLoadable = videos.find(v => !v.missing && !v.processing);
         if (firstLoadable) await loadPOV(videos.indexOf(firstLoadable), true);
-        primePOVs();
 
         calculateOffsets();
 
@@ -2209,23 +2204,6 @@
     // LAZY LOAD POV
     // ========================
 
-    // Warm the non-focused POVs of the current highlight with a
-    // metadata-only fetch — moov atom plus the first frames, a few hundred
-    // KB each, not the whole file. Clicking a tile then starts from a warm
-    // connection instead of cold-starting the entire download, without
-    // pulling N full streams the way eager loading would.
-    function primePOVs() {
-      videos.forEach(v => {
-        if (!v || v.missing || v.processing || v.loaded) return;
-        if (!v.element || !v.videoSrc) return;
-        if (v.element.dataset.paPrimed === v.videoSrc) return;
-        if (v.thumbnailSrc && !v.element.poster) v.element.poster = v.thumbnailSrc;
-        v.element.preload = 'metadata';
-        v.element.src = v.videoSrc;
-        v.element.dataset.paPrimed = v.videoSrc;
-      });
-    }
-
     async function loadPOV(index, isFirst = false) {
       const v = videos[index];
       if (!v || v.missing || v.processing || v.loaded) return;
@@ -2239,12 +2217,7 @@
 
       // Poster shows instantly while the video decodes — no black flash.
       if (v.thumbnailSrc) v.element.poster = v.thumbnailSrc;
-      // Already primed with this exact source — re-assigning src restarts the
-      // media load algorithm and discards the buffered head we just fetched.
-      if (v.element.dataset.paPrimed !== v.videoSrc) {
-        v.element.src = v.videoSrc;
-        v.element.dataset.paPrimed = v.videoSrc;
-      }
+      v.element.src = v.videoSrc;
       v.element.preload = 'auto';
 
       // loadedmetadata only confirms dimensions/duration are known — a frame
