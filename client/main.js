@@ -430,6 +430,7 @@ function openWindowedPlayer(code, token, username) {
   });
   playerWindow.setMenuBarVisibility(false);
   playerWindow.loadURL(playerUrlFor(code, token, username));
+  if (!app.isPackaged) playerWindow.webContents.openDevTools({ mode: 'detach' });
   playerWindow.on('closed', () => { playerWindow = null; });
   console.log('Web player opened in its own window');
 }
@@ -450,8 +451,8 @@ const RESOLUTION_MAP = {
 };
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.49',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.49.exe',
+  version: '0.1.51',
+  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.51.exe',
   releaseNotes: 'Discord Integration.'
 };
 
