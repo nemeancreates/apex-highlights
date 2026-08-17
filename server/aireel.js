@@ -1,6 +1,9 @@
 // ================================================================
-// server/aireel.js — Peak-Abu AI Highlight Reel engine (v0.1.12)
+// server/aireel.js — Peak-Abu AI Highlight Reel engine (v0.1.13)
 // ================================================================
+// v0.1.13: per-tier reel length caps (t3 15min / t4 45min), segment length
+//          scaled to target so long reels stay tractable, tier-priority
+//          queue, target clamped to available source footage.
 // v0.1.12: optional comment overlay via ASS subtitles per segment.
 //
 // Pipeline:
@@ -20,6 +23,7 @@ const { spawn } = require('child_process');
 const crypto = require('crypto');
 
 const { requireAuth, requireAuthAny, requireTier } = require('./auth');
+const { TIERS } = require('./config');
 const { getCommentsForSession } = require('./routes/comments');
 const { generateASS, checkAssFilter, escapeFilterPath } = require('./comment-overlay');
 
@@ -28,17 +32,36 @@ const AIREEL_TIERS = ['t3', 't4'];
 const AIREEL_DIR = path.join(os.tmpdir(), 'peak-abu-aireel');
 const PROFILE_FILE = path.join(__dirname, 'aiprofiles.json');
 
-const ALLOWED_TARGETS = [15, 30, 60, 90, 120, 180, 300];
+const ALLOWED_TARGETS = [15, 30, 60, 90, 120, 180, 300, 600, 900, 1800, 2700];
 const MAX_CLIPS = 50;
-const SEG_MIN = 4;
-const SEG_MAX = 12;
-const SEG_DEFAULT = 8;
 const OVERLAP_WINDOW_MS = 5000;
 const MAX_TILES = 4;
-const JOB_TTL_MS = 60 * 60 * 1000;
+const JOB_TTL_MS = 3 * 60 * 60 * 1000;      // was 1h — a 45min reel can outlive that
 const SESSION_COOLDOWN_MS = 2 * 60 * 1000;
 const ANALYZE_TIMEOUT_MS = 3 * 60 * 1000;
-const RENDER_TIMEOUT_MS = 5 * 60 * 1000;
+const RENDER_TIMEOUT_MS = 20 * 60 * 1000;   // was 5min — long segments + concat of a long reel
+
+// Segment length scales with the target. A 45-minute reel built from 8-second
+// cuts would be ~340 separate FFmpeg renders and an EDL far past what the
+// model can emit in one response. Long targets are session RECAPS — fewer,
+// longer holds — which keeps segment count in the same range as a short reel
+// no matter how long the output is.
+//
+// maxClipDur additionally ceilings the bounds: asking for 70s segments from
+// 30s source clips makes every clip fail the `duration < segMin` filter and
+// the whole reel comes back empty.
+function segmentBounds(targetSec, maxClipDur) {
+  let b;
+  if (targetSec <= 300)      b = { min: 4,  max: 12,  def: 8  };
+  else if (targetSec <= 900) b = { min: 12, max: 35,  def: 20 };
+  else                       b = { min: 40, max: 120, def: 70 };
+
+  const ceiling = Math.max(4, Math.floor((maxClipDur || 0) * 0.9));
+  b.max = Math.min(b.max, ceiling);
+  b.min = Math.min(b.min, b.max);
+  b.def = Math.max(b.min, Math.min(b.def, b.max));
+  return b;
+}
 
 let D = null;
 
@@ -123,6 +146,15 @@ function registerRoutes() {
       return D.safeError(res, 400, `targetSec must be one of ${ALLOWED_TARGETS.join(', ')}`);
     }
 
+    // Per-tier length ceiling. requireTier already resolved the effective
+    // tier onto req.userTier (re-read from the store, not the JWT).
+    const tierCfg = TIERS[req.userTier] || TIERS.t1;
+    const maxSec = tierCfg.aiReelMaxSec || 0;
+    if (targetSec > maxSec) {
+      return D.safeError(res, 403,
+        `${tierCfg.label} reels cap at ${Math.floor(maxSec / 60)} minutes. Pick a shorter length or upgrade.`);
+    }
+
     const requestedIds = Array.isArray(body.uploadIds) ? body.uploadIds.map(String) : [];
     if (requestedIds.length === 0) return D.safeError(res, 400, 'Select at least one clip');
     if (requestedIds.length > MAX_CLIPS) return D.safeError(res, 400, `Maximum ${MAX_CLIPS} clips per reel (v1)`);
@@ -146,6 +178,10 @@ function registerRoutes() {
     const job = {
       id: jobId, code, status: 'queued', progress: 'Waiting in queue',
       createdAt: Date.now(), targetSec, game, styleNotes, includeComments,
+      tier: req.userTier,
+      priority: tierCfg.reelPriority || 0,
+      effectiveTarget: targetSec,   // clamped in runJob once real durations are known
+      seg: null,                    // segment bounds, computed after analysis
       uploads: selected.map(u => ({
         id: u.id, username: u.username,
         videoFile: u.videoFile, videoUrl: u.videoUrl || null,
@@ -161,10 +197,17 @@ function registerRoutes() {
     lastRunPerSession.set(code, Date.now());
     recordProfileNote(game, styleNotes);
 
-    D.log('info', 'aireel_job_created', { jobId, session: code, clips: selected.length, targetSec, game, includeComments });
+    D.log('info', 'aireel_job_created', {
+      jobId, session: code, clips: selected.length, targetSec,
+      tier: req.userTier, priority: job.priority, game, includeComments
+    });
     res.status(202).json({ jobId });
 
+    // Higher-tier jobs jump the queue. The worker is single-threaded, so on a
+    // busy droplet this is the difference between a Pro user waiting 2 minutes
+    // and waiting behind somebody else's 45-minute recap.
     jobQueue.push(job);
+    jobQueue.sort((a, b) => (b.priority || 0) - (a.priority || 0));
     pumpQueue();
   });
 
@@ -282,7 +325,6 @@ async function runJob(job) {
   for (let i = 0; i < clips.length; i++) {
     job.progress = `Analyzing clip ${i + 1}/${clips.length} (${clips[i].username})`;
     await analyzeClip(clips[i]);
-    scoreClip(clips[i]);
   }
 
   const analyzable = clips.filter(c => c.duration > 2);
@@ -291,6 +333,30 @@ async function runJob(job) {
     job.progress = 'Clips could not be analyzed';
     return;
   }
+
+  // A reel can't be longer than the footage it's cut from. Rather than fail a
+  // 45-minute request made against 6 minutes of clips, clamp the target and
+  // say so in the report.
+  const totalSource = analyzable.reduce((sum, c) => sum + c.duration, 0);
+  const maxClipDur = Math.max(...analyzable.map(c => c.duration));
+  job.effectiveTarget = Math.min(job.targetSec, Math.floor(totalSource * 0.9));
+  job.clamped = job.effectiveTarget < job.targetSec;
+  job.seg = segmentBounds(job.effectiveTarget, maxClipDur);
+
+  if (job.effectiveTarget < job.seg.min) {
+    job.status = 'failed';
+    job.progress = 'Not enough usable footage to build a reel — select more clips';
+    return;
+  }
+
+  // Scoring depends on segment spacing, so it has to come after the bounds.
+  const maxMoments = Math.min(60, Math.max(18, Math.ceil(job.effectiveTarget / job.seg.def) + 5));
+  for (const c of analyzable) scoreClip(c, job.seg.max, maxMoments);
+
+  D.log('info', 'aireel_plan', {
+    jobId: job.id, targetSec: job.targetSec, effectiveTarget: job.effectiveTarget,
+    clamped: job.clamped, seg: job.seg, totalSource: Math.round(totalSource)
+  });
 
   // 3. EDIT
   job.status = 'editing';
@@ -391,7 +457,7 @@ async function analyzeClip(clip) {
   while ((m = sceneRe.exec(scene.stderr)) !== null) clip.scenes.push(parseFloat(m[1]));
 }
 
-function scoreClip(clip) {
+function scoreClip(clip, segMax, maxMoments) {
   const secs = Math.max(1, Math.ceil(clip.duration));
   const score = new Array(secs).fill(0);
 
@@ -413,9 +479,9 @@ function scoreClip(clip) {
   const picked = [];
   for (const cand of order) {
     if (cand.score < 0.15) break;
-    if (picked.some(p => Math.abs(p.t - cand.t) < SEG_MAX)) continue;
+    if (picked.some(p => Math.abs(p.t - cand.t) < segMax)) continue;
     picked.push(cand);
-    if (picked.length >= 18) break;
+    if (picked.length >= maxMoments) break;
   }
   clip.moments = picked.sort((a, b) => a.t - b.t);
 }
@@ -430,7 +496,8 @@ function absTime(clip, t) {
 
 // ---------- Heuristic editor ----------
 function heuristicEdl(job, clips) {
-  const target = job.targetSec;
+  const target = job.effectiveTarget || job.targetSec;
+  const SEG = job.seg || { min: 4, max: 12, def: 8 };
   const pool = [];
   clips.forEach(c => c.moments.forEach(mm => pool.push({ clip: c, t: mm.t, score: mm.score, abs: absTime(c, mm.t) })));
   pool.sort((a, b) => b.score - a.score);
@@ -439,10 +506,10 @@ function heuristicEdl(job, clips) {
   let total = 0;
   for (const cand of pool) {
     if (total >= target) break;
-    if (chosen.some(ch => ch.clip.id === cand.clip.id && Math.abs(ch.t - cand.t) < SEG_MAX)) continue;
-    const dur = Math.min(SEG_DEFAULT, Math.max(SEG_MIN, target - total));
+    if (chosen.some(ch => ch.clip.id === cand.clip.id && Math.abs(ch.t - cand.t) < SEG.max)) continue;
+    const dur = Math.min(SEG.def, Math.max(SEG.min, target - total));
     const start = Math.max(0, Math.min(cand.t - dur * 0.6, cand.clip.duration - dur));
-    if (start < 0 || cand.clip.duration < SEG_MIN) continue;
+    if (start < 0 || cand.clip.duration < SEG.min) continue;
     chosen.push({ clip: cand.clip, t: cand.t, start, duration: dur, score: cand.score, abs: cand.abs });
     total += dur;
   }
@@ -469,7 +536,7 @@ function heuristicEdl(job, clips) {
 
     group.sort((a, b) => b.score - a.score);
     const primary = group[0];
-    const dur = Math.min(SEG_MAX, Math.max(...group.map(g => g.duration)));
+    const dur = Math.min(SEG.max, Math.max(...group.map(g => g.duration)));
 
     const members = group.map(g => {
       let s = g.start;
@@ -491,10 +558,14 @@ function heuristicEdl(job, clips) {
 
   const counts = { solo: 0, side: 0, grid: 0 };
   edl.forEach(s => counts[s.layout]++);
+  const clampNote = job.clamped
+    ? `Your ${job.targetSec}s request was trimmed to ${target}s — that's all the footage the selected clips hold. `
+    : '';
   const report =
-    `Heuristic editor report (${job.game || 'unknown game'}):\n` +
+    `Heuristic editor report (${job.game || 'unknown game'}):\n` + clampNote +
     `Scanned ${clips.length} POV(s) for loudness spikes and on-screen chaos. ` +
-    `Selected ${chosen.length} moments totaling ~${Math.round(total)}s against your ${target}s target. ` +
+    `Selected ${chosen.length} moments totaling ~${Math.round(total)}s against your ${target}s target ` +
+    `at ~${SEG.def}s per cut. ` +
     `${counts.grid} moment(s) had 3-4 squad members recording the same real-world instant and were cut as a grid; ` +
     `${counts.side} were cut side-by-side; ${counts.solo} played solo full-frame. ` +
     `The most intense POV leads each multi-view shot and carries the audio. Segments are ordered chronologically. ` +
@@ -509,6 +580,8 @@ async function tryAnthropicEdl(job, clips) {
   if (!apiKey) return null;
 
   const profile = getProfileContext(job.game);
+  const SEG = job.seg || { min: 4, max: 12, def: 8 };
+  const target = job.effectiveTarget || job.targetSec;
   const features = clips.map(c => ({
     clipId: c.id, player: c.username,
     durationSec: round2(c.duration),
@@ -523,7 +596,7 @@ async function tryAnthropicEdl(job, clips) {
     'Clips from different players whose startTimeUTC-aligned moments coincide show the SAME real play from different POVs — ' +
     `group them into a single multi-view segment (up to ${MAX_TILES} tiles on screen at once). ` +
     'Respond with ONLY a JSON object, no markdown fences, no prose, in this exact shape: ' +
-    '{"segments":[{"clipIds":["primaryId","secondId","thirdId"],"starts":[<sec>,<sec>,<sec>],"duration":<sec 4-12>}],' +
+    `{"segments":[{"clipIds":["primaryId","secondId","thirdId"],"starts":[<sec>,<sec>,<sec>],"duration":<sec ${SEG.min}-${SEG.max}>}],` +
     '"report":"<3-6 sentence editor\'s report addressed to the user explaining your choices and what you learned about editing this game>"} ' +
     `Rules: clipIds has 1-${MAX_TILES} entries, all distinct and all real clipIds from the input. ` +
     'clipIds[0] is the primary POV — it leads the layout and carries the audio; order the rest by intensity. ' +
@@ -534,11 +607,19 @@ async function tryAnthropicEdl(job, clips) {
     'A clip with a null startTimeUTC cannot be time-aligned and must appear only as a single-clipId segment. ' +
     'If userStyleNotes requests a specific tile count (e.g. "3 POVs at once"), honor it wherever enough overlapping POVs exist. ' +
     'Total duration must not exceed the target by more than 15%. Order segments for narrative flow (usually chronological, save the best moment for last if it is clearly strongest). ' +
-    'start+duration must fit within each clip\'s durationSec. Never invent clipIds.';
+    'start+duration must fit within each clip\'s durationSec. Never invent clipIds. ' +
+    `Aim for roughly ${SEG.def}s per segment; you have a ${target}s target, so plan on about ` +
+    `${Math.max(1, Math.round(target / SEG.def))} segments total. ` +
+    (target > 900
+      ? 'This is a long-form SESSION RECAP, not a fast montage — hold on each moment, let plays breathe, ' +
+        'and favour continuity over rapid cutting.'
+      : 'This is a highlight montage — keep the pace tight.');
 
   const userPrompt = JSON.stringify({
     game: job.game || 'unknown',
-    targetSec: job.targetSec,
+    targetSec: target,
+    segmentSecondsMin: SEG.min,
+    segmentSecondsMax: SEG.max,
     maxTiles: MAX_TILES,
     userStyleNotes: job.styleNotes || null,
     gameProfile: profile ? {
@@ -553,7 +634,7 @@ async function tryAnthropicEdl(job, clips) {
     const raw = await anthropicMessage(apiKey, systemPrompt, userPrompt);
     const clean = raw.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
-    const edl = validateEdl(parsed.segments, clips, job.targetSec);
+    const edl = validateEdl(parsed.segments, clips, target, SEG);
     if (!edl || edl.length === 0) throw new Error('EDL failed validation');
     const report = typeof parsed.report === 'string' && parsed.report.trim()
       ? parsed.report.trim().slice(0, 2000)
@@ -566,7 +647,8 @@ async function tryAnthropicEdl(job, clips) {
   }
 }
 
-function validateEdl(segments, clips, targetSec) {
+function validateEdl(segments, clips, targetSec, SEG) {
+  SEG = SEG || { min: 4, max: 12, def: 8 };
   if (!Array.isArray(segments)) return null;
   const byId = new Map(clips.map(c => [c.id, c]));
   const out = [];
@@ -585,13 +667,13 @@ function validateEdl(segments, clips, targetSec) {
 
     let dur = Number(s.duration);
     if (!isFinite(dur)) continue;
-    dur = Math.max(SEG_MIN, Math.min(SEG_MAX, dur));
+    dur = Math.max(SEG.min, Math.min(SEG.max, dur));
 
     const members = [];
     const seen = new Set();
     for (let i = 0; i < ids.length && members.length < MAX_TILES; i++) {
       const clip = byId.get(ids[i]);
-      if (!clip || seen.has(clip.id) || clip.duration < SEG_MIN) continue;
+      if (!clip || seen.has(clip.id) || clip.duration < SEG.min) continue;
       let st = Number(starts[i]);
       if (!isFinite(st)) st = 0;
       st = Math.max(0, Math.min(st, Math.max(0, clip.duration - dur)));
@@ -616,7 +698,7 @@ function validateEdl(segments, clips, targetSec) {
 function anthropicMessage(apiKey, system, user) {
   const body = JSON.stringify({
     model: process.env.AIREEL_MODEL || 'claude-sonnet-4-6',
-    max_tokens: 6000,
+    max_tokens: 12000,
     system,
     messages: [{ role: 'user', content: user }]
   });
