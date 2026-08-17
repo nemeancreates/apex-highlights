@@ -22,11 +22,17 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
 const BCRYPT_ROUNDS = 12;
 const JWT_EXPIRY = '7d';
 
-// --- DigitalOcean Spaces ---
-const SPACES_REGION = process.env.SPACES_REGION || 'nyc3';
+// --- Cloudflare R2 (S3-compatible object storage) ---
+// Migrated from DigitalOcean Spaces — zero egress fees was the deciding
+// factor. spaces.js is unchanged in name/exports since R2 speaks the same
+// S3 API; only these values differ.
+const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID || null;
+const SPACES_REGION = 'auto'; // R2 requires the literal string "auto"
 const SPACES_BUCKET = process.env.SPACES_BUCKET || 'peakbu-media';
-const SPACES_ENDPOINT = `https://${SPACES_REGION}.digitaloceanspaces.com`;
-const SPACES_CDN_BASE = `https://${SPACES_BUCKET}.${SPACES_REGION}.cdn.digitaloceanspaces.com`;
+const SPACES_ENDPOINT = R2_ACCOUNT_ID
+  ? `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`
+  : null;
+const SPACES_CDN_BASE = process.env.SPACES_CDN_BASE || null;
 
 // --- Paths ---
 const UPLOADS_DIR = path.join(__dirname, 'uploads');

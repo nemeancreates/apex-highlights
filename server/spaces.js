@@ -39,8 +39,10 @@ async function uploadToSpaces(localPath, objectKey, contentType) {
     Bucket: SPACES_BUCKET,
     Key: objectKey,
     Body: fileBuffer,
-    ContentType: contentType,
-    ACL: 'public-read'
+    ContentType: contentType
+    // ACL removed — R2 rejects this parameter (400 error). Public access
+    // is a bucket-level setting on R2, set once in the dashboard, not
+    // per-object.
   }));
   try { fs.unlinkSync(localPath); } catch (e) {}
   return `${SPACES_CDN_BASE}/${objectKey}`;
