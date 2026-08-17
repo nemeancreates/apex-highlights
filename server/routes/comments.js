@@ -24,6 +24,9 @@
 const { v4: uuidv4 } = require('uuid');
 const { log } = require('../logger');
 const { sanitizeCode, safeError } = require('../utils');
+const { createRateLimiter } = require('../ratelimit');
+
+const commentReadLimiter = createRateLimiter({ windowMs: 60000, max: 20 });
 const {
   COMMENT_MAX_LENGTH,
   COMMENT_MAX_PER_CLIP,
@@ -138,7 +141,7 @@ function deleteCommentsForSession(code) {
 function initCommentRoutes(app, io) {
 
   // --- READ: public.
-  app.get('/sessions/:code/comments', (req, res) => {
+  app.get('/sessions/:code/comments', commentReadLimiter, (req, res) => {
     const code = sanitizeCode(req.params.code);
     if (!code) return safeError(res, 400, 'Invalid session code');
     const session = sessions.get(code);

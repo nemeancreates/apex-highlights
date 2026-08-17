@@ -4,6 +4,7 @@
 // ================================
 const fs = require('fs');
 const https = require('https');
+const crypto = require('crypto');
 
 // --- Input sanitization ---
 function sanitizeUsername(input) {
@@ -24,11 +25,12 @@ function safeError(res, status, message) {
 }
 
 // --- Session code generation ---
+
 function generateCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
   for (let i = 0; i < 6; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
+    code += chars.charAt(crypto.randomInt(chars.length));
   }
   return code;
 }

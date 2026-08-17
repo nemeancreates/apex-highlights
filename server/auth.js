@@ -5,6 +5,7 @@
 // ================================
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { log } = require('./logger');
 const { safeError } = require('./utils');
 const { JWT_SECRET, JWT_EXPIRY, BCRYPT_ROUNDS, TIERS, TIER_ORDER, ADMIN_SECRET,
@@ -104,7 +105,9 @@ function requireTier(allowedTiers) {
 // Admin-only gate for redemption-code generation. Deliberately NOT tied to
 // any user account — a compromised user (even a Pro one) can't mint codes.
 function requireAdmin(req, res, next) {
-  if (!ADMIN_SECRET || req.headers['x-admin-secret'] !== ADMIN_SECRET) {
+  const provided = req.headers['x-admin-secret'];
+  if (!ADMIN_SECRET || !provided || provided.length !== ADMIN_SECRET.length ||
+      !crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(ADMIN_SECRET))) {
     return safeError(res, 403, 'Forbidden');
   }
   next();

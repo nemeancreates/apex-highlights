@@ -10,6 +10,9 @@
 const { sanitizeCode } = require('../utils');
 const { sessions } = require('../stores');
 const { log } = require('../logger');
+const { createRateLimiter } = require('../ratelimit');
+
+const joinLookupLimiter = createRateLimiter({ windowMs: 60000, max: 20 });
 
 const BRAND = {
   bg: '#0a1611', card: '#0f2318', border: '#1e3527',
@@ -117,7 +120,7 @@ ${valid ? `<script>
 }
 
 function initJoinRoutes(app) {
-  app.get('/join/:code', (req, res) => {
+  app.get('/join/:code', joinLookupLimiter, (req, res) => {
     const code = sanitizeCode(req.params.code);
 
     if (!code || code.length < 4) {

@@ -5,6 +5,7 @@
 // ================================
 const fs = require('fs');
 const https = require('https');
+const crypto = require('crypto');
 const path = require('path');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
@@ -21,6 +22,9 @@ const { isSpacesEnabled, uploadToSpaces, deleteFromSpaces } = require('../spaces
 const { enqueueThumbnail } = require('../media');
 const { requireAuth, requireTier } = require('../auth');
 const { trackBandwidth } = require('../redemption');
+const { createRateLimiter } = require('../ratelimit');
+
+const uploadLimiter = createRateLimiter({ windowMs: 60000, max: 10 });
 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
@@ -61,7 +65,7 @@ const upload = multer({
 });
 
 function initUploadRoutes(app, io) {
-  app.post('/sessions/:code/upload', requireAuth, (req, res) => {
+  app.post('/sessions/:code/upload', requireAuth, uploadLimiter, (req, res) => {
     const code = sanitizeCode(req.params.code);
     if (!code) return res.status(400).json({ error: 'Invalid session code' });
 

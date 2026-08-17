@@ -8,6 +8,9 @@ const { v4: uuidv4 } = require('uuid');
 const { log } = require('../logger');
 const { sanitizeUsername, sanitizeCode, safeError, generateCode } = require('../utils');
 const { MAX_SESSIONS, MAX_MEMBERS_PER_SESSION, TIERS } = require('../config');
+const { createRateLimiter } = require('../ratelimit');
+
+const sessionLookupLimiter = createRateLimiter({ windowMs: 60000, max: 20 });
 const { sessions, users, saveUsersToDisk, getSessionsByUser } = require('../stores');
 const { requireAuth, getEffectiveTier, getMonthKey } = require('../auth');
 
@@ -97,7 +100,7 @@ function initSessionRoutes(app) {
     }
   });
 
-  app.get('/sessions/:code', (req, res) => {
+  app.get('/sessions/:code', sessionLookupLimiter, (req, res) => {
     const code = sanitizeCode(req.params.code);
     if (!code) return res.status(400).json({ error: 'Invalid session code' });
 
@@ -122,7 +125,7 @@ function initSessionRoutes(app) {
     });
   });
 
-  app.get('/sessions/:code/uploads', (req, res) => {
+  app.get('/sessions/:code/uploads', sessionLookupLimiter, (req, res) => {
     const code = sanitizeCode(req.params.code);
     if (!code) return res.status(400).json({ error: 'Invalid session code' });
 
