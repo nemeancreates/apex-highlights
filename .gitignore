@@ -15,4 +15,4 @@ logs/server.log
 logs/usage.log
 logs/
 server/aiprofiles.json
-ecosystem.config.js
+ecosystem.config.jsserver/ecosystem.config.js
