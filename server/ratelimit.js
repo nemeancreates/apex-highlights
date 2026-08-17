@@ -59,4 +59,33 @@ function startRateLimitCleanup() {
   }, 5 * 60 * 1000);
 }
 
-module.exports = { rateLimit, checkSocketRate, removeSocketRate, startRateLimitCleanup };
+// --- Scoped limiter factory: for routes needing a stricter/separate
+// budget than the global per-IP limit (e.g. public code-lookup routes,
+// the upload endpoint). Each call returns its own independent Map + cleanup.
+function createRateLimiter({ windowMs, max }) {
+  const hits = new Map();
+
+  setInterval(() => {
+    const now = Date.now();
+    for (const [ip, entry] of hits) {
+      if (now > entry.resetTime) hits.delete(ip);
+    }
+  }, 5 * 60 * 1000);
+
+  return (req, res, next) => {
+    const ip = req.ip;
+    const now = Date.now();
+    let entry = hits.get(ip);
+    if (!entry || now > entry.resetTime) {
+      entry = { count: 0, resetTime: now + windowMs };
+      hits.set(ip, entry);
+    }
+    entry.count++;
+    if (entry.count > max) {
+      return res.status(429).json({ error: 'Too many requests. Try again later.' });
+    }
+    next();
+  };
+}
+
+module.exports = { rateLimit, checkSocketRate, removeSocketRate, startRateLimitCleanup, createRateLimiter };
