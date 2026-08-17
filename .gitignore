@@ -1,18 +1,2 @@
-@"
-node_modules
-server/uploads
-dist/
-.env
-.vs/
-"@ | Out-File -FilePath .gitignore -Encoding utf8server/sessions.json
-server/users.json
-server/.env
-
-server/peakabu.db
-server/peakabu.db-shm
-server/peakabu.db-wal
-logs/server.log
-logs/usage.log
-logs/
-server/aiprofiles.json
 ecosystem.config.js
+server/ecosystem.config.js
