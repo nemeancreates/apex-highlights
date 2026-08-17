@@ -18,6 +18,11 @@ if (process.env.SPACES_KEY && process.env.SPACES_SECRET) {
   spacesClient = new S3Client({
     endpoint: SPACES_ENDPOINT,
     region: SPACES_REGION,
+    // Without this, the SDK ignores our custom endpoint and tries to guess
+    // an AWS-style hostname (bucket.s3.region.amazonaws.com) — that's the
+    // exact ENOTFOUND error R2 uploads were hitting. forcePathStyle makes
+    // it use SPACES_ENDPOINT literally: endpoint/bucket/key.
+    forcePathStyle: true,
     credentials: {
       accessKeyId: process.env.SPACES_KEY,
       secretAccessKey: process.env.SPACES_SECRET
