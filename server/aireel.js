@@ -77,6 +77,7 @@ function initAiReel(deps) {
     return;
   }
   if (!fs.existsSync(AIREEL_DIR)) fs.mkdirSync(AIREEL_DIR, { recursive: true });
+  sweepOrphanedAireelFiles();
   registerRoutes();
   setInterval(cleanupJobs, 15 * 60 * 1000);
   D.log('info', 'aireel_ready', {
