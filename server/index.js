@@ -56,9 +56,13 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       frameSrc: ["'self'", "https://www.youtube.com"],
-      mediaSrc: ["'self'", "blob:", "https://peakbu-media.nyc3.cdn.digitaloceanspaces.com"],
-      imgSrc: ["'self'", "data:", "https://peakbu-media.nyc3.cdn.digitaloceanspaces.com", "https://i.ytimg.com"],
-      connectSrc: ["'self'", "ws:", "wss:", "https://peakbu-media.nyc3.cdn.digitaloceanspaces.com"]
+            // Both domains stay allowed during the R2 migration window — old
+      // sessions saved before the switch still have DO Spaces URLs baked
+      // into their upload records, and those need to keep loading until
+      // they age out per each tier's retentionDays.
+      mediaSrc: ["'self'", "blob:", "https://peakbu-media.nyc3.cdn.digitaloceanspaces.com", config.SPACES_CDN_BASE],
+      imgSrc: ["'self'", "data:", "https://peakbu-media.nyc3.cdn.digitaloceanspaces.com", config.SPACES_CDN_BASE, "https://i.ytimg.com"],
+      connectSrc: ["'self'", "ws:", "wss:", "https://peakbu-media.nyc3.cdn.digitaloceanspaces.com", config.SPACES_CDN_BASE]
     }
   },
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
