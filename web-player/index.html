@@ -180,7 +180,7 @@
     .pov-placeholder .play-icon { font-size: 32px; color: #39d3a0; opacity: 0.6; }
     .pov-placeholder .load-hint { font-size: 11px; color: #3a5244; }
 
-    .pov-loading {
+        .pov-loading {
       width: 100%;
       height: 100%;
       min-height: 120px;
@@ -190,6 +190,50 @@
       background: #0a1611;
       color: #39d3a0;
       font-size: 13px;
+    }
+
+    /* Monkey-in-a-bush loader — overlaid at the bottom of a POV tile while
+       it's queued or loading. Indeterminate: the 🙈 peeks up out of the
+       bush and ducks back down. Removed the moment loadPOV resolves. */
+    .pov-loader {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 34px;
+      z-index: 8;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    .pov-loader .bush {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 16px;
+      background:
+        radial-gradient(circle at 12% 100%, #1d9e75 0 9px, transparent 9px),
+        radial-gradient(circle at 30% 100%, #23b686 0 11px, transparent 11px),
+        radial-gradient(circle at 50% 100%, #1d9e75 0 10px, transparent 10px),
+        radial-gradient(circle at 70% 100%, #23b686 0 11px, transparent 11px),
+        radial-gradient(circle at 88% 100%, #1d9e75 0 9px, transparent 9px),
+        linear-gradient(#12251a, #12251a);
+      background-repeat: no-repeat;
+      z-index: 2;
+    }
+    .pov-loader .monkey-peek {
+      position: absolute;
+      bottom: 6px;
+      left: 50%;
+      transform: translateX(-50%) translateY(14px);
+      font-size: 18px;
+      line-height: 1;
+      z-index: 1;
+      animation: monkeyPeek 1.4s ease-in-out infinite;
+    }
+    @keyframes monkeyPeek {
+      0%, 100% { transform: translateX(-50%) translateY(14px); }
+      45%, 55% { transform: translateX(-50%) translateY(-2px); }
     }
 
     .pov-missing {
@@ -2208,11 +2252,62 @@
       }
     }
 
-    // ========================
-    // LAZY LOAD POV
-    // ========================
+      // ========================
+  // LAZY LOAD POV
+  // ========================
 
-    async function loadPOV(index, isFirst = false) {
+  // Click-ordered load queue. Clicking several POVs in quick succession
+  // used to fire all their loads at once, so they fought each other for the
+  // viewer's downlink and each took longer. Now clicks queue and load one
+  // at a time, in the order they were clicked — the focused clip gets the
+  // pipe to itself, the rest wait their turn. Egress is free on R2, so this
+  // isn't about cost; it's about not saturating the viewer's connection.
+  let povLoadQueue = [];
+  let povLoadRunning = false;
+
+  function enqueuePOV(index) {
+    const v = videos[index];
+    if (!v || v.missing || v.processing || v.loaded) return Promise.resolve();
+    if (!povLoadQueue.includes(index)) {
+      povLoadQueue.push(index);
+      showPOVLoader(index); // immediate feedback: queued OR loading
+    }
+    return drainPOVQueue();
+  }
+
+  async function drainPOVQueue() {
+    if (povLoadRunning) return;
+    povLoadRunning = true;
+    while (povLoadQueue.length) {
+      const idx = povLoadQueue.shift();
+      const v = videos[idx];
+      if (!v || v.missing || v.processing || v.loaded) { hidePOVLoader(idx); continue; }
+      try { await loadPOV(idx); }
+      finally { hidePOVLoader(idx); }
+    }
+    povLoadRunning = false;
+  }
+
+  // Overlay the monkey-in-a-bush loader on a tile. Idempotent — clicking a
+  // tile already queued won't stack duplicate loaders.
+  function showPOVLoader(index) {
+    const container = document.getElementById('pov-container-' + index);
+    if (!container || container.querySelector('.pov-loader')) return;
+    const loader = document.createElement('div');
+    loader.className = 'pov-loader';
+    loader.innerHTML =
+      '<div class="monkey-peek">\uD83D\uDE48</div><div class="bush"></div>';
+    container.appendChild(loader);
+  }
+
+  function hidePOVLoader(index) {
+    const container = document.getElementById('pov-container-' + index);
+    if (!container) return;
+    const loader = container.querySelector('.pov-loader');
+    if (loader) loader.remove();
+  }
+
+  async function loadPOV(index, isFirst = false) {
       const v = videos[index];
       if (!v || v.missing || v.processing || v.loaded) return;
       v.loaded = true;
@@ -2244,8 +2339,31 @@
       } else {
         const masterTime = getCurrentMasterTime();
         const adjustedTime = masterTime - v.offset;
-        if (adjustedTime > 0 && adjustedTime <= v.element.duration) v.element.currentTime = adjustedTime;
-        if (isPlaying) v.element.play().catch(() => {});
+        if (adjustedTime > 0 && adjustedTime <= v.element.duration) {
+          // Seeking moves the playhead off the just-decoded frame. When
+          // paused, nothing forces a decode at the new position, so the
+          // poster stays frozen until some unrelated event nudges it —
+          // that's the "15-20s frozen, works on revisit" symptom. Wait for
+          // the seek to actually land before treating this POV as ready.
+          await new Promise(resolve => {
+            let done = false;
+            const finish = () => { if (done) return; done = true; resolve(); };
+            v.element.addEventListener('seeked', finish, { once: true });
+            v.element.currentTime = adjustedTime;
+            // Fallback: if the seek target is already the current frame the
+            // browser may fire nothing at all — don't hang forever.
+            setTimeout(finish, 400);
+          });
+        }
+        if (isPlaying) {
+          v.element.play().catch(() => {});
+        } else {
+          // Paused: force exactly one decode so a real frame paints instead
+          // of the frozen poster. play() then immediate pause() is the
+          // reliable cross-browser way to make the element render its
+          // current position without actually starting playback.
+          v.element.play().then(() => v.element.pause()).catch(() => {});
+        }
       }
 
       const thisDuration = (v.element.duration || 0) + v.offset;
@@ -2299,6 +2417,12 @@
     function renderVideoGrid() {
       const grid = document.getElementById('videoGrid');
       grid.innerHTML = '';
+      // A full grid rebuild wipes loader overlays off tiles that are still
+      // waiting in the load queue. Re-assert them after the grid is drawn
+      // so a queued POV keeps its monkey until its turn actually resolves.
+      setTimeout(function () {
+        povLoadQueue.forEach(function (i) { showPOVLoader(i); });
+      }, 0);
 
       if (focusedIndex >= 0) {
         grid.className = 'video-grid focused-mode';
@@ -2486,7 +2610,7 @@
 
     async function focusOnVideo(index) {
       if (videos[index].missing || videos[index].processing) return;
-      if (!videos[index].loaded) await loadPOV(index);
+      if (!videos[index].loaded) await enqueuePOV(index);
       focusedIndex = index;
       renderVideoGrid();
       highlightActiveMember();
