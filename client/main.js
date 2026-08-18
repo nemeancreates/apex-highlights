@@ -450,11 +450,6 @@ const RESOLUTION_MAP = {
   '480': { width: 854, height: 480 }
 };
 
-const LATEST_CLIENT_VERSION = {
-  version: '0.1.55',
-  downloadUrl: 'https://peakbu-media.nyc3.cdn.digitaloceanspaces.com/releases/PeakAbu-Setup-0.1.55.exe',
-  releaseNotes: 'Discord Integration.'
-};
 
 let BUFFER_DIR = DEFAULT_BUFFER_DIR;
 let CLIPS_DIR = DEFAULT_CLIPS_DIR;
