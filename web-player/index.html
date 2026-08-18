@@ -2132,10 +2132,10 @@
             }
             if (upload.thumbnailUrl) existing.thumbnailSrc = upload.thumbnailUrl;
             console.log('Upload ready:', upload.username, upload.id);
-          } else if (upload.videoUrl && !existing.isLocal && existing.videoSrc && !existing.videoSrc.startsWith('https://peakbu-media')) {
+          } else if (upload.videoUrl && !existing.isLocal && existing.videoSrc !== upload.videoUrl) {
             existing.videoSrc = upload.videoUrl;
             if (upload.thumbnailUrl) existing.thumbnailSrc = upload.thumbnailUrl;
-            if (existing.element && existing.element.src && !existing.element.src.startsWith('https://peakbu-media')) {
+            if (existing.element && existing.element.src && existing.element.src !== upload.videoUrl) {
               existing.element.src = '';
               existing.loaded = false;
             }
