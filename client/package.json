@@ -1,6 +1,6 @@
 {
   "name": "peak-abu",
-  "version": "0.1.52",
+  "version": "0.1.55",
   "description": "Multi-POV synchronized gameplay highlights",
   "author": "nemeancreates",
   "main": "main.js",
@@ -18,6 +18,10 @@
       "output": "dist",
       "buildResources": "build"
     },
+    "files": [
+      "**/*",
+      "assets/**/*"
+    ],
     "extraResources": [
       {
         "from": "ffmpeg",
