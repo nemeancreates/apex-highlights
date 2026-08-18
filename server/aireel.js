@@ -260,6 +260,59 @@ function cleanupJobs() {
   }
 }
 
+// Runs once at boot. A crash mid-render (OOM, etc.) skips pumpQueue()'s
+// finally block, so job_* workdirs and reel_*.mp4 outputs from before the
+// crash never get cleaned up and the in-memory `jobs` Map that cleanupJobs()
+// relies on starts empty on every fresh boot anyway. This sweeps anything
+// stale left in AIREEL_DIR that nothing currently tracks.
+function sweepOrphanedAireelFiles() {
+  let entries;
+  try { entries = fs.readdirSync(AIREEL_DIR, { withFileTypes: true }); }
+  catch (e) { return; }
+
+  const cutoff = Date.now() - JOB_TTL_MS;
+  let swept = 0, bytesFreed = 0;
+
+  for (const entry of entries) {
+    const isJobDir = entry.isDirectory() && entry.name.startsWith('job_');
+    const isReelFile = entry.isFile() && entry.name.startsWith('reel_') && entry.name.endsWith('.mp4');
+    if (!isJobDir && !isReelFile) continue;
+
+    const fullPath = path.join(AIREEL_DIR, entry.name);
+    try {
+      const stat = fs.statSync(fullPath);
+      if (stat.mtimeMs >= cutoff) continue; // still within TTL, leave it
+
+      if (isJobDir) {
+        // du -sh style sum before removal, so the log line is useful
+        bytesFreed += dirSize(fullPath);
+        fs.rmSync(fullPath, { recursive: true, force: true });
+      } else {
+        bytesFreed += stat.size;
+        fs.unlinkSync(fullPath);
+      }
+      swept++;
+    } catch (e) {
+      D.log('warn', 'aireel_sweep_entry_failed', { entry: entry.name, error: e.message });
+    }
+  }
+
+  if (swept > 0) {
+    D.log('info', 'aireel_startup_sweep', { swept, mbFreed: (bytesFreed / 1024 / 1024).toFixed(1) });
+  }
+}
+
+function dirSize(dir) {
+  let total = 0;
+  try {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, entry.name);
+      total += entry.isDirectory() ? dirSize(p) : fs.statSync(p).size;
+    }
+  } catch (e) {}
+  return total;
+}
+
 // ---------- Pipeline ----------
 async function runJob(job) {
   fs.mkdirSync(job.workDir, { recursive: true });
