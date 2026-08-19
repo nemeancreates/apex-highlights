@@ -13,6 +13,10 @@
 //   3. EDIT    — Anthropic API (or heuristic fallback) → Edit Decision List
 //   4. RENDER  — FFmpeg renders each EDL segment (solo/side/grid), with
 //                optional comment overlay, concatenates, serves download
+//
+// aireel-edit route added: client sends pre-analyzed clip features and
+// gets back just the EDL + report, for client-side rendering (no job
+// queue, no upload, no server render).
 // ================================================================
 
 const fs = require('fs');
@@ -230,6 +234,58 @@ function registerRoutes() {
       return D.safeError(res, 404, 'Reel not ready or expired');
     }
     res.download(job.outputPath, `peak-abu-ai-reel-${job.code}.mp4`);
+  });
+
+  // Slim edit-only route for client-side render: client sends pre-analyzed
+  // clip features, gets back just the EDL + report. No upload, no render,
+  // no job queue — the heavy work stays on the user's PC.
+  app.post('/sessions/:code/aireel-edit', requireAuth, requireTier(AIREEL_TIERS), (req, res) => {
+    const code = D.sanitizeCode(req.params.code);
+    if (!code) return D.safeError(res, 400, 'Invalid session code');
+    const session = D.sessions.get(code);
+    if (!session) return D.safeError(res, 404, 'Session not found');
+
+    const body = req.body || {};
+    const targetSec = Number(body.targetSec);
+    if (!ALLOWED_TARGETS.includes(targetSec)) {
+      return D.safeError(res, 400, `targetSec must be one of ${ALLOWED_TARGETS.join(', ')}`);
+    }
+
+    const tierCfg = TIERS[req.userTier] || TIERS.t1;
+    const maxSec = tierCfg.aiReelMaxSec || 0;
+    if (targetSec > maxSec) {
+      return D.safeError(res, 403,
+        `${tierCfg.label} reels cap at ${Math.floor(maxSec / 60)} minutes. Pick a shorter length or upgrade.`);
+    }
+
+    const clips = Array.isArray(body.clips) ? body.clips : [];
+    if (clips.length === 0) return D.safeError(res, 400, 'No clip data provided');
+    if (clips.length > MAX_CLIPS) return D.safeError(res, 400, `Maximum ${MAX_CLIPS} clips per reel (v1)`);
+
+    const maxClipDur = Math.max(0, ...clips.map(c => Number(c.durationSec) || 0));
+    if (maxClipDur <= 0) return D.safeError(res, 400, 'Clip data missing valid durations');
+    const seg = segmentBounds(targetSec, maxClipDur);
+
+    const game = typeof body.game === 'string' ? body.game.trim().slice(0, 60) : '';
+    const styleNotes = typeof body.styleNotes === 'string' ? body.styleNotes.trim().slice(0, 500) : '';
+
+    buildEdl({
+      game, targetSec, seg, styleNotes,
+      clips: clips.map(c => ({
+        clipId: c.clipId, player: c.player,
+        durationSec: c.durationSec, startTimeUTC: c.startTimeUTC,
+        hasAudio: c.hasAudio, topMoments: c.topMoments,
+        id: c.clipId, duration: Number(c.durationSec) || 0
+      }))
+    }).then(result => {
+      if (!result) return D.safeError(res, 502, 'AI editor unavailable — try again shortly');
+      recordProfileNote(game, styleNotes);
+      recordProfileReport(game, result.report);
+      res.json({ edl: result.edl, report: result.report });
+    }).catch(e => {
+      D.log('error', 'aireel_edit_route_failed', { code, error: e.message });
+      D.safeError(res, 500, 'Edit generation failed');
+    });
   });
 }
 
@@ -629,20 +685,41 @@ function heuristicEdl(job, clips) {
 }
 
 // ---------- AI editor (Anthropic) ----------
+
+// Job-pipeline wrapper: adapts the internal `job`/`clips` (loudness+scene
+// analysis objects) shape into the plain params buildEdl expects, so the
+// existing server-render pipeline (runJob) keeps working unchanged.
 async function tryAnthropicEdl(job, clips) {
+  const result = await buildEdl({
+    game: job.game,
+    targetSec: job.effectiveTarget || job.targetSec,
+    seg: job.seg,
+    styleNotes: job.styleNotes,
+    clips: clips.map(c => ({
+      clipId: c.id, player: c.username,
+      durationSec: round2(c.duration),
+      startTimeUTC: c.startTimeUTC,
+      hasAudio: c.hasAudio,
+      topMoments: c.moments.slice(0, 10).map(m => ({ t: round2(m.t), intensity: round2(m.score) })),
+      id: c.id, duration: c.duration // validateEdl needs these two field names
+    }))
+  });
+  if (result) D.log('info', 'aireel_ai_edl_ok', { jobId: job.id, segments: result.edl.length });
+  else D.log('warn', 'aireel_ai_fallback', { jobId: job.id });
+  return result;
+}
+
+// Parameterized EDL builder. Used directly by the /aireel-edit route
+// (client sends pre-analyzed features, no job object exists) and
+// indirectly by tryAnthropicEdl above (server-render job pipeline).
+async function buildEdl({ game, targetSec, seg, styleNotes, clips }) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
 
-  const profile = getProfileContext(job.game);
-  const SEG = job.seg || { min: 4, max: 12, def: 8 };
-  const target = job.effectiveTarget || job.targetSec;
-  const features = clips.map(c => ({
-    clipId: c.id, player: c.username,
-    durationSec: round2(c.duration),
-    startTimeUTC: c.startTimeUTC,
-    hasAudio: c.hasAudio,
-    topMoments: c.moments.slice(0, 10).map(m => ({ t: round2(m.t), intensity: round2(m.score) }))
-  }));
+  const profile = getProfileContext(game);
+  const SEG = seg || { min: 4, max: 12, def: 8 };
+  const target = targetSec;
+  const features = clips; // already shaped: {clipId, player, durationSec, startTimeUTC, hasAudio, topMoments}
 
   const systemPrompt =
     'You are the editing engine for Peak-Abu, a multi-POV gameplay highlight tool. ' +
@@ -670,12 +747,12 @@ async function tryAnthropicEdl(job, clips) {
       : 'This is a highlight montage — keep the pace tight.');
 
   const userPrompt = JSON.stringify({
-    game: job.game || 'unknown',
+    game: game || 'unknown',
     targetSec: target,
     segmentSecondsMin: SEG.min,
     segmentSecondsMax: SEG.max,
     maxTiles: MAX_TILES,
-    userStyleNotes: job.styleNotes || null,
+    userStyleNotes: styleNotes || null,
     gameProfile: profile ? {
       priorRuns: profile.runs,
       accumulatedUserFeedback: profile.notes.slice(-10).map(n => n.text),
@@ -693,10 +770,9 @@ async function tryAnthropicEdl(job, clips) {
     const report = typeof parsed.report === 'string' && parsed.report.trim()
       ? parsed.report.trim().slice(0, 2000)
       : 'AI editor completed the cut.';
-    D.log('info', 'aireel_ai_edl_ok', { jobId: job.id, segments: edl.length });
     return { edl, report };
   } catch (e) {
-    D.log('warn', 'aireel_ai_fallback', { jobId: job.id, error: e.message });
+    D.log('warn', 'aireel_buildedl_failed', { error: e.message, game: game || 'unknown' });
     return null;
   }
 }
