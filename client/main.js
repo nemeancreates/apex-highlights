@@ -2200,11 +2200,73 @@ function uploadHighlight(videoPath, metadataPath) {
     return;
   }
   const videoStats = fs.statSync(videoPath);
-  if (videoStats.size === 0) {
-    mainWindow.webContents.send('upload-error', 'Video file is empty');
+
+  // Empty/near-empty guard. A save that produced a valid MP4 container
+  // (ftyp/moov written) but no real frames — dying capture, DXGI_ERROR_
+  // ACCESS_LOST, or a save fired before the first segment filled — lands as
+  // a few-KB file, sails past the old `size === 0` check, uploads, and shows
+  // as a black clip days later. Two gates: a hard size floor (mirrors the
+  // server's 100KB floor, catches true empties with no spawn), then an
+  // ffprobe packet count for the subtler "valid header, ~0 frames" case.
+  // ffprobe problems FAIL OPEN — if the probe can't run (e.g. ffprobe not
+  // bundled in a packaged build) or errors, we log and upload anyway so this
+  // can never block a legitimate clip.
+  const MIN_LOCAL_VIDEO_BYTES = 100 * 1024; // 100KB — matches server floor
+  if (videoStats.size < MIN_LOCAL_VIDEO_BYTES) {
+    console.log(`Upload aborted — clip too small (${videoStats.size} bytes). Empty capture.`);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('upload-error',
+        'Recording appears empty — no video was captured. Try recording again.');
+    }
     return;
   }
 
+  const ffprobePath = getFFmpegPath().replace(/ffmpeg(\.exe)?$/i, 'ffprobe$1');
+  const probe = spawn(ffprobePath, [
+    '-v', 'error',
+    '-select_streams', 'v:0',
+    '-count_packets',
+    '-show_entries', 'stream=nb_read_packets',
+    '-of', 'default=noprint_wrappers=1:nokey=1',
+    videoPath
+  ], { windowsHide: true });
+
+  let probeOut = '';
+  let probeErr = '';
+  probe.stdout.on('data', d => probeOut += d.toString());
+  probe.stderr.on('data', d => probeErr += d.toString());
+
+  probe.on('error', (e) => {
+    // ffprobe couldn't spawn at all — fail open, upload as before.
+    console.log('ffprobe spawn failed, uploading without frame check:', e.message);
+    doUploadHighlight(videoPath, metadataPath);
+  });
+
+  probe.on('close', (probeCode) => {
+    const frames = parseInt((probeOut || '').trim(), 10);
+    if (probeCode === 0 && Number.isFinite(frames) && frames <= 0) {
+      // Probe ran cleanly and found zero video packets — genuinely empty.
+      console.log(`Upload aborted — ffprobe found 0 video packets in ${videoPath}. Keeping local file.`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('upload-error',
+          'Recording appears empty — no video frames were captured. Try recording again.');
+      }
+      return;
+    }
+    if (probeCode !== 0) {
+      // Probe errored (distinct from "ran and found zero") — fail open.
+      console.log(`ffprobe exited ${probeCode}, uploading without frame check. stderr: ${probeErr.slice(-200)}`);
+    } else {
+      console.log(`ffprobe: ${frames} video packet(s) — clip OK`);
+    }
+    doUploadHighlight(videoPath, metadataPath);
+  });
+}
+
+// The actual upload. Split out of uploadHighlight so the ffprobe empty-clip
+// gate above can invoke it from a callback once the clip is confirmed real
+// (or the probe failed open). Body is the original upload logic verbatim.
+function doUploadHighlight(videoPath, metadataPath) {
   console.log(`Uploading highlight to session ${currentSession.code}...`);
   mainWindow.webContents.send('upload-progress', 0);
 
