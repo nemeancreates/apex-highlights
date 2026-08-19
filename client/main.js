@@ -7,6 +7,7 @@ const os = require('os');
 const FormData = require('form-data');
 const https = require('https');
 const { checkForUpdates } = require('./updater');
+const { buildReelLocally } = require('./aireel-client');
 
 function getFFmpegPath() {
   if (app.isPackaged) {
@@ -883,7 +884,9 @@ function loadUserPreferences() {
 
 function saveUserPreferences(prefs) {
   try {
-    fs.writeFileSync(USER_PREFS_PATH, JSON.stringify(prefs, null, 2));
+    const tmp = USER_PREFS_PATH + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(prefs, null, 2));
+    fs.renameSync(tmp, USER_PREFS_PATH);   // rename is atomic on the same volume
     console.log('User preferences saved');
   } catch (err) {
     console.log('Could not save user preferences:', err.message);
@@ -3074,11 +3077,38 @@ function createWindow() {
     }
 
     // Fall back to the first plausible non-shell window
-    const guess = wins.find(w => isLikelyGameProcess(w.processName, w.title));
+        const guess = wins.find(w => isLikelyGameProcess(w.processName, w.title));
     if (guess) {
       return { name: guess.title, genre: 'shooter', process: guess.processName, title: guess.title, known: false };
     }
     return null;
+  });
+
+  // ================================
+  // AI REEL — LOCAL RENDER (Phase 2)
+  // Analyzes + renders entirely on this PC using the heuristic editor
+  // (no Anthropic API call yet — that's wired in once the org key is set
+  // up). clips: [{id, username, path, startTimeUTC}]
+  // ================================
+  ipcMain.handle('aireel-generate', async (event, payload) => {
+    const { clips, targetSec, game, styleNotes } = payload || {};
+    const jobId = crypto.randomUUID();
+    const workDir = path.join(os.tmpdir(), 'peakabu-aireel-client', jobId);
+    const outputPath = path.join(CLIPS_DIR, `ai-reel-${Date.now()}.mp4`);
+
+    const result = await buildReelLocally({
+      ffmpegPath: getFFmpegPath(),
+      workDir, outputPath, clips, targetSec, game, styleNotes,
+      threadCap: 4,
+      onProgress: (p) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('aireel-progress', p);
+        }
+      }
+    });
+
+    try { fs.rmSync(workDir, { recursive: true, force: true }); } catch (e) {}
+    return result;
   });
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "peak-abu",
-  "version": "0.1.56",
+  "version": "0.1.57",
   "description": "Multi-POV synchronized gameplay highlights",
   "author": "nemeancreates",
   "main": "main.js",
@@ -45,7 +45,7 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "deleteAppDataOnUninstall": true,
+      "deleteAppDataOnUninstall": false,
       "include": "build/installer.nsh",
       "artifactName": "peak-abu-setup-${version}.exe"
     }
