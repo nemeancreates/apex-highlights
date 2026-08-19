@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, dialog, safeStorage } = require('electron');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 const path = require('path');
@@ -2359,15 +2359,61 @@ function createWindow() {
     callback(permission === 'media' || permission === 'clipboard-read' || permission === 'clipboard-sanitized-write');
   });
 
+    // authToken is a JWT and shouldn't sit in plaintext in %APPDATA%.
+  // safeStorage encrypts it via the OS credential store (DPAPI on Windows,
+  // Keychain on macOS, libsecret on Linux) before it touches disk. Falls
+  // back to plaintext only if the OS store is genuinely unavailable.
   ipcMain.handle('get-auth-state', () => {
     const prefs = loadUserPreferences();
-    return { token: prefs.authToken || null, username: prefs.authUsername || null };
+
+    if (prefs.authTokenEncrypted) {
+      try {
+        const token = safeStorage.decryptString(Buffer.from(prefs.authTokenEncrypted, 'base64'));
+        return { token, username: prefs.authUsername || null };
+      } catch (err) {
+        // Undecryptable usually means it was encrypted under a different
+        // OS user/DPAPI key — treat as logged out rather than crash.
+        console.log('Could not decrypt stored auth token — clearing it:', err.message);
+        const clean = readPrefsRaw();
+        delete clean.authTokenEncrypted;
+        delete clean.authUsername;
+        saveUserPreferences(clean);
+        return { token: null, username: null };
+      }
+    }
+
+    // Legacy plaintext token from a pre-encryption install — migrate it
+    // to encrypted storage on this read so it's only ever touched once.
+    if (prefs.authToken) {
+      const migrated = readPrefsRaw();
+      delete migrated.authToken;
+      if (safeStorage.isEncryptionAvailable()) {
+        migrated.authTokenEncrypted = safeStorage.encryptString(prefs.authToken).toString('base64');
+      } else {
+        migrated.authToken = prefs.authToken; // no OS store available — keep plaintext
+      }
+      saveUserPreferences(migrated);
+      return { token: prefs.authToken, username: prefs.authUsername || null };
+    }
+
+    return { token: null, username: null };
   });
 
   ipcMain.handle('set-auth-state', (event, { token, username }) => {
-    const prefs = loadUserPreferences();
-    if (token) { prefs.authToken = token; prefs.authUsername = username; }
-    else { delete prefs.authToken; delete prefs.authUsername; }
+    const prefs = readPrefsRaw();
+    delete prefs.authToken; // clear any legacy plaintext field on every write
+    if (token) {
+      if (safeStorage.isEncryptionAvailable()) {
+        prefs.authTokenEncrypted = safeStorage.encryptString(token).toString('base64');
+      } else {
+        console.log('safeStorage unavailable — storing auth token in plaintext');
+        prefs.authToken = token;
+      }
+      prefs.authUsername = username;
+    } else {
+      delete prefs.authTokenEncrypted;
+      delete prefs.authUsername;
+    }
     saveUserPreferences(prefs);
   });
 
