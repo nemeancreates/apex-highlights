@@ -120,6 +120,25 @@ function initUploadRoutes(app, io) {
         return safeError(res, 400, 'Invalid file content. File must be a valid MP4.');
       }
 
+      // Size floor — a real clip is never this small. An empty/near-empty MP4
+      // (valid container header, no actual video frames) passes verifyMP4's
+      // signature check but is unplayable — it uploads "successfully", then
+      // shows as a black screen days later with no error trail. This catches
+      // it at upload time and rejects it honestly. 100KB is well below any
+      // real clip (smallest real clips are multiple MB) but above a
+      // header-only stub.
+      const MIN_VIDEO_BYTES = 100 * 1024; // 100KB
+      if (videoFile.size < MIN_VIDEO_BYTES) {
+        fs.unlinkSync(videoFile.path);
+        log('warn', 'upload_rejected', {
+          reason: 'video_too_small',
+          session: code,
+          username: uploaderName,
+          sizeBytes: videoFile.size
+        });
+        return safeError(res, 400, 'Recording appears empty — no video was captured. This can happen if the capture source had no frames. Try recording again.');
+      }
+
       let parsedDurationMs = null;
 
       if (req.files.metadata) {

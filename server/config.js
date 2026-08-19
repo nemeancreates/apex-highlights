@@ -1,7 +1,7 @@
 // ================================
 // CONFIG — every tunable constant lives here.
-// Version bumps: edit LATEST_CLIENT_VERSION below (plus client/package.json
-// and client/main.js — three files, same as always).
+// Version bumps: edit LATEST_CLIENT_VERSION below, plus client/package.json
+// and the version-tag span in client/index.html.
 // ================================
 const path = require('path');
 
