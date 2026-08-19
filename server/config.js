@@ -130,7 +130,7 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 const LATEST_CLIENT_VERSION = {
   version: '0.1.59',
   downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.59.exe',
-  releaseNotes: 'Database upgrade for improved reliability at scale.'
+  releaseNotes: "Improved reliability for saved settings across updates, and your login is now stored encrypted."
 };
 
 module.exports = {
