@@ -132,7 +132,6 @@ const LATEST_CLIENT_VERSION = {
   downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.55.exe',
   releaseNotes: 'Database upgrade for improved reliability at scale.'
 };
-};
 
 module.exports = {
   JWT_SECRET,
