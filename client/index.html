@@ -214,6 +214,17 @@
       .session-code.copied { background: #16321f; border-color: #39d3a0; }
       .hint { font-size: 12px; color: #5f7a6a; text-align: center; margin-top: 4px; margin-bottom: 4px; }
 
+      .rejoin-card {
+       background: #1a2b21;
+       border: 1px solid #2e4536;
+       border-radius: 8px;
+       padding: 10px 12px;
+       margin-bottom: 10px;
+      }
+      .rejoin-label { font-size: 11px; color: #5f7a6a; text-transform: uppercase; letter-spacing: 1px; }
+      .rejoin-title { font-size: 15px; font-weight: 600; margin: 2px 0 2px; }
+      .rejoin-meta { font-size: 12px; color: #8aa696; margin-bottom: 8px; }
+
       .uc-label { font-size: 11px; color: #5f7a6a; text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 5px; }
 
      /* ===== Session title + local note ===== */
@@ -586,7 +597,7 @@
               <img src="assets/kickstarter.png" alt="kickstarter" />
             </button>
           </div>
-          <span class="version-tag">v0.1.59</span>
+          <span class="version-tag">v0.1.60</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="redeem-wrap">
@@ -799,6 +810,13 @@
           </div>
           <div class="collapse-body" id="collapse-session">
           <div id="sessionPanel-disconnected">
+            <div id="rejoinLastHostedCard" class="rejoin-card" style="display:none;">
+              <div class="rejoin-label">Continue your last squad</div>
+              <div class="rejoin-title" id="rejoinLastHostedTitle">Untitled session</div>
+              <div class="rejoin-meta" id="rejoinLastHostedMeta"></div>
+              <button class="btn-save" onclick="rejoinLastHostedSession()">Rejoin Session</button>
+            </div>
+            <div class="divider" id="rejoinDivider" style="display:none;">— or start fresh —</div>
             <button class="btn-save" onclick="createSession()">Create New Session</button>
             <div class="divider">— or join a friend —</div>
             <label>Session Code</label>
@@ -1346,7 +1364,46 @@
       renderSessionHistory();
     }
 
-    
+    function renderRejoinLastHosted() {
+      var history = loadSessionHistory(); // already filters out expired entries
+      var lastHosted = history.find(function(h) {
+        return h.role === 'host' && h.username === window.authUsername;
+      });
+
+      var card = document.getElementById('rejoinLastHostedCard');
+      var divider = document.getElementById('rejoinDivider');
+      if (!card || !divider) return;
+
+      if (!lastHosted) {
+        card.style.display = 'none';
+        divider.style.display = 'none';
+        return;
+      }
+
+      document.getElementById('rejoinLastHostedTitle').textContent =
+        lastHosted.title || lastHosted.game || 'Untitled session';
+
+      var metaParts = [lastHosted.code];
+      if (lastHosted.game && lastHosted.title) metaParts.unshift(lastHosted.game);
+      if (typeof lastHosted.expiresAt === 'number') {
+        var hoursLeft = Math.max(0, Math.round((lastHosted.expiresAt - Date.now()) / 3600000));
+        metaParts.push(hoursLeft < 24 ? (hoursLeft + 'h left') : (Math.round(hoursLeft / 24) + 'd left'));
+      }
+      document.getElementById('rejoinLastHostedMeta').textContent = metaParts.join(' · ');
+
+      card.style.display = 'block';
+      divider.style.display = 'block';
+    }
+
+    window.rejoinLastHostedSession = function() {
+      var history = loadSessionHistory();
+      var lastHosted = history.find(function(h) {
+        return h.role === 'host' && h.username === window.authUsername;
+      });
+      if (!lastHosted) return;
+      document.getElementById('joinCodeInput').value = lastHosted.code;
+      joinSession();
+    };
 
     window.renameSessionHistory = function(code) {
       var history = loadSessionHistory();
@@ -2972,6 +3029,7 @@
         window.isSessionHost = false;
         document.getElementById('sessionPanel-disconnected').style.display = 'block';
         document.getElementById('sessionPanel-connected').style.display = 'none';
+        renderRejoinLastHosted();
         document.getElementById('memberList').innerHTML = '';
         document.getElementById('clipDurationHost').style.display = 'none';
         document.getElementById('clipDurationMember').style.display = 'none';
@@ -4173,7 +4231,7 @@
         document.getElementById('authBarName').textContent = username;
         document.getElementById('sessionPanel').style.display = 'flex';
         if (window.consumePendingDeepLink) window.consumePendingDeepLink();
-        syncServerSessionHistory();
+        syncServerSessionHistory().then(renderRejoinLastHosted).catch(renderRejoinLastHosted);
       }
       function showAuthLoggedOut() {
         document.getElementById('authPanel').style.display = 'block';
