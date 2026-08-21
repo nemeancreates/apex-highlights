@@ -7,3 +7,4 @@ server/peakabu.db
 server/peakabu.db-shm
 server/peakabu.db-wal
 server/aiprofiles.json
+server/.env
