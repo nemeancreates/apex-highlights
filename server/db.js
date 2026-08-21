@@ -31,7 +31,8 @@ db.exec(`
     sessionsMonthKey  TEXT,
     bandwidthBytesThisMonth INTEGER NOT NULL DEFAULT 0,
     bandwidthMonthKey       TEXT,
-    bandwidthAlertedThisMonth INTEGER NOT NULL DEFAULT 0
+    bandwidthAlertedThisMonth INTEGER NOT NULL DEFAULT 0,
+    tokenVersion INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS sessions (
@@ -128,6 +129,7 @@ function addColumnIfMissing(table, column, definition) {
 
 // users — tier state + monthly counters
 addColumnIfMissing('users', 'tier', "TEXT NOT NULL DEFAULT 't1'");
+addColumnIfMissing('users', 'tokenVersion', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('users', 'tierSource', "TEXT NOT NULL DEFAULT 'default'");
 addColumnIfMissing('users', 'tierExpiresAt', 'INTEGER');
 addColumnIfMissing('users', 'sessionsThisMonth', 'INTEGER NOT NULL DEFAULT 0');

@@ -114,13 +114,30 @@ function requireAdmin(req, res, next) {
 }
 
 // --- HTTP middleware ---
+// Rejects a token whose tokenVersion (tv claim) no longer matches the
+// account's current version — i.e. the account has since logged in
+// elsewhere and superseded this token (single-login / newest-wins). A
+// token minted before tv existed has no tv claim; treated as version 0,
+// which matches the DEFAULT 0 on existing rows, so nobody is force-logged
+// out by the upgrade itself — only by a genuine newer login.
+function tokenVersionOk(decoded) {
+  const user = users.get((decoded.username || '').toLowerCase());
+  if (!user) return false;
+  const claimTv = typeof decoded.tv === 'number' ? decoded.tv : 0;
+  return claimTv === (user.tokenVersion || 0);
+}
+
 function requireAuth(req, res, next) {
   const authHeader = req.headers['authorization'];
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return safeError(res, 401, 'Authentication required');
   }
   try {
-    req.user = jwt.verify(authHeader.slice(7), JWT_SECRET);
+    const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET);
+    if (!tokenVersionOk(decoded)) {
+      return safeError(res, 401, 'Signed in on another device. Please log in again.');
+    }
+    req.user = decoded;
     next();
   } catch (err) {
     return safeError(res, 401, 'Invalid or expired token. Please log in again.');
@@ -139,7 +156,11 @@ function requireAuthAny(req, res, next) {
     : req.query.token;
   if (!token) return safeError(res, 401, 'Authentication required');
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (!tokenVersionOk(decoded)) {
+      return safeError(res, 401, 'Signed in on another device. Please log in again.');
+    }
+    req.user = decoded;
     next();
   } catch (err) {
     return safeError(res, 401, 'Invalid or expired token. Please log in again.');
@@ -151,7 +172,9 @@ function socketAuth(socket, next) {
   const token = socket.handshake.auth.token;
   if (!token) return next(new Error('auth_required'));
   try {
-    socket.user = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (!tokenVersionOk(decoded)) return next(new Error('auth_invalid'));
+    socket.user = decoded;
     next();
   } catch (err) {
     next(new Error('auth_invalid'));
@@ -185,12 +208,13 @@ function initAuthRoutes(app) {
       sessionsThisMonth: 0, sessionsMonthKey: getMonthKey(),
       bandwidthBytesThisMonth: 0, bandwidthMonthKey: getMonthKey(), bandwidthAlertedThisMonth: false
     };
+        user.tokenVersion = 0;
     users.set(clean.toLowerCase(), user);
     saveUsersToDisk();
     // Only count SUCCESSFUL registrations — a typo'd username or a taken
     // name shouldn't burn someone's daily allowance.
     recordRegistration(ip);
-    const token = jwt.sign({ username: clean }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
+    const token = jwt.sign({ username: clean, tv: user.tokenVersion }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
     log('info', 'user_registered', { username: clean, ip });
     return res.status(201).json({ token, username: clean, tier: 't1' });
   });
@@ -208,7 +232,11 @@ function initAuthRoutes(app) {
     if (!user || !valid) {
       return safeError(res, 401, 'Invalid username or password');
     }
-    const token = jwt.sign({ username: user.username }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
+    // Newest-wins: bump the version so every previously-issued token for
+    // this account (other devices) fails its tv check from here on.
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
+    saveUsersToDisk();
+    const token = jwt.sign({ username: user.username, tv: user.tokenVersion }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
     log('info', 'user_login', { username: user.username, tier: getEffectiveTier(user) });
     return res.status(200).json({ token, username: user.username, tier: getEffectiveTier(user), tierExpiresAt: user.tierExpiresAt || null });
   });

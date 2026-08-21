@@ -79,13 +79,15 @@ const stmt = {
       username_lower, username, passwordHash, createdAt,
       tier, tierSource, tierExpiresAt,
       sessionsThisMonth, sessionsMonthKey,
-      bandwidthBytesThisMonth, bandwidthMonthKey, bandwidthAlertedThisMonth
+      bandwidthBytesThisMonth, bandwidthMonthKey, bandwidthAlertedThisMonth,
+      tokenVersion
     )
     VALUES (
       @username_lower, @username, @passwordHash, @createdAt,
       @tier, @tierSource, @tierExpiresAt,
       @sessionsThisMonth, @sessionsMonthKey,
-      @bandwidthBytesThisMonth, @bandwidthMonthKey, @bandwidthAlertedThisMonth
+      @bandwidthBytesThisMonth, @bandwidthMonthKey, @bandwidthAlertedThisMonth,
+      @tokenVersion
     )
     ON CONFLICT(username_lower) DO UPDATE SET
       passwordHash = excluded.passwordHash,
@@ -96,7 +98,8 @@ const stmt = {
       sessionsMonthKey = excluded.sessionsMonthKey,
       bandwidthBytesThisMonth = excluded.bandwidthBytesThisMonth,
       bandwidthMonthKey = excluded.bandwidthMonthKey,
-      bandwidthAlertedThisMonth = excluded.bandwidthAlertedThisMonth
+      bandwidthAlertedThisMonth = excluded.bandwidthAlertedThisMonth,
+      tokenVersion = excluded.tokenVersion
   `),
   allUsers: db.prepare(`SELECT * FROM users`),
 
@@ -164,7 +167,8 @@ function loadUsersFromDisk() {
       bandwidthBytesThisMonth: row.bandwidthBytesThisMonth || 0,
       bandwidthMonthKey: row.bandwidthMonthKey || null,
       // SQLite has no boolean type — stored as 0/1, surfaced as a bool
-      bandwidthAlertedThisMonth: !!row.bandwidthAlertedThisMonth
+      bandwidthAlertedThisMonth: !!row.bandwidthAlertedThisMonth,
+      tokenVersion: row.tokenVersion || 0
     });
   }
   log('info', 'users_loaded', { count: users.size });
@@ -187,7 +191,8 @@ function saveUsersToDisk() {
         sessionsMonthKey: u.sessionsMonthKey ?? null,
         bandwidthBytesThisMonth: u.bandwidthBytesThisMonth || 0,
         bandwidthMonthKey: u.bandwidthMonthKey ?? null,
-        bandwidthAlertedThisMonth: u.bandwidthAlertedThisMonth ? 1 : 0
+        bandwidthAlertedThisMonth: u.bandwidthAlertedThisMonth ? 1 : 0,
+        tokenVersion: u.tokenVersion || 0
       });
     }
   });
