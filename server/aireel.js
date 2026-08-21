@@ -1,7 +1,7 @@
 // ================================================================
 // server/aireel.js — Peak-Abu AI Highlight Reel engine (v0.1.13)
 // ================================================================
-// v0.1.13: per-tier reel length caps (t3 15min / t4 45min), segment length
+// v0.1.13: per-tier reel length caps (t3 15min / t4 30min), segment length
 //          scaled to target so long reels stay tractable, tier-priority
 //          queue, target clamped to available source footage.
 // v0.1.12: optional comment overlay via ASS subtitles per segment.
@@ -36,7 +36,7 @@ const AIREEL_TIERS = ['t3', 't4'];
 const AIREEL_DIR = path.join(os.tmpdir(), 'peak-abu-aireel');
 const PROFILE_FILE = path.join(__dirname, 'aiprofiles.json');
 
-const ALLOWED_TARGETS = [15, 30, 60, 90, 120, 180, 300, 600, 900, 1800, 2700];
+const ALLOWED_TARGETS = [15, 30, 60, 90, 120, 180, 300, 600, 900, 1800, 1800];
 const MAX_CLIPS = 50;
 const OVERLAP_WINDOW_MS = 5000;
 const MAX_TILES = 4;
@@ -84,6 +84,7 @@ function initAiReel(deps) {
   sweepOrphanedAireelFiles();
   registerRoutes();
   setInterval(cleanupJobs, 15 * 60 * 1000);
+  setInterval(sweepOrphanedAireelFiles, 15 * 60 * 1000);
   D.log('info', 'aireel_ready', {
     aiEditor: !!process.env.ANTHROPIC_API_KEY,
     model: process.env.AIREEL_MODEL || 'claude-sonnet-4-6',
