@@ -114,6 +114,7 @@ const ADMIN_SECRET = process.env.ADMIN_SECRET || null;
 
 // --- Redemption codes ---
 const REDEMPTION_CODES_FILE = path.join(__dirname, 'redemption-codes.json');
+const SYSTEM_FLAGS_FILE = path.join(__dirname, 'system-flags.json');
 
 // --- Bandwidth safeguard ---
 // NOTE: media is served straight from the DO Spaces CDN, which never
@@ -167,6 +168,7 @@ module.exports = {
   TIER_ORDER,
   ADMIN_SECRET,
   REDEMPTION_CODES_FILE,
+  SYSTEM_FLAGS_FILE,
   BANDWIDTH_ALERT_BYTES,
   LATEST_CLIENT_VERSION,
   REDEEM_ATTEMPT_MAX,

@@ -13,7 +13,7 @@ const { JWT_SECRET, JWT_EXPIRY, BCRYPT_ROUNDS, TIERS, TIER_ORDER, ADMIN_SECRET,
         REGISTER_IP_MAX, REGISTER_IP_WINDOW } = require('./config');
 const { users, saveUsersToDisk } = require('./stores');
 const { generateRedemptionCodes, redeemCode, peekCode } = require('./redemption');
-
+const { getFlags, setFlags } = require('./killswitch');
 // A user's tier as of right now — falls back to t1 for missing/unknown/
 // expired tiers rather than trusting a stale field forever. tierExpiresAt
 // is null for lifetime grants (redeemed codes, manual); a future Stripe
@@ -184,11 +184,15 @@ function socketAuth(socket, next) {
 // --- Routes ---
 function initAuthRoutes(app) {
   app.post('/auth/register', async (req, res) => {
-    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-    if (!checkRegisterRate(ip)) {
-      log('warn', 'register_rate_limited', { ip });
-      return safeError(res, 429, 'Too many accounts created from this network today. Try again tomorrow.');
-    }
+   if (getFlags().registrationPaused) {
+     return safeError(res, 503, 'New sign-ups are temporarily paused. Existing accounts are unaffected — check back shortly.');
+   }
+
+   const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+   if (!checkRegisterRate(ip)) {
+     log('warn', 'register_rate_limited', { ip });
+     return safeError(res, 429, 'Too many accounts created from this network today. Try again tomorrow.');
+   }
 
     const { username, password } = req.body || {};
     const clean = (username || '').trim().replace(/[^a-zA-Z0-9_\-]/g, '');
@@ -338,6 +342,23 @@ function initAuthRoutes(app) {
       log('warn', 'redemption_code_generation_failed', { error: err.message });
       return safeError(res, 400, 'Could not generate redemption codes. Check the request parameters.');
     }
+  });
+    // Kill switch — GET to check current state, POST to toggle. No restart
+  // needed; takes effect on the very next request. Only gates NEW session
+  // creation and NEW registration — logged-in users and active sessions
+  // are never affected, so pausing can't strand anyone mid-session.
+  //   curl https://peakabu.app/admin/kill-switch -H "X-Admin-Secret: $ADMIN_SECRET"
+  //   curl -X POST https://peakabu.app/admin/kill-switch \
+  //     -H "X-Admin-Secret: $ADMIN_SECRET" -H "Content-Type: application/json" \
+  //     -d '{"sessionsPaused":true,"registrationPaused":true,"reason":"wave-1 investigating a bug"}'
+  app.get('/admin/kill-switch', requireAdmin, (req, res) => {
+    res.json(getFlags());
+  });
+
+  app.post('/admin/kill-switch', requireAdmin, (req, res) => {
+    const { sessionsPaused, registrationPaused, reason } = req.body || {};
+    const updated = setFlags({ sessionsPaused, registrationPaused, reason }, 'admin');
+    res.json(updated);
   });
 }
 

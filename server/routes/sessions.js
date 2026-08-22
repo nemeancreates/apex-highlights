@@ -16,7 +16,13 @@ const { requireAuth, getEffectiveTier, getMonthKey } = require('../auth');
 
 // Shared by POST /sessions and the migrate-session socket handler.
 // Returns { session } on success or { error, status } on failure.
+const { getFlags } = require('../killswitch');
+
 function createSessionForUser(rawUsername) {
+  if (getFlags().sessionsPaused) {
+    return { error: 'New sessions are temporarily paused. Existing sessions are unaffected — check back shortly.', status: 503 };
+  }
+
   const username = sanitizeUsername(rawUsername);
   if (!username) return { error: 'Invalid account username', status: 400 };
 

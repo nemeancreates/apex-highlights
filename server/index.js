@@ -31,6 +31,7 @@ const { initCompositeRoutes, startCompositeCleanup } = require('./composite');
 const { initSockets } = require('./sockets');
 const { initAiReel } = require('./aireel');
 const { loadCodesFromDisk } = require('./redemption');
+const { loadFlagsFromDisk } = require('./killswitch');
 
 // --- App + HTTP + Socket.IO ---
 const app = express();
@@ -98,6 +99,7 @@ initSockets(io);
 loadUsersFromDisk();
 loadSessionsFromDisk();
 loadCodesFromDisk();
+loadFlagsFromDisk();
 retryPendingSpacesUploads();
 startRateLimitCleanup();
 startSessionPurge();
