@@ -5,7 +5,7 @@
 // ================================
 const { log } = require('../logger');
 const { sanitizeUsername, sanitizeCode } = require('../utils');
-const { MAX_MEMBERS_PER_SESSION, ALLOWED_CLIP_DURATIONS } = require('../config');
+const { MAX_MEMBERS_PER_SESSION, ALLOWED_CLIP_DURATIONS, TIERS } = require('../config');
 const { sessions, saveSessionsToDisk, users } = require('../stores');
 const { checkSocketRate, removeSocketRate } = require('../ratelimit');
 const { socketAuth, getEffectiveTier } = require('../auth');
