@@ -335,7 +335,8 @@ function initAuthRoutes(app) {
       const generated = generateRedemptionCodes({ tier, note, maxUses, quantity, durationDays });
       return res.status(201).json({ codes: generated });
     } catch (err) {
-      return safeError(res, 400, err.message);
+      log('warn', 'redemption_code_generation_failed', { error: err.message });
+      return safeError(res, 400, 'Could not generate redemption codes. Check the request parameters.');
     }
   });
 }
