@@ -56,4 +56,3 @@ function setFlags(patch, updatedBy) {
 }
 
 module.exports = { loadFlagsFromDisk, getFlags, setFlags };
-KILLSWITCH_EOF
