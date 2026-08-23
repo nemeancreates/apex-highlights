@@ -14,6 +14,8 @@ const { JWT_SECRET, JWT_EXPIRY, BCRYPT_ROUNDS, TIERS, TIER_ORDER, ADMIN_SECRET,
 const { users, saveUsersToDisk } = require('./stores');
 const { generateRedemptionCodes, redeemCode, peekCode } = require('./redemption');
 const { getFlags, setFlags } = require('./killswitch');
+const { DISCORD_ENABLED } = require('./config');
+const { buildAuthorizeUrl, exchangeCodeForUser, consumeState, linkDiscordAccount } = require('./discord-oauth');
 // A user's tier as of right now — falls back to t1 for missing/unknown/
 // expired tiers rather than trusting a stale field forever. tierExpiresAt
 // is null for lifetime grants (redeemed codes, manual); a future Stripe
@@ -351,6 +353,49 @@ function initAuthRoutes(app) {
   //   curl -X POST https://peakabu.app/admin/kill-switch \
   //     -H "X-Admin-Secret: $ADMIN_SECRET" -H "Content-Type: application/json" \
   //     -d '{"sessionsPaused":true,"registrationPaused":true,"reason":"wave-1 investigating a bug"}'
+    // Discord linking. link-url is behind requireAuth (we need to know WHO
+  // is linking); callback is public since Discord's redirect is a plain
+  // browser navigation with no Authorization header — identity comes from
+  // the single-use `state` value instead, not a session.
+  app.get('/auth/discord/link-url', requireAuth, (req, res) => {
+    if (!DISCORD_ENABLED) return safeError(res, 503, 'Discord linking is not configured yet.');
+    const url = buildAuthorizeUrl(req.user.username);
+    res.json({ url });
+  });
+
+  app.get('/auth/discord/callback', async (req, res) => {
+    if (!DISCORD_ENABLED) return res.status(503).send('Discord linking is not configured.');
+
+    const { code, state, error: discordError } = req.query;
+    if (discordError) {
+      log('warn', 'discord_link_denied', { error: discordError });
+      return res.status(400).send('Discord linking was cancelled or denied. You can close this tab and try again from the app.');
+    }
+    if (!code || !state) {
+      return res.status(400).send('Missing code or state.');
+    }
+
+    const username = consumeState(state);
+    if (!username) {
+      return res.status(400).send('This link request has expired or was already used. Please try linking again from the app.');
+    }
+
+    try {
+      const discordUser = await exchangeCodeForUser(code);
+      const result = linkDiscordAccount(username, discordUser);
+      if (!result.ok) {
+        const message = result.error === 'already_linked_elsewhere'
+          ? 'This Discord account is already linked to a different Peak-Abu account.'
+          : 'Could not link this account.';
+        return res.status(400).send(message);
+      }
+      return res.status(200).send('Discord account linked! You can close this tab and return to Peak-Abu.');
+    } catch (err) {
+      log('warn', 'discord_link_failed', { error: err.message });
+      return res.status(500).send('Something went wrong linking your Discord account. Please try again.');
+    }
+  });
+
   app.get('/admin/kill-switch', requireAdmin, (req, res) => {
     res.json(getFlags());
   });

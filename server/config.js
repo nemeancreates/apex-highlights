@@ -112,6 +112,18 @@ const TIER_ORDER = ['t1', 't2', 't3', 't4'];
 // --- Admin (redemption code generation only — never exposed to the client) ---
 const ADMIN_SECRET = process.env.ADMIN_SECRET || null;
 
+// --- Discord linking (OAuth) ---
+// Not fail-fast like JWT_SECRET — Discord linking is an additive feature,
+// not core to the server running. If unset, DISCORD_ENABLED is false and
+// the /auth/discord/* routes return a clean 503 instead of crashing boot.
+const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID || null;
+const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET || null;
+const DISCORD_REDIRECT_URI = process.env.DISCORD_REDIRECT_URI || 'https://peakabu.app/auth/discord/callback';
+const DISCORD_ENABLED = Boolean(DISCORD_CLIENT_ID && DISCORD_CLIENT_SECRET);
+if (!DISCORD_ENABLED) {
+  console.warn('Discord linking disabled: DISCORD_CLIENT_ID / DISCORD_CLIENT_SECRET not set in .env');
+}
+
 // --- Redemption codes ---
 const REDEMPTION_CODES_FILE = path.join(__dirname, 'redemption-codes.json');
 const SYSTEM_FLAGS_FILE = path.join(__dirname, 'system-flags.json');
@@ -167,6 +179,10 @@ module.exports = {
   TIERS,
   TIER_ORDER,
   ADMIN_SECRET,
+  DISCORD_CLIENT_ID,
+  DISCORD_CLIENT_SECRET,
+  DISCORD_REDIRECT_URI,
+  DISCORD_ENABLED,
   REDEMPTION_CODES_FILE,
   SYSTEM_FLAGS_FILE,
   BANDWIDTH_ALERT_BYTES,
