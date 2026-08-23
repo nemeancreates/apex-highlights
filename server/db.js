@@ -137,6 +137,14 @@ addColumnIfMissing('users', 'sessionsMonthKey', 'TEXT');
 addColumnIfMissing('users', 'bandwidthBytesThisMonth', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('users', 'bandwidthMonthKey', 'TEXT');
 addColumnIfMissing('users', 'bandwidthAlertedThisMonth', 'INTEGER NOT NULL DEFAULT 0');
+// discordId — the Discord snowflake ID (not username, which people can
+// change) is the actual source of truth for "this Peak-Abu account is
+// this Discord account." SQLite's ADD COLUMN can't carry a UNIQUE
+// constraint, so one-Discord-account-per-user is enforced in application
+// code at link time (see auth.js /auth/discord/callback) rather than here.
+addColumnIfMissing('users', 'discordId', 'TEXT');
+addColumnIfMissing('users', 'discordUsername', 'TEXT'); // display cache only, never trust for identity
+addColumnIfMissing('users', 'discordLinkedAt', 'INTEGER');
 
 // sessions — tier limits captured at creation time
 addColumnIfMissing('sessions', 'hostTier', 'TEXT');
