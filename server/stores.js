@@ -13,7 +13,13 @@
 //
 // TIERS: user tier state and per-session tier limits are persisted here.
 // If a field isn't in the upsert statements below it silently vanishes on
-// restart — that's how the first pass of tier support lost redeemed tiers.
+// restart — that's how the first pass of tier support lost redeemed tiers,
+// and later how tokenVersion (single-login) and discordId/discordUsername/
+// discordLinkedAt (Discord linking) both silently failed to survive a
+// restart until this fix. Any new per-user field MUST be added to all
+// three of: the upsertUser prepared statement, loadUsersFromDisk(), and
+// saveUsersToDisk() — missing even one of the three means the field
+// either never saves, never loads, or never updates on conflict.
 // ================================
 const fs = require('fs');
 const path = require('path');
@@ -80,14 +86,14 @@ const stmt = {
       tier, tierSource, tierExpiresAt,
       sessionsThisMonth, sessionsMonthKey,
       bandwidthBytesThisMonth, bandwidthMonthKey, bandwidthAlertedThisMonth,
-      tokenVersion
+      tokenVersion, discordId, discordUsername, discordLinkedAt
     )
     VALUES (
       @username_lower, @username, @passwordHash, @createdAt,
       @tier, @tierSource, @tierExpiresAt,
       @sessionsThisMonth, @sessionsMonthKey,
       @bandwidthBytesThisMonth, @bandwidthMonthKey, @bandwidthAlertedThisMonth,
-      @tokenVersion
+      @tokenVersion, @discordId, @discordUsername, @discordLinkedAt
     )
     ON CONFLICT(username_lower) DO UPDATE SET
       passwordHash = excluded.passwordHash,
@@ -99,7 +105,10 @@ const stmt = {
       bandwidthBytesThisMonth = excluded.bandwidthBytesThisMonth,
       bandwidthMonthKey = excluded.bandwidthMonthKey,
       bandwidthAlertedThisMonth = excluded.bandwidthAlertedThisMonth,
-      tokenVersion = excluded.tokenVersion
+      tokenVersion = excluded.tokenVersion,
+      discordId = excluded.discordId,
+      discordUsername = excluded.discordUsername,
+      discordLinkedAt = excluded.discordLinkedAt
   `),
   allUsers: db.prepare(`SELECT * FROM users`),
 
@@ -168,7 +177,10 @@ function loadUsersFromDisk() {
       bandwidthMonthKey: row.bandwidthMonthKey || null,
       // SQLite has no boolean type — stored as 0/1, surfaced as a bool
       bandwidthAlertedThisMonth: !!row.bandwidthAlertedThisMonth,
-      tokenVersion: row.tokenVersion || 0
+      tokenVersion: row.tokenVersion || 0,
+      discordId: row.discordId || null,
+      discordUsername: row.discordUsername || null,
+      discordLinkedAt: row.discordLinkedAt || null
     });
   }
   log('info', 'users_loaded', { count: users.size });
@@ -192,7 +204,10 @@ function saveUsersToDisk() {
         bandwidthBytesThisMonth: u.bandwidthBytesThisMonth || 0,
         bandwidthMonthKey: u.bandwidthMonthKey ?? null,
         bandwidthAlertedThisMonth: u.bandwidthAlertedThisMonth ? 1 : 0,
-        tokenVersion: u.tokenVersion || 0
+        tokenVersion: u.tokenVersion || 0,
+        discordId: u.discordId ?? null,
+        discordUsername: u.discordUsername ?? null,
+        discordLinkedAt: u.discordLinkedAt ?? null
       });
     }
   });
@@ -228,7 +243,6 @@ function loadSessionsFromDisk() {
       expiresAt: row.expiresAt ?? null,
       maxMembers: row.maxMembers ?? null,
       maxClips: row.maxClips ?? null,
-      closed: !!row.closed,
       title: row.title ?? null,
       detectedGame: row.detectedGame ?? null,
       // SQLite has no boolean type — stored 0/1, surfaced as a bool.
