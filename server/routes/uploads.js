@@ -23,6 +23,8 @@ const { enqueueThumbnail } = require('../media');
 const { requireAuth, requireTier } = require('../auth');
 const { trackBandwidth } = require('../redemption');
 const { createRateLimiter } = require('../ratelimit');
+const { recordEvent } = require('../anomaly');
+const { ANOMALY_UPLOAD_BURST_MAX, ANOMALY_UPLOAD_BURST_WINDOW } = require('../config');
 
 const uploadLimiter = createRateLimiter({ windowMs: 60000, max: 10 });
 
@@ -229,6 +231,12 @@ function initUploadRoutes(app, io) {
         session: code, username: uploaderName,
         sizeMB: (videoFile.size / 1024 / 1024).toFixed(1),
         durationMs: parsedDurationMs, clipWeight
+      });
+      recordEvent(`upload:${uploaderName}`, {
+        windowMs: ANOMALY_UPLOAD_BURST_WINDOW,
+        threshold: ANOMALY_UPLOAD_BURST_MAX,
+        event: 'upload_burst_detected',
+        extra: { username: uploaderName, session: code }
       });
       logUsage('upload', {
         session: code,

@@ -10,7 +10,9 @@ const { log } = require('./logger');
 const { safeError } = require('./utils');
 const { JWT_SECRET, JWT_EXPIRY, BCRYPT_ROUNDS, TIERS, TIER_ORDER, ADMIN_SECRET,
         REDEEM_ATTEMPT_MAX, REDEEM_ATTEMPT_WINDOW,
-        REGISTER_IP_MAX, REGISTER_IP_WINDOW } = require('./config');
+        REGISTER_IP_MAX, REGISTER_IP_WINDOW,
+        ANOMALY_REGISTER_BURST_MAX, ANOMALY_REGISTER_BURST_WINDOW } = require('./config');
+const { recordEvent } = require('./anomaly');
 const { users, saveUsersToDisk } = require('./stores');
 const { generateRedemptionCodes, redeemCode, peekCode } = require('./redemption');
 const { getFlags, setFlags } = require('./killswitch');
@@ -310,6 +312,12 @@ function initAuthRoutes(app) {
     // Only count SUCCESSFUL registrations — a typo'd username or a taken
     // name shouldn't burn someone's daily allowance.
     recordRegistration(ip);
+    recordEvent(`register:${ip}`, {
+      windowMs: ANOMALY_REGISTER_BURST_WINDOW,
+      threshold: ANOMALY_REGISTER_BURST_MAX,
+      event: 'registration_burst_detected',
+      extra: { ip }
+    });
     const token = jwt.sign({ username: clean, tv: user.tokenVersion }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
     log('info', 'user_registered', { username: clean, ip });
     return res.status(201).json({ token, username: clean, tier: 't1' });

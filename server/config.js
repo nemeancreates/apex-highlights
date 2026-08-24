@@ -81,6 +81,14 @@ const REDEEM_ATTEMPT_WINDOW = 3600000;   // 1 hour
 const REGISTER_IP_MAX = 5;               // new accounts per window, per IP
 const REGISTER_IP_WINDOW = 86400000;     // 24 hours
 
+// --- Anomaly monitoring (soft alerts layered on the hard limits above) ---
+const ANOMALY_SESSION_BURST_MAX = 6;            // sessions created by one user within window
+const ANOMALY_SESSION_BURST_WINDOW = 600000;    // 10 minutes
+const ANOMALY_UPLOAD_BURST_MAX = 40;            // uploads by one user within window
+const ANOMALY_UPLOAD_BURST_WINDOW = 1800000;    // 30 minutes
+const ANOMALY_REGISTER_BURST_MAX = 3;           // registrations from one IP within window (below the daily hard cap)
+const ANOMALY_REGISTER_BURST_WINDOW = 300000;   // 5 minutes
+
 // ================================
 // TIERS — the single source of truth for what each tier can do.
 // t1 Free / t2 Creator / t3 Squad / t4 Pro (naming matches the TIER GATE
@@ -218,5 +226,11 @@ module.exports = {
   REDEEM_ATTEMPT_MAX,
   REDEEM_ATTEMPT_WINDOW,
   REGISTER_IP_MAX,
-  REGISTER_IP_WINDOW
+  REGISTER_IP_WINDOW,
+  ANOMALY_SESSION_BURST_MAX,
+  ANOMALY_SESSION_BURST_WINDOW,
+  ANOMALY_UPLOAD_BURST_MAX,
+  ANOMALY_UPLOAD_BURST_WINDOW,
+  ANOMALY_REGISTER_BURST_MAX,
+  ANOMALY_REGISTER_BURST_WINDOW
 };

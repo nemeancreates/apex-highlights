@@ -7,8 +7,10 @@
 const { v4: uuidv4 } = require('uuid');
 const { log } = require('../logger');
 const { sanitizeUsername, sanitizeCode, safeError, generateCode } = require('../utils');
-const { MAX_SESSIONS, MAX_MEMBERS_PER_SESSION, TIERS } = require('../config');
+const { MAX_SESSIONS, MAX_MEMBERS_PER_SESSION, TIERS,
+        ANOMALY_SESSION_BURST_MAX, ANOMALY_SESSION_BURST_WINDOW } = require('../config');
 const { createRateLimiter } = require('../ratelimit');
+const { recordEvent } = require('../anomaly');
 
 const sessionLookupLimiter = createRateLimiter({ windowMs: 60000, max: 20 });
 const { sessions, users, saveUsersToDisk, getSessionsByUser } = require('../stores');
@@ -73,6 +75,12 @@ function createSessionForUser(rawUsername) {
   user.sessionsThisMonth++;
   saveUsersToDisk();
   log('info', 'session_created', { code, createdBy: username, hostTier: tier, sessionsThisMonth: user.sessionsThisMonth });
+  recordEvent(`session:${username}`, {
+    windowMs: ANOMALY_SESSION_BURST_WINDOW,
+    threshold: ANOMALY_SESSION_BURST_MAX,
+    event: 'session_burst_detected',
+    extra: { username, hostTier: tier }
+  });
 
   return { session };
 }
