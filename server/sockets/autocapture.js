@@ -44,10 +44,11 @@ const MIN_COMMIT_MS = 30000;
 // host isn't t2+, silently ignore" from the design discussion.
 function hostMeetsAutoCaptureTier(session) {
   const { users } = require('../stores');
+  const { TIERS } = require('../config');
   if (!session || !session.createdBy) return false;
   const hostUser = users.get(session.createdBy.toLowerCase());
   const tier = getEffectiveTier(hostUser);
-  return tier === 't2' || tier === 't3' || tier === 't4';
+  return !!(TIERS[tier] && TIERS[tier].hasAutoCapture);
 }
 
 // Smallest usable buffer among members who are actually recording. Members
