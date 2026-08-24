@@ -14,7 +14,7 @@ const { JWT_SECRET, JWT_EXPIRY, BCRYPT_ROUNDS, TIERS, TIER_ORDER, ADMIN_SECRET,
 const { users, saveUsersToDisk } = require('./stores');
 const { generateRedemptionCodes, redeemCode, peekCode } = require('./redemption');
 const { getFlags, setFlags } = require('./killswitch');
-const { DISCORD_ENABLED } = require('./config');
+const { DISCORD_ENABLED, DISCORD_RECOVERY_REDIRECT_URI } = require('./config');
 const { buildAuthorizeUrl, exchangeCodeForUser, consumeState, linkDiscordAccount, buildRecoveryUrl, consumeRecoveryState } = require('./discord-oauth');
 const { syncRole } = require('./discord-bot');
 // A user's tier as of right now — falls back to t1 for missing/unknown/

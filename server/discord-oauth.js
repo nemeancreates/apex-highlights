@@ -45,7 +45,7 @@ function buildAuthorizeUrl(username) {
   return `https://discord.com/api/oauth2/authorize?${params.toString()}`;
 }
 
-async function exchangeCodeForUser(code) {
+async function exchangeCodeForUser(code, redirectUri = DISCORD_REDIRECT_URI) {
   const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -54,7 +54,7 @@ async function exchangeCodeForUser(code) {
       client_secret: DISCORD_CLIENT_SECRET,
       grant_type: 'authorization_code',
       code,
-      redirect_uri: DISCORD_REDIRECT_URI
+      redirect_uri: redirectUri
     })
   });
   if (!tokenRes.ok) {
