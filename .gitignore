@@ -8,3 +8,6 @@ server/peakabu.db-shm
 server/peakabu.db-wal
 server/aiprofiles.json
 server/.env
+server/redemption-codes.json
+server/system-flags.json
+server/ecosystem.config.js
