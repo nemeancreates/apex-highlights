@@ -79,6 +79,44 @@ function consumeState(state) {
   return entry.username;
 }
 
+// ================================
+// RECOVERY STATE — separate map from pendingLinks on purpose. Linking
+// carries a username (an already-authenticated user proving their Discord
+// identity); recovery carries no username at all (an unauthenticated
+// person trying to find OUT which account, if any, their Discord maps to).
+// Keeping these separate means a recovery state can never accidentally be
+// replayed as a link state or vice versa — no username field to confuse.
+// ================================
+const pendingRecoveries = new Map(); // state -> { expiresAt }
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [state, entry] of pendingRecoveries) {
+    if (now > entry.expiresAt) pendingRecoveries.delete(state);
+  }
+}, 5 * 60 * 1000);
+
+function buildRecoveryUrl() {
+  const state = crypto.randomBytes(24).toString('hex');
+  pendingRecoveries.set(state, { expiresAt: Date.now() + STATE_TTL_MS });
+
+  const params = new URLSearchParams({
+    client_id: DISCORD_CLIENT_ID,
+    redirect_uri: DISCORD_RECOVERY_REDIRECT_URI,
+    response_type: 'code',
+    scope: 'identify',
+    state
+  });
+  return `https://discord.com/api/oauth2/authorize?${params.toString()}`;
+}
+
+function consumeRecoveryState(state) {
+  const entry = pendingRecoveries.get(state);
+  if (!entry) return false;
+  pendingRecoveries.delete(state);
+  return Date.now() <= entry.expiresAt;
+}
+
 function linkDiscordAccount(peakAbuUsername, discordUser) {
   for (const [uname, u] of users) {
     if (u.discordId === discordUser.id && uname !== peakAbuUsername.toLowerCase()) {
@@ -98,4 +136,4 @@ function linkDiscordAccount(peakAbuUsername, discordUser) {
   return { ok: true };
 }
 
-module.exports = { buildAuthorizeUrl, exchangeCodeForUser, consumeState, linkDiscordAccount };
+module.exports = { buildAuthorizeUrl, exchangeCodeForUser, consumeState, linkDiscordAccount, buildRecoveryUrl, consumeRecoveryState };

@@ -15,7 +15,7 @@ const { users, saveUsersToDisk } = require('./stores');
 const { generateRedemptionCodes, redeemCode, peekCode } = require('./redemption');
 const { getFlags, setFlags } = require('./killswitch');
 const { DISCORD_ENABLED } = require('./config');
-const { buildAuthorizeUrl, exchangeCodeForUser, consumeState, linkDiscordAccount } = require('./discord-oauth');
+const { buildAuthorizeUrl, exchangeCodeForUser, consumeState, linkDiscordAccount, buildRecoveryUrl, consumeRecoveryState } = require('./discord-oauth');
 const { syncRole } = require('./discord-bot');
 // A user's tier as of right now — falls back to t1 for missing/unknown/
 // expired tiers rather than trusting a stale field forever. tierExpiresAt
@@ -88,6 +88,33 @@ setInterval(() => {
   const now = Date.now();
   for (const [k, v] of redeemAttempts) if (now > v.resetAt) redeemAttempts.delete(k);
   for (const [k, v] of registerAttempts) if (now > v.resetAt) registerAttempts.delete(k);
+}, 10 * 60 * 1000);
+
+// ================================
+// PASSWORD RESET TOKENS — short-lived, single-use, issued only after a
+// completed Discord OAuth recovery flow (proof of Discord identity ==
+// proof of account ownership, since discordId is verified at link time).
+// In-memory only, same volatility tradeoff as the other maps above.
+// ================================
+const passwordResetTokens = new Map(); // token -> { username, expiresAt }
+
+function issueResetToken(username) {
+  const token = crypto.randomBytes(32).toString('hex');
+  passwordResetTokens.set(token, { username, expiresAt: Date.now() + 15 * 60 * 1000 }); // 15 min
+  return token;
+}
+
+function consumeResetToken(token) {
+  const entry = passwordResetTokens.get(token);
+  if (!entry) return null;
+  passwordResetTokens.delete(token); // single-use
+  if (Date.now() > entry.expiresAt) return null;
+  return entry.username;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of passwordResetTokens) if (now > v.expiresAt) passwordResetTokens.delete(k);
 }, 10 * 60 * 1000);
 
 // Route middleware: requires the user's effective tier to be in allowedTiers.
@@ -186,6 +213,68 @@ function socketAuth(socket, next) {
 
 // --- Routes ---
 function initAuthRoutes(app) {
+  // Add near the other Discord routes:
+  app.get('/auth/discord/recover-url', (req, res) => {
+    if (!DISCORD_ENABLED) return safeError(res, 503, 'Discord recovery is not configured yet.');
+    const url = buildRecoveryUrl();
+    res.json({ url });
+  });
+
+  app.get('/auth/discord/recover-callback', async (req, res) => {
+    if (!DISCORD_ENABLED) return res.status(503).send('Discord recovery is not configured.');
+    const { code, state, error: discordError } = req.query;
+    if (discordError) {
+      return res.status(400).send('Recovery was cancelled or denied. You can close this tab and try again from the app.');
+    }
+    if (!code || !state) {
+      return res.status(400).send('Missing code or state.');
+    }
+    if (!consumeRecoveryState(state)) {
+      return res.status(400).send('This recovery link has expired or was already used. Please try again from the app.');
+    }
+
+    try {
+      const discordUser = await exchangeCodeForUser(code);
+
+      let matchedUser = null;
+      for (const u of users.values()) {
+        if (u.discordId === discordUser.id) { matchedUser = u; break; }
+      }
+
+      if (!matchedUser) {
+        return res.status(200).send(
+          'No Peak-Abu account is linked to this Discord account. If you have an account, link Discord from Settings first, then use "Forgot password" again.'
+        );
+      }
+
+      const resetToken = issueResetToken(matchedUser.username);
+      return res.redirect(`https://peakabu.app/reset-password?token=${resetToken}`);
+    } catch (err) {
+      log('warn', 'discord_recovery_failed', { error: err.message });
+      return res.status(500).send('Something went wrong verifying your Discord account. Please try again.');
+    }
+  });
+
+  app.post('/auth/reset-password', async (req, res) => {
+    const { token, newPassword } = req.body || {};
+    if (!token || !newPassword) return safeError(res, 400, 'Token and new password required');
+    if (newPassword.length < 8 || newPassword.length > 128) {
+      return safeError(res, 400, 'Password must be 8-128 characters');
+    }
+
+    const username = consumeResetToken(token);
+    if (!username) return safeError(res, 400, 'This reset link has expired or was already used. Please request a new one.');
+
+    const user = users.get(username.toLowerCase());
+    if (!user) return safeError(res, 400, 'Account not found');
+
+    user.passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
+    saveUsersToDisk();
+    log('info', 'password_reset_via_discord', { username: user.username });
+
+    return res.json({ success: true });
+  });
   app.post('/auth/register', async (req, res) => {
    if (getFlags().registrationPaused) {
      return safeError(res, 503, 'New sign-ups are temporarily paused. Existing accounts are unaffected — check back shortly.');

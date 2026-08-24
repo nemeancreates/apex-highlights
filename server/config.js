@@ -28,7 +28,7 @@ const JWT_EXPIRY = '7d';
 // S3 API; only these values differ.
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID || null;
 const SPACES_REGION = 'auto'; // R2 requires the literal string "auto"
-const SPACES_BUCKET = process.env.SPACES_BUCKET || 'peakbu-media';
+const SPACES_BUCKET = process.env.SPACES_BUCKET || 'peakabu-media';
 const SPACES_ENDPOINT = R2_ACCOUNT_ID
   ? `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`
   : null;
@@ -120,6 +120,7 @@ const ADMIN_SECRET = process.env.ADMIN_SECRET || null;
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID || null;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET || null;
 const DISCORD_REDIRECT_URI = process.env.DISCORD_REDIRECT_URI || 'https://peakabu.app/auth/discord/callback';
+const DISCORD_RECOVERY_REDIRECT_URI = process.env.DISCORD_RECOVERY_REDIRECT_URI || 'https://peakabu.app/auth/discord/recover-callback';
 const DISCORD_ENABLED = Boolean(DISCORD_CLIENT_ID && DISCORD_CLIENT_SECRET);
 if (!DISCORD_ENABLED) {
   console.warn('Discord linking disabled: DISCORD_CLIENT_ID / DISCORD_CLIENT_SECRET not set in .env');
@@ -163,8 +164,8 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 // Update when a new client build is uploaded to the CDN.
 // ================================
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.62',
-  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.62.exe',
+  version: '0.1.63',
+  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.63.exe',
   releaseNotes: "Improved reliability for saved settings across updates, and your login is now stored encrypted."
 };
 
@@ -204,6 +205,7 @@ module.exports = {
   DISCORD_CLIENT_ID,
   DISCORD_CLIENT_SECRET,
   DISCORD_REDIRECT_URI,
+  DISCORD_RECOVERY_REDIRECT_URI,
   DISCORD_ENABLED,
   DISCORD_BOT_TOKEN,
   DISCORD_GUILD_ID,
