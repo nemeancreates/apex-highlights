@@ -248,7 +248,7 @@ function initAuthRoutes(app) {
       }
 
       const resetToken = issueResetToken(matchedUser.username);
-      return res.redirect(`https://peakabu.app/reset-password?token=${resetToken}`);
+      return res.redirect(`https://peakabu.app/reset-password.html?token=${resetToken}`);
     } catch (err) {
       log('warn', 'discord_recovery_failed', { error: err.message });
       return res.status(500).send('Something went wrong verifying your Discord account. Please try again.');
