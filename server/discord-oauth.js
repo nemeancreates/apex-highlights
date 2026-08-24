@@ -13,7 +13,7 @@
 // ================================
 const crypto = require('crypto');
 const { log } = require('./logger');
-const { DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DISCORD_REDIRECT_URI } = require('./config');
+const { DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DISCORD_REDIRECT_URI, DISCORD_RECOVERY_REDIRECT_URI } = require('./config');
 const { users, saveUsersToDisk } = require('./stores');
 
 // state -> { username, expiresAt }. In-memory + short-lived on purpose —
