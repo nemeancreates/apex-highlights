@@ -234,7 +234,7 @@ function initAuthRoutes(app) {
     }
 
     try {
-      const discordUser = await exchangeCodeForUser(code);
+      const discordUser = await exchangeCodeForUser(code, DISCORD_RECOVERY_REDIRECT_URI);
 
       let matchedUser = null;
       for (const u of users.values()) {
