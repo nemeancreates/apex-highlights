@@ -2630,7 +2630,7 @@
       // whoever redeems one gets the tier, so a backer can hand theirs off.
       // =====================
       window.currentTier = 't1';
-      var TIER_LABELS = { t1: 'Free', t2: 'Creator', t3: 'Squad', t4: 'Pro' };
+      var TIER_LABELS = { t1: 'Free', t2: 'Creator', t3: 'Squad', t4: 'Pro', t5: 'Peak-Abu Founder' };
 
       function updateTierBadge(tier) {
         window.currentTier = tier || 't1';
@@ -2654,6 +2654,7 @@
           acCommitEnabled(false);
         }
       }
+
 
       window.toggleRedeemPanel = function() {
         var p = document.getElementById('redeemPanel');

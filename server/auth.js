@@ -250,7 +250,13 @@ function initAuthRoutes(app) {
 
   app.get('/auth/me', requireAuth, (req, res) => {
     const user = users.get(req.user.username.toLowerCase());
-    return res.json({ username: req.user.username, tier: getEffectiveTier(user), tierExpiresAt: user.tierExpiresAt || null });
+    return res.json({
+      username: req.user.username,
+      tier: getEffectiveTier(user),
+      tierExpiresAt: user.tierExpiresAt || null,
+      discordLinked: !!user.discordId,
+      discordUsername: user.discordUsername || null
+    });
   });
 
   app.post('/auth/redeem', requireAuth, (req, res) => {

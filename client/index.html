@@ -597,7 +597,7 @@
               <img src="assets/kickstarter.png" alt="kickstarter" />
             </button>
           </div>
-          <span class="version-tag">v0.1.60</span>
+          <span class="version-tag">v0.1.62</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="redeem-wrap">
@@ -622,6 +622,15 @@
             <button class="modal-close" onclick="closeSettings()">×</button>
           </div>
           <div>
+            <div style="margin-bottom:16px;">
+              <label>Discord</label>
+              <div id="discordLinkedRow" style="display:none;align-items:center;background:#0c1c14;border:1px solid #24402e;border-radius:6px;padding:10px 12px;">
+                <span style="font-size:13px;color:#39d3a0;">✅ Connected<span id="discordLinkedName"></span></span>
+              </div>
+              <button class="btn-secondary" id="discordConnectBtn" style="width:100%;" onclick="connectDiscord()">🔗 Connect Discord</button>
+              <p style="font-size:11px;color:#3a5244;margin:4px 0 0;">Links your account for automatic backer role assignment.</p>
+            </div>
+            <hr style="border:1px solid #1e3527;margin:16px 0;">
             <label>Video Storage Location</label>
             <div class="storage-path" id="storagePathDisplay">Loading...</div>
             <button class="btn-secondary" style="width:100%;margin-bottom:16px;" onclick="pickStorageDirectory()">📁 Change Storage Directory</button>
@@ -1760,7 +1769,7 @@
       // =====================
       // SETTINGS
       // =====================
-      window.openSettings = function() { document.getElementById('settingsModal').classList.add('show'); loadStoragePath(); };
+      window.openSettings = function() { document.getElementById('settingsModal').classList.add('show'); loadStoragePath(); refreshAccountStatus(); };
       window.closeSettings = function() { document.getElementById('settingsModal').classList.remove('show'); };
       function loadStoragePath() { ipcRenderer.invoke('get-storage-directory').then(function(p) { document.getElementById('storagePathDisplay').textContent = p; }); }
       window.pickStorageDirectory = function() {
@@ -4090,7 +4099,7 @@
         
        try {
          var res = await fetch('https://peakabu.app/auth/me', { headers: { 'Authorization':'Bearer '+window.authToken } });
-         if (res.ok) { var d = await res.json(); updateTierBadge(d.tier, d.tierExpiresAt); showAuthLoggedIn(d.username); }
+         if (res.ok) { var d = await res.json(); updateTierBadge(d.tier, d.tierExpiresAt); renderDiscordStatus(!!d.discordLinked, d.discordUsername); showAuthLoggedIn(d.username); }
          else if (res.status === 401) { clearAuthState(); showAuthLoggedOut(); }
          else { if (window.authUsername) showAuthLoggedIn(window.authUsername); else showAuthLoggedOut(); }
        } catch(e) {
@@ -4194,6 +4203,7 @@
 
       window.logoutUser = function() {
         clearAuthState();
+        renderDiscordStatus(false);
         showAuthLoggedOut();
         updateTierBadge('t1');
         document.getElementById('redeemPanel').classList.remove('show');
@@ -4250,7 +4260,7 @@
       // whoever redeems one gets the tier, so a backer can hand theirs off.
       // =====================
       window.currentTier = 't1';
-      var TIER_LABELS = { t1: 'Free', t2: 'Creator', t3: 'Squad', t4: 'Pro' };
+      var TIER_LABELS = { t1: 'Free', t2: 'Creator', t3: 'Squad', t4: 'Pro', t5: 'Peak-Abu Founder' };
 
       function updateTierBadge(tier, tierExpiresAt) {
         window.currentTier = tier || 't1';
@@ -4286,6 +4296,64 @@
           acCommitEnabled(false);
         }
       }
+
+      function renderDiscordStatus(linked, discordUsername) {
+        var row = document.getElementById('discordLinkedRow');
+        var btn = document.getElementById('discordConnectBtn');
+        var nameEl = document.getElementById('discordLinkedName');
+        if (!row || !btn) return;
+        if (linked) {
+          row.style.display = 'flex';
+          btn.style.display = 'none';
+          if (nameEl) nameEl.textContent = discordUsername ? (' as ' + discordUsername) : '';
+        } else {
+          row.style.display = 'none';
+          btn.style.display = 'block';
+        }
+      }
+
+      window.connectDiscord = async function() {
+        if (!window.authToken) { hudLog('system','🔒 Log in first','error'); return; }
+        var btn = document.getElementById('discordConnectBtn');
+        btn.disabled = true;
+        btn.textContent = 'Opening Discord...';
+        try {
+          var res = await fetch('https://peakabu.app/auth/discord/link-url', {
+            headers: { 'Authorization': 'Bearer ' + window.authToken }
+          });
+          var data = await res.json();
+          if (!res.ok) {
+            hudLog('system', '⚠ ' + (data.error || 'Could not start Discord link'), 'error');
+          } else {
+            shell.openExternal(data.url);
+            hudLog('system', '🔗 Opened Discord authorization in your browser — approve it, then come back here', 'info');
+          }
+        } catch (e) {
+          hudLog('system', '⚠ Could not reach server to start Discord link', 'error');
+        }
+        btn.disabled = false;
+        btn.textContent = '🔗 Connect Discord';
+      };
+
+      async function refreshAccountStatus() {
+        if (!window.authToken) return;
+        try {
+          var res = await fetch('https://peakabu.app/auth/me', { headers: { 'Authorization': 'Bearer ' + window.authToken } });
+          if (!res.ok) return;
+          var d = await res.json();
+          updateTierBadge(d.tier, d.tierExpiresAt);
+          renderDiscordStatus(!!d.discordLinked, d.discordUsername);
+        } catch (e) {}
+      }
+
+      // The callback lands on a plain webpage in the user's default browser,
+      // not back inside the app — there's no deep link telling the client
+      // the link finished. Re-check on window focus, since the natural flow
+      // is: click Connect -> approve in browser -> alt-tab back to Peak-Abu.
+      window.addEventListener('focus', function() {
+        if (window.authToken) refreshAccountStatus();
+      });
+
 
       window.toggleRedeemPanel = function() {
         var p = document.getElementById('redeemPanel');
