@@ -101,14 +101,15 @@ const TIERS = {
   t1: { label: 'Free',    canHost: true, memberCap: 2,  clipCap: 3600,   sessionsPerMonth: 6,   retentionDays: 1,  hasAiReel: false, aiReelMaxSec: 0,    reelPriority: 0 },
   t2: { label: 'Creator', canHost: true, memberCap: 5,  clipCap: 36000,  sessionsPerMonth: 20,  retentionDays: 30,  hasAiReel: false, aiReelMaxSec: 0,    reelPriority: 0 },
   t3: { label: 'Squad',   canHost: true, memberCap: 11, clipCap: 79200,  sessionsPerMonth: 45,  retentionDays: 30, hasAiReel: true,  aiReelMaxSec: 900,  reelPriority: 0 },
-  t4: { label: 'Pro',     canHost: true, memberCap: 25, clipCap: 144000, sessionsPerMonth: 110, retentionDays: 60, hasAiReel: true,  aiReelMaxSec: 1800, reelPriority: 1 }
+  t4: { label: 'Pro',     canHost: true, memberCap: 25, clipCap: 144000, sessionsPerMonth: 110, retentionDays: 60, hasAiReel: true,  aiReelMaxSec: 1800, reelPriority: 1 },
+  // Founder — $1,500 lifetime Kickstarter tier.
+  t5: { label: 'Founder', canHost: true, memberCap: 41, clipCap: 144000, sessionsPerMonth: 200, retentionDays: 60, hasAiReel: true,  aiReelMaxSec: 1800, reelPriority: 2 }
 };
 
 // Ordering for tier comparisons — used to stop a timed code from
 // "stacking" on top of an equal-or-higher active subscription (see
 // auth.js /auth/redeem). Lifetime codes bypass this check entirely.
-const TIER_ORDER = ['t1', 't2', 't3', 't4'];
-
+const TIER_ORDER = ['t1', 't2', 't3', 't4', 't5'];
 // --- Admin (redemption code generation only — never exposed to the client) ---
 const ADMIN_SECRET = process.env.ADMIN_SECRET || null;
 
@@ -122,6 +123,27 @@ const DISCORD_REDIRECT_URI = process.env.DISCORD_REDIRECT_URI || 'https://peakab
 const DISCORD_ENABLED = Boolean(DISCORD_CLIENT_ID && DISCORD_CLIENT_SECRET);
 if (!DISCORD_ENABLED) {
   console.warn('Discord linking disabled: DISCORD_CLIENT_ID / DISCORD_CLIENT_SECRET not set in .env');
+}
+
+// --- Discord bot (role sync) ---
+// Separate from DISCORD_ENABLED above — linking can work independently of
+// role sync being configured, so this gets its own flag and its own clean
+// no-op if unset rather than crashing boot.
+const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || null;
+const DISCORD_GUILD_ID = process.env.DISCORD_GUILD_ID || null;
+const DISCORD_ROLE_MAP = {
+  t1: process.env.DISCORD_ROLE_T1 || null,
+  t2: process.env.DISCORD_ROLE_T2 || null,
+  t3: process.env.DISCORD_ROLE_T3 || null,
+  t4: process.env.DISCORD_ROLE_T4 || null,
+  t5: process.env.DISCORD_ROLE_T5 || null
+};
+const DISCORD_BOT_ENABLED = Boolean(
+  DISCORD_BOT_TOKEN && DISCORD_GUILD_ID &&
+  DISCORD_ROLE_MAP.t1 && DISCORD_ROLE_MAP.t2 && DISCORD_ROLE_MAP.t3 && DISCORD_ROLE_MAP.t4 && DISCORD_ROLE_MAP.t5
+);
+if (!DISCORD_BOT_ENABLED) {
+  console.warn('Discord role sync disabled: DISCORD_BOT_TOKEN / DISCORD_GUILD_ID / DISCORD_ROLE_T1-T4 not fully set in .env');
 }
 
 // --- Redemption codes ---
@@ -183,6 +205,10 @@ module.exports = {
   DISCORD_CLIENT_SECRET,
   DISCORD_REDIRECT_URI,
   DISCORD_ENABLED,
+  DISCORD_BOT_TOKEN,
+  DISCORD_GUILD_ID,
+  DISCORD_ROLE_MAP,
+  DISCORD_BOT_ENABLED,
   REDEMPTION_CODES_FILE,
   SYSTEM_FLAGS_FILE,
   BANDWIDTH_ALERT_BYTES,

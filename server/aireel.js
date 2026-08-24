@@ -31,7 +31,7 @@ const { TIERS } = require('./config');
 const { getCommentsForSession } = require('./routes/comments');
 const { generateASS, checkAssFilter, escapeFilterPath } = require('./comment-overlay');
 
-const AIREEL_TIERS = ['t3', 't4'];
+const AIREEL_TIERS = ['t3', 't4', 't5'];
 
 const AIREEL_DIR = path.join(os.tmpdir(), 'peak-abu-aireel');
 const PROFILE_FILE = path.join(__dirname, 'aiprofiles.json');

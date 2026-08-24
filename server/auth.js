@@ -16,6 +16,7 @@ const { generateRedemptionCodes, redeemCode, peekCode } = require('./redemption'
 const { getFlags, setFlags } = require('./killswitch');
 const { DISCORD_ENABLED } = require('./config');
 const { buildAuthorizeUrl, exchangeCodeForUser, consumeState, linkDiscordAccount } = require('./discord-oauth');
+const { syncRole } = require('./discord-bot');
 // A user's tier as of right now — falls back to t1 for missing/unknown/
 // expired tiers rather than trusting a stale field forever. tierExpiresAt
 // is null for lifetime grants (redeemed codes, manual); a future Stripe
@@ -316,6 +317,11 @@ function initAuthRoutes(app) {
       durationDays: result.durationDays, tierExpiresAt: user.tierExpiresAt,
       carriedOverMs: remainingMs
     });
+    // Same fire-and-forget-with-logging pattern as the link callback —
+    // a Discord sync failure shouldn't fail the redemption response.
+    if (user.discordId) {
+      syncRole(user.discordId, result.tier).catch(() => {});
+    }
     return res.json({
       tier: result.tier,
       tierExpiresAt: user.tierExpiresAt,
@@ -389,6 +395,13 @@ function initAuthRoutes(app) {
           : 'Could not link this account.';
         return res.status(400).send(message);
       }
+      // Sync immediately so an existing Pro/Squad/Creator backer doesn't
+      // have to wait for their next tier change to see the right role.
+      // Fire-and-forget-with-logging: a sync failure here (e.g. they
+      // haven't joined the Discord server yet) shouldn't block the
+      // successful account link the user is actually watching for.
+      const linkedUser = users.get(username.toLowerCase());
+      syncRole(discordUser.id, getEffectiveTier(linkedUser)).catch(() => {});
       return res.status(200).send('Discord account linked! You can close this tab and return to Peak-Abu.');
     } catch (err) {
       log('warn', 'discord_link_failed', { error: err.message });

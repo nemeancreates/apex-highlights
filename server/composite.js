@@ -19,7 +19,7 @@ const { getCommentsForSession } = require('./routes/comments');
 const { generateASS, checkAssFilter, escapeFilterPath } = require('./comment-overlay');
 
 // Paid tiers allowed to generate/download combined-view exports.
-const EXPORT_TIERS = ['t2', 't3', 't4'];
+const EXPORT_TIERS = ['t2', 't3', 't4', 't5'];
 
 const compositeJobs = new Map();
 const COMPOSITE_DIR = path.join(os.tmpdir(), 'peak-abu-composites');

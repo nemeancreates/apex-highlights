@@ -31,7 +31,7 @@ if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 // Paid tiers allowed to pull raw clip downloads / exports. Matches the
 // "combined web+client login with paid subscription" access decision —
 // same bracket as composite/AI Reel gating.
-const DOWNLOAD_TIERS = ['t2', 't3', 't4'];
+const DOWNLOAD_TIERS = ['t2', 't3', 't4', 't5'];
 
 // --- Multer: disk storage with sanitized names, whitelist, size cap ---
 const upload = multer({
