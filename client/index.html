@@ -279,6 +279,25 @@
       .member-status.rec { background: #8a1f1f; color: white; }
       .member-status.idle { background: #1a2f22; color: #5f7a6a; }
 
+      /* ===== Host-only kick/ban hover control ===== */
+      .member-status-wrap { position: relative; display: inline-block; transition: transform 0.12s ease; }
+      .member-status-wrap.kickable:hover { transform: scale(1.08); }
+      .member-status-wrap.kickable:hover .member-status { opacity: 0; }
+      .member-actions {
+        display: none; position: absolute; top: 50%; right: 0; transform: translateY(-50%);
+        border-radius: 4px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+      }
+      .member-status-wrap.kickable:hover .member-actions { display: flex; }
+      .member-action-btn {
+        width: 30px; height: 22px; display: flex; align-items: center; justify-content: center;
+        font-size: 12px; cursor: pointer; border: none; margin: 0; padding: 0;
+        transition: background 0.12s, transform 0.12s;
+      }
+      .member-action-btn.kick { background: #4a2417; color: #f0b48f; }
+      .member-action-btn.kick:hover { background: #6a3520; transform: scale(1.12); }
+      .member-action-btn.ban { background: #3a1622; color: #f0a5bd; }
+      .member-action-btn.ban:hover { background: #5a2233; transform: scale(1.12); }
+
       /* ===== Status / Save panel ===== */
       .status-bar { font-weight: 600; font-size: 16px; }
       .status-bar.idle { color: #5f7a6a; }
@@ -1011,6 +1030,14 @@
                 <input type="range" id="micVolume" min="0" max="100" value="80" oninput="onMicVolumeChange()" />
                 <button class="mic-mute-btn" id="micMuteBtn" onclick="toggleMicMute()">Mute</button>
               </div>
+              <div class="uc-label">🧹 Noise Suppression</div>
+              <select id="micNsSelect" onchange="onMicNsChange()">
+                <option value="gtcrn">Auto (best quality)</option>
+                <option value="rnnoise">RNNoise (lightest)</option>
+                <option value="speex">Speex (classic DSP)</option>
+                <option value="dsp">Spectral gating (no wasm)</option>
+                <option value="off">Off</option>
+              </select>
               <div class="uc-label">🔊 Desktop Audio Source</div>
               <select id="audioOutputSelect" onchange="onAudioOutputChange()">
                 <option value="default">Default</option>
@@ -1125,6 +1152,7 @@
       
 
     </div>
+    <script src="modules/noise-suppression/noise-suppression.js"></script>
     <script>
       const { ipcRenderer, clipboard, shell } = require('electron');
       const io = require('socket.io-client');
@@ -2326,10 +2354,65 @@
         btn.classList.toggle('muted', window.micMuted);
         ipcRenderer.send('update-mic-settings', { muted: window.micMuted });
       };
+            // ===== Noise suppression =====
+      // window.micNsBackend persists the user's engine choice; 'off' means
+      // bypassed (the raw path stays live under the hood so toggling is
+      // instant and click-free — see PeakAbuNoiseSuppression's crossfade).
+      window.micNsBackend = window.micNsBackend || 'gtcrn';
+
+      function getMicNoiseSuppressor() {
+        if (!window._noiseSuppressor) {
+          window._noiseSuppressor = new PeakAbuNoiseSuppression({
+            basePath: 'modules/noise-suppression',
+            backend: window.micNsBackend === 'off' ? 'gtcrn' : window.micNsBackend,
+            bypass: window.micNsBackend === 'off',
+            strength: 0.65,
+            onBackendChange: function(backend, isFallback) {
+              if (isFallback) hudLog('system', '🧹 Noise suppression fell back to ' + backend.label, 'warn');
+            }
+          });
+        }
+        return window._noiseSuppressor;
+      }
+
+      window.onMicNsChange = function() {
+        var val = document.getElementById('micNsSelect').value;
+        window.micNsBackend = val;
+        var ns = window._noiseSuppressor;
+        if (!ns) return; // picked before the mic was ever started; startMicCapture() will pick it up
+        if (val === 'off') {
+          ns.setBypass(true);
+        } else {
+          ns.setBypass(false);
+          ns.setBackend(val).catch(function(e) { console.log('setBackend failed:', e); });
+        }
+      };
+
       async function startMicCapture() {
         if (!window.micDeviceId || !window.micEnabled) return;
         try {
-          var stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: window.micDeviceId } } });
+          // noiseSuppression/autoGainControl are turned off here on purpose:
+          // leaving Chromium's own processing on fights with ours (it "cleans"
+          // the audio before PeakAbuNoiseSuppression ever sees it, so the
+          // raw/suppressed A/B stops being a fair comparison and the engines'
+          // own VAD gets confused by input that's already been gated). Echo
+          // cancellation is left on the browser default since turning it off
+          // can reintroduce real echo for anyone not on a headset — revisit
+          // per-user if that ever becomes a setting.
+          var rawStream = await navigator.mediaDevices.getUserMedia({
+            audio: { deviceId: { exact: window.micDeviceId }, noiseSuppression: false, autoGainControl: false }
+          });
+          window._rawMicStream = rawStream;
+
+          var stream = rawStream;
+          try {
+            stream = await getMicNoiseSuppressor().process(rawStream);
+          } catch (nsErr) {
+            console.log('Noise suppression unavailable, using raw mic:', nsErr);
+            hudLog('system', '🧹 Noise suppression unavailable, using raw mic', 'warn');
+            stream = rawStream;
+          }
+
           window._liveMicStream = stream;
           window.micRecorder = new MediaRecorder(stream, { mimeType:'audio/webm;codecs=opus', audioBitsPerSecond:128000 });
           window.micRecorder.ondataavailable = async function(ev) {
@@ -2339,15 +2422,21 @@
           window.micRecorder.start(10000);
           ipcRenderer.send('mic-recording-started', Date.now()+20);
           if (window.autoCaptureEnabled) window.acAttachMic(stream);
-          
+
           hudLog('system','🎤 Mic capture started','success');
         } catch(err) {
-        
+
           hudLog('system','🎤 Mic failed: '+err.message,'error');
         }
       }
       function stopMicCapture() {
         if (window.micRecorder && window.micRecorder.state !== 'inactive') { window.micRecorder.stop(); window.micRecorder = null; }
+        // Tear down the audio graph (worklet nodes, gains, analysers) but
+        // keep the PeakAbuNoiseSuppression instance around so re-starting
+        // the mic doesn't reload wasm and re-converge a learned model from
+        // scratch every time the user toggles capture.
+        if (window._noiseSuppressor) { try { window._noiseSuppressor.teardownGraph(); } catch(e) {} }
+        if (window._rawMicStream) { window._rawMicStream.getTracks().forEach(function(t){ t.stop(); }); window._rawMicStream = null; }
       }
 
      loadMicDevices();
@@ -2974,6 +3063,23 @@
         });
         window.socket.on('member-recording-update', function(d) { updateMemberRecording(d.username, d.isRecording); });
 
+        window.socket.on('member-kicked', function(d) {
+          removeMember(d.username);
+          hudLog('squad', '👢 ' + d.username + ' was removed from the session', 'info');
+        });
+        window.socket.on('member-banned', function(d) {
+          removeMember(d.username);
+          hudLog('squad', '🚫 ' + d.username + ' was banned from the session', 'info');
+        });
+        window.socket.on('kicked-from-session', function(d) {
+          hudLog('squad', '👢 ' + ((d && d.reason) || 'Removed by the host'), 'broadcast');
+          window.leaveSession();
+        });
+        window.socket.on('banned-from-session', function(d) {
+          hudLog('squad', '🚫 ' + ((d && d.reason) || 'Banned by the host'), 'broadcast');
+          window.leaveSession();
+        });
+
         window.socket.on('session-closed', function(d) {
           hudLog('squad', '👑 ' + ((d && d.reason) || 'Host left') + ' — session closed', 'broadcast');
           window.leaveSession();
@@ -3144,14 +3250,55 @@
         if (document.getElementById(safeId)) return;
         var item = document.createElement('div'); item.className = 'member-item'; item.id = safeId;
         var name = document.createElement('span'); name.className = 'member-name'; name.textContent = username;
+
+        var wrap = document.createElement('span'); wrap.className = 'member-status-wrap';
         var status = document.createElement('span'); status.className = 'member-status '+(isRec?'rec':'idle'); status.textContent = isRec?'REC':'Idle';
-        item.appendChild(name); item.appendChild(status); list.appendChild(item);
+        wrap.appendChild(status);
+
+        // Host-only, and never on the host's own row — can't kick/ban self.
+        var kickable = window.isSessionHost && username !== window.authUsername;
+        if (kickable) {
+          wrap.classList.add('kickable');
+          var actions = document.createElement('span'); actions.className = 'member-actions';
+
+          var kickBtn = document.createElement('button');
+          kickBtn.className = 'member-action-btn kick';
+          kickBtn.textContent = '\uD83E\uDDB5'; // 🦵 leg — kick
+          kickBtn.title = 'Kick ' + username + ' (can rejoin with the code)';
+          kickBtn.onclick = function(e) { e.stopPropagation(); window.kickMember(username); };
+
+          var banBtn = document.createElement('button');
+          banBtn.className = 'member-action-btn ban';
+          banBtn.textContent = '\uD83D\uDEAB'; // 🚫 — ban
+          banBtn.title = 'Ban ' + username + ' (cannot rejoin with this code)';
+          banBtn.onclick = function(e) { e.stopPropagation(); window.banMember(username); };
+
+          actions.appendChild(kickBtn);
+          actions.appendChild(banBtn);
+          wrap.appendChild(actions);
+        }
+
+        item.appendChild(name); item.appendChild(wrap); list.appendChild(item);
       }
       function removeMember(username) { var el = document.getElementById('member-'+CSS.escape(username)); if (el) el.remove(); }
       function updateMemberRecording(username, isRec) {
         var el = document.getElementById('member-'+CSS.escape(username)); if (!el) return;
         var b = el.querySelector('.member-status'); b.className = 'member-status '+(isRec?'rec':'idle'); b.textContent = isRec?'REC':'Idle';
       }
+
+      window.kickMember = function(username) {
+        if (!window.socket || !window.currentSessionCode) return;
+        var ok = confirm('Kick ' + username + ' from this session?\n\nThey can rejoin with the session code.');
+        if (!ok) return;
+        window.socket.emit('kick-member', { username: username });
+      };
+
+      window.banMember = function(username) {
+        if (!window.socket || !window.currentSessionCode) return;
+        var ok = confirm('Ban ' + username + ' from this session?\n\nThey will NOT be able to rejoin with this code.');
+        if (!ok) return;
+        window.socket.emit('ban-member', { username: username });
+      };
 
       // =====================
       // RECORDING
