@@ -3130,6 +3130,56 @@ function createWindow() {
     return null;
   });
 
+    // ================================
+  // AI REEL — LOCAL CLIP DISCOVERY
+  // Scans the storage folder for highlight sidecar JSONs and returns the
+  // ones whose .mp4 is still on disk. This is what lets a reel be built
+  // with zero downloads: clipId is the stable identity, sessionId matches
+  // the session code, startTimeUTC is what the editor aligns on.
+  // ================================
+  ipcMain.handle('aireel-list-local-clips', (event, opts) => {
+    const wantSession = opts && opts.sessionId ? String(opts.sessionId).toUpperCase() : null;
+    let entries = [];
+    try { entries = fs.readdirSync(CLIPS_DIR).filter(f => f.toLowerCase().endsWith('.json')); }
+    catch (e) { return []; }
+
+    const out = [];
+    for (const name of entries) {
+      const jsonPath = path.join(CLIPS_DIR, name);
+      const mp4Path = jsonPath.replace(/\.json$/i, '.mp4');
+      if (!fs.existsSync(mp4Path)) continue;      // clip deleted, sidecar orphaned
+      let meta;
+      try { meta = JSON.parse(fs.readFileSync(jsonPath, 'utf8')); } catch (e) { continue; }
+      if (!meta || !meta.clipId) continue;        // full-session archive sidecars have no clipId
+      if (wantSession && String(meta.sessionId || '').toUpperCase() !== wantSession) continue;
+
+      let sizeBytes = 0;
+      try { sizeBytes = fs.statSync(mp4Path).size; } catch (e) {}
+
+      out.push({
+        id: meta.clipId,
+        path: mp4Path,
+        fileName: path.basename(mp4Path),
+        startTimeUTC: typeof meta.startTimeUTC === 'number' ? meta.startTimeUTC : null,
+        durationMs: typeof meta.durationMs === 'number' ? meta.durationMs : null,
+        sessionId: meta.sessionId || null,
+        savedAt: typeof meta.saveTimeUTC === 'number' ? meta.saveTimeUTC : null,
+        sizeBytes
+      });
+    }
+
+    out.sort((a, b) => (a.savedAt || 0) - (b.savedAt || 0));
+    return out;
+  });
+
+  ipcMain.handle('aireel-reveal', (event, filePath) => {
+    try {
+      const { shell } = require('electron');
+      if (filePath && fs.existsSync(filePath)) shell.showItemInFolder(filePath);
+      return { ok: true };
+    } catch (e) { return { ok: false, error: e.message }; }
+  });
+
   // ================================
   // AI REEL — LOCAL RENDER (Phase 2)
   // Analyzes + renders entirely on this PC using the heuristic editor
@@ -3138,6 +3188,9 @@ function createWindow() {
   // ================================
   ipcMain.handle('aireel-generate', async (event, payload) => {
     const { clips, targetSec, game, styleNotes } = payload || {};
+    if (!Array.isArray(clips) || clips.length === 0) {
+      return { ok: false, error: 'No clips selected' };
+    }
     const jobId = crypto.randomUUID();
     const workDir = path.join(os.tmpdir(), 'peakabu-aireel-client', jobId);
     const outputPath = path.join(CLIPS_DIR, `ai-reel-${Date.now()}.mp4`);

@@ -411,6 +411,18 @@
       @keyframes acPulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
       .ac-monkey.active-window { animation: acPulse 1s ease-in-out infinite; opacity: 1; }
 
+      /* ===== AI Reel (local render) ===== */
+      .airl-list {
+        font-size: 12px; color: #8fbfa3; background: #0c1c14;
+        border: 1px solid #24402e; border-radius: 6px; padding: 8px 10px; margin: 6px 0;
+      }
+      .airl-status { font-size: 12px; color: #7a9686; margin-top: 8px; min-height: 16px; }
+      .airl-report {
+        font-size: 12px; color: #8fbfa3; background: #0a1611;
+        border-left: 2px solid #39d3a0; padding: 8px 12px; margin-top: 8px;
+        white-space: pre-wrap; max-height: 160px; overflow-y: auto;
+      }
+
       /* ===== Hotkey (hidden capture input) ===== */
       input#hotkeyCapture { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
       .hotkey-display { display: none; }
@@ -616,7 +628,7 @@
               <img src="assets/kickstarter.png" alt="kickstarter" />
             </button>
           </div>
-          <span class="version-tag">v0.1.65</span>
+          <span class="version-tag">v0.1.66</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="redeem-wrap">
@@ -1146,6 +1158,59 @@
             </div>
           </div>
 
+          <!-- AI REEL — LOCAL RENDER -->
+          <div class="card" id="aiReelCard">
+            <div class="section-header" onclick="toggleCollapse('aireel')">
+              <h3>🤖 AI Reel</h3>
+              <button class="collapse-toggle" id="collapseBtn-aireel" onclick="event.stopPropagation();toggleCollapse('aireel')">◂</button>
+            </div>
+            <div class="collapse-body" id="collapse-aireel">
+              <p class="ac-locked-note" id="aiReelLockedNote" style="display:none;">🔒 Squad tier or higher required — Redeem a code to unlock.</p>
+              <div id="aiReelBody">
+                <p style="font-size:11px;color:#3a5244;margin:0 0 8px;">
+                  Built entirely on this PC from clips already in your highlight folder — nothing uploads, nothing downloads.
+                </p>
+
+                <div class="ac-sub-row">
+                  <label style="margin:0;flex:1;">Clips</label>
+                  <select id="aiReelScope" onchange="aiReelRefresh()" style="width:auto;flex:2;">
+                    <option value="session">This session only</option>
+                    <option value="all" selected>All local clips</option>
+                  </select>
+                </div>
+
+                <div class="airl-list" id="aiReelList">Scanning…</div>
+
+                <div class="ac-sub-row">
+                  <label style="margin:0;flex:1;">Length</label>
+                  <select id="aiReelLength" style="width:auto;flex:2;">
+                    <option value="30">30 sec</option>
+                    <option value="60" selected>1 min</option>
+                    <option value="120">2 min</option>
+                    <option value="300">5 min</option>
+                    <option value="600">10 min</option>
+                    <option value="900">15 min</option>
+                    <option value="1800">30 min</option>
+                  </select>
+                </div>
+
+                <label style="margin-top:8px;">Game (optional)</label>
+                <input type="text" id="aiReelGame" placeholder="e.g. Apex Legends" maxlength="60" />
+
+                <label>Style notes (optional)</label>
+                <input type="text" id="aiReelStyle" placeholder="e.g. hold on clutches, cut fast on kills" maxlength="200" />
+
+                <div class="row" style="margin-top:4px;">
+                  <button class="btn-save" id="aiReelBtn" onclick="aiReelGenerate()" style="padding:11px;font-size:14px;">🤖 Build Reel Locally</button>
+                  <button class="btn-secondary btn-sm" id="aiReelOpenBtn" onclick="aiReelReveal()" style="display:none;flex:0 0 auto;">📂 Show</button>
+                </div>
+
+                <div class="airl-status" id="aiReelStatus"></div>
+                <div class="airl-report" id="aiReelReport" style="display:none;"></div>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
 
@@ -1327,7 +1392,7 @@
         });
       });
 
-      var ALL_COLLAPSE_KEYS = ['session', 'hud', 'highlight', 'recording'];
+      var ALL_COLLAPSE_KEYS = ['session', 'hud', 'highlight', 'recording', 'aireel'];
 
       window.toggleAllSections = function() {
         var state = loadCollapseState();
@@ -3813,6 +3878,172 @@
       });
 
       // =====================
+      // AI REEL — LOCAL RENDER
+      // Clips come from the local storage folder (matched via the sidecar
+      // JSON's clipId/sessionId), analysis and encoding run on this PC's
+      // bundled FFmpeg, and the finished reel lands next to your
+      // highlights. The server is never contacted.
+      // =====================
+      window.aiReelClips = [];
+      window.aiReelBusy = false;
+      window.aiReelLastOutput = null;
+
+      // Mirrors aiReelMaxSec in server/config.js. Absent tier = no access.
+      var AIREEL_MAX_SEC = { t3: 900, t4: 1800, t5: 1800 };
+
+      function aiReelUpdateTierGate() {
+        var note = document.getElementById('aiReelLockedNote');
+        var body = document.getElementById('aiReelBody');
+        if (!body) return;
+        var max = AIREEL_MAX_SEC[window.currentTier] || 0;
+        if (note) note.style.display = max ? 'none' : 'block';
+        body.style.display = max ? 'block' : 'none';
+        if (!max) return;
+
+        var sel = document.getElementById('aiReelLength');
+        if (!sel) return;
+        Array.prototype.forEach.call(sel.options, function(o) {
+          o.disabled = parseInt(o.value) > max;
+        });
+        if (parseInt(sel.value) > max) sel.value = String(max);
+      }
+
+      function aiReelStatus(text) {
+        var el = document.getElementById('aiReelStatus');
+        if (el) el.textContent = text || '';
+      }
+
+      function aiReelRenderSummary() {
+        var listEl = document.getElementById('aiReelList');
+        var btn = document.getElementById('aiReelBtn');
+        var clips = window.aiReelClips || [];
+        if (!listEl) return;
+        if (clips.length === 0) {
+          listEl.textContent = 'No local clips found — save some highlights first. Only clips still on your disk can be used.';
+          if (btn) btn.disabled = true;
+          return;
+        }
+        var totalSec = clips.reduce(function(s, c) { return s + ((c.durationMs || 0) / 1000); }, 0);
+        var noSync = clips.filter(function(c) { return c.startTimeUTC == null; }).length;
+        listEl.textContent = clips.length + ' clip' + (clips.length === 1 ? '' : 's') +
+          ' · ' + Math.round(totalSec) + 's of footage' +
+          (noSync ? ' · ' + noSync + ' without sync data' : '');
+        if (btn) btn.disabled = window.aiReelBusy;
+      }
+
+      window.aiReelRefresh = async function() {
+        var scopeEl = document.getElementById('aiReelScope');
+        var listEl = document.getElementById('aiReelList');
+        if (!scopeEl || !listEl) return;
+        var sessionId = (scopeEl.value === 'session') ? window.currentSessionCode : null;
+
+        if (scopeEl.value === 'session' && !sessionId) {
+          listEl.textContent = 'Not in a session — switch to "All local clips" or join one.';
+          window.aiReelClips = [];
+          var b = document.getElementById('aiReelBtn');
+          if (b) b.disabled = true;
+          return;
+        }
+
+        listEl.textContent = 'Scanning your highlight folder…';
+        try {
+          var clips = await ipcRenderer.invoke('aireel-list-local-clips', { sessionId: sessionId });
+          window.aiReelClips = clips || [];
+        } catch (e) {
+          window.aiReelClips = [];
+          hudLog('system', '⚠ Could not read your highlight folder: ' + e.message, 'error');
+        }
+        aiReelRenderSummary();
+      };
+
+      window.aiReelGenerate = async function() {
+        if (window.aiReelBusy) return;
+        var clips = window.aiReelClips || [];
+        if (clips.length === 0) { hudLog('system', '⚠ No local clips to build from', 'error'); return; }
+
+        var max = AIREEL_MAX_SEC[window.currentTier] || 0;
+        if (!max) { hudLog('system', '🔒 AI Reel requires Squad tier or higher', 'error'); return; }
+
+        var targetSec = parseInt(document.getElementById('aiReelLength').value);
+        if (targetSec > max) {
+          hudLog('system', '🔒 Your tier caps reels at ' + Math.floor(max / 60) + ' minutes', 'error');
+          return;
+        }
+
+        var game = document.getElementById('aiReelGame').value.trim().slice(0, 60);
+        var styleNotes = document.getElementById('aiReelStyle').value.trim().slice(0, 200);
+
+        window.aiReelBusy = true;
+        var btn = document.getElementById('aiReelBtn');
+        btn.disabled = true;
+        document.getElementById('aiReelReport').style.display = 'none';
+        document.getElementById('aiReelOpenBtn').style.display = 'none';
+        aiReelStatus('Starting…');
+        hudLog('activity', '🤖 Building AI Reel locally from ' + clips.length + ' clip(s)…', 'broadcast');
+
+        try {
+          var result = await ipcRenderer.invoke('aireel-generate', {
+            clips: clips.map(function(c) {
+              return {
+                id: c.id,
+                username: window.authUsername || 'you',
+                path: c.path,
+                startTimeUTC: c.startTimeUTC
+              };
+            }),
+            targetSec: targetSec, game: game, styleNotes: styleNotes
+          });
+
+          if (!result || !result.ok) {
+            var err = (result && result.error) || 'Unknown error';
+            aiReelStatus('❌ ' + err);
+            hudLog('activity', '❌ AI Reel failed: ' + err, 'error');
+          } else {
+            window.aiReelLastOutput = result.outputPath;
+            var mb = (result.fileSize / 1048576).toFixed(1);
+            aiReelStatus('✅ Saved (' + mb + ' MB) — ' +
+              result.segmentsRendered + '/' + result.segmentsRequested + ' segments' +
+              (result.usedCpuFallback ? ' · CPU encode' : '') +
+              (result.clamped ? ' · trimmed to available footage' : ''));
+            document.getElementById('aiReelOpenBtn').style.display = 'inline-flex';
+            if (result.report) {
+              var rep = document.getElementById('aiReelReport');
+              rep.textContent = result.report;
+              rep.style.display = 'block';
+            }
+            hudLog('activity', '✅ AI Reel saved: ' + result.outputPath, 'success');
+          }
+        } catch (e) {
+          aiReelStatus('❌ ' + e.message);
+          hudLog('activity', '❌ AI Reel failed: ' + e.message, 'error');
+        }
+
+        window.aiReelBusy = false;
+        btn.disabled = false;
+      };
+
+      window.aiReelReveal = function() {
+        if (window.aiReelLastOutput) ipcRenderer.invoke('aireel-reveal', window.aiReelLastOutput);
+      };
+
+      var AIREEL_STAGE_LABELS = {
+        analyzing: 'Analyzing clips',
+        editing: 'Building the cut',
+        rendering: 'Rendering segments',
+        'encoder-fallback': 'GPU encode unavailable — switching to CPU',
+        stitching: 'Stitching the final reel'
+      };
+
+      ipcRenderer.on('aireel-progress', function(ev, p) {
+        if (!p || !p.stage) return;
+        aiReelStatus((AIREEL_STAGE_LABELS[p.stage] || p.stage) +
+          (p.detail ? ' — ' + p.detail : '') + '…');
+      });
+
+      aiReelUpdateTierGate();
+      window.aiReelRefresh();
+
+      // =====================
       // SAVE HIGHLIGHT
       // =====================
       window.saveHighlight = function() {
@@ -4476,6 +4707,7 @@
         }
        }
        acUpdateTierGate();
+       aiReelUpdateTierGate();
       }
 
       function acUpdateTierGate() {

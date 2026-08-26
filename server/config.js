@@ -175,9 +175,9 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 // Update when a new client build is uploaded to the CDN.
 // ================================
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.65',
-  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.65.exe',
-    releaseNotes: "Added mic noise suppression (auto/RNNoise/Speex/spectral gating, switchable live in the mic menu) to clean up hiss, hum, and background noise on recorded voice."
+  version: '0.1.66',
+  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.66.exe',
+    releaseNotes: "AI reel builds locally on your PC from saved clips files"
 };
 
 module.exports = {
