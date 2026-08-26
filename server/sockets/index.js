@@ -19,6 +19,51 @@ const { createSessionForUser } = require('../routes/sessions');
 const socketsPerIp = new Map(); // ip -> count
 const MAX_SOCKETS_PER_IP = 15;
 
+// ================================
+// KICK / BAN — host-only. Kick removes a member for this session only;
+// they can rejoin with the same code. Ban does the same removal AND adds
+// them to the session's persisted ban list, blocking rejoin (see the
+// bannedUsernames check in join-session below). Neither affects the
+// member's account — this is per-session, not a platform-wide ban.
+// Defined at module scope (not inside io.on('connection')) so it isn't
+// redefined on every new connection.
+// ================================
+function removeMemberFromSession(io, session, sessionCode, targetUsername, mode, actingUsername) {
+  const idx = session.members.findIndex(m => m.username === targetUsername);
+  if (idx === -1) return { ok: false, error: 'That member is not in this session' };
+
+  const target = session.members[idx];
+  session.members.splice(idx, 1);
+
+  // Force the target off the session room. Their socket connection stays
+  // alive (unlike a full disconnect) so their client can show a message
+  // and cleanly return to the lobby instead of erroring out.
+  const targetSocket = io.sockets.sockets.get(target.socketId);
+  if (targetSocket) {
+    targetSocket.emit(mode === 'ban' ? 'banned-from-session' : 'kicked-from-session', {
+      reason: mode === 'ban' ? 'Banned by the host' : 'Removed by the host'
+    });
+    targetSocket.leave(sessionCode);
+    targetSocket.sessionCode = null;
+    targetSocket.username = null;
+  }
+
+  if (mode === 'ban') {
+    session.bannedUsernames = session.bannedUsernames || [];
+    if (!session.bannedUsernames.includes(targetUsername)) {
+      session.bannedUsernames.push(targetUsername);
+    }
+    saveSessionsToDisk(); // only the ban list is persisted — members[] is transient
+  }
+
+  log('info', mode === 'ban' ? 'member_banned' : 'member_kicked', {
+    session: sessionCode, target: targetUsername, by: actingUsername
+  });
+
+  io.to(sessionCode).emit(mode === 'ban' ? 'member-banned' : 'member-kicked', { username: targetUsername });
+  return { ok: true };
+}
+
 function initSockets(io) {
   io.use((socket, next) => {
     const ip = socket.handshake.address;
@@ -77,6 +122,11 @@ function initSockets(io) {
           socket.emit('error-message', { message: 'Waiting on the host to reconnect — or ask them to start a new session.' });
           return;
         }
+      }
+
+      if ((session.bannedUsernames || []).includes(cleanUsername)) {
+        socket.emit('error-message', { message: 'You have been banned from this session.' });
+        return;
       }
 
       const memberCap = session.maxMembers || MAX_MEMBERS_PER_SESSION;
@@ -329,6 +379,58 @@ function initSockets(io) {
 
       log('info', 'session_migrated', { from: sessionCode, to: result.session.code, by: socket.username });
       io.to(sessionCode).emit('session-migrated', { newCode: result.session.code });
+    });
+
+    // ================================
+    // KICK — host-only. Removes a member for this session only; they can
+    // rejoin with the same code (see removeMemberFromSession above).
+    // ================================
+    socket.on('kick-member', ({ username }) => {
+      if (!checkSocketRate(socket.id)) return;
+      const sessionCode = socket.sessionCode;
+      if (!sessionCode) return;
+      const session = sessions.get(sessionCode);
+      if (!session) return;
+
+      if (session.createdBy !== socket.username) {
+        socket.emit('error-message', { message: 'Only the session host can remove members' });
+        return;
+      }
+
+      const target = sanitizeUsername(username);
+      if (!target || target === socket.username) {
+        socket.emit('error-message', { message: 'Invalid target' });
+        return;
+      }
+
+      const result = removeMemberFromSession(io, session, sessionCode, target, 'kick', socket.username);
+      if (!result.ok) socket.emit('error-message', { message: result.error });
+    });
+
+    // ================================
+    // BAN — host-only. Same removal as kick, plus adds the member to the
+    // session's persisted ban list so they can't rejoin with the same code.
+    // ================================
+    socket.on('ban-member', ({ username }) => {
+      if (!checkSocketRate(socket.id)) return;
+      const sessionCode = socket.sessionCode;
+      if (!sessionCode) return;
+      const session = sessions.get(sessionCode);
+      if (!session) return;
+
+      if (session.createdBy !== socket.username) {
+        socket.emit('error-message', { message: 'Only the session host can ban members' });
+        return;
+      }
+
+      const target = sanitizeUsername(username);
+      if (!target || target === socket.username) {
+        socket.emit('error-message', { message: 'Invalid target' });
+        return;
+      }
+
+      const result = removeMemberFromSession(io, session, sessionCode, target, 'ban', socket.username);
+      if (!result.ok) socket.emit('error-message', { message: result.error });
     });
 
     // Highlight save broadcast + lock/queue machinery

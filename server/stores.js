@@ -115,11 +115,11 @@ const stmt = {
   upsertSession: db.prepare(`
     INSERT INTO sessions (
       code, id, createdBy, createdAt, clipDuration, highlightCount,
-      hostTier, expiresAt, maxMembers, maxClips, title, detectedGame, closed
+      hostTier, expiresAt, maxMembers, maxClips, title, detectedGame, closed, bannedUsernames
     )
     VALUES (
       @code, @id, @createdBy, @createdAt, @clipDuration, @highlightCount,
-      @hostTier, @expiresAt, @maxMembers, @maxClips, @title, @detectedGame, @closed
+      @hostTier, @expiresAt, @maxMembers, @maxClips, @title, @detectedGame, @closed, @bannedUsernames
     )
     ON CONFLICT(code) DO UPDATE SET
       clipDuration = excluded.clipDuration,
@@ -130,7 +130,8 @@ const stmt = {
       maxClips = excluded.maxClips,
       title = excluded.title,
       detectedGame = excluded.detectedGame,
-      closed = excluded.closed
+      closed = excluded.closed,
+      bannedUsernames = excluded.bannedUsernames
   `),
   deleteSession: db.prepare(`DELETE FROM sessions WHERE code = ?`),
   allSessions: db.prepare(`SELECT * FROM sessions`),
@@ -243,8 +244,10 @@ function loadSessionsFromDisk() {
       expiresAt: row.expiresAt ?? null,
       maxMembers: row.maxMembers ?? null,
       maxClips: row.maxClips ?? null,
+      closed: !!row.closed,
       title: row.title ?? null,
       detectedGame: row.detectedGame ?? null,
+      bannedUsernames: row.bannedUsernames ? JSON.parse(row.bannedUsernames) : [],
       // SQLite has no boolean type — stored 0/1, surfaced as a bool.
       // A session whose host left stays closed to new joins across a
       // restart; without this it silently reopened to anyone with the code.
@@ -252,6 +255,7 @@ function loadSessionsFromDisk() {
       highlightLockedUntil: 0,   // transient — rebuilt live
       pendingHighlights: [],     // transient
       members: [],               // transient
+      bannedUsernames: row.bannedUsernames ? JSON.parse(row.bannedUsernames) : [],
       uploads
     };
     if (migrateLegacyCaps(migratedSession)) migratedCount++;
@@ -283,7 +287,8 @@ function saveSessionsToDisk() {
         maxClips: s.maxClips ?? null,
         title: s.title ?? null,
         detectedGame: s.detectedGame ?? null,
-        closed: s.closed ? 1 : 0
+        closed: s.closed ? 1 : 0,
+        bannedUsernames: JSON.stringify(s.bannedUsernames || [])
       });
       for (const u of s.uploads) {
         stmt.upsertUpload.run({

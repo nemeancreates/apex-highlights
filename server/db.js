@@ -137,6 +137,7 @@ addColumnIfMissing('users', 'sessionsMonthKey', 'TEXT');
 addColumnIfMissing('users', 'bandwidthBytesThisMonth', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('users', 'bandwidthMonthKey', 'TEXT');
 addColumnIfMissing('users', 'bandwidthAlertedThisMonth', 'INTEGER NOT NULL DEFAULT 0');
+
 // discordId — the Discord snowflake ID (not username, which people can
 // change) is the actual source of truth for "this Peak-Abu account is
 // this Discord account." SQLite's ADD COLUMN can't carry a UNIQUE
@@ -154,9 +155,15 @@ addColumnIfMissing('sessions', 'maxClips', 'INTEGER');
 addColumnIfMissing('sessions', 'commentSettings', 'TEXT');
 addColumnIfMissing('sessions', 'title', 'TEXT');
 addColumnIfMissing('sessions', 'detectedGame', 'TEXT');
+addColumnIfMissing('sessions', 'bannedUsernames', 'TEXT');
 // closed — host-left flag. Previously in-memory only, so it was lost on
 // every restart, silently reopening sessions to anyone holding the code.
 addColumnIfMissing('sessions', 'closed', 'INTEGER NOT NULL DEFAULT 0');
+// bannedUsernames — host-managed per-session ban list (JSON array of
+// exact-case usernames). Banned members are blocked from rejoining via
+// join-session; kicked (not banned) members can still rejoin. See
+// sockets/index.js kick-member/ban-member.
+addColumnIfMissing('sessions', 'bannedUsernames', 'TEXT');
 
 // uploads — duration-based clip weight (batch 2: 3min=1, 6min=2, hard cap)
 addColumnIfMissing('uploads', 'durationMs', 'INTEGER');
