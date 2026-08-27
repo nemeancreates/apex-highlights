@@ -68,7 +68,8 @@ function createSessionForUser(rawUsername) {
     highlightCount: 0,
     pendingHighlights: [],
     members: [],
-    uploads: []
+    uploads: [],
+    bannedUsernames: []
   };
 
   sessions.set(code, session);
