@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Peak-Abu — AI Reel</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        background: #0a1611; color: #c8d6cd; font-family: 'Segoe UI', Arial, sans-serif;
+        font-size: 14px; line-height: 1.5; margin: 0; padding: 16px;
+      }
+      h2 { color: #39d3a0; font-size: 17px; font-weight: 500; margin: 0 0 4px; }
+      p.sub { font-size: 11px; color: #5f7a6a; margin: 0 0 14px; }
+      label { font-size: 11px; color: #5f7a6a; display: block; margin: 10px 0 4px; text-transform: uppercase; letter-spacing: 0.6px; }
+      select, input[type="text"] {
+        width: 100%; padding: 9px 10px; background: #0c1c14; color: #e8f5ec;
+        border: 1px solid #2a4636; border-radius: 6px; font-size: 14px; font-family: inherit;
+      }
+      select:focus, input:focus { border-color: #39d3a0; outline: none; }
+      .row { display: flex; gap: 8px; }
+      .row > * { flex: 1; }
+
+      .locked {
+        display: none; background: #12251a; border: 1px solid #2f4a3a; border-radius: 8px;
+        padding: 16px; text-align: center; color: #d8a838; font-size: 13px; margin-top: 20px;
+      }
+
+      .clip-panel {
+        background: #0c1c14; border: 1px solid #24402e; border-radius: 7px;
+        margin-top: 8px; max-height: 340px; overflow-y: auto;
+      }
+      .clip-panel-head {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 8px 10px; border-bottom: 1px solid #1e3527; font-size: 12px; color: #7a9686;
+      }
+      .clip-panel-head button {
+        background: none; border: none; color: #39d3a0; font-size: 11px; cursor: pointer; padding: 0 4px;
+      }
+      .clip-row {
+        display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+        border-bottom: 1px solid #14291d; font-size: 12px; cursor: pointer;
+        transition: background 0.1s;
+      }
+      .clip-row:hover { background: #14291d; }
+      .clip-row.selected { background: #14291d; }
+      .clip-row.previewing { box-shadow: inset 2px 0 0 #39d3a0; }
+      .clip-row:last-child { border-bottom: none; }
+      .clip-row input[type="checkbox"] { accent-color: #39d3a0; flex-shrink: 0; pointer-events: none; }
+      .clip-select-col { display: flex; flex-direction: column; align-items: center; gap: 3px; flex-shrink: 0; width: 20px; }
+      .clip-num { font-size: 10px; color: #5f7a6a; line-height: 1; font-family: 'Consolas', monospace; }
+      .clip-thumb {
+        width: 96px; height: 54px; flex-shrink: 0; border-radius: 5px;
+        background: #04140d; object-fit: cover; border: 1px solid #1e3527;
+      }
+      .clip-thumb.placeholder {
+        display: flex; align-items: center; justify-content: center;
+        color: #2a4636; font-size: 20px;
+      }
+      .clip-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+      .clip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #c8d6cd; }
+      .clip-meta { color: #45604f; font-size: 11px; white-space: nowrap; }
+      .clip-meta.nosync { color: #d8a838; }
+      .clip-empty { padding: 20px; text-align: center; color: #3a5244; font-style: italic; font-size: 12px; }
+
+      /* ===== Preview strip — MRU queue driven by clicks in the clip list ===== */
+      .recent-section { margin-top: 14px; }
+      .recent-hint { font-size: 10px; color: #3a5244; margin: -2px 0 6px; font-style: italic; }
+      .recent-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+      .recent-card {
+        position: relative; border-radius: 6px; overflow: hidden;
+        background: #000; border: 1px solid #24402e; cursor: pointer;
+        transition: border-color 0.15s;
+      }
+      .recent-card.newest { border-color: #39d3a0; }
+      .recent-card video { width: 100%; height: 184px; object-fit: cover; display: block; background: #000; }
+      .recent-card .folder-btn {
+        position: absolute; top: 5px; right: 5px; width: 26px; height: 26px; border-radius: 5px;
+        background: rgba(12, 28, 20, 0.75); display: flex; align-items: center; justify-content: center;
+        font-size: 14px; color: #8fbfa3; opacity: 0.55; transition: opacity 0.15s, background 0.15s;
+        cursor: pointer;
+      }
+      .recent-card .folder-btn:hover { opacity: 1; background: rgba(18, 37, 26, 0.92); }
+      .recent-card .play-hint {
+        position: absolute; bottom: 5px; left: 5px; font-size: 11px; color: #c8d6cd;
+        background: rgba(4, 20, 13, 0.7); padding: 2px 7px; border-radius: 4px; pointer-events: none;
+      }
+      .recent-card .slot-name {
+        position: absolute; top: 5px; left: 5px; right: 34px; font-size: 10px; color: #8fbfa3;
+        background: rgba(4, 20, 13, 0.7); padding: 2px 6px; border-radius: 4px;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none;
+      }
+      .recent-empty { grid-column: 1 / -1; text-align: center; color: #3a5244; font-size: 11px; padding: 26px 0; font-style: italic; }
+
+      .summary { font-size: 12px; color: #8fbfa3; margin-top: 10px; }
+
+      button.primary {
+        margin-top: 14px; width: 100%; padding: 13px; background: #1d9e75; border: none;
+        color: #04140d; font-size: 15px; font-weight: 600; border-radius: 8px; cursor: pointer;
+        box-shadow: 0 0 0 1px #39d3a0;
+      }
+      button.primary:hover { background: #23b686; }
+      button.primary:disabled { background: #14291d; color: #45604f; box-shadow: none; cursor: not-allowed; }
+
+      button.secondary {
+        margin-top: 8px; width: 100%; padding: 9px; background: #14291d; border: 1px solid #2a4636;
+        color: #8fbfa3; font-size: 13px; border-radius: 6px; cursor: pointer;
+      }
+      button.secondary:hover { background: #1a3323; border-color: #39d3a0; }
+
+      .status { font-size: 12px; color: #7a9686; margin-top: 10px; min-height: 16px; }
+      .report {
+        font-size: 12px; color: #8fbfa3; background: #0a1611; border-left: 2px solid #39d3a0;
+        padding: 8px 12px; margin-top: 10px; white-space: pre-wrap; max-height: 180px; overflow-y: auto;
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>🤖 AI Reel</h2>
+    <p class="sub">Built entirely on this PC from clips already in your highlight folder — nothing uploads, nothing downloads.</p>
+
+    <div id="lockedNote" class="locked">🔒 Squad tier or higher required to build an AI Reel. Redeem a code in the main window to unlock.</div>
+
+    <div id="body">
+      <label>Clips</label>
+      <select id="scope">
+        <option value="session">This session only</option>
+        <option value="all" selected>All local clips</option>
+      </select>
+
+      <div class="clip-panel">
+        <div class="clip-panel-head">
+          <span id="clipCount">Scanning…</span>
+          <span>
+            <button onclick="selectAll(true)">Select all</button> ·
+            <button onclick="selectAll(false)">Select none</button>
+          </span>
+        </div>
+        <div id="clipList"></div>
+      </div>
+
+      <div class="recent-section">
+        <label>Preview</label>
+        <div class="recent-hint">Click a clip above to load it here — newest on the left.</div>
+        <div class="recent-grid" id="recentGrid"></div>
+      </div>
+
+      <div class="summary" id="summary"></div>
+
+      <label>Length</label>
+      <select id="length">
+        <option value="30">30 sec</option>
+        <option value="60" selected>1 min</option>
+        <option value="120">2 min</option>
+        <option value="300">5 min</option>
+        <option value="600">10 min</option>
+        <option value="900">15 min</option>
+        <option value="1800">30 min</option>
+      </select>
+
+      <label>Game (optional)</label>
+      <input type="text" id="game" placeholder="e.g. Apex Legends" maxlength="60" />
+
+      <label>Style notes (optional)</label>
+      <input type="text" id="style" placeholder="e.g. hold on clutches, cut fast on kills" maxlength="200" />
+
+      <button class="primary" id="buildBtn" onclick="build()">🤖 Build Reel Locally</button>
+      <button class="secondary" id="openBtn" onclick="reveal()" style="display:none;">📂 Show in Folder</button>
+
+      <div class="status" id="status"></div>
+      <div class="report" id="report"></div>
+    </div>
+
+    <script>
+      const { ipcRenderer } = require('electron');
+      const { pathToFileURL } = require('url');
+
+      const params = new URLSearchParams(location.search);
+      const sessionId = params.get('session') || '';
+      const maxSec = parseInt(params.get('maxSec') || '0', 10) || 0;
+
+      const PREVIEW_SLOTS = 4;
+
+      let allClips = [];
+      let selected = new Set();
+      let previewOrder = []; // clip ids, newest-clicked first — the MRU queue
+      let busy = false;
+      let lastOutput = null;
+      let thumbLoadToken = 0;
+      let activeVideo = null; // currently playing <video>, so a second click elsewhere pauses the first
+
+      function fmtDuration(ms) {
+        if (!ms) return '?';
+        const s = Math.round(ms / 1000);
+        return s < 60 ? s + 's' : Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+      }
+      function fmtDate(ms) {
+        if (!ms) return '';
+        const d = new Date(ms);
+        return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
+               d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+
+      function gateByTier() {
+        const locked = maxSec <= 0;
+        document.getElementById('lockedNote').style.display = locked ? 'block' : 'none';
+        document.getElementById('body').style.display = locked ? 'none' : 'block';
+        if (locked) return;
+        const sel = document.getElementById('length');
+        Array.prototype.forEach.call(sel.options, o => { o.disabled = parseInt(o.value) > maxSec; });
+        if (parseInt(sel.value) > maxSec) sel.value = String(maxSec);
+      }
+
+      function setClipSelected(id, on) {
+        if (on) selected.add(id); else selected.delete(id);
+        updateSummary();
+      }
+
+      // Moves clipId to the front of the MRU queue, removing any earlier
+      // occurrence first so a re-click doesn't duplicate it, then caps the
+      // queue at PREVIEW_SLOTS — this is the "push, others shift right,
+      // oldest falls off" behavior.
+      function pushToPreview(clipId) {
+        previewOrder = previewOrder.filter(id => id !== clipId);
+        previewOrder.unshift(clipId);
+        if (previewOrder.length > PREVIEW_SLOTS) previewOrder.length = PREVIEW_SLOTS;
+        renderRecent();
+        highlightPreviewingRow();
+      }
+
+      function highlightPreviewingRow() {
+        document.querySelectorAll('.clip-row').forEach(row => {
+          row.classList.toggle('previewing', row.dataset.clipId === previewOrder[0]);
+        });
+      }
+
+      function renderList() {
+        const listEl = document.getElementById('clipList');
+        const countEl = document.getElementById('clipCount');
+        listEl.innerHTML = '';
+
+        if (allClips.length === 0) {
+          listEl.innerHTML = '<div class="clip-empty">No local clips found for this scope.</div>';
+          countEl.textContent = '0 clips';
+          updateSummary();
+          renderRecent();
+          return;
+        }
+
+        countEl.textContent = allClips.length + ' clip' + (allClips.length === 1 ? '' : 's') + ' found';
+
+        const thumbQueue = [];
+
+        allClips.forEach((c, idx) => {
+          const row = document.createElement('div');
+          row.className = 'clip-row' + (selected.has(c.id) ? ' selected' : '');
+          row.dataset.clipId = c.id;
+
+          const num = document.createElement('span');
+          num.className = 'clip-num';
+          num.textContent = String(idx + 1);
+
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.checked = selected.has(c.id);
+          // pointer-events:none in CSS — the row click handler below is the
+          // single source of truth for toggling, so clicking the thumbnail,
+          // name, or checkbox all behave identically.
+
+          const selectCol = document.createElement('div');
+          selectCol.className = 'clip-select-col';
+          selectCol.appendChild(num);
+          selectCol.appendChild(cb);
+
+          const thumb = document.createElement('div');
+          thumb.className = 'clip-thumb placeholder';
+          thumb.textContent = '▶';
+          thumbQueue.push({ clip: c, el: thumb });
+
+          const info = document.createElement('div');
+          info.className = 'clip-info';
+
+          const name = document.createElement('span');
+          name.className = 'clip-name';
+          name.textContent = c.fileName;
+          name.title = c.fileName;
+
+          const meta = document.createElement('span');
+          meta.className = 'clip-meta' + (c.startTimeUTC == null ? ' nosync' : '');
+          meta.textContent = fmtDuration(c.durationMs) + ' · ' + fmtDate(c.savedAt) +
+            (c.startTimeUTC == null ? ' · no sync' : '');
+
+          info.appendChild(name);
+          info.appendChild(meta);
+
+          row.appendChild(selectCol);
+          row.appendChild(thumb);
+          row.appendChild(info);
+
+          // A single click both toggles this clip into/out of the reel
+          // selection AND loads it into the preview strip — the two
+          // purposes share one click target rather than fighting for it.
+          row.addEventListener('click', () => {
+            const now = !cb.checked;
+            cb.checked = now;
+            row.classList.toggle('selected', now);
+            setClipSelected(c.id, now);
+            pushToPreview(c.id);
+          });
+
+          listEl.appendChild(row);
+        });
+
+        updateSummary();
+        loadThumbnailsSequentially(thumbQueue);
+        highlightPreviewingRow();
+      }
+
+      // Renders whatever is currently in previewOrder — starts empty until
+      // the user clicks a clip, then seeded once clips first load so the
+      // window isn't blank on open.
+      function renderRecent() {
+        const grid = document.getElementById('recentGrid');
+        if (activeVideo) { activeVideo.pause(); activeVideo = null; }
+        grid.innerHTML = '';
+
+        if (previewOrder.length === 0) {
+          grid.innerHTML = '<div class="recent-empty">Click a clip above to preview it here.</div>';
+          return;
+        }
+
+        const byId = new Map(allClips.map(c => [c.id, c]));
+
+        previewOrder.forEach((clipId, idx) => {
+          const c = byId.get(clipId);
+          if (!c) return; // clip vanished from the current scope — skip its slot
+
+          const card = document.createElement('div');
+          card.className = 'recent-card' + (idx === 0 ? ' newest' : '');
+
+          const video = document.createElement('video');
+          video.preload = 'metadata';
+          try { video.src = pathToFileURL(c.path).href; } catch (e) { /* leave unset if path is bad */ }
+
+          const nameTag = document.createElement('span');
+          nameTag.className = 'slot-name';
+          nameTag.textContent = c.fileName;
+          nameTag.title = c.fileName;
+
+          const hint = document.createElement('span');
+          hint.className = 'play-hint';
+          hint.textContent = '▶ click to play';
+
+          const folderBtn = document.createElement('span');
+          folderBtn.className = 'folder-btn';
+          folderBtn.textContent = '📁';
+          folderBtn.title = 'Show this file in your folder';
+          folderBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            ipcRenderer.invoke('aireel-reveal', c.path);
+          });
+
+          video.addEventListener('play', () => {
+            if (activeVideo && activeVideo !== video) activeVideo.pause();
+            activeVideo = video;
+            hint.style.display = 'none';
+          });
+          video.addEventListener('pause', () => { hint.style.display = ''; });
+          video.addEventListener('ended', () => { hint.style.display = ''; });
+
+          card.addEventListener('click', (e) => {
+            if (e.target === folderBtn) return;
+            if (video.paused) video.play().catch(() => {});
+            else video.pause();
+          });
+
+          ipcRenderer.invoke('aireel-get-thumbnail', {
+            clipId: c.id, clipPath: c.path, durationMs: c.durationMs
+          }).then(result => {
+            if (result && result.ok && result.dataUrl) video.poster = result.dataUrl;
+          }).catch(() => {});
+
+          card.appendChild(video);
+          card.appendChild(nameTag);
+          card.appendChild(hint);
+          card.appendChild(folderBtn);
+          grid.appendChild(card);
+        });
+      }
+
+      // One at a time — spawning FFmpeg for 40+ clips simultaneously would
+      // compete with itself for disk/CPU. Cached thumbnails resolve near-
+      // instantly on repeat scans, so this only costs real time the first
+      // time a given clip is ever seen.
+      async function loadThumbnailsSequentially(queue) {
+        const myToken = ++thumbLoadToken;
+        for (const { clip, el } of queue) {
+          if (myToken !== thumbLoadToken) return; // scope changed underneath us — abandon stale work
+          try {
+            const result = await ipcRenderer.invoke('aireel-get-thumbnail', {
+              clipId: clip.id, clipPath: clip.path, durationMs: clip.durationMs
+            });
+            if (myToken !== thumbLoadToken) return;
+            if (result && result.ok && result.dataUrl) {
+              const img = document.createElement('img');
+              img.className = 'clip-thumb';
+              img.src = result.dataUrl;
+              if (el.parentNode) el.replaceWith(img);
+            } else {
+              el.textContent = '⚠';
+            }
+          } catch (e) {
+            el.textContent = '⚠';
+          }
+        }
+      }
+
+      window.selectAll = function(on) {
+        selected = on ? new Set(allClips.map(c => c.id)) : new Set();
+        renderList();
+      };
+
+      function updateSummary() {
+        const chosen = allClips.filter(c => selected.has(c.id));
+        const totalSec = chosen.reduce((s, c) => s + (c.durationMs || 0) / 1000, 0);
+        document.getElementById('summary').textContent = chosen.length === 0
+          ? 'Select at least one clip.'
+          : chosen.length + ' selected · ~' + Math.round(totalSec) + 's of footage';
+        document.getElementById('buildBtn').disabled = busy || chosen.length === 0;
+      }
+
+      async function refresh() {
+        const scope = document.getElementById('scope').value;
+        const listEl = document.getElementById('clipList');
+        if (activeVideo) { activeVideo.pause(); activeVideo = null; }
+        if (scope === 'session' && !sessionId) {
+          listEl.innerHTML = '<div class="clip-empty">Not in a session right now — switch to "All local clips".</div>';
+          allClips = [];
+          selected = new Set();
+          previewOrder = [];
+          updateSummary();
+          renderRecent();
+          return;
+        }
+        listEl.innerHTML = '<div class="clip-empty">Scanning your highlight folder…</div>';
+        try {
+          allClips = await ipcRenderer.invoke('aireel-list-local-clips', {
+            sessionId: scope === 'session' ? sessionId : null
+          });
+        } catch (e) {
+          allClips = [];
+        }
+        selected = new Set();
+        // Seed the preview with the most recently saved clips so the window
+        // isn't empty on first load — after this, only clicks drive it.
+        previewOrder = allClips.slice()
+          .sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0))
+          .slice(0, PREVIEW_SLOTS)
+          .map(c => c.id);
+        renderList();
+        renderRecent();
+      }
+
+      document.getElementById('scope').addEventListener('change', refresh);
+      if (!sessionId) {
+        const sessionOpt = document.querySelector('#scope option[value="session"]');
+        if (sessionOpt) sessionOpt.disabled = true;
+        document.getElementById('scope').value = 'all';
+      }
+
+      const STAGE_LABELS = {
+        analyzing: 'Analyzing clips', editing: 'Building the cut', rendering: 'Rendering segments',
+        'encoder-fallback': 'GPU encode unavailable — switching to CPU', stitching: 'Stitching the final reel'
+      };
+      ipcRenderer.on('aireel-progress', (ev, p) => {
+        if (!p || !p.stage) return;
+        document.getElementById('status').textContent =
+          (STAGE_LABELS[p.stage] || p.stage) + (p.detail ? ' — ' + p.detail : '') + '…';
+      });
+
+      window.build = async function() {
+        if (busy) return;
+        const chosen = allClips.filter(c => selected.has(c.id));
+        if (chosen.length === 0) return;
+
+        const targetSec = parseInt(document.getElementById('length').value);
+        const game = document.getElementById('game').value.trim().slice(0, 60);
+        const style = document.getElementById('style').value.trim().slice(0, 200);
+
+        if (activeVideo) { activeVideo.pause(); activeVideo = null; }
+
+        busy = true;
+        document.getElementById('buildBtn').disabled = true;
+        document.getElementById('openBtn').style.display = 'none';
+        document.getElementById('report').style.display = 'none';
+        document.getElementById('status').textContent = 'Starting…';
+
+        try {
+          const result = await ipcRenderer.invoke('aireel-generate', {
+            clips: chosen.map(c => ({ id: c.id, username: 'you', path: c.path, startTimeUTC: c.startTimeUTC })),
+            targetSec, game, styleNotes: style
+          });
+
+          if (!result || !result.ok) {
+            document.getElementById('status').textContent = '❌ ' + ((result && result.error) || 'Unknown error');
+          } else {
+            lastOutput = result.outputPath;
+            const mb = (result.fileSize / 1048576).toFixed(1);
+            document.getElementById('status').textContent =
+              '✅ Saved (' + mb + ' MB) — ' + result.segmentsRendered + '/' + result.segmentsRequested + ' segments' +
+              (result.usedCpuFallback ? ' · CPU encode' : '') +
+              (result.clamped ? ' · trimmed to available footage' : '');
+            document.getElementById('openBtn').style.display = 'block';
+            if (result.report) {
+              const rep = document.getElementById('report');
+              rep.textContent = result.report;
+              rep.style.display = 'block';
+            }
+          }
+        } catch (e) {
+          document.getElementById('status').textContent = '❌ ' + e.message;
+        }
+
+        busy = false;
+        updateSummary();
+      };
+
+      window.reveal = function() {
+        if (lastOutput) ipcRenderer.invoke('aireel-reveal', lastOutput);
+      };
+
+      gateByTier();
+      refresh();
+    </script>
+  </body>
+</html>

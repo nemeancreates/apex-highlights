@@ -280,6 +280,7 @@ function enumerateWindowsPS() {
 let playerView = null;
 let playerWindow = null;
 let playerWindowedMode = false;
+let aiReelWindow = null;
 let playerDockedWidth = 0;       // px reserved from the right edge (view + gutter); 0 = not yet computed
 const PLAYER_GUTTER = 6;         // width of the visible drag handle, carved out of the reserved zone
 const MIN_PLAYER_VIEW = 360;     // floor for the visible player area
@@ -442,6 +443,38 @@ function closeAnyPlayer() {
     try { playerWindow.destroy(); } catch (e) {}
   }
   playerWindow = null;
+}
+
+// ================================
+// AI REEL WINDOW — dedicated window for local clip selection + reel build.
+// Separate from the main window so the clip checklist has real room, and
+// so a long local render doesn't compete for the main window's attention.
+// ================================
+function openAiReelWindow(params) {
+  const sessionId = (params && params.sessionId) ? String(params.sessionId).toUpperCase() : '';
+  const maxSec = (params && params.maxSec) || 0;
+  const username = (params && params.username) || '';
+  const query = { session: sessionId, maxSec: String(maxSec), user: username };
+
+  if (aiReelWindow && !aiReelWindow.isDestroyed()) {
+    aiReelWindow.loadFile('aireel-window.html', { query });
+    aiReelWindow.show();
+    aiReelWindow.focus();
+    return;
+  }
+
+  aiReelWindow = new BrowserWindow({
+    width: 660, height: 1020,
+    minWidth: 520, minHeight: 700,
+    title: 'Peak-Abu — AI Reel',
+    backgroundColor: '#0a1611',
+    webPreferences: { nodeIntegration: true, contextIsolation: false }
+  });
+  aiReelWindow.setMenuBarVisibility(false);
+  aiReelWindow.loadFile('aireel-window.html', { query });
+  if (!app.isPackaged) aiReelWindow.webContents.openDevTools({ mode: 'detach' });
+  aiReelWindow.on('closed', () => { aiReelWindow = null; });
+  console.log('AI Reel window opened');
 }
 
 // Shared resolution key <-> dimensions map (used for saving AND applying)
@@ -3137,6 +3170,11 @@ function createWindow() {
   // with zero downloads: clipId is the stable identity, sessionId matches
   // the session code, startTimeUTC is what the editor aligns on.
   // ================================
+  ipcMain.handle('open-aireel-window', (event, params) => {
+    openAiReelWindow(params || {});
+    return { success: true };
+  });
+
   ipcMain.handle('aireel-list-local-clips', (event, opts) => {
     const wantSession = opts && opts.sessionId ? String(opts.sessionId).toUpperCase() : null;
     let entries = [];
@@ -3181,6 +3219,56 @@ function createWindow() {
   });
 
   // ================================
+  // AI REEL — CLIP THUMBNAILS
+  // Pulls a single frame via bundled FFmpeg so the picker shows something
+  // more useful than a filename + date. Cached to disk by clipId so
+  // re-opening the window or re-scanning doesn't re-decode video that
+  // hasn't changed.
+  // ================================
+  const AIREEL_THUMB_DIR = path.join(os.tmpdir(), 'peakabu-aireel-thumbs');
+
+  ipcMain.handle('aireel-get-thumbnail', async (event, { clipId, clipPath, durationMs }) => {
+    if (!clipId || !clipPath || !fs.existsSync(clipPath)) return { ok: false };
+
+    try { if (!fs.existsSync(AIREEL_THUMB_DIR)) fs.mkdirSync(AIREEL_THUMB_DIR, { recursive: true }); }
+    catch (e) { return { ok: false, error: e.message }; }
+
+    const cachePath = path.join(AIREEL_THUMB_DIR, `${clipId}.jpg`);
+    if (fs.existsSync(cachePath)) {
+      try {
+        const data = fs.readFileSync(cachePath).toString('base64');
+        return { ok: true, dataUrl: 'data:image/jpeg;base64,' + data };
+      } catch (e) { /* fall through and regenerate */ }
+    }
+
+    // A couple seconds in rather than frame 0 — the very first frame of a
+    // highlight is often still black or mid-transition.
+    const seekSec = Math.min(2, Math.max(0, ((durationMs || 4000) / 1000) * 0.15));
+
+    return new Promise((resolve) => {
+      const args = [
+        '-ss', String(seekSec.toFixed(2)), '-i', clipPath,
+        '-frames:v', '1', '-vf', 'scale=160:-1',
+        '-q:v', '4', '-y', cachePath
+      ];
+      const p = spawn(getFFmpegPath(), args, { windowsHide: true });
+      if (p.pid) setBelowNormalPriority(p.pid);
+      let timedOut = false;
+      const timer = setTimeout(() => { timedOut = true; try { p.kill('SIGKILL'); } catch (e) {} }, 8000);
+
+      p.on('close', () => {
+        clearTimeout(timer);
+        if (timedOut || !fs.existsSync(cachePath)) { resolve({ ok: false }); return; }
+        try {
+          const data = fs.readFileSync(cachePath).toString('base64');
+          resolve({ ok: true, dataUrl: 'data:image/jpeg;base64,' + data });
+        } catch (e) { resolve({ ok: false, error: e.message }); }
+      });
+      p.on('error', () => { clearTimeout(timer); resolve({ ok: false }); });
+    });
+  });
+
+  // ================================
   // AI REEL — LOCAL RENDER (Phase 2)
   // Analyzes + renders entirely on this PC using the heuristic editor
   // (no Anthropic API call yet — that's wired in once the org key is set
@@ -3200,7 +3288,9 @@ function createWindow() {
       workDir, outputPath, clips, targetSec, game, styleNotes,
       threadCap: 4,
       onProgress: (p) => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
+        if (aiReelWindow && !aiReelWindow.isDestroyed()) {
+          aiReelWindow.webContents.send('aireel-progress', p);
+        } else if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('aireel-progress', p);
         }
       }
