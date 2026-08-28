@@ -1073,6 +1073,71 @@
 
     .hl-pill-empty { font-size: 10px; color: #3a5244; text-align: center; padding: 16px 6px; }
 
+    /* Full-grid loading state — shown while a session is being fetched,
+       including the auto-load that fires when someone opens a shared
+       "Open in Web Player" link. Reuses the monkey-in-a-bush motif from
+       the per-POV loader at a larger scale. */
+    /* Full-page overlay — sits above everything (including a previously
+       loaded session's right panel / highlights column, which stay visible
+       until the new load finishes) so the loader is always centered on the
+       whole page, not squeezed into whatever's left of the video column. */
+    .session-loading-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #0a1611;
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .session-loading-overlay.show { display: flex; }
+    .session-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 20px;
+      color: #8fbfa3;
+      font-size: 20px;
+      font-weight: 600;
+    }
+    .session-loading .sl-stage {
+      position: relative;
+      width: 320px;
+      height: 130px;
+      overflow: hidden;
+    }
+    .session-loading .sl-bush {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 320px;
+      height: 44px;
+      background:
+        radial-gradient(circle at 20% 100%, #1d9e75 0 32px, transparent 32px),
+        radial-gradient(circle at 40% 100%, #23b686 0 38px, transparent 38px),
+        radial-gradient(circle at 60% 100%, #1d9e75 0 38px, transparent 38px),
+        radial-gradient(circle at 80% 100%, #23b686 0 32px, transparent 32px);
+      background-repeat: no-repeat;
+      z-index: 2;
+    }
+    .session-loading .sl-monkey {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(64px);
+      font-size: 68px;
+      line-height: 1;
+      z-index: 1;
+      animation: slPeek 1.5s ease-in-out infinite;
+    }
+    @keyframes slPeek {
+      0%, 100% { transform: translateX(-50%) translateY(66px); }
+      45%, 55% { transform: translateX(-50%) translateY(-24px); }
+    }
+
     /* ========================
        PANEL COLLAPSE
     ======================== */
@@ -1101,6 +1166,13 @@
       <button class="btn" onclick="loadSession()">Load</button>
       <button class="btn btn-secondary btn-icon" id="shareBtn" onclick="copyShareLink()" title="Copy share link" style="display:none;">&#x1F517;</button>
   
+    </div>
+  </div>
+
+  <div class="session-loading-overlay" id="sessionLoadingOverlay">
+    <div class="session-loading">
+      <div class="sl-stage"><div class="sl-monkey">&#x1F648;</div><div class="sl-bush"></div></div>
+      <div>Loading...</div>
     </div>
   </div>
 
@@ -1182,7 +1254,7 @@
       <button class="btn btn-small" onclick="startComposite()" style="margin:8px 16px;">Start Combined View Export</button>
     </div>
     <div class="composite-section" id="aireelSection" style="display:none;flex-wrap:wrap;gap:8px;padding:8px 16px;">
-     <div style="width:100%;font-size:13px;color:#39d3a0;font-weight:600;">🎞 AI Highlight Reel <span style="color:#7a9686;font-weight:normal;">(T3/T4 — free during beta)</span></div>
+     <div style="width:100%;font-size:13px;color:#39d3a0;font-weight:600;">🎞 AI Highlight Reel</div>
      <div>
        <label style="font-size:11px;color:#7a9686;display:block;">Length</label>
        <select id="aireelLength" style="background:#0c1c14;color:#c8d6cd;border:1px solid #24402e;border-radius:4px;padding:4px 8px;">
@@ -2017,13 +2089,15 @@
       const code = document.getElementById('sessionInput').value.trim().toUpperCase();
       if (!code || code.length < 4) { alert('Enter a valid session code'); return; }
 
+      showSessionLoading();
+
       try {
         const sessionRes = await fetch('/sessions/' + code);
         if (sessionRes.status === 404) {
           showExpiredState('Session not found — it may have expired or the code is incorrect.');
           return;
         }
-        if (!sessionRes.ok) { alert('Error loading session'); return; }
+        if (!sessionRes.ok) { hideSessionLoading(); alert('Error loading session'); return; }
         const session = await sessionRes.json();
 
         const uploadsRes = await fetch('/sessions/' + code + '/uploads');
@@ -2096,6 +2170,7 @@
         myUsername.toLowerCase() === session.createdBy.toLowerCase());
         selectedForDelete.clear();
 
+        hideSessionLoading();
         renderVideoGrid();
         renderMemberList();
         renderAudioControls();
@@ -2114,12 +2189,26 @@
 
         console.log('Loaded ' + code + ' — ' + allUploads.length + ' uploads, ' + highlights.length + ' highlight(s), ' + allUsers.length + ' user(s)' + (hasProcessing ? ' (some still processing)' : ''));
       } catch (err) {
-        alert('Error loading session: ' + err.message);
+        showExpiredState('Could not load this session: ' + err.message);
         console.error(err);
       }
     }
 
+    // Full-page overlay shown while a session is being fetched — covers the
+    // "type a new code while an old session's panels are still on screen"
+    // case, where a videoGrid-only loader would end up squeezed into
+    // whatever space was left rather than centered on the page.
+    function showSessionLoading() {
+      const overlay = document.getElementById('sessionLoadingOverlay');
+      if (overlay) overlay.classList.add('show');
+    }
+    function hideSessionLoading() {
+      const overlay = document.getElementById('sessionLoadingOverlay');
+      if (overlay) overlay.classList.remove('show');
+    }
+
     function showExpiredState(message) {
+      hideSessionLoading();
       const grid = document.getElementById('videoGrid');
       grid.innerHTML = '';
       const state = document.createElement('div');
@@ -3365,7 +3454,7 @@
   var paComposeClose = null;
   var paDragging = null; // { commentId, node, layer, startX, startY }
   var paMomentTickCount = 0;
-  var paMomentClusterIndex = -1; // index into paAllTimestamps() while the moment panel is open — independent of video playhead so paging doesn't move anyone's video
+  var paPanelInteracting = false; // true while a pointer is down inside a pa-panel
   var PA_CMT_SCALES = { large: 1, medium: 0.7, small: 0.49 }; // each step is -30% of the previous
 
   function paApplyCommentSize(size) {
@@ -3430,9 +3519,15 @@
       '.pa-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;}',
       '.pa-counter{font-size:11px;color:#5f7a6a;}.pa-counter.pa-warn{color:#d8a838;}',
       '.pa-err{font-size:11px;color:#f0857a;margin-top:6px;min-height:14px;}',
-      '.pa-list-item{display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #14291d;font-size:12px;}',
+      '.pa-list-group{font-size:10px;color:#7a9686;text-transform:uppercase;letter-spacing:1px;',
+      'padding:10px 6px 4px;border-bottom:1px solid #1e3527;margin-bottom:2px;font-weight:700;}',
+      '.pa-list-group.pa-group-current{color:#39d3a0;}',
+      '.pa-list-item{display:flex;gap:8px;align-items:flex-start;padding:8px 6px;border-radius:6px;border-bottom:1px solid #14291d;font-size:12px;cursor:pointer;transition:background .12s;}',
       '.pa-list-item:last-child{border-bottom:none;}',
-      '.pa-list-when{color:#45604f;font-family:Consolas,monospace;font-size:11px;flex-shrink:0;min-width:42px;}',
+      '.pa-list-item:hover{background:#12251a;}',
+      '.pa-list-item.pa-current{background:#0f2318;box-shadow:inset 2px 0 0 #39d3a0;}',
+      '.pa-list-when{color:#7a9686;font-family:Consolas,monospace;font-size:11px;flex-shrink:0;min-width:48px;}',
+      '.pa-list-item:hover .pa-list-when{color:#39d3a0;}',
       '.pa-list-main{flex:1;min-width:0;}',
       '.pa-list-who{color:#39d3a0;font-weight:700;font-size:11px;}',
       '.pa-list-pov{color:#7a9686;font-size:10px;}',
@@ -3568,10 +3663,106 @@
   // ================================
   // NAVIGATION — jump between comment clusters
   // ================================
+  // Comments store timestampMs relative to THAT POV's own local video clock
+  // (whatever currentTime was when the comment was posted). Two POVs in the
+  // same highlight can start at different offsets, so comparing raw
+  // timestampMs across POVs — or across different highlights entirely —
+  // clusters unrelated comments together (this is why so many appeared to
+  // sit at "0:00": early-clip comments from many different clips all piled
+  // into the same bucket). Master time (timestampMs + that POV's offset) is
+  // the only value that's meaningfully comparable across POVs, and it's
+  // also what paJumpToComment already assumed when seeking (see its
+  // `targetSec - v.offset` below) — this just makes the clusters match that.
+  // Scoped to the highlight currently being viewed; a "moment" from a
+  // different highlight isn't a moment in THIS one.
+  // Maps an uploadId to the highlight it belongs to, and to its sync offset
+  // WITHIN that highlight. Mirrors calculateOffsets() in the main script
+  // (earliest startTimeUTC in the cluster is the zero point) but works for
+  // any highlight, not just the one currently loaded — the comment list
+  // spans the whole session, so it has to resolve offsets for clips that
+  // aren't on screen. nudgeMs is deliberately ignored: it's a local viewing
+  // tweak, not part of where the comment was actually left.
+  function paHighlightIndexForUpload(uploadId) {
+    var hls = paHighlightsSafe();
+    for (var i = 0; i < hls.length; i++) {
+      var clips = (hls[i] && hls[i].clips) || [];
+      for (var k = 0; k < clips.length; k++) {
+        if (clips[k] && clips[k].uploadId === uploadId) return i;
+      }
+    }
+    return -1;
+  }
+
+  function paOffsetSecInHighlight(hlIdx, uploadId) {
+    var hls = paHighlightsSafe();
+    var hl = hls[hlIdx];
+    if (!hl || !hl.clips) return 0;
+    var earliest = Infinity, mine = null;
+    hl.clips.forEach(function (c) {
+      if (!c || !c.metadata || !c.metadata.startTimeUTC) return;
+      if (c.metadata.version < 2) return;
+      earliest = Math.min(earliest, c.metadata.startTimeUTC);
+      if (c.uploadId === uploadId) mine = c.metadata.startTimeUTC;
+    });
+    if (!isFinite(earliest) || mine === null) return 0;
+    return (mine - earliest) / 1000;
+  }
+
+  // Every comment in the session, resolved to the highlight it lives in and
+  // its master-time position inside that highlight. This is what the panel
+  // lists — one flat, ordered view of the whole session.
+  function paAllCommentsList() {
+    var out = [];
+    paByUpload.forEach(function (arr, uploadId) {
+      var hlIdx = paHighlightIndexForUpload(uploadId);
+      if (hlIdx === -1) return;
+      var offMs = paOffsetSecInHighlight(hlIdx, uploadId) * 1000;
+      arr.forEach(function (c) {
+        out.push({
+          comment: c,
+          pov: paPovNameForUpload(uploadId),
+          uploadId: uploadId,
+          hlIdx: hlIdx,
+          masterMs: c.timestampMs + offMs
+        });
+      });
+    });
+    out.sort(function (a, b) {
+      if (a.hlIdx !== b.hlIdx) return a.hlIdx - b.hlIdx;
+      return a.masterMs - b.masterMs;
+    });
+    return out;
+  }
+
+  function paCurrentHighlightUploadIds() {
+    var ids = {};
+    var hls = paHighlightsSafe();
+    var hl = hls[paCurrentHighlightIndexSafe()];
+    if (hl && hl.clips) {
+      hl.clips.forEach(function (c) { if (c && c.uploadId) ids[c.uploadId] = true; });
+    }
+    return ids;
+  }
+
+  function paHighlightsSafe() { try { return highlights || []; } catch (e) { return []; } }
+  function paCurrentHighlightIndexSafe() { try { return currentHighlightIndex; } catch (e) { return -1; } }
+  function paMasterDurationSafe() { try { return masterDuration || 0; } catch (e) { return 0; } }
+
+  function paOffsetSecForUpload(uploadId) {
+    var vids = paVideos();
+    for (var i = 0; i < vids.length; i++) {
+      if (vids[i] && vids[i].uploadId === uploadId) return vids[i].offset || 0;
+    }
+    return 0;
+  }
+
   function paAllTimestamps() {
+    var currentIds = paCurrentHighlightUploadIds();
     var ts = [];
-    paByUpload.forEach(function (arr) {
-      arr.forEach(function (c) { ts.push(c.timestampMs); });
+    paByUpload.forEach(function (arr, uploadId) {
+      if (!currentIds[uploadId]) return;
+      var offMs = paOffsetSecForUpload(uploadId) * 1000;
+      arr.forEach(function (c) { ts.push(c.timestampMs + offMs); });
     });
     ts.sort(function (a, b) { return a - b; });
     // Cluster: merge timestamps within 1.5s of each other
@@ -3584,19 +3775,19 @@
     return clusters;
   }
 
+  function paGetCurrentMasterMs() {
+    try { return (typeof getCurrentMasterTime === 'function') ? getCurrentMasterTime() * 1000 : 0; }
+    catch (e) { return 0; }
+  }
+
   function paJumpToComment(dir) {
     var clusters = paAllTimestamps();
     if (!clusters.length) return;
 
-    // Get the current playhead in ms from the first loaded POV
+    // Master time, not any one POV's raw local time — clusters are now
+    // built on master time too, so this has to match.
     var vids = paVideos();
-    var nowMs = 0;
-    for (var i = 0; i < vids.length; i++) {
-      if (vids[i] && vids[i].loaded && vids[i].element) {
-        nowMs = (vids[i].element.currentTime || 0) * 1000;
-        break;
-      }
-    }
+    var nowMs = paGetCurrentMasterMs();
 
     var target = null;
     if (dir > 0) {
@@ -3676,28 +3867,65 @@
     return (paByUpload.get(uploadId) || []).length;
   };
 
+  // ================================
+  // UNSEEN TRACKING — the 💬 button is a notification, not a total.
+  // Seen comment ids persist per session on this device, so re-opening the
+  // player doesn't re-announce a backlog you've already read. Counting by
+  // id (rather than comparing totals) means a deletion can't make unread
+  // comments silently "go away" by dropping the total back down.
+  // ================================
+  var paSeenIds = null;
+  function paSeenKey() { return 'pa_seen_comments_' + (paCode() || 'none'); }
+
+  function paLoadSeenIds() {
+    paSeenIds = {};
+    try {
+      var raw = localStorage.getItem(paSeenKey());
+      if (raw) JSON.parse(raw).forEach(function (id) { paSeenIds[id] = true; });
+    } catch (e) { paSeenIds = {}; }
+  }
+
+  function paPersistSeenIds() {
+    try {
+      var ids = Object.keys(paSeenIds || {}).slice(-500); // cap growth
+      localStorage.setItem(paSeenKey(), JSON.stringify(ids));
+    } catch (e) {}
+  }
+
+  function paUnseenCount() {
+    if (!paSeenIds) paLoadSeenIds();
+    var n = 0;
+    paByUpload.forEach(function (arr) {
+      arr.forEach(function (c) { if (!paSeenIds[c.id]) n++; });
+    });
+    return n;
+  }
+
   function paTotalCommentCount() {
     var total = 0;
     paByUpload.forEach(function (arr) { total += arr.length; });
     return total;
   }
 
-  // The "new" indicator now lives ONLY on the bottom-right moment button —
-  // one signal for the whole session instead of pulsing scattered across
-  // every video tile. First sight sets the baseline so an existing backlog
-  // isn't announced as new.
   function paUpdateMomentPing() {
     var btn = document.getElementById('paMomentBtn');
     if (!btn) return;
+    var unseen = paUnseenCount();
     var total = paTotalCommentCount();
-    if (window._paSeenTotal === undefined) window._paSeenTotal = total;
-    btn.classList.toggle('pa-new', total > window._paSeenTotal);
+    btn.textContent = '\uD83D\uDCAC ' + total + (unseen > 0 ? ' +' + unseen : '');
+    btn.title = unseen > 0
+      ? unseen + ' new comment' + (unseen === 1 ? '' : 's') + ' \u2014 ' + total + ' in this session'
+      : total + ' comment' + (total === 1 ? '' : 's') + ' in this session';
+    btn.classList.toggle('pa-new', unseen > 0);
   }
 
   function paMarkCommentsSeen() {
-    window._paSeenTotal = paTotalCommentCount();
-    var btn = document.getElementById('paMomentBtn');
-    if (btn) btn.classList.remove('pa-new');
+    if (!paSeenIds) paLoadSeenIds();
+    paByUpload.forEach(function (arr) {
+      arr.forEach(function (c) { paSeenIds[c.id] = true; });
+    });
+    paPersistSeenIds();
+    paUpdateMomentPing();
   }
 
   function paRefreshCounts() {
@@ -3758,14 +3986,14 @@
       }
     }
 
-    // Throttled to ~3x/sec. Keeps arrow visibility synced to whether the
-    // panel is actually open, and live-refreshes the selected cluster's
-    // comment list as new comments arrive — without moving the selection.
+    // Throttled to ~3x/sec. Live-refreshes the open comment list as new
+    // comments arrive; the signature compare inside means an unchanged list
+    // costs nothing. Skipped entirely while the pointer is down inside the
+    // panel — a rebuild between mousedown and mouseup destroys the row the
+    // click was landing on, and the click event then never fires at all.
     paMomentTickCount++;
-    if (paMomentTickCount % 3 === 0) {
-      var momentOpen = !!document.getElementById('paMomentPanel');
-      paSetMomentArrowsVisible(momentOpen);
-      if (momentOpen) paRenderMomentPanelForCluster(false);
+    if (paMomentTickCount % 3 === 0 && !paPanelInteracting) {
+      if (document.getElementById('paMomentPanel')) paRenderMomentPanelForCluster(false);
     }
 
     // Remove stale
@@ -3919,24 +4147,15 @@
 }
 
   // ================================
-  // NAV CONTROLS — ◀ 💬 ▶ in the timeline row
+  // NAV CONTROLS — ◀◀ 💬 ▶▶ in the timeline row
   // ================================
-  // Shows/hides the inner single-step arrows — only meaningful while the
-  // moment panel itself is open, since they page its contents rather than
-  // seek anyone's video.
-  function paSetMomentArrowsVisible(show) {
-    var p = document.getElementById('paMomentPrevBtn');
-    var n = document.getElementById('paMomentNextBtn');
-    if (p) p.style.display = show ? '' : 'none';
-    if (n) n.style.display = show ? '' : 'none';
-  }
-
   function paEnsureNavControls() {
     var row = document.querySelector('#sessionTimeline .timeline-top-row');
     if (!row || document.getElementById('paMomentBtn')) return;
 
-    // Outer pair (<< / >>): unchanged — seeks every loaded POV's video to
-    // the next/previous comment cluster in the timeline.
+    // Outer pair (<< / >>): seeks every loaded POV's video to the
+    // next/previous comment in the CURRENT highlight. The inner single-step
+    // pair is gone — it paged a cluster concept the panel no longer uses.
     var outerPrev = document.createElement('button');
     outerPrev.id = 'paNavPrev';
     outerPrev.className = 'btn btn-small btn-secondary pa-nav-btn';
@@ -3944,33 +4163,12 @@
     outerPrev.textContent = '\u25C0\u25C0';
     outerPrev.addEventListener('click', function () { paJumpToComment(-1); });
 
-    // Inner pair (< / >): page the OPEN moment panel's contents between
-    // comment clusters without touching video playback. Hidden until the
-    // panel is actually open.
-    var innerPrev = document.createElement('button');
-    innerPrev.id = 'paMomentPrevBtn';
-    innerPrev.className = 'btn btn-small btn-secondary pa-nav-btn';
-    innerPrev.title = 'Previous comment in this list';
-    innerPrev.textContent = '\u25C0';
-    innerPrev.style.display = 'none';
-    innerPrev.disabled = true;
-    innerPrev.addEventListener('click', function () { paStepMomentCluster(-1); });
-
     var moment = document.createElement('button');
     moment.id = 'paMomentBtn';
     moment.className = 'btn btn-small btn-secondary';
-    moment.title = 'All comments at this moment';
+    moment.title = 'All comments in this session';
     moment.textContent = '\uD83D\uDCAC 0';
     moment.addEventListener('click', paOpenMomentPanel);
-
-    var innerNext = document.createElement('button');
-    innerNext.id = 'paMomentNextBtn';
-    innerNext.className = 'btn btn-small btn-secondary pa-nav-btn';
-    innerNext.title = 'Next comment in this list';
-    innerNext.textContent = '\u25B6';
-    innerNext.style.display = 'none';
-    innerNext.disabled = true;
-    innerNext.addEventListener('click', function () { paStepMomentCluster(1); });
 
     var outerNext = document.createElement('button');
     outerNext.id = 'paNavNext';
@@ -3980,9 +4178,7 @@
     outerNext.addEventListener('click', function () { paJumpToComment(1); });
 
     row.appendChild(outerPrev);
-    row.appendChild(innerPrev);
     row.appendChild(moment);
-    row.appendChild(innerNext);
     row.appendChild(outerNext);
   }
 
@@ -3992,24 +4188,17 @@
 
    var p = document.getElementById('paNavPrev');
    var n = document.getElementById('paNavNext');
-   var btn = document.getElementById('paMomentBtn');
 
    // Hide nav arrows entirely when there are no comments to navigate
    if (p) p.style.display = hasAnyComments ? '' : 'none';
    if (n) n.style.display = hasAnyComments ? '' : 'none';
 
-   if (btn) btn.textContent = '\uD83D\uDCAC ' + paMomentComments().length;
+   // Badge text/glow is owned solely by paUpdateMomentPing (unseen-aware).
+   paUpdateMomentPing();
 
    if (!hasAnyComments) return;
 
-   var vids = paVideos();
-   var nowMs = 0;
-   for (var i = 0; i < vids.length; i++) {
-     if (vids[i] && vids[i].loaded && vids[i].element) {
-       nowMs = (vids[i].element.currentTime || 0) * 1000;
-       break;
-     }
-  }
+   var nowMs = paGetCurrentMasterMs();
   var hasPrev = clusters.some(function (t) { return t < nowMs - 200; });
   var hasNext = clusters.some(function (t) { return t > nowMs + 200; });
   if (p) p.disabled = !hasPrev;
@@ -4017,33 +4206,8 @@
 }
 
   // ================================
-  // "COMMENTS AT THIS MOMENT"
+  // "SESSION COMMENTS" PANEL SUPPORT
   // ================================
-  function paMomentComments() {
-    var out = [];
-    var vids = paVideos();
-    for (var i = 0; i < vids.length; i++) {
-      var v = vids[i];
-      if (!v || !v.uploadId || !v.loaded || !v.element) continue;
-      var tMs = (v.element.currentTime || 0) * 1000;
-      var all = paByUpload.get(v.uploadId) || [];
-      for (var k = 0; k < all.length; k++) {
-        if (Math.abs(all[k].timestampMs - tMs) <= PA_MOMENT_WINDOW_MS) {
-          out.push({ comment: all[k], pov: v.username });
-        }
-      }
-    }
-    out.sort(function (a, b) { return a.comment.timestampMs - b.comment.timestampMs; });
-    return out;
-  }
-
-  // Re-renders the open moment panel's body only when the actual set of
-  // comments at the current moment has changed — cheap signature compare
-  // instead of a full teardown/rebuild on every call.
-  // Maps an uploadId to the POV owner's display name, checked against the
-  // full session upload list (not just the currently loaded highlight) so
-  // a comment cluster belonging to a different highlight still shows the
-  // right name instead of "Unknown".
   function paAllUploadsSafe() { try { return allUploads || []; } catch (e) { return []; } }
   function paPovNameForUpload(uploadId) {
     var all = paAllUploadsSafe();
@@ -4057,69 +4221,22 @@
     return 'Unknown';
   }
 
-  // All comments within PA_MOMENT_WINDOW_MS of a given cluster's timestamp,
-  // across every POV in the session — not just the currently loaded highlight.
-  function paCommentsAtClusterIndex(idx) {
-    var clusters = paAllTimestamps();
-    if (idx < 0 || idx >= clusters.length) return [];
-    var ts = clusters[idx];
-    var out = [];
-    paByUpload.forEach(function (arr, uploadId) {
-      arr.forEach(function (c) {
-        if (Math.abs(c.timestampMs - ts) <= PA_MOMENT_WINDOW_MS) {
-          out.push({ comment: c, pov: paPovNameForUpload(uploadId) });
-        }
-      });
-    });
-    out.sort(function (a, b) { return a.comment.timestampMs - b.comment.timestampMs; });
-    return out;
-  }
 
-  // Picks the cluster closest to wherever the video currently sits, so
-  // opening the panel starts on the most relevant moment.
-  function paNearestClusterIndex() {
-    var clusters = paAllTimestamps();
-    if (!clusters.length) return -1;
-    var vids = paVideos();
-    var nowMs = 0;
-    for (var i = 0; i < vids.length; i++) {
-      if (vids[i] && vids[i].loaded && vids[i].element) {
-        nowMs = (vids[i].element.currentTime || 0) * 1000;
-        break;
-      }
-    }
-    var best = 0, bestDiff = Infinity;
-    for (var k = 0; k < clusters.length; k++) {
-      var diff = Math.abs(clusters[k] - nowMs);
-      if (diff < bestDiff) { bestDiff = diff; best = k; }
-    }
-    return best;
-  }
-
-  function paStepMomentCluster(dir) {
-    var clusters = paAllTimestamps();
-    if (!clusters.length) return;
-    var next = paMomentClusterIndex + dir;
-    if (next < 0 || next >= clusters.length) return;
-    paMomentClusterIndex = next;
-    paRenderMomentPanelForCluster(true);
-  }
-
-  // Renders (or force-refreshes) the moment panel's body for whichever
-  // cluster is currently selected. Cheap signature compare skips the
-  // rebuild when nothing's changed — now keyed off the selected cluster
-  // instead of the video playhead, so paging with the arrows doesn't fight
-  // the periodic live-refresh from new comments arriving.
+  // Renders the panel as ONE list of every comment in the session, grouped
+  // under the highlight each belongs to. Replaces the old cluster paging —
+  // that showed "Moment 1 of xx" and a list that was really just all the
+  // session's comments anyway, with arrows that paged a concept the list
+  // didn't actually reflect. Cheap signature compare still skips rebuilds
+  // when nothing's changed, so the live refresh doesn't fight scrolling.
   var paLastMomentSig = null;
   function paRenderMomentPanelForCluster(force) {
     var panel = document.getElementById('paMomentPanel');
     if (!panel) return;
-    var clusters = paAllTimestamps();
-    if (paMomentClusterIndex < 0 && clusters.length) paMomentClusterIndex = paNearestClusterIndex();
 
-    var items = (paMomentClusterIndex >= 0 && paMomentClusterIndex < clusters.length)
-      ? paCommentsAtClusterIndex(paMomentClusterIndex) : [];
-    var sig = items.map(function (it) { return it.comment.id; }).join(',');
+    var items = paAllCommentsList();
+    var curHl = paCurrentHighlightIndexSafe();
+    var nowMs = paGetCurrentMasterMs();
+    var sig = items.map(function (it) { return it.comment.id; }).join(',') + '|' + curHl;
     if (!force && sig === paLastMomentSig) return;
     paLastMomentSig = sig;
 
@@ -4127,30 +4244,36 @@
     if (!body) return;
     body.innerHTML = '';
 
-    var posLabel = document.createElement('div');
-    posLabel.style.cssText = 'font-size:10px;color:#5f7a6a;margin-bottom:8px;text-align:center;';
-    posLabel.textContent = clusters.length
-      ? ('Moment ' + (paMomentClusterIndex + 1) + ' of ' + clusters.length)
-      : 'No comments yet';
-    body.appendChild(posLabel);
-
     if (!items.length) {
       var empty = document.createElement('div'); empty.className = 'pa-empty';
-      empty.textContent = 'Nothing left here yet.';
+      empty.textContent = 'No comments in this session yet.';
       body.appendChild(empty);
-    } else {
-      items.forEach(function (it) {
-        body.appendChild(paBuildListItem(it.comment, it.pov, function () {
-          paLastMomentSig = null; // force a rebuild after a delete
-          paRenderMomentPanelForCluster(true);
-        }));
-      });
+      return;
     }
 
-    var prevBtn = document.getElementById('paMomentPrevBtn');
-    var nextBtn = document.getElementById('paMomentNextBtn');
-    if (prevBtn) prevBtn.disabled = paMomentClusterIndex <= 0;
-    if (nextBtn) nextBtn.disabled = !clusters.length || paMomentClusterIndex >= clusters.length - 1;
+    var countLabel = document.createElement('div');
+    countLabel.style.cssText = 'font-size:10px;color:#5f7a6a;margin-bottom:8px;text-align:center;';
+    countLabel.textContent = items.length + ' comment' + (items.length === 1 ? '' : 's') +
+      ' \u00b7 click one to jump there';
+    body.appendChild(countLabel);
+
+    var lastHl = null;
+    items.forEach(function (it) {
+      if (it.hlIdx !== lastHl) {
+        lastHl = it.hlIdx;
+        var hdr = document.createElement('div');
+        hdr.className = 'pa-list-group' + (it.hlIdx === curHl ? ' pa-group-current' : '');
+        hdr.textContent = 'Highlight ' + (it.hlIdx + 1) +
+          (it.hlIdx === curHl ? '  \u2022 now viewing' : '');
+        body.appendChild(hdr);
+      }
+      var isCurrent = (it.hlIdx === curHl) && nowMs > 0 &&
+        Math.abs(it.masterMs - nowMs) <= PA_MOMENT_WINDOW_MS;
+      body.appendChild(paBuildListItem(it, isCurrent, function () {
+        paLastMomentSig = null; // force a rebuild after a delete
+        paRenderMomentPanelForCluster(true);
+      }));
+    });
   }
 
   // ================================
@@ -4289,16 +4412,71 @@
   function paOpenMomentPanel() {
     paCloseAll();
     paMarkCommentsSeen();
-    paMomentClusterIndex = paNearestClusterIndex();
-    paBuildPanel('paMomentPanel', 'Comments at this moment');
-    paSetMomentArrowsVisible(true);
+    paBuildPanel('paMomentPanel', 'Session comments');
     paLastMomentSig = null; // force the first render
     paRenderMomentPanelForCluster(true);
   }
 
-  function paBuildListItem(c, povName, onChanged) {
+  // Jumps to wherever a comment was actually left — switching highlights
+  // first when the comment belongs to a different one.
+  //
+  // Ordering matters here: the panel closes FIRST so a click always produces
+  // visible feedback even if a later step bails, and the POV lookup polls
+  // instead of assuming a fixed delay (switchHighlight rebuilds `videos`
+  // synchronously but kicks off an async POV load, and on a 284-upload
+  // session that load can lag well past any fixed timeout).
+  async function paSeekToCommentEntry(entry) {
+    if (!entry) { console.warn('[pa] jump: no entry'); return; }
+    paCloseAll();
+
+    try {
+      if (entry.hlIdx >= 0 && entry.hlIdx !== paCurrentHighlightIndexSafe()) {
+        paCall('switchHighlight', [entry.hlIdx]);
+      }
+
+      // Poll for the POV to show up in the rebuilt videos array.
+      var idx = -1;
+      for (var attempt = 0; attempt < 20 && idx === -1; attempt++) {
+        var vids = paVideos();
+        for (var i = 0; i < vids.length; i++) {
+          if (vids[i] && vids[i].uploadId === entry.uploadId) { idx = i; break; }
+        }
+        if (idx === -1) await new Promise(function (r) { setTimeout(r, 50); });
+      }
+      if (idx === -1) {
+        console.warn('[pa] jump: POV not found for upload', entry.uploadId, 'hl', entry.hlIdx);
+        return;
+      }
+
+      try { await paCall('focusOnVideo', [idx]); }
+      catch (e) { console.warn('[pa] jump: focusOnVideo failed', e); }
+
+      var v = paVideos()[idx];
+      if (!v) return;
+
+      var targetSec = entry.masterMs / 1000;
+      var localSec = Math.max(0, targetSec - (v.offset || 0));
+      if (v.element && isFinite(v.element.duration)) {
+        v.element.currentTime = Math.min(localSec, Math.max(0, v.element.duration - 0.05));
+      }
+
+      var dur = paMasterDurationSafe();
+      if (dur > 0) paCall('seekToFraction', [Math.max(0, Math.min(1, targetSec / dur))]);
+      paCall('updateNeedle');
+    } catch (err) {
+      console.warn('[pa] jump failed:', err);
+    }
+  }
+
+  function paBuildListItem(it, isCurrent, onChanged) {
+    var c = it.comment;
+    var povName = it.pov;
     var row = document.createElement('div'); row.className = 'pa-list-item';
-    var when = document.createElement('div'); when.className = 'pa-list-when'; when.textContent = paFmt(c.timestampMs);
+    if (isCurrent) row.classList.add('pa-current');
+
+    var when = document.createElement('div'); when.className = 'pa-list-when';
+    when.textContent = '\u25B6 ' + paFmt(it.masterMs);
+    when.title = 'Jump to this moment';
     var main = document.createElement('div'); main.className = 'pa-list-main';
     var who = document.createElement('span'); who.className = 'pa-list-who'; who.textContent = c.username;
     var pov = document.createElement('span'); pov.className = 'pa-list-pov'; pov.textContent = ' on ' + povName + "'s POV";
@@ -4307,12 +4485,16 @@
     main.appendChild(head); main.appendChild(text);
     row.appendChild(when); row.appendChild(main);
 
+    row.title = 'Jump to Highlight ' + (it.hlIdx + 1) + ' at ' + paFmt(it.masterMs);
+    row.addEventListener('click', function () { paSeekToCommentEntry(it); });
+
     var me = (paMe() || '').toLowerCase();
     var canDelete = paToken() && (paHost() || (c.username || '').toLowerCase() === me);
     if (canDelete) {
       var del = document.createElement('button'); del.className = 'pa-list-del';
       del.textContent = '\u2715'; del.title = 'Remove this comment';
-      del.addEventListener('click', function () {
+      del.addEventListener('click', function (e) {
+        e.stopPropagation(); // don't also trigger the row's jump-to-moment
         if (!confirm('Remove this comment?')) return;
         fetch('/sessions/' + paCode() + '/comments/' + c.id, {
           method: 'DELETE', headers: { 'Authorization': 'Bearer ' + paToken() }
@@ -4483,20 +4665,32 @@
     paWrap('renderPOVContainer', function () { paAttachAll(); paApplyEnabledState(); });
     paWrap('switchHighlight', function () {
       paSet.clear(); paLastT.clear();
+      // Comment clusters/moment panel are scoped to whichever highlight is
+      // active — a cluster index from the old one doesn't mean anything here.
+      paLastMomentSig = null;
       paAttachAll(); paApplyEnabledState();
+      if (document.getElementById('paMomentPanel')) paRenderMomentPanelForCluster(true);
     });
     paWrap('loadSession', function () {
       paEnsureGear();
       paSet.clear(); paLastT.clear();
+      paSeenIds = null; // re-read per session code
       paFetchComments().then(function () { paAttachAll(); paApplyEnabledState(); });
     });
 
     document.addEventListener('pointerdown', function (e) {
       var t = e.target;
       if (!t || !t.closest) return;
+      if (t.closest('.pa-panel')) paPanelInteracting = true;
       if (t.closest('#timelineTrack') || t.closest('.nudge-btn')) {
         paScrubUntil = Date.now() + 1200;
       }
+    }, true);
+
+    // Released a beat after the pointer lifts so the click event that
+    // follows mouseup has landed before refreshes are allowed again.
+    document.addEventListener('pointerup', function () {
+      setTimeout(function () { paPanelInteracting = false; }, 150);
     }, true);
 
     document.addEventListener('keydown', function (e) {
