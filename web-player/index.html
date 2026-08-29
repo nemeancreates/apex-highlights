@@ -379,6 +379,26 @@
     .highlight-block:hover { background: #16321f; border-color: #39d3a0; }
     .highlight-block.active { background: #39d3a0; color: #04140d; border-color: #4fe0b0; }
 
+    /* Timeline markers — combat clusters and mic-active spans, derived from
+       metadata.audioPeaks (see main.js's doSaveHighlight). Sit above the
+       invisible highlight-block but below the needle. Pure decoration +
+       hover/click-to-seek; never affects playback on their own. */
+    .timeline-marker {
+      position: absolute;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 12px;
+      line-height: 1;
+      cursor: pointer;
+      z-index: 5;
+      opacity: 0.85;
+      filter: drop-shadow(0 1px 1px rgba(0,0,0,0.6));
+      transition: opacity 0.15s, transform 0.15s;
+    }
+    .timeline-marker:hover { opacity: 1; transform: translate(-50%, -50%) scale(1.25); }
+    .timeline-marker.tm-combat { font-size: 13px; }
+    .timeline-marker.tm-mic { font-size: 12px; }
+
     .timeline-needle {
       position: absolute;
       top: 0;
@@ -1768,7 +1788,110 @@
       block.style.pointerEvents = 'none';
       track.insertBefore(block, document.getElementById('timelineNeedle'));
 
+      renderTimelineMarkers();
       updateNeedle();
+    }
+
+    // ========================
+    // TIMELINE MARKERS — ⚔️ combat clusters, 🙊 mic-active boundaries.
+    // Sourced from metadata.audioPeaks (main.js's doSaveHighlight embeds
+    // this per clip from the renderer's live analyzer — see auto-peak-log).
+    // Purely visual/navigational; never touches capture or playback logic.
+    // ========================
+    const MARKER_COMBAT_BUCKET_MS = 3000;  // group desktop peaks into 3s buckets
+    const MARKER_COMBAT_MIN_PEAKS = 3;     // a bucket needs this many to count as a "cluster", not noise
+    const MARKER_MIN_GAP_PCT = 2.5;        // skip a marker that'd land within this % of an existing one
+
+    function collectAudioPeaks() {
+      // Peaks are stored clip-relative (tMs, 0 = that POV's own first
+      // frame) — add the POV's sync offset to land them on the same
+      // master timeline the scrub bar itself uses, same conversion the
+      // comments overlay already does for timestampMs.
+      const out = [];
+      videos.forEach(v => {
+        if (!v || v.missing || v.processing) return;
+        const peaks = v.metadata && Array.isArray(v.metadata.audioPeaks) ? v.metadata.audioPeaks : null;
+        if (!peaks || !peaks.length) return;
+        const offsetMs = (v.offset || 0) * 1000;
+        peaks.forEach(p => {
+          out.push({
+            masterMs: p.tMs + offsetMs,
+            source: p.source,
+            intensity: typeof p.intensity === 'number' ? p.intensity : null,
+            event: p.event || null
+          });
+        });
+      });
+      return out;
+    }
+
+    function buildCombatMarkers(peaks) {
+      const desktop = peaks.filter(p => p.source === 'desktop' && !p.event);
+      if (!desktop.length) return [];
+      const buckets = new Map();
+      desktop.forEach(p => {
+        const key = Math.floor(p.masterMs / MARKER_COMBAT_BUCKET_MS);
+        if (!buckets.has(key)) buckets.set(key, { count: 0, sum: 0 });
+        const b = buckets.get(key);
+        b.count++;
+        b.sum += (p.intensity || 0);
+      });
+      const clusters = [];
+      buckets.forEach((b, key) => {
+        if (b.count < MARKER_COMBAT_MIN_PEAKS) return;
+        clusters.push({
+          masterMs: key * MARKER_COMBAT_BUCKET_MS + MARKER_COMBAT_BUCKET_MS / 2,
+          avgIntensity: b.sum / b.count,
+          count: b.count
+        });
+      });
+      clusters.sort((a, b) => a.masterMs - b.masterMs);
+      return clusters;
+    }
+
+    function buildMicMarkers(peaks) {
+      return peaks
+        .filter(p => p.event === 'mic-start' || p.event === 'mic-end')
+        .sort((a, b) => a.masterMs - b.masterMs);
+    }
+
+    function renderTimelineMarkers() {
+      const track = document.getElementById('timelineTrack');
+      if (!track) return;
+      track.querySelectorAll('.timeline-marker').forEach(m => m.remove());
+      if (!masterDuration || masterDuration <= 0) return;
+
+      const peaks = collectAudioPeaks();
+      if (!peaks.length) return;
+
+      const needle = document.getElementById('timelineNeedle');
+      const placedPct = []; // skip markers that'd crowd an already-placed one
+
+      function place(pct, cls, icon, title, onClick) {
+        if (placedPct.some(p => Math.abs(p - pct) < MARKER_MIN_GAP_PCT)) return;
+        placedPct.push(pct);
+        const el = document.createElement('div');
+        el.className = 'timeline-marker ' + cls;
+        el.style.left = pct + '%';
+        el.textContent = icon;
+        el.title = title;
+        el.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+        track.insertBefore(el, needle);
+      }
+
+      buildCombatMarkers(peaks).forEach(c => {
+        const sec = c.masterMs / 1000;
+        const pct = Math.max(0, Math.min(100, (sec / masterDuration) * 100));
+        const label = c.count + ' loud moment' + (c.count > 1 ? 's' : '') + ' around ' + formatTime(sec);
+        place(pct, 'tm-combat', '\u2694\uFE0F', label, () => seekToFraction(sec / masterDuration));
+      });
+
+      buildMicMarkers(peaks).forEach(m => {
+        const sec = m.masterMs / 1000;
+        const pct = Math.max(0, Math.min(100, (sec / masterDuration) * 100));
+        const label = (m.event === 'mic-start' ? 'Mic started around ' : 'Mic quieted around ') + formatTime(sec);
+        place(pct, 'tm-mic', '\uD83D\uDE4A', label, () => seekToFraction(sec / masterDuration));
+      });
     }
 
     function updateNeedle() {
