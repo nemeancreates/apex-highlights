@@ -123,6 +123,15 @@
         padding: 16px; border-radius: 9px; box-shadow: 0 0 0 1px #39d3a0;
       }
       .btn-save:hover { background: #23b686; border: none; box-shadow: 0 0 0 1px #4fe0b0; }
+      .btn-save:disabled {
+        background: #14291d !important; border-color: #1e3527 !important;
+        color: #45604f !important; box-shadow: none !important;
+      }
+      .btn-save.state-queued {
+        background: #3a2f0f !important; border-color: #7a5e1f !important;
+        color: #e0c66a !important; box-shadow: 0 0 0 1px #c9a83c !important;
+        cursor: wait;
+      }
 
       /* Violet session action (Start) */
       .btn-start {
@@ -136,6 +145,8 @@
         background: #4a2417; border: 1px solid #9c5230; color: #f0b48f; font-weight: 500;
       }
       .btn-end:hover { background: #5a2c1c; border-color: #c46a3f; }
+
+      .btn-leave-usage { display: block; font-size: 11px; font-weight: 400; color: #c98098; opacity: .85; margin-bottom: 2px; }
 
       /* Rose leave / logout-danger */
       .btn-leave {
@@ -308,6 +319,13 @@
 
       .save-head { display: flex; align-items: center; justify-content: space-between; }
 
+      /* ===== Save + clip duration combined row ===== */
+      .save-duration-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+      .save-duration-row .btn-save { flex: 1; margin: 0; }
+      .save-duration-row .clip-duration-row,
+      .save-duration-row .clip-duration-display { width: auto; flex-shrink: 0; margin: 0; padding: 8px 10px; }
+      .save-duration-row .clip-duration-row select { width: 66px; flex: none; }
+
       /* ===== Clip duration ===== */
       .clip-duration-row {
         display: flex; align-items: center; gap: 10px; margin: 12px 0 0;
@@ -442,7 +460,7 @@
       }
       .hud-rail {
         display: flex; flex-direction: column; gap: 2px;
-        padding: 6px 4px; background: #0d1e15;
+        padding: 4px 2px; background: #0d1e15;
         border-right: 1px solid #1e3527; flex-shrink: 0;
       }
       .hud-tab {
@@ -462,13 +480,13 @@
       .hud-body { flex: 1; display: flex; flex-direction: column; min-width: 0; }
       .hud-title {
         font-size: 11px; color: #39d3a0; text-transform: uppercase; letter-spacing: 1px;
-        padding: 10px 14px 8px; border-bottom: 1px solid #1e3527; flex-shrink: 0;
+        padding: 8px 10px 6px; border-bottom: 1px solid #1e3527; flex-shrink: 0;
       }
       /* Fixed height ≈ 5 history rows. Every HUD tab now scrolls past that
          point instead of growing the whole card into an endless list. */
       .hud-panes { height: 264px; background: #0c1c14; }
       .hud-pane {
-        display: none; height: 100%; overflow-y: auto; padding: 8px 14px;
+        display: none; height: 100%; overflow-y: auto; padding: 6px 10px;
       }
       .hud-pane.active { display: block; }
       .hud-pane::-webkit-scrollbar { width: 6px; }
@@ -611,12 +629,12 @@
         <div class="brand">
           <div class="brand-row">
                         <span id="monkeyToggle" onclick="toggleAllSections()" style="font-size:26px;line-height:1;cursor:pointer;user-select:none;" title="Toggle all sections">🙈</span>
-            <h1>Peak-Abu</h1>
+            <h1>PeakAbu</h1>
             <button class="ks-btn" onclick="openKickstarter()" title="Back Peak-Abu on Kickstarter" aria-label="Back Peak-Abu on Kickstarter">
               <img src="assets/kickstarter.png" alt="kickstarter" />
             </button>
           </div>
-          <span class="version-tag">v0.1.66</span>
+          <span class="version-tag">v0.1.67</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="redeem-wrap">
@@ -629,6 +647,7 @@
               <div class="redeem-msg" id="redeemMsg"></div>
             </div>
           </div>
+          <button class="btn-secondary btn-sm" id="inviteLinkHeaderBtn" onclick="copyInviteLink()" title="Copy invite link — paste it in Discord to bring your squad in" style="display:none;">🔗</button>
           <button class="btn-secondary btn-sm" id="aiReelHeaderBtn" onclick="openAiReelWindow()" title="AI Reel — build a highlight reel locally">🤖</button>
           <button class="btn-secondary btn-sm" onclick="openSettings()">⚙ Settings</button>
         </div>
@@ -859,32 +878,18 @@
             <button class="btn-secondary" onclick="joinSession()">Join Session</button>
           </div>
           <div id="sessionPanel-connected" style="flex:1;flex-direction:column;">
-            <div class="uc-label">Session Code — click to copy</div>
             <div class="session-code" id="sessionCodeDisplay" onclick="copySessionCode()">------</div>
             <div class="hint" id="sessionCodeHint">Click the code to copy to clipboard</div>
 
-            <!-- SESSION TITLE — server-synced, any member can set/change it -->
-            <div class="session-title-row" id="sessionTitleRow">
-              <span class="session-title-text" id="sessionTitleText">Untitled session</span>
-              <button class="hist-edit" id="sessionTitleEditBtn" onclick="editSessionTitle()" title="Rename this session for everyone">✏</button>
-            </div>
-            <div class="session-title-game" id="sessionTitleGame" style="display:none;"></div>
-
-            <!-- LOCAL NOTE — client-only, never sent to server or other members -->
-            <div class="session-note-row" id="sessionNoteRow">
-              <span class="session-note-text" id="sessionNoteText"></span>
-              <button class="hist-edit" id="sessionNoteEditBtn" onclick="editSessionLocalNote()" title="Your own private note (only visible to you)">📝</button>
-            </div>
-
             <a class="player-link" id="playerLink" href="#" onclick="openWebPlayer(event)">🌐 Open in Web Player</a>
-            <button class="btn-secondary" onclick="copyInviteLink()" style="margin-top:6px;padding:8px;font-size:13px;">
-              &#128279; Copy Invite Link <span style="color:#5f7a6a;">(paste in Discord)</span>
-            </button>
             <div class="uc-label" style="margin-top:13px;">Squad</div>
             <div class="member-list" id="memberList"></div>
-            <div id="clipCounter" style="font-size:12px;color:#5f7a6a;text-align:center;margin:6px 0;display:none;"></div>
+            <div class="usage-track-wrap" id="usageTrackWrap" style="display:none;"></div>
             <button class="btn-secondary" id="migrateBtn" onclick="migrateSession()" style="display:none;margin-bottom:6px;">↺ Start New Session for Squad</button>
-            <button class="btn-leave" onclick="leaveSession()">Leave Session</button>
+            <button class="btn-leave" onclick="leaveSession()">
+              <span class="btn-leave-usage" id="leaveUsageLabel"></span>
+              Leave Session
+            </button>
           </div>
           </div>
         </div>
@@ -902,6 +907,7 @@
                 <button class="hud-tab" id="hudTab-squad" onclick="switchHudTab('squad')" title="Squad">👥<span class="tab-badge" id="hudBadge-squad" style="display:none;">0</span></button>
                 <button class="hud-tab" id="hudTab-system" onclick="switchHudTab('system')" title="System">🛠<span class="tab-badge" id="hudBadge-system" style="display:none;">0</span></button>
                 <button class="hud-tab" id="hudTab-history" onclick="switchHudTab('history')" title="History">📋<span class="tab-badge" id="hudBadge-history" style="display:none;">0</span></button>
+                <button class="hud-tab" id="hudTab-hosted" onclick="switchHudTab('hosted')" title="My Hosted Sessions">👑<span class="tab-badge" id="hudBadge-hosted" style="display:none;">0</span></button>
               </div>
               <div class="hud-body">
                 <div class="hud-title" id="hudTitle">Activity</div>
@@ -910,6 +916,7 @@
                   <div class="hud-pane" id="hudPane-squad"><div class="hud-empty">Squad joins and leaves appear here</div></div>
                   <div class="hud-pane" id="hudPane-system"><div class="hud-empty">App messages appear here</div></div>
                   <div class="hud-pane" id="hudPane-history"><div class="hud-empty">Session history appears here</div></div>
+                  <div class="hud-pane" id="hudPane-hosted"><div class="hud-empty">Sessions you've hosted appear here</div></div>
                 </div>
               </div>
             </div>
@@ -958,28 +965,27 @@
                   </select>
                 </div>
               </div>
-              <div style="font-size:11px;color:#3a5244;margin-top:4px;" id="gamepadBindHint">Select a button, then choose trigger mode</div>
             </div>
 
             <input type="text" id="hotkeyCapture" readonly />
             <div class="hotkey-display" id="hotkeyDisplay"></div>
             <div class="hotkey-hint" id="hotkeyHint" style="display:none;"></div>
 
-            <!-- Clip duration: host picker / member display -->
-            <div class="clip-duration-row" id="clipDurationHost" style="display:none;">
-              <label>⏱ Clip length</label>
-              <select id="clipDurationSelect" onchange="onClipDurationChange()">
-                <option value="15000">15 sec</option>
-                <option value="30000" selected>30 sec</option>
-                <option value="60000">1 min</option>
-                <option value="180000">3 min</option>
-              </select>
+            <!-- Save Highlight + clip duration, combined into one row -->
+            <div class="save-duration-row">
+              <button class="btn-save" id="saveBtn" onclick="saveHighlight()" disabled>💾 Save Highlight (or press <span id="saveBtnHotkey">F9</span>)</button>
+              <div class="clip-duration-row" id="clipDurationHost" style="display:none;margin:0;" title="Clip length">
+                <select id="clipDurationSelect" onchange="onClipDurationChange()">
+                  <option value="15000">15s</option>
+                  <option value="30000" selected>30s</option>
+                  <option value="60000">1min</option>
+                  <option value="180000">3min</option>
+                </select>
+              </div>
+              <div class="clip-duration-display" id="clipDurationMember" style="display:none;margin:0;" title="Clip length">
+                <strong id="clipDurationValue">30s</strong>
+              </div>
             </div>
-            <div class="clip-duration-display" id="clipDurationMember" style="display:none;">
-              ⏱ Clip length: <strong id="clipDurationValue">30s</strong>
-            </div>
-
-            <button class="btn-save" id="saveBtn" onclick="saveHighlight()" disabled style="margin-top:12px;">💾 Save Highlight (or press <span id="saveBtnHotkey">F9</span>)</button>
 
             <div class="upload-progress-wrap" id="uploadProgressWrap">
               <div class="upload-progress-label">
@@ -992,14 +998,14 @@
             </div>
             </div>
             <div class="mini-highlight-row" id="miniHighlightRow" style="display:none;">
+              <button class="btn-save" id="miniSaveBtn" onclick="saveHighlight()" disabled>💾 Save Highlight</button>
               <select id="miniClipDurationSelect" onchange="onMiniClipDurationChange()" style="display:none;">
                 <option value="15000">15s</option>
                 <option value="30000" selected>30s</option>
-                <option value="60000">1 min</option>
-                <option value="180000">3 min</option>
+                <option value="60000">1min</option>
+                <option value="180000">3min</option>
               </select>
               <span id="miniClipDurationDisplay" style="display:none;"></span>
-              <button class="btn-save" onclick="saveHighlight()" style="padding:10px;font-size:13px;">💾 Save Highlight</button>
             </div>
           </div>
 
@@ -1280,11 +1286,11 @@
       const HUD_MAX_ITEMS = 50;
       window.activeHudTab = 'activity';
 
-      var HUD_TITLES = { activity:'Activity', squad:'Squad', system:'System', history:'Session History' };
+      var HUD_TITLES = { activity:'Activity', squad:'Squad', system:'System', history:'Session History', hosted:'My Hosted Sessions' };
 
       window.switchHudTab = function(tab) {
        window.activeHudTab = tab;
-       ['activity','squad','system','history'].forEach(t => {
+       ['activity','squad','system','history','hosted'].forEach(t => {
          document.getElementById('hudTab-'+t).classList.toggle('active', t===tab);
          document.getElementById('hudPane-'+t).classList.toggle('active', t===tab);
        });
@@ -1523,10 +1529,16 @@
     }
 
     function renderSessionHistory() {
-      var pane = document.getElementById('hudPane-history');
-      var history = loadSessionHistory();
+      var all = loadSessionHistory();
+      renderHistoryList('hudPane-history', all, 'Session history appears here');
+      renderHistoryList('hudPane-hosted', all.filter(function(h) { return h.role === 'host'; }), "Sessions you've hosted appear here");
+    }
+
+    function renderHistoryList(paneId, history, emptyText) {
+      var pane = document.getElementById(paneId);
+      if (!pane) return;
       if (history.length === 0) {
-        pane.innerHTML = '<div class="hud-empty">Session history appears here</div>';
+        pane.innerHTML = '<div class="hud-empty">' + emptyText + '</div>';
         return;
       }
       pane.innerHTML = '';
@@ -1644,6 +1656,10 @@
 
       // =====================
       // SESSION TITLE (server-synced) + LOCAL NOTE (client-only)
+      // Both DOM rows were removed from the session card, but these render
+      // functions stay — they're driven by socket events (session-joined,
+      // session-title-changed, session-game-detected), not by the removed
+      // buttons, and each guards on a missing element so they no-op safely.
       // =====================
       function renderSessionTitle(title) {
         var el = document.getElementById('sessionTitleText');
@@ -1702,7 +1718,8 @@
 
       window.editSessionTitle = function() {
         if (!window.socket || !window.currentSessionCode) return;
-        var current = document.getElementById('sessionTitleText').textContent;
+        var el = document.getElementById('sessionTitleText');
+        var current = el ? el.textContent : '';
         if (current === 'Untitled session') current = '';
         openTextInputModal('Session Title (visible to your whole squad)', current, function(value) {
           var clean = value.slice(0, 60);
@@ -1771,12 +1788,15 @@
       // four independent writers was how the label drifted out of sync.
       function updateSaveButtonLabel() {
         var btn = document.getElementById('saveBtn');
+        var mini = document.getElementById('miniSaveBtn');
         if (!btn) return;
         if (window.highlightCooldownActive) return; // the countdown owns the label
 
         if (window.autoCaptureWindowActive) {
           btn.innerHTML = '⏹ Save Auto-Capture Now';
-          btn.disabled = !window.isRecordingActive;
+          var acEnabled = !!window.isRecordingActive;
+          btn.disabled = !acEnabled;
+          if (mini) { mini.innerHTML = '⏹ Cut Now'; mini.disabled = !acEnabled; }
           return;
         }
 
@@ -1794,12 +1814,17 @@
         if (window.isRecordingActive && window.bufferReady && shortfallSec > 0) {
           btn.innerHTML = '💾 Save (' + formatDuration(window.sessionClipDuration) +
             ' in ' + shortfallSec + 's — or press ' + hk + ' now for a shorter clip)';
+          // Collapsed row has no room for the full sentence — just the count.
+          if (mini) mini.innerHTML = '💾 ' + shortfallSec + 's';
         } else {
           btn.innerHTML = window.autoCaptureEnabled
             ? '💾 Save Last ' + formatDuration(window.sessionClipDuration) + ' (' + hk + ')'
             : '💾 Save Highlight (or press ' + hk + ')';
+          if (mini) mini.innerHTML = '💾 Save Highlight';
         }
-        btn.disabled = !(window.isRecordingActive && window.bufferReady);
+        var ready = !!(window.isRecordingActive && window.bufferReady);
+        btn.disabled = !ready;
+        if (mini) mini.disabled = !ready;
       }
       
 
@@ -1808,7 +1833,7 @@
       // =====================
       function formatDuration(ms) {
         if (ms < 60000) return (ms/1000) + 's';
-        return (ms/60000) + ' min';
+        return (ms/60000) + 'min';
       }
 
       window.onClipDurationChange = function() {
@@ -2529,7 +2554,7 @@
       var AC_FLOOR_MIC = 0.020;              // mic sits closer to its own noise, needs more headroom
       var AC_EMIT_THROTTLE_MS = 500;         // don't spam the socket while a loud sound sustains
       var AC_SUSTAIN_POLLS = 5;              // loud polls required within the window to OPEN a capture
-      var AC_SUSTAIN_POLLS_KEEPALIVE = 3;    // much lighter bar to KEEP one open through combat lulls
+      var AC_SUSTAIN_POLLS_KEEPALIVE = 5;    // much lighter bar to KEEP one open through combat lulls
       var AC_SUSTAIN_WINDOW = 12;            // ~600ms at 50ms — tolerates gaps between shots
 
       // A sample 0.08% over threshold counted the same as one at double, so
@@ -2751,7 +2776,7 @@
 
         acUpdateMargin(state);
 
-        var requiredBands = windowActive ? 1 : AC_BANDS_REQUIRED_OPEN;
+        var requiredBands = windowActive ? 2 : AC_BANDS_REQUIRED_OPEN;
         var sustainedPeak = warmedUp && (bandsSustaining >= requiredBands);
 
         if (window._acDebug && (anyPeak || (state._debugCounter = (state._debugCounter || 0) + 1) % 20 === 0)) {
@@ -2776,6 +2801,43 @@
         }
 
         if (anyPeak) acFlashMonkey(sourceName);
+
+        // ===== PEAK LOG — lightweight timeline data for the web player's
+        // combat/mic markers (queued separately). Independent of the
+        // AC_EMIT_THROTTLE_MS gate above — that gate is about not spamming
+        // captures; this is about not spamming IPC. Bucketed to ~250ms so a
+        // sustained fight doesn't turn into thousands of messages, and main
+        // process does the actual save-time filtering/trimming.
+        var nowLog = Date.now();
+        if (anyPeak && (nowLog - (state.lastLogTs || 0)) >= 250) {
+          state.lastLogTs = nowLog;
+          var maxBandVal = 0;
+          for (var lb = 0; lb < state.bands.length; lb++) {
+            if (state.bands[lb].lastVal > maxBandVal) maxBandVal = state.bands[lb].lastVal;
+          }
+          ipcRenderer.send('auto-peak-log', {
+            tLocalMs: nowLog,
+            source: sourceName,
+            intensity: Math.round(maxBandVal * 100) / 100,
+            bandsSustaining: bandsSustaining
+          });
+        }
+
+        // Mic-active transitions — independent of the desktop-gating that
+        // blocks mic from OPENING a capture window below. This is purely
+        // "is someone talking right now", for the player's speak/no-speak
+        // monkey markers, not a capture-triggering decision.
+        if (sourceName === 'mic') {
+          var micNowActive = sustainedPeak;
+          if (micNowActive !== !!state.micActiveLogged) {
+            state.micActiveLogged = micNowActive;
+            ipcRenderer.send('auto-peak-log', {
+              tLocalMs: nowLog,
+              source: 'mic',
+              event: micNowActive ? 'mic-start' : 'mic-end'
+            });
+          }
+        }
 
         if (sustainedPeak) {
           // The mic is a reinforcer, not an independent trigger.
@@ -2996,6 +3058,8 @@
           document.getElementById('sessionPanel-connected').style.display = 'block';
           document.getElementById('sessionCodeDisplay').textContent = data.code;
           document.getElementById('playerLink').href = 'https://peakabu.app/player?code=' + data.code;
+          var ilBtn = document.getElementById('inviteLinkHeaderBtn');
+          if (ilBtn) ilBtn.style.display = 'flex';
           updateClipDurationUI(data.clipDuration || 30000, window.isSessionHost);
           window.sessionMemberCount = (data.members || []).length;
           updateMemberList(data.members);
@@ -3192,11 +3256,16 @@
         window.isSessionHost = false;
         document.getElementById('sessionPanel-disconnected').style.display = 'block';
         document.getElementById('sessionPanel-connected').style.display = 'none';
+        var ilBtn = document.getElementById('inviteLinkHeaderBtn');
+        if (ilBtn) ilBtn.style.display = 'none';
         renderRejoinLastHosted();
         document.getElementById('memberList').innerHTML = '';
         document.getElementById('clipDurationHost').style.display = 'none';
         document.getElementById('clipDurationMember').style.display = 'none';
-        document.getElementById('clipCounter').style.display = 'none';
+        var wrap = document.getElementById('usageTrackWrap');
+        if (wrap) { wrap.style.display = 'none'; wrap.innerHTML = ''; }
+        var lbl = document.getElementById('leaveUsageLabel');
+        if (lbl) lbl.textContent = '';
         document.getElementById('migrateBtn').style.display = 'none';
         renderSessionTitle(null);
         renderSessionGame(null);
@@ -3217,18 +3286,23 @@
         return m + 'm';
       }
 
+      // Renders into the usage bar (kept as its own element above the Leave
+      // Session button) and the small usage caption welded to the button
+      // itself — see .btn-leave-usage / #leaveUsageLabel.
       function updateClipCounter(used, max) {
-        var el = document.getElementById('clipCounter');
-        if (!max) { el.style.display = 'none'; return; }
-        el.style.display = 'block';
+        var wrap = document.getElementById('usageTrackWrap');
+        var label = document.getElementById('leaveUsageLabel');
+        if (!wrap || !label) return;
+        if (!max) { wrap.style.display = 'none'; label.textContent = ''; return; }
+        wrap.style.display = 'block';
 
         var pct = Math.max(0, Math.min(100, (used / max) * 100));
         var remainingSec = Math.max(0, max - used);
         var tier = pct >= 90 ? 'danger' : pct >= 75 ? 'warn' : '';
 
-        el.innerHTML =
-          '<div class="usage-label">' + formatUsageDuration(used) + ' / ' + formatUsageDuration(max) + ' of highlight time used</div>' +
+        wrap.innerHTML =
           '<div class="usage-track"><div class="usage-fill' + (tier ? ' ' + tier : '') + '" style="width:' + pct.toFixed(1) + '%;"></div></div>';
+        label.textContent = formatUsageDuration(used) + ' / ' + formatUsageDuration(max) + ' used';
 
         // Last 15 minutes of headroom — flat time threshold rather than a
         // clip count, since "remaining" is now a duration, not an integer.
@@ -3416,7 +3490,12 @@
         document.getElementById('statusText').textContent = '● Buffering gameplay...';
         document.getElementById('statusText').className = 'status-bar buffering';
         document.getElementById('statusHelp').textContent = 'Building up a clip buffer — highlights will be available in ~15 seconds';
-        document.getElementById('saveBtn').disabled = true;
+        var sb = document.getElementById('saveBtn');
+        var msb = document.getElementById('miniSaveBtn');
+        sb.disabled = true;
+        sb.classList.add('state-queued');
+        if (msb) { msb.disabled = true; msb.classList.add('state-queued'); }
+        startInitialBufferCountdown();
 
 
         // Stop any prior recorders (Switch Monitor path) — a second live
@@ -3459,13 +3538,45 @@
         if (!window.isRecordingActive) return;
         window.isRecordingActive = false;
         window.bufferReady = false;
+        stopInitialBufferCountdown();
         document.getElementById('startBtn').textContent = '▶ Start Highlight Session';
         document.getElementById('startBtn').disabled = false;
         document.getElementById('stopBtn').disabled = true;
-        document.getElementById('saveBtn').disabled = true;
+        var sb = document.getElementById('saveBtn');
+        var msb = document.getElementById('miniSaveBtn');
+        sb.disabled = true;
+        sb.classList.remove('state-queued');
+        if (msb) { msb.disabled = true; msb.classList.remove('state-queued'); msb.innerHTML = '💾 Save Highlight'; }
         document.getElementById('monitorActive').style.display = 'none';
         restoreReadyStatus();
       });
+
+      // Covers the gap between "recording started" and the buffer-ready
+      // event — previously the button just sat dim with stale text for
+      // that whole ~15s with no indication anything was happening.
+      // main.js's floor is fixed regardless of clip duration (see the note
+      // in updateSaveButtonLabel), so this is an estimate, not a promise —
+      // it just gets out of the way the moment buffer-ready actually fires.
+      var INITIAL_BUFFER_FILL_SEC = 15;
+      window._initialBufferTimer = null;
+      function startInitialBufferCountdown() {
+        stopInitialBufferCountdown();
+        window._initialBufferTimer = setInterval(function() {
+          if (!window.isRecordingActive || window.bufferReady) { stopInitialBufferCountdown(); return; }
+          var elapsedSec = window.recordingStartedAtClient
+            ? (Date.now() - window.recordingStartedAtClient) / 1000 : 0;
+          var remaining = Math.max(0, Math.ceil(INITIAL_BUFFER_FILL_SEC - elapsedSec));
+          var btn = document.getElementById('saveBtn');
+          var mini = document.getElementById('miniSaveBtn');
+          var text = remaining > 0 ? ('⏳ Buffering… ' + remaining + 's') : '⏳ Almost ready…';
+          if (btn) btn.innerHTML = text;
+          if (mini) mini.innerHTML = remaining > 0 ? ('⏳ ' + remaining + 's') : '⏳';
+          if (remaining <= 0) stopInitialBufferCountdown();
+        }, 1000);
+      }
+      function stopInitialBufferCountdown() {
+        if (window._initialBufferTimer) { clearInterval(window._initialBufferTimer); window._initialBufferTimer = null; }
+      }
 
       window._bufferCountdownTimer = null;
       function startBufferCountdown() {
@@ -3485,9 +3596,14 @@
       ipcRenderer.on('buffer-ready', function() {
         if (!window.isRecordingActive) return;
         window.bufferReady = true;
+        stopInitialBufferCountdown();
         document.getElementById('statusText').textContent = '● Ready — save a highlight anytime';
         document.getElementById('statusText').className = 'status-bar ready';
         document.getElementById('statusHelp').textContent = 'Click Save or press ' + window.currentHotkey + ' to capture the last ' + formatDuration(window.sessionClipDuration) + ' of gameplay';
+        var sb = document.getElementById('saveBtn');
+        var msb = document.getElementById('miniSaveBtn');
+        if (sb) sb.classList.remove('state-queued');
+        if (msb) msb.classList.remove('state-queued');
         updateSaveButtonLabel();
         startBufferCountdown();
         hudLog('system','🎬 Buffer ready — highlights can be saved','success');
@@ -3498,6 +3614,7 @@
       window.isRecordingActive = false;
       window.bufferReady = false;
       stopBufferCountdown();
+      stopInitialBufferCountdown();
       if (window.mediaRecorder && window.mediaRecorder.state !== 'inactive') { window.mediaRecorder.stop(); window.mediaRecorder = null; }
       wgcStopAll();
       stopMicCapture();
@@ -3509,7 +3626,11 @@
       document.getElementById('startBtn').textContent = '▶ Start Highlight Session';
       document.getElementById('startBtn').disabled = false;
       document.getElementById('stopBtn').disabled = true;
-      document.getElementById('saveBtn').disabled = true;
+      var sb2 = document.getElementById('saveBtn');
+      var msb2 = document.getElementById('miniSaveBtn');
+      sb2.disabled = true;
+      sb2.classList.remove('state-queued');
+      if (msb2) { msb2.disabled = true; msb2.classList.remove('state-queued'); msb2.innerHTML = '💾 Save Highlight'; }
       document.getElementById('monitorActive').style.display = 'none';
       document.getElementById('statusText').textContent = '● Idle';
       document.getElementById('statusText').className = 'status-bar idle';
@@ -3846,8 +3967,11 @@
        window.highlightCooldownActive = true;
        var remaining = seconds || 15;
        var btn = document.getElementById('saveBtn');
+       var mini = document.getElementById('miniSaveBtn');
        btn.innerHTML = '⏳ '+remaining+'s before next save';
        btn.disabled = true;
+       btn.classList.add('state-queued');
+       if (mini) { mini.innerHTML = '⏳ '+remaining+'s'; mini.disabled = true; mini.classList.add('state-queued'); }
 
        document.getElementById('statusText').textContent = '● Cooldown — buffer refilling...';
        document.getElementById('statusText').className = 'status-bar buffering';
@@ -3859,10 +3983,13 @@
            clearInterval(window.highlightCooldownTimer);
            window.highlightCooldownTimer = null;
            window.highlightCooldownActive = false;
+           btn.classList.remove('state-queued');
+           if (mini) mini.classList.remove('state-queued');
            updateSaveButtonLabel();
            restoreReadyStatus();
          } else {
            btn.innerHTML = '⏳ '+remaining+'s before next save';
+           if (mini) mini.innerHTML = '⏳ '+remaining+'s';
            document.getElementById('statusHelp').textContent = 'Next highlight available in ' + remaining + ' seconds';
          }
        }, 1000);
@@ -3883,8 +4010,18 @@
         if (!url) return;
         clipboard.writeText(url);
         var hint = document.getElementById('sessionCodeHint');
-        hint.textContent = '\u2705 Invite link copied — paste it in Discord';
-        setTimeout(function() { hint.textContent = 'Click the code to copy to clipboard'; }, 3000);
+        if (hint) {
+          hint.textContent = '\u2705 Invite link copied — paste it in Discord';
+          setTimeout(function() { hint.textContent = 'Click the code to copy to clipboard'; }, 3000);
+        }
+        // Header button is icon-only and may be on screen while the session
+        // card (and sessionCodeHint) is scrolled off or collapsed — flash
+        // the icon itself so the click always gets visible feedback.
+        var ilBtn = document.getElementById('inviteLinkHeaderBtn');
+        if (ilBtn) {
+          ilBtn.textContent = '\u2705';
+          setTimeout(function() { ilBtn.textContent = '\uD83D\uDD17'; }, 1500);
+        }
         hudLog('squad', 'Invite link copied: ' + url, 'success');
       };
 
@@ -4067,18 +4204,11 @@
         window.gamepadState.holdStart = 0;
         window.gamepadState.fired = false;
 
-        if (window.gamepadState.enabled) {
-          var btnName = getButtonName(window.gamepadState.buttonIndex);
-          var modeLabel = mode === 'double' ? 'double-press' : 'long-press (~1s)';
-          document.getElementById('gamepadBindHint').textContent = btnName + ' — ' + modeLabel + ' to save';
-          startGamepadPoll();
-        } else {
-          document.getElementById('gamepadBindHint').textContent = 'Select a button, then choose trigger mode';
-        }
-
         // Persist
         ipcRenderer.invoke('set-user-pref', 'gamepadButton', btnVal === '' ? null : parseInt(btnVal));
         ipcRenderer.invoke('set-user-pref', 'gamepadTriggerMode', mode);
+
+        if (window.gamepadState.enabled) startGamepadPoll();
       };
 
       function startGamepadPoll() {
@@ -4406,6 +4536,8 @@
         window.currentSessionCode = null;
         document.getElementById('sessionPanel-disconnected').style.display = 'block';
         document.getElementById('sessionPanel-connected').style.display = 'none';
+        var ilBtnOut = document.getElementById('inviteLinkHeaderBtn');
+        if (ilBtnOut) ilBtnOut.style.display = 'none';
         document.getElementById('memberList').innerHTML = '';
         ipcRenderer.send('auth-token-updated', null);
         ipcRenderer.send('session-disconnected');

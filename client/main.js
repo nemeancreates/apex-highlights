@@ -519,6 +519,18 @@ let hlMicPath = null;
 let hlAudioChunkCount = 0;
 let hlMicChunkCount = 0;
 
+// ================================
+// AUTO-CAPTURE PEAK LOG — rolling log of audio-peak events streamed from
+// the renderer's analyzer (client/index.html: acPollSource). Not used for
+// anything capture-triggering — that's still the server-authoritative
+// auto-peak/auto-capture-* socket flow. This is purely so a saved clip can
+// carry a record of WHEN things got loud and WHEN mic activity started/
+// stopped, for the web player's combat/mic timeline markers (queued
+// separately). Reset per recording session, pruned continuously.
+// ================================
+let peakLogBuffer = []; // { t: localMs, source: 'desktop'|'mic', intensity?: number, event?: string }
+const PEAK_LOG_MAX_AGE_MS = 15 * 60 * 1000; // generous — comfortably covers any realistic buffer span
+
 let fullSessionMode = false;
 let fullSessionDir = null;
 let sessionArchiveActive = false;
@@ -991,6 +1003,23 @@ ipcMain.on('server-clock-offset', (event, payload) => {
   } else {
     console.log('server-clock-offset: rejected invalid payload:', JSON.stringify(payload));
   }
+});
+
+// Auto-capture peak log — streamed live from the renderer's analyzer
+// (client/index.html: acPollSource). Purely additive data for the saved
+// clip's metadata; never touches capture-triggering logic.
+ipcMain.on('auto-peak-log', (event, entry) => {
+  if (!entry || typeof entry.tLocalMs !== 'number') return;
+  peakLogBuffer.push({
+    t: entry.tLocalMs,
+    source: entry.source === 'mic' ? 'mic' : 'desktop',
+    intensity: typeof entry.intensity === 'number' ? entry.intensity : null,
+    event: entry.event || null
+  });
+  // Prune anything older than any save could plausibly still need — same
+  // reasoning as pruneOldChunks, just for a much smaller array.
+  const cutoff = Date.now() - PEAK_LOG_MAX_AGE_MS;
+  while (peakLogBuffer.length && peakLogBuffer[0].t < cutoff) peakLogBuffer.shift();
 });
 
 function getPreciseUTC() { return Date.now() + clockOffset; }
@@ -1655,6 +1684,15 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     const outputPath = path.join(CLIPS_DIR, `highlight-${timestamp}.mp4`);
     const metadataPath = path.join(CLIPS_DIR, `highlight-${timestamp}.json`);
 
+    const wgcClipPeaks = peakLogBuffer
+      .filter(p => p.t >= windowStartLocal && p.t <= windowEndLocal)
+      .map(p => {
+        const out = { tMs: Math.max(0, Math.round(p.t - windowStartLocal)), source: p.source };
+        if (p.intensity !== null) out.intensity = p.intensity;
+        if (p.event) out.event = p.event;
+        return out;
+      });
+
     const metadata = {
       clipId: crypto.randomUUID(),
       version: 2,
@@ -1669,7 +1707,8 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
       captureEngine: 'wgc-window',
       userId: null,
       sessionId: currentSession ? currentSession.code : null,
-      coordinated_timestamp: coordinatedTs || null
+      coordinated_timestamp: coordinatedTs || null,
+      audioPeaks: wgcClipPeaks
     };
 
     const encoderArgs = useCpuEncoder
@@ -1933,6 +1972,20 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   const metadataPath = path.join(CLIPS_DIR, `highlight-${timestamp}.json`);
 
   const realDurationMs = Math.round(copyDurationSec * 1000);
+
+  // Peaks logged by the renderer's analyzer, filtered to the actual saved
+  // span and re-expressed as clip-relative ms (0 = first frame of the
+  // clip) — the same convention comments already use for timestampMs, so
+  // the web player can treat both the same way later.
+  const clipPeaks = peakLogBuffer
+    .filter(p => p.t >= realStart && p.t <= effEnd)
+    .map(p => {
+      const out = { tMs: Math.max(0, Math.round(p.t - realStart)), source: p.source };
+      if (p.intensity !== null) out.intensity = p.intensity;
+      if (p.event) out.event = p.event;
+      return out;
+    });
+
   const metadata = {
     clipId: crypto.randomUUID(),
     version: 2,
@@ -1947,7 +2000,8 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     clampedMs: Math.round(clampedMs),
     userId: null,
     sessionId: currentSession ? currentSession.code : null,
-    coordinated_timestamp: coordinatedTs || null
+    coordinated_timestamp: coordinatedTs || null,
+    audioPeaks: clipPeaks
   };
 
   const tempId = Date.now();
@@ -2670,6 +2724,7 @@ function createWindow() {
     hlMicChunkCount = 0;
     audioFirstChunkTime = null;
     micFirstChunkTime = null;
+    peakLogBuffer = [];
 
     engineLadder = buildEngineLadder();
     engineIndex = 0;
