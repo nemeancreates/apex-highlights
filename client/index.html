@@ -2295,14 +2295,29 @@
      // =====================
      // APPEARANCE
      // =====================
+     var THEME_SYNC_KEYS = [
+       '--pa-bg', '--pa-panel', '--pa-panel-sunk', '--pa-border', '--pa-border-strong',
+       '--pa-accent', '--pa-accent-bright', '--pa-text', '--pa-text-dim', '--pa-text-faint'
+     ];
+     function pushThemeToPlayer() {
+       var cs = getComputedStyle(document.documentElement);
+       var tokens = {};
+       THEME_SYNC_KEYS.forEach(function (k) {
+         var v = cs.getPropertyValue(k).trim();
+         if (v) tokens[k] = v;
+       });
+       ipcRenderer.send('theme-push', tokens);
+     }
+
      window.appearance = new PeakAbuAppearance({
        basePath: 'modules/appearance',
        store: {
          get: function () { return ipcRenderer.invoke('get-user-pref', 'appearance'); },
          set: function (k, v) { return ipcRenderer.invoke('set-user-pref', 'appearance', v); }
-       }
+       },
+       onChange: function () { pushThemeToPlayer(); }
      });
-     window.appearance.mount();
+     window.appearance.mount().then(function () { pushThemeToPlayer(); });
 
      window.avCheck = null;
 

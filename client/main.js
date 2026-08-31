@@ -384,12 +384,9 @@ function openDockedPlayer(code, token, username) {
     webPreferences: { nodeIntegration: false, contextIsolation: true }
   });
   mainWindow.contentView.addChildView(playerView);
+  playerView.webContents.on('did-finish-load', () => pushThemeToPlayer());
   playerView.webContents.loadURL(playerUrlFor(code, token, username));
   layoutPlayerView();
-  // The player view is a separate WebContents from mainWindow — the
-  // devtools-on-launch line up top never covers it. Open its own devtools
-  // in dev builds so player-side JS errors (comments, playback) are
-  // actually visible instead of silently swallowed.
   if (!app.isPackaged) playerView.webContents.openDevTools({ mode: 'detach' });
   console.log('Web player docked into main window');
 }
@@ -406,9 +403,6 @@ function closeDockedPlayer() {
 }
 
 function openWindowedPlayer(code, token, username) {
-  // Guarantee any leftover docked-mode UI (drag handle, close button) is
-  // cleared the moment we go windowed, even if nothing was docked this
-  // session — this is what was leaving a stale close button on screen.
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('player-docked', { docked: false, reservedRight: 0 });
   }
@@ -431,6 +425,7 @@ function openWindowedPlayer(code, token, username) {
     webPreferences: { nodeIntegration: false, contextIsolation: true }
   });
   playerWindow.setMenuBarVisibility(false);
+  playerWindow.webContents.on('did-finish-load', () => pushThemeToPlayer());
   playerWindow.loadURL(playerUrlFor(code, token, username));
   if (!app.isPackaged) playerWindow.webContents.openDevTools({ mode: 'detach' });
   playerWindow.on('closed', () => { playerWindow = null; });
@@ -3134,6 +3129,28 @@ function createWindow() {
     saveUserPreferences(prefs);
   });
 
+  let latestThemeTokens = null;
+
+  function pushThemeToPlayer() {
+    if (!latestThemeTokens) return;
+    const js = Object.entries(latestThemeTokens)
+      .map(([k, v]) => `document.documentElement.style.setProperty(${JSON.stringify(k)}, ${JSON.stringify(v)});`)
+      .join('');
+    if (playerView && playerView.webContents) {
+      playerView.webContents.executeJavaScript(js).catch(() => {});
+    }
+    if (playerWindow && !playerWindow.isDestroyed()) {
+      playerWindow.webContents.executeJavaScript(js).catch(() => {});
+    }
+  }
+
+  ipcMain.on('theme-push', (event, tokens) => {
+    latestThemeTokens = tokens;
+    pushThemeToPlayer();
+  });
+
+  ipcMain.handle('is-player-open', () =>
+    !!playerView || !!(playerWindow && !playerWindow.isDestroyed()));
 
   ipcMain.handle('is-player-open', () =>
     !!playerView || !!(playerWindow && !playerWindow.isDestroyed()));
