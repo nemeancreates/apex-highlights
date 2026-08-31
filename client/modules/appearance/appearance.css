@@ -1,0 +1,324 @@
+/*
+ * appearance.css — wallpaper layer + theme tokens + settings panel.
+ *
+ * TOKENS
+ * ------
+ * Everything themable is a --pa-* custom property on :root. Other modules
+ * (av-check does this) read them with a hardcoded fallback, so they inherit
+ * the theme when this module is present and look correct when it is not.
+ *
+ * The wallpaper itself lives in a fixed, pointer-events:none layer at
+ * z-index 0, and app content is lifted to z-index 1. That is the whole
+ * integration cost — no restructuring of existing markup.
+ */
+
+:root {
+  /* Peak-Abu's shipping palette, as the dark default. */
+  --pa-bg:            #0a1611;
+  --pa-panel:         #0f2318;
+  --pa-panel-sunk:    #0c1c14;
+  --pa-border:        #1e3527;
+  --pa-border-strong: #24402e;
+  --pa-text:          #c8d6cd;
+  --pa-text-dim:      #8fbfa3;
+  --pa-text-faint:    #5f7a6a;
+  --pa-accent:        #39d3a0;
+  --pa-accent-bright: #4fe0b0;
+  --pa-warn:          #e8c058;
+  --pa-danger:        #f0857a;
+
+  /* Wallpaper controls. Opacity is applied to panels, not to the wallpaper,
+     so text contrast stays under the user's control. */
+  --pa-panel-opacity: 1;
+  --pa-wall-dim:      0;      /* 0-1 black scrim over the wallpaper */
+  --pa-wall-blur:     0px;
+  --pa-wall-scale:    1;
+  --pa-panel-radius:  10px;
+  --pa-panel-border-width: 1px;
+}
+
+/* Light theme. Only the tokens change; no rule below cares which is active. */
+:root[data-pa-theme="light"] {
+  --pa-bg:            #eef3ef;
+  --pa-panel:         #ffffff;
+  --pa-panel-sunk:    #f4f8f5;
+  --pa-border:        #d3e0d7;
+  --pa-border-strong: #bed0c4;
+  --pa-text:          #1b2b22;
+  --pa-text-dim:      #3f6350;
+  --pa-text-faint:    #6f8a7b;
+  --pa-accent:        #12855f;
+  --pa-accent-bright: #0f6f4f;
+  --pa-warn:          #9a6b12;
+  --pa-danger:        #a8362a;
+}
+
+/* ===== Wallpaper layer ===== */
+
+.pa-wallpaper-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--pa-bg);
+}
+
+.pa-wallpaper-media {
+  position: absolute;
+  /* Inset by -2% and scaled up so a blur radius never reveals the page
+     background at the edges. */
+  inset: -2%;
+  width: 104%;
+  height: 104%;
+  object-fit: cover;
+  filter: blur(var(--pa-wall-blur));
+  transform: scale(var(--pa-wall-scale));
+  transform-origin: center;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  will-change: opacity;
+}
+.pa-wallpaper-media.loaded { opacity: 1; }
+
+.pa-wallpaper-media.fit-contain { object-fit: contain; }
+.pa-wallpaper-media.fit-fill    { object-fit: fill; }
+.pa-wallpaper-media.fit-center  { object-fit: none; object-position: center; }
+
+/* Tiled wallpaper is a repeating CSS background rather than an element,
+   because object-fit cannot tile. */
+.pa-wallpaper-tile {
+  position: absolute; inset: 0;
+  background-repeat: repeat;
+  background-position: center;
+  filter: blur(var(--pa-wall-blur));
+}
+
+/* Worth knowing if you ever debug this: a hidden or non-compositing window
+   FREEZES css transitions mid-flight, and a frozen transition still outranks
+   an inline style. So while the window is minimised this element reports a
+   stale opacity that matches neither its inline style nor its computed
+   custom property. That is the platform behaving as designed, not a bug —
+   the correct value lands as soon as the window is visible again. Do not
+   "fix" it by moving the value into JS; that changes nothing. */
+.pa-wallpaper-scrim {
+  position: absolute; inset: 0;
+  background: #000;
+  opacity: var(--pa-wall-dim);
+  transition: opacity 0.25s ease;
+}
+
+/* Content lift. Applied to the host's own wrapper so the wallpaper sits
+   behind it without any change to the existing DOM order. */
+.pa-content-above { position: relative; z-index: 1; }
+
+/* Panels become translucent as a group. Individual panels can opt out or
+   override with their own --pa-panel-opacity. */
+.pa-translucent {
+  background-color: color-mix(in srgb,
+    var(--pa-panel) calc(var(--pa-panel-opacity) * 100%), transparent);
+  backdrop-filter: blur(calc(var(--pa-wall-blur) * 0.5 + 2px));
+}
+
+/* Browsers without color-mix keep a solid panel rather than an unreadable one. */
+@supports not (background-color: color-mix(in srgb, red 50%, transparent)) {
+  .pa-translucent { background-color: var(--pa-panel); backdrop-filter: none; }
+}
+
+/* ===== Settings panel ===== */
+
+.pa-appearance {
+  color: var(--pa-text);
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 14px;
+}
+.pa-appearance * { box-sizing: border-box; }
+
+.pa-ap-section {
+  background: var(--pa-panel-sunk);
+  border: 1px solid var(--pa-border-strong);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.pa-ap-section h4 {
+  margin: 0 0 10px; font-size: 13px; font-weight: 600;
+  color: var(--pa-accent); letter-spacing: 0.3px;
+}
+
+.pa-ap-row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.pa-ap-row:last-child { margin-bottom: 0; }
+.pa-ap-row > label {
+  font-size: 11px; color: var(--pa-text-faint); text-transform: uppercase;
+  letter-spacing: 0.7px; margin: 0; flex-shrink: 0; min-width: 84px;
+}
+.pa-ap-row > select, .pa-ap-row > input[type="range"] { flex: 1; min-width: 0; }
+.pa-ap-val {
+  font-size: 11px; color: var(--pa-text-dim);
+  font-variant-numeric: tabular-nums; min-width: 44px; text-align: right;
+}
+
+.pa-appearance select {
+  background: var(--pa-panel-sunk); color: var(--pa-text);
+  border: 1px solid var(--pa-border-strong); border-radius: 6px;
+  padding: 7px 9px; font-size: 13px; font-family: inherit; width: 100%;
+}
+
+.pa-appearance button {
+  font-family: inherit; font-size: 13px; cursor: pointer;
+  border-radius: 6px; padding: 9px 14px;
+  border: 1px solid var(--pa-border-strong);
+  background: var(--pa-panel); color: var(--pa-text-dim);
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.pa-appearance button:hover:not(:disabled) {
+  border-color: var(--pa-accent); color: var(--pa-accent);
+}
+.pa-appearance button.pa-ap-primary {
+  background: var(--pa-accent); color: var(--pa-bg);
+  border-color: var(--pa-accent); font-weight: 600;
+}
+.pa-appearance button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Theme + colour swatches */
+.pa-ap-swatches { display: flex; flex-wrap: wrap; gap: 7px; }
+.pa-ap-swatch {
+  width: 30px; height: 30px; border-radius: 7px; cursor: pointer;
+  border: 2px solid transparent; padding: 0; flex-shrink: 0;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+.pa-ap-swatch:hover { transform: scale(1.09); }
+.pa-ap-swatch.active { border-color: var(--pa-accent); }
+.pa-ap-swatch.pa-ap-custom {
+  display: grid; place-items: center; font-size: 15px;
+  background: var(--pa-panel); color: var(--pa-text-dim);
+  border: 1px dashed var(--pa-border-strong);
+}
+
+.pa-ap-themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.pa-ap-theme {
+  border: 1px solid var(--pa-border-strong); border-radius: 7px;
+  padding: 0; overflow: hidden; cursor: pointer; background: none;
+  transition: border-color 0.15s ease;
+}
+.pa-ap-theme:hover, .pa-ap-theme.active { border-color: var(--pa-accent); }
+.pa-ap-theme-swatch { height: 34px; display: flex; }
+.pa-ap-theme-swatch span { flex: 1; }
+.pa-ap-theme-name {
+  font-size: 11px; padding: 5px 6px; color: var(--pa-text-dim);
+  text-align: center; background: var(--pa-panel);
+}
+
+/* Wallpaper drop zone */
+.pa-ap-drop {
+  border: 1.5px dashed var(--pa-border-strong); border-radius: 8px;
+  padding: 18px 14px; text-align: center; cursor: pointer;
+  color: var(--pa-text-faint); font-size: 13px;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.pa-ap-drop:hover, .pa-ap-drop.dragover {
+  border-color: var(--pa-accent); color: var(--pa-accent);
+  background: color-mix(in srgb, var(--pa-accent) 7%, transparent);
+}
+.pa-ap-drop strong { display: block; margin-bottom: 3px; color: var(--pa-text-dim); }
+
+.pa-ap-current {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--pa-panel); border: 1px solid var(--pa-border);
+  border-radius: 7px; padding: 8px 10px; margin-top: 9px;
+}
+.pa-ap-thumb {
+  width: 56px; height: 32px; border-radius: 4px; object-fit: cover;
+  background: #000; flex-shrink: 0;
+}
+.pa-ap-meta { flex: 1; min-width: 0; }
+.pa-ap-meta .n {
+  font-size: 12px; color: var(--pa-text); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.pa-ap-meta .d { font-size: 11px; color: var(--pa-text-faint); }
+
+.pa-ap-note { font-size: 11px; color: var(--pa-text-faint); margin: 8px 0 0; line-height: 1.55; }
+.pa-ap-warn { color: var(--pa-warn); }
+.pa-ap-hidden { display: none !important; }
+
+.pa-ap-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.pa-ap-toggle-row span { font-size: 13px; color: var(--pa-text-dim); }
+
+/* Small switch, matching the app's existing control style. */
+.pa-ap-switch { position: relative; display: inline-block; width: 38px; height: 21px; flex-shrink: 0; }
+.pa-ap-switch input { opacity: 0; width: 0; height: 0; }
+.pa-ap-slider {
+  position: absolute; cursor: pointer; inset: 0; border-radius: 21px;
+  background: var(--pa-border-strong); transition: background 0.2s ease;
+}
+.pa-ap-slider::before {
+  content: ''; position: absolute; height: 15px; width: 15px; left: 3px; bottom: 3px;
+  background: var(--pa-text); border-radius: 50%; transition: transform 0.2s ease;
+}
+.pa-ap-switch input:checked + .pa-ap-slider { background: var(--pa-accent); }
+.pa-ap-switch input:checked + .pa-ap-slider::before { transform: translateX(17px); }
+
+/* Status line for the performance guards, so the pause is never mysterious. */
+.pa-ap-status {
+  font-size: 11.5px; color: var(--pa-text-faint); margin-top: 8px;
+  display: flex; align-items: center; gap: 6px;
+}
+.pa-ap-status .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--pa-accent); flex-shrink: 0;
+}
+.pa-ap-status.paused .dot { background: var(--pa-warn); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pa-wallpaper-media { transition: none; }
+}
+
+/* ===== Custom swatch dropdowns (Theme + Accent) ===== */
+.pa-ap-dd-row {
+  display: flex; gap: 10px; align-items: flex-start;
+}
+.pa-ap-dd-col {
+  flex: 1; display: flex; flex-direction: column; gap: 5px; min-width: 0;
+}
+.pa-ap-dd-col > label {
+  font-size: 11px; color: var(--pa-text-faint);
+  text-transform: uppercase; letter-spacing: 0.7px; margin: 0;
+}
+.pa-ap-dd-wrap { position: relative; width: 100%; }
+.pa-ap-dd-trigger {
+  display: flex; align-items: center; gap: 7px;
+  width: 100%; padding: 6px 9px;
+  background: var(--pa-panel); border: 1px solid var(--pa-border-strong);
+  border-radius: 6px; cursor: pointer; color: var(--pa-text-dim);
+  font-size: 12px; text-align: left;
+}
+.pa-ap-dd-trigger:hover,
+.pa-ap-dd-trigger.open { border-color: var(--pa-accent); color: var(--pa-accent); }
+.pa-ap-dd-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pa-ap-dd-chevron { font-size: 10px; flex-shrink: 0; opacity: 0.6; }
+
+.pa-ap-dd-list {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 50;
+  background: var(--pa-panel); border: 1px solid var(--pa-border-strong);
+  border-radius: 7px; overflow: hidden; padding: 4px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+}
+.pa-ap-dd-opt {
+  display: flex; align-items: center; gap: 7px;
+  width: 100%; padding: 8px 9px;
+  background: transparent; border: none; border-radius: 4px;
+  color: var(--pa-text-dim); font-size: 12px; text-align: left; cursor: pointer;
+  margin-bottom: 2px;
+}
+.pa-ap-dd-opt:last-child { margin-bottom: 0; }
+.pa-ap-dd-opt:hover { background: color-mix(in srgb, var(--pa-accent) 10%, transparent); color: var(--pa-accent); }
+.pa-ap-dd-opt.active { color: var(--pa-accent); background: color-mix(in srgb, var(--pa-accent) 6%, transparent); }
+
+/* Mini 3-segment color strip inside trigger + options */
+.pa-ap-dd-swatch {
+  display: flex; border-radius: 4px; overflow: hidden;
+  width: 36px; height: 18px; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.08);
+}
+.pa-ap-dd-swatch span { flex: 1; }
+

@@ -1,0 +1,88 @@
+/*
+ * client-theme.css
+ * Must load AFTER the inline <style> block in index.html <head>.
+ * Fallbacks match original hardcoded values exactly — no-op until
+ * appearance.js sets --pa-* variables on :root.
+ */
+
+body {
+  background: var(--pa-bg, #0a1611);
+  color: var(--pa-text, #c8d6cd);
+}
+
+/* Panel surfaces */
+.card, .hud-card, .modal-content, .auth-bar, .mic-menu, .redeem-panel,
+#wgcPickerInner {
+  background-color: color-mix(in srgb,
+    var(--pa-panel, #0f2318) calc(var(--pa-panel-opacity, 1) * 100%), transparent);
+  border-color: var(--pa-border, #1e3527);
+}
+
+@supports not (background-color: color-mix(in srgb, red 50%, transparent)) {
+  .card, .hud-card, .modal-content, .auth-bar, .mic-menu, .redeem-panel,
+  #wgcPickerInner {
+    background-color: var(--pa-panel, #0f2318);
+  }
+}
+
+/* Sunk surfaces — #authPanel select raises specificity to beat the inline ID rule */
+input[type="text"], input[type="password"], select, #authPanel select,
+.storage-path, .info-row, .clip-duration-row, .clip-duration-display,
+.usage-track, .session-code, .rejoin-card {
+  background-color: var(--pa-panel-sunk, #0c1c14);
+  border-color: var(--pa-border, #1e3527);
+}
+
+/* Buttons — exclude semantic variants and icon/chrome buttons */
+button:not(.btn-save):not(.btn-start):not(.btn-end):not(.btn-leave):not(.btn-icon):not(.hud-tab):not(.collapse-toggle):not(.hist-edit):not(.modal-close):not(.member-action-btn):not(.settings-tab):not(.ks-btn):not(.mic-mute-btn) {
+  background: var(--pa-panel, #14291d);
+  border-color: var(--pa-border, #2a4636);
+  color: var(--pa-text-dim, #8fbfa3);
+}
+button:not(.btn-save):not(.btn-start):not(.btn-end):not(.btn-leave):not(.btn-icon):not(.hud-tab):not(.collapse-toggle):not(.hist-edit):not(.modal-close):not(.member-action-btn):not(.settings-tab):not(.ks-btn):not(.mic-mute-btn):hover {
+  border-color: var(--pa-accent, #39d3a0);
+}
+.btn-secondary {
+  background: var(--pa-panel, #14291d);
+  border-color: var(--pa-border, #2a4636);
+  color: var(--pa-text-dim, #8fbfa3);
+}
+.btn-save { box-shadow: 0 0 0 1px var(--pa-accent, #39d3a0); }
+
+/* HUD */
+.hud-rail {
+  background: var(--pa-panel-sunk, #0d1e15);
+  border-right-color: var(--pa-border, #1e3527);
+}
+.hud-tab.active {
+  background: var(--pa-panel-sunk, #0c1c14);
+  border-color: var(--pa-border, #24402e);
+  color: var(--pa-accent, #39d3a0);
+}
+.hud-tab .tab-badge { background: var(--pa-accent, #1d9e75); color: #04140d; }
+.hud-title { color: var(--pa-accent, #39d3a0); }
+.hud-panes { background: var(--pa-panel-sunk, #0c1c14); }
+
+/* Settings tabs */
+.settings-tabs { border-bottom-color: var(--pa-border, #1e3527); }
+.settings-tab { color: var(--pa-text-faint, #5f7a6a); }
+.settings-tab:hover { color: var(--pa-text-dim, #8fbfa3); }
+.settings-tab.active { color: var(--pa-accent, #39d3a0); border-bottom-color: var(--pa-accent, #39d3a0); }
+
+/* Headings + accent */
+h1, h3, .modal-header h2, .status-bar.ready, .player-link, .hud-title {
+  color: var(--pa-accent, #39d3a0);
+}
+
+/* Muted text */
+label, .uc-label, .hint, .status-help, .version-tag, .hud-empty {
+  color: var(--pa-text-faint, #5f7a6a);
+}
+
+/* Member rows */
+.member-item { background: var(--pa-panel-sunk, #0c1c14); }
+.member-name { color: var(--pa-text, #c8d6cd); }
+
+/* Structural borders */
+hr { border-color: var(--pa-border, #1e3527); }
+.hist-item { border-bottom-color: var(--pa-panel, #14291d); }

@@ -1,0 +1,222 @@
+/*
+ * av-check.css — styles for the Test Audio & Video Playback panel.
+ *
+ * Everything is namespaced under .pa-avc so this can be dropped into
+ * client/index.html without colliding with the app's existing rules. Colours
+ * are read from CSS custom properties with Peak-Abu's palette as the default,
+ * so the appearance module can retheme this panel without touching it.
+ */
+
+.pa-avc {
+  --avc-bg:        var(--pa-panel, #0f2318);
+  --avc-bg-sunk:   var(--pa-panel-sunk, #0c1c14);
+  --avc-border:    var(--pa-border, #1e3527);
+  --avc-border-2:  var(--pa-border-strong, #24402e);
+  --avc-text:      var(--pa-text, #c8d6cd);
+  --avc-dim:       var(--pa-text-dim, #8fbfa3);
+  --avc-faint:     var(--pa-text-faint, #5f7a6a);
+  --avc-accent:    var(--pa-accent, #39d3a0);
+  --avc-accent-2:  var(--pa-accent-bright, #4fe0b0);
+  --avc-warn:      var(--pa-warn, #e8c058);
+  --avc-danger:    var(--pa-danger, #f0857a);
+
+  color: var(--avc-text);
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 14px;
+}
+
+.pa-avc * { box-sizing: border-box; }
+
+.pa-avc-section {
+  background: var(--avc-bg-sunk);
+  border: 1px solid var(--avc-border-2);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.pa-avc-section h4 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--avc-accent);
+  letter-spacing: 0.3px;
+}
+
+.pa-avc-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.pa-avc-row:last-child { margin-bottom: 0; }
+.pa-avc-row > label {
+  font-size: 11px; color: var(--avc-faint); text-transform: uppercase;
+  letter-spacing: 0.7px; margin: 0; flex-shrink: 0; min-width: 92px;
+}
+.pa-avc-row > select,
+.pa-avc-row > input[type="range"] { flex: 1; min-width: 0; }
+
+.pa-avc select {
+  background: #12251a; color: var(--avc-text);
+  border: 1px solid var(--avc-border-2); border-radius: 6px;
+  padding: 7px 9px; font-size: 13px; font-family: inherit; width: 100%;
+}
+.pa-avc select:focus { outline: none; border-color: var(--avc-accent); }
+
+/* ===== Meters ===== */
+.pa-avc-meter { margin-bottom: 9px; }
+.pa-avc-meter-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 11px; color: var(--avc-faint); margin-bottom: 3px;
+}
+.pa-avc-meter-head .pa-avc-val {
+  font-variant-numeric: tabular-nums; color: var(--avc-dim); font-size: 11px;
+}
+.pa-avc-track {
+  position: relative; height: 9px; background: #071009;
+  border: 1px solid var(--avc-border); border-radius: 5px; overflow: hidden;
+}
+.pa-avc-fill {
+  height: 100%; width: 0%; border-radius: 4px;
+  background: linear-gradient(90deg, #1d9e75, var(--avc-accent-2));
+  /* Transition only the width: the level updates 20x/sec and an eased
+     colour change would visibly lag behind the audio. */
+  transition: width 0.06s linear;
+}
+.pa-avc-fill.hot { background: linear-gradient(90deg, #b8862c, var(--avc-warn)); }
+.pa-avc-fill.clip { background: linear-gradient(90deg, #a63a2e, var(--avc-danger)); }
+
+/* Reference marks at -18dBFS (healthy speech) and -3dBFS (clipping risk). */
+.pa-avc-track::before,
+.pa-avc-track::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 1px;
+  background: rgba(255, 255, 255, 0.22);
+}
+.pa-avc-track::before { left: 70%; }
+.pa-avc-track::after  { left: 95%; }
+
+/* ===== Buttons ===== */
+.pa-avc button {
+  font-family: inherit; font-size: 13px; cursor: pointer;
+  border-radius: 6px; padding: 9px 14px; border: 1px solid transparent;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.pa-avc-btn-primary {
+  background: #1d9e75; color: #04140d; border-color: #1d9e75; font-weight: 600;
+}
+.pa-avc-btn-primary:hover:not(:disabled) { background: #23b686; border-color: #23b686; }
+.pa-avc-btn-secondary {
+  background: #14291d; color: var(--avc-dim); border-color: #2a4636;
+}
+.pa-avc-btn-secondary:hover:not(:disabled) {
+  border-color: var(--avc-accent); color: var(--avc-accent);
+}
+.pa-avc button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ===== A/B switch ===== */
+.pa-avc-ab {
+  display: flex; border: 1px solid var(--avc-border-2);
+  border-radius: 7px; overflow: hidden;
+}
+.pa-avc-ab button {
+  flex: 1; border-radius: 0; border: none; background: #0c1c14;
+  color: var(--avc-faint); font-weight: 600; letter-spacing: 0.3px;
+}
+.pa-avc-ab button.active { background: var(--avc-accent); color: #04140d; }
+.pa-avc-ab button:not(.active):hover { background: #14291d; color: var(--avc-dim); }
+
+/* ===== Video preview ===== */
+.pa-avc-video-wrap {
+  position: relative; width: 100%; aspect-ratio: 16 / 9;
+  background: #000; border: 1px solid var(--avc-border-2);
+  border-radius: 7px; overflow: hidden;
+}
+.pa-avc-video-wrap video { width: 100%; height: 100%; object-fit: contain; display: block; }
+.pa-avc-video-empty {
+  position: absolute; inset: 0; display: flex; align-items: center;
+  justify-content: center; color: var(--avc-faint); font-size: 13px; text-align: center;
+  padding: 16px;
+}
+.pa-avc-video-badge {
+  position: absolute; top: 8px; left: 8px;
+  background: rgba(4, 20, 13, 0.82); color: var(--avc-accent);
+  font-size: 11px; font-variant-numeric: tabular-nums;
+  padding: 3px 8px; border-radius: 4px; pointer-events: none;
+}
+
+/* ===== Countdown / progress ===== */
+.pa-avc-progress {
+  height: 5px; background: #071009; border-radius: 3px;
+  overflow: hidden; margin-top: 10px;
+}
+.pa-avc-progress-fill {
+  height: 100%; width: 0%; background: var(--avc-accent);
+  transition: width 0.1s linear;
+}
+.pa-avc-status {
+  font-size: 13px; color: var(--avc-dim); text-align: center;
+  margin-top: 8px; min-height: 18px;
+}
+.pa-avc-status.recording { color: var(--avc-danger); font-weight: 600; }
+
+/* ===== Verdict list ===== */
+.pa-avc-verdict { list-style: none; margin: 0; padding: 0; }
+.pa-avc-verdict li {
+  display: flex; gap: 9px; align-items: flex-start;
+  padding: 7px 0; border-bottom: 1px solid var(--avc-border);
+  font-size: 13px; line-height: 1.45;
+}
+.pa-avc-verdict li:last-child { border-bottom: none; }
+.pa-avc-verdict .pa-avc-icon { flex-shrink: 0; width: 16px; text-align: center; }
+.pa-avc-verdict .ok    { color: var(--avc-accent); }
+.pa-avc-verdict .warn  { color: var(--avc-warn); }
+.pa-avc-verdict .bad   { color: var(--avc-danger); }
+.pa-avc-verdict .pa-avc-detail { color: var(--avc-faint); font-size: 12px; }
+
+.pa-avc-stat-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px;
+}
+.pa-avc-stat {
+  background: #071009; border: 1px solid var(--avc-border);
+  border-radius: 6px; padding: 8px 10px;
+}
+.pa-avc-stat .k {
+  font-size: 10px; color: var(--avc-faint);
+  text-transform: uppercase; letter-spacing: 0.6px;
+}
+.pa-avc-stat .v {
+  font-size: 17px; color: var(--avc-text);
+  font-variant-numeric: tabular-nums; margin-top: 2px;
+}
+
+.pa-avc-note { font-size: 11px; color: var(--avc-faint); margin: 6px 0 0; line-height: 1.5; }
+.pa-avc-hidden { display: none !important; }
+
+/* The backend note changes as the user switches engines; reserve space so
+   the panel does not jump around when a longer description loads. */
+.pa-avc-backend-note { min-height: 30px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pa-avc-fill, .pa-avc-progress-fill { transition: none; }
+}
+.pa-avc-av-row { display: flex; gap: 10px; align-items: stretch; margin-bottom: 12px; }
+.pa-avc-meters-vert { display: flex; gap: 6px; flex-shrink: 0; }
+.pa-avc-meter-v { display: flex; flex-direction: column; align-items: center; width: 34px; }
+.pa-avc-meter-v-label { font-size: 9px; color: var(--avc-faint); text-transform: uppercase; margin-bottom: 3px; text-align: center; }
+.pa-avc-meter-v-val { font-size: 9px; color: var(--avc-dim); font-variant-numeric: tabular-nums; margin-top: 4px; }
+.pa-avc-meter-v-track {
+  position: relative; flex: 1; width: 14px; min-height: 60px;
+  background: #071009; border: 1px solid var(--avc-border); border-radius: 5px;
+  overflow: hidden; display: flex; flex-direction: column-reverse;
+}
+.pa-avc-meter-v-fill {
+  width: 100%; height: 0%; border-radius: 4px 4px 0 0;
+  background: linear-gradient(0deg, #1d9e75, var(--avc-accent-2));
+  transition: height 0.06s linear;
+}
+.pa-avc-meter-v-fill.hot { background: linear-gradient(0deg, #b8862c, var(--avc-warn)); }
+.pa-avc-meter-v-fill.clip { background: linear-gradient(0deg, #a63a2e, var(--avc-danger)); }
+/* -18dBFS / -3dBFS reference marks, rotated for vertical orientation */
+.pa-avc-meter-v-track::before, .pa-avc-meter-v-track::after {
+  content: ''; position: absolute; left: 0; right: 0; height: 1px;
+  background: rgba(255,255,255,0.22);
+}
+.pa-avc-meter-v-track::before { bottom: 70%; }
+.pa-avc-meter-v-track::after  { bottom: 95%; }
+.pa-avc-av-row .pa-avc-video-wrap { flex: 1; margin: 0; }
