@@ -316,6 +316,20 @@ function playerUrlFor(code, token, username) {
   if (token && username) {
     url += `&t=${encodeURIComponent(token)}&u=${encodeURIComponent(username)}`;
   }
+  // Bake in the current theme so first paint matches immediately instead
+  // of waiting for the post-load pushThemeToPlayer() executeJavaScript
+  // call (which still runs for LIVE theme changes — this just closes the
+  // flash-of-default-theme gap on initial load). One base64 JSON param
+  // rather than one query param per token, so adding/removing tokens
+  // later doesn't require touching this function.
+  if (latestThemeTokens) {
+    try {
+      const encoded = Buffer.from(JSON.stringify(latestThemeTokens), 'utf8').toString('base64');
+      url += `&theme=${encodeURIComponent(encoded)}`;
+    } catch (e) {
+      console.log('[theme-push] failed to encode theme for URL:', e.message);
+    }
+  }
   return url;
 }
 
@@ -370,6 +384,38 @@ function layoutPlayerView() {
     viewWidth: actualViewWidth,
     contentWidth: w
   });
+}
+
+let latestThemeTokens = null;
+
+function pushThemeToPlayer() {
+  if (!latestThemeTokens) return;
+  // Ship tokens as one JSON blob and let the player apply + persist them
+  // itself (via window.paApplyThemeTokens, defined in index.html). Falls
+  // back to raw setProperty calls if that function isn't present yet —
+  // e.g. a very old cached page — so a live theme push never silently
+  // no-ops. The try/catch around localStorage covers private-browsing
+  // contexts where it can throw.
+  const payload = JSON.stringify(latestThemeTokens);
+  const js = `
+    (function () {
+      var tokens = ${payload};
+      if (window.paApplyThemeTokens) {
+        window.paApplyThemeTokens(tokens);
+      } else {
+        Object.keys(tokens).forEach(function (k) {
+          document.documentElement.style.setProperty(k, tokens[k]);
+        });
+      }
+      try { localStorage.setItem('pa_theme_tokens', JSON.stringify(tokens)); } catch (e) {}
+    })();
+  `;
+  if (playerView && playerView.webContents) {
+    playerView.webContents.executeJavaScript(js).catch((e) => console.log('[theme-push] docked player failed:', e.message));
+  }
+  if (playerWindow && !playerWindow.isDestroyed()) {
+    playerWindow.webContents.executeJavaScript(js).catch((e) => console.log('[theme-push] windowed player failed:', e.message));
+  }
 }
 
 function openDockedPlayer(code, token, username) {
@@ -3129,22 +3175,8 @@ function createWindow() {
     saveUserPreferences(prefs);
   });
 
-  let latestThemeTokens = null;
-
-  function pushThemeToPlayer() {
-    if (!latestThemeTokens) return;
-    const js = Object.entries(latestThemeTokens)
-      .map(([k, v]) => `document.documentElement.style.setProperty(${JSON.stringify(k)}, ${JSON.stringify(v)});`)
-      .join('');
-    if (playerView && playerView.webContents) {
-      playerView.webContents.executeJavaScript(js).catch(() => {});
-    }
-    if (playerWindow && !playerWindow.isDestroyed()) {
-      playerWindow.webContents.executeJavaScript(js).catch(() => {});
-    }
-  }
-
   ipcMain.on('theme-push', (event, tokens) => {
+    console.log('[theme-push] received', Object.keys(tokens));
     latestThemeTokens = tokens;
     pushThemeToPlayer();
   });

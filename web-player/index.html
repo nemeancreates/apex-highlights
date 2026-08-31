@@ -1435,15 +1435,51 @@
       myUsername = params.get('u') || null;
     })();
 
-    // AI Reel is a paid-tier, logged-in feature — hide the entry point
-    // entirely for unauthenticated viewers rather than let them open the
-    // panel and hit the auth error inside startAiReel().
-    document.addEventListener('DOMContentLoaded', function() {
-      if (!myAuthToken) {
-        const btn = document.getElementById('aireelOpenBtn');
-        if (btn) btn.style.display = 'none';
+    (function readCredentialsFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      myAuthToken = params.get('t') || null;
+      myUsername = params.get('u') || null;
+    })();
+
+    // ========================
+    // THEME PERSISTENCE — main.js bakes the app's current theme into the URL
+    // (see playerUrlFor) so first paint matches immediately, instead of
+    // waiting for the post-load pushThemeToPlayer() executeJavaScript call.
+    // Stashed to localStorage so a bookmarked/reloaded link with no `theme`
+    // param (or a stale one) still renders in the last known theme instead
+    // of snapping back to the hardcoded CSS defaults.
+    // ========================
+    const PA_THEME_STORAGE_KEY = 'pa_theme_tokens';
+
+    function paApplyThemeTokens(tokens) {
+     if (!tokens || typeof tokens !== 'object') return;
+     Object.entries(tokens).forEach(([k, v]) => {
+       document.documentElement.style.setProperty(k, v);
+     });
+    }
+    window.paApplyThemeTokens = paApplyThemeTokens;
+
+    (function readThemeFromUrlOrStorage() {
+      const params = new URLSearchParams(window.location.search);
+      const encoded = params.get('theme');
+
+      if (encoded) {
+        try {
+          const tokens = JSON.parse(atob(decodeURIComponent(encoded)));
+          paApplyThemeTokens(tokens);
+          localStorage.setItem(PA_THEME_STORAGE_KEY, JSON.stringify(tokens));
+          return;
+        } catch (e) {
+          console.log('[theme] failed to parse theme param:', e.message);
+          // fall through to localStorage
+        }
       }
-    });
+
+      try {
+        const stored = localStorage.getItem(PA_THEME_STORAGE_KEY);
+        if (stored) paApplyThemeTokens(JSON.parse(stored));
+      } catch (e) {}
+    })();
 
     // ========================
     // LOCAL CLIPS
