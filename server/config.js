@@ -63,6 +63,17 @@ const SOCKET_RATE_WINDOW = 10000;    // 10 seconds
 // --- Highlights ---
 const MAX_PENDING_HIGHLIGHTS = 3;    // queued triggers during cooldown lock
 
+// --- Host inactivity auto-close ---
+// Two independent clocks, checked by the watchdog sweep in sockets/index.js:
+// - HOST_RECORDING_INACTIVITY_MS: host IS recording but sends no uploads or
+//   activity (recording-status/buffer-capacity/upload) — closes after this.
+// - HOST_NOT_RECORDING_TIMEOUT_MS: host connected but NOT recording at all —
+//   closes after this (the "forgot to leave" case).
+// TESTING VALUES ACTIVE — swap to the commented prod values before launch.
+const HOST_RECORDING_INACTIVITY_MS = 2 * 60 * 1000;   // TESTING (prod: 15 * 60 * 1000)
+const HOST_NOT_RECORDING_TIMEOUT_MS = 1 * 60 * 1000;  // TESTING (prod: 5 * 60 * 1000)
+const HOST_WATCHDOG_INTERVAL_MS = 15 * 1000;
+
 // --- Quick comments ---
 // Short timestamped notes left on a single POV clip. Every one of these is
 // enforced server-side in routes/comments.js — the client's maxlength and
@@ -212,6 +223,9 @@ module.exports = {
   COMMENT_MAX_TIMESTAMP_MS,
   TIERS,
   TIER_ORDER,
+  HOST_RECORDING_INACTIVITY_MS,
+  HOST_NOT_RECORDING_TIMEOUT_MS,
+  HOST_WATCHDOG_INTERVAL_MS,
   ADMIN_SECRET,
   DISCORD_CLIENT_ID,
   DISCORD_CLIENT_SECRET,

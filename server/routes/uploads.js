@@ -223,6 +223,9 @@ function initUploadRoutes(app, io) {
       };
 
       session.uploads.push(uploadRecord);
+      if (uploaderName === session.createdBy) {
+        session.hostLastActivityAt = Date.now();
+      }
       saveSessionsToDisk();
 
       trackBandwidth(uploaderName, videoFile.size, users, saveUsersToDisk);

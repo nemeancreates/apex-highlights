@@ -5,7 +5,7 @@
 // ================================
 const { log } = require('../logger');
 const { sanitizeUsername, sanitizeCode } = require('../utils');
-const { MAX_MEMBERS_PER_SESSION, ALLOWED_CLIP_DURATIONS, TIERS } = require('../config');
+const { MAX_MEMBERS_PER_SESSION, ALLOWED_CLIP_DURATIONS, TIERS, HOST_RECORDING_INACTIVITY_MS, HOST_NOT_RECORDING_TIMEOUT_MS, HOST_WATCHDOG_INTERVAL_MS } = require('../config');
 const { sessions, saveSessionsToDisk, users } = require('../stores');
 const { checkSocketRate, removeSocketRate } = require('../ratelimit');
 const { socketAuth, getEffectiveTier } = require('../auth');
@@ -28,6 +28,11 @@ const MAX_SOCKETS_PER_IP = 15;
 // Defined at module scope (not inside io.on('connection')) so it isn't
 // redefined on every new connection.
 // ================================
+
+function cleanIsHost(session, username) {
+  return !!session && session.createdBy === username;
+}
+
 function removeMemberFromSession(io, session, sessionCode, targetUsername, mode, actingUsername) {
   const idx = session.members.findIndex(m => m.username === targetUsername);
   if (idx === -1) return { ok: false, error: 'That member is not in this session' };
@@ -62,6 +67,49 @@ function removeMemberFromSession(io, session, sessionCode, targetUsername, mode,
 
   io.to(sessionCode).emit(mode === 'ban' ? 'member-banned' : 'member-kicked', { username: targetUsername });
   return { ok: true };
+}
+
+// ================================
+// HOST INACTIVITY WATCHDOG — closes a session the host has effectively
+// abandoned. Two clocks: hostIdleSince (not recording) and
+// hostLastActivityAt (recording but silent). See config.js for thresholds.
+// Mirrors the host-disconnect closure below but doesn't touch it — this
+// only fires while the host's socket is still connected.
+// ================================
+function closeSessionForInactivity(io, sessionCode, session, reason) {
+  if (session.closed) return;
+  session.closed = true;
+  saveSessionsToDisk();
+  if (session.members.length > 0) {
+    log('info', 'session_closed_inactivity', { session: sessionCode, reason });
+    io.to(sessionCode).emit('session-closed', { reason });
+    session.members = [];
+  }
+}
+
+function startHostInactivityWatchdog(io) {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [code, session] of sessions) {
+      if (session.closed) continue;
+      const host = session.members.find(m => m.username === session.createdBy);
+      if (!host) continue; // host's socket isn't connected right now — skip
+
+      if (host.isRecording) {
+        const last = session.hostLastActivityAt || session.hostIdleSince || now;
+        if (now - last > HOST_RECORDING_INACTIVITY_MS) {
+          closeSessionForInactivity(io, code, session,
+            `No activity from host while recording — session closed after ${Math.round(HOST_RECORDING_INACTIVITY_MS / 60000)}m`);
+        }
+      } else {
+        const idleSince = session.hostIdleSince || now;
+        if (now - idleSince > HOST_NOT_RECORDING_TIMEOUT_MS) {
+          closeSessionForInactivity(io, code, session,
+            `Host not recording — session closed after ${Math.round(HOST_NOT_RECORDING_TIMEOUT_MS / 60000)}m`);
+        }
+      }
+    }
+  }, HOST_WATCHDOG_INTERVAL_MS);
 }
 
 function initSockets(io) {
@@ -118,6 +166,8 @@ function initSockets(io) {
         if (cleanUsername === session.createdBy) {
           session.closed = false; // host reconnecting reopens it
           saveSessionsToDisk();
+          session.hostIdleSince = Date.now();
+          session.hostLastActivityAt = null;
         } else {
           socket.emit('error-message', { message: 'Waiting on the host to reconnect — or ask them to start a new session.' });
           return;
@@ -162,6 +212,9 @@ function initSockets(io) {
       };
 
       session.members.push(member);
+      if (cleanUsername === session.createdBy && session.hostIdleSince === undefined) {
+        session.hostIdleSince = Date.now(); // covers first-ever join, not just reconnect-after-close
+      }
       socket.join(sessionCode);
       socket.sessionCode = sessionCode;
       socket.username = cleanUsername;
@@ -331,6 +384,9 @@ function initSockets(io) {
       const clean = Math.min(3600, Math.max(10, Math.round(bufferSeconds)));
       const member = session.members.find(m => m.socketId === socket.id);
       if (member) member.bufferSeconds = clean;
+      if (cleanIsHost(session, socket.username) && member && member.isRecording) {
+        session.hostLastActivityAt = Date.now();
+      }
 
       log('info', 'buffer_capacity', { session: sessionCode, username: socket.username, bufferSeconds: clean });
     });
@@ -345,6 +401,16 @@ function initSockets(io) {
 
       const member = session.members.find(m => m.socketId === socket.id);
       if (member) member.isRecording = isRecording;
+
+      if (cleanIsHost(session, socket.username)) {
+        if (isRecording) {
+          session.hostIdleSince = null;
+          session.hostLastActivityAt = Date.now();
+        } else {
+          session.hostIdleSince = Date.now();
+          session.hostLastActivityAt = null;
+        }
+      }
 
       io.to(sessionCode).emit('member-recording-update', {
         username: socket.username,
@@ -494,4 +560,9 @@ function initSockets(io) {
   });
 }
 
-module.exports = { initSockets };
+function initSocketsWithWatchdog(io) {
+  initSockets(io);
+  startHostInactivityWatchdog(io);
+}
+
+module.exports = { initSockets: initSocketsWithWatchdog };
