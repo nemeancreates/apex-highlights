@@ -70,8 +70,8 @@ const MAX_PENDING_HIGHLIGHTS = 3;    // queued triggers during cooldown lock
 // - HOST_NOT_RECORDING_TIMEOUT_MS: host connected but NOT recording at all —
 //   closes after this (the "forgot to leave" case).
 // TESTING VALUES ACTIVE — swap to the commented prod values before launch.
-const HOST_RECORDING_INACTIVITY_MS = 2 * 60 * 1000;   // TESTING (prod: 25 * 60 * 1000)
-const HOST_NOT_RECORDING_TIMEOUT_MS = 1 * 60 * 1000;  // TESTING (prod: 10 * 60 * 1000)
+const HOST_RECORDING_INACTIVITY_MS = 25 * 60 * 1000;   // TESTING (prod: 25 * 60 * 1000)
+const HOST_NOT_RECORDING_TIMEOUT_MS = 10 * 60 * 1000;  // TESTING (prod: 10 * 60 * 1000)
 const HOST_WATCHDOG_INTERVAL_MS = 15 * 1000;
 
 // --- Quick comments ---
