@@ -384,9 +384,6 @@ function initSockets(io) {
       const clean = Math.min(3600, Math.max(10, Math.round(bufferSeconds)));
       const member = session.members.find(m => m.socketId === socket.id);
       if (member) member.bufferSeconds = clean;
-      if (cleanIsHost(session, socket.username) && member && member.isRecording) {
-        session.hostLastActivityAt = Date.now();
-      }
 
       log('info', 'buffer_capacity', { session: sessionCode, username: socket.username, bufferSeconds: clean });
     });
