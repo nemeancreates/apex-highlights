@@ -3363,24 +3363,25 @@
 
     function showShareLink(code) {
       currentShareUrl = window.location.origin + '/player?code=' + code;
-
-      const tokens = paGetCurrentThemeTokens();
-      if (tokens) {
-        try {
-          const encoded = btoa(JSON.stringify(tokens));
-          currentShareUrl += '&theme=' + encodeURIComponent(encoded);
-        } catch (e) {
-          console.log('[theme] failed to encode theme for share link:', e.message);
-        }
-      }
-
       const btn = document.getElementById('shareBtn');
       if (btn) btn.style.display = '';
     }
 
     function copyShareLink() {
       if (!currentShareUrl) return;
-      navigator.clipboard.writeText(currentShareUrl).then(() => {
+
+      let urlToCopy = currentShareUrl;
+      const tokens = paGetCurrentThemeTokens();
+      if (tokens) {
+        try {
+          const encoded = btoa(JSON.stringify(tokens));
+          urlToCopy += (urlToCopy.includes('?') ? '&' : '?') + 'theme=' + encodeURIComponent(encoded);
+        } catch (e) {
+          console.log('[theme] failed to encode theme for share link:', e.message);
+        }
+      }
+
+      navigator.clipboard.writeText(urlToCopy).then(() => {
         const btn = document.getElementById('shareBtn');
         if (!btn) return;
         const orig = btn.innerHTML;
