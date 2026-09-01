@@ -1435,12 +1435,6 @@
       myUsername = params.get('u') || null;
     })();
 
-    (function readCredentialsFromUrl() {
-      const params = new URLSearchParams(window.location.search);
-      myAuthToken = params.get('t') || null;
-      myUsername = params.get('u') || null;
-    })();
-
     // ========================
     // THEME PERSISTENCE — main.js bakes the app's current theme into the URL
     // (see playerUrlFor) so first paint matches immediately, instead of
@@ -1456,6 +1450,7 @@
      Object.entries(tokens).forEach(([k, v]) => {
        document.documentElement.style.setProperty(k, v);
      });
+     window._paCurrentThemeTokens = tokens;
     }
     window.paApplyThemeTokens = paApplyThemeTokens;
 
@@ -1598,6 +1593,19 @@
       updateLocalStatusBar();
       console.log('Local scan (file input): ' + localClipMap.size + ' clips with clipId');
     }
+
+
+
+    function paGetCurrentThemeTokens() {
+     if (window._paCurrentThemeTokens) return window._paCurrentThemeTokens;
+     try {
+       const stored = localStorage.getItem(PA_THEME_STORAGE_KEY);
+       if (stored) return JSON.parse(stored);
+     } catch (e) {}
+     return null;
+    }
+
+
 
     function updateLocalStatusBar() {
       const txt = document.getElementById('localStatusText');
@@ -3355,6 +3363,17 @@
 
     function showShareLink(code) {
       currentShareUrl = window.location.origin + '/player?code=' + code;
+
+      const tokens = paGetCurrentThemeTokens();
+      if (tokens) {
+        try {
+          const encoded = btoa(JSON.stringify(tokens));
+          currentShareUrl += '&theme=' + encodeURIComponent(encoded);
+        } catch (e) {
+          console.log('[theme] failed to encode theme for share link:', e.message);
+        }
+      }
+
       const btn = document.getElementById('shareBtn');
       if (btn) btn.style.display = '';
     }

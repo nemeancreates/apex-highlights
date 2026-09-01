@@ -418,6 +418,7 @@ function pushThemeToPlayer() {
   }
 }
 
+
 function openDockedPlayer(code, token, username) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const { WebContentsView } = require('electron');
@@ -3184,8 +3185,6 @@ function createWindow() {
   ipcMain.handle('is-player-open', () =>
     !!playerView || !!(playerWindow && !playerWindow.isDestroyed()));
 
-  ipcMain.handle('is-player-open', () =>
-    !!playerView || !!(playerWindow && !playerWindow.isDestroyed()));
 
   ipcMain.handle('get-player-windowed-mode', () => playerWindowedMode);
 
