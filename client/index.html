@@ -965,6 +965,25 @@
           </div>
         </div>
 
+        <!-- WATCH / COMMENT — opens the browser player for any session
+             code without joining as a squad member (no socket join, no
+             recording setup). Uses this account's own login, so comments
+             post as you; host-only actions stay server-enforced regardless. -->
+        <div class="card" id="watchOnlyPanel">
+          <div class="section-header" onclick="toggleCollapse('watchOnly')">
+            <h3>Watch / Comment</h3>
+            <button class="collapse-toggle" id="collapseBtn-watchOnly" onclick="event.stopPropagation();toggleCollapse('watchOnly')">◂</button>
+          </div>
+          <div class="collapse-body" id="collapse-watchOnly">
+            <label>Session Code</label>
+            <input type="text" id="watchCodeInput" placeholder="e.g. ABCD12" maxlength="6"
+                   style="text-transform:uppercase;letter-spacing:3px;text-align:center;"
+                   onkeydown="if(event.key==='Enter') openWatchOnlyPlayer();" />
+            <button class="btn-secondary" onclick="openWatchOnlyPlayer()">🌐 Open in Browser</button>
+            <div class="hint">View, watch the AI Reel, and comment — no need to join as a squad member.</div>
+          </div>
+        </div>
+
         <!-- SESSION HUD — lives under the session card, fills the left column -->
         <div class="card">
           <div class="section-header" onclick="toggleCollapse('hud')">
@@ -2266,6 +2285,19 @@
         if (e) e.preventDefault();
         if (!window.currentSessionCode) return;
         window.openPlayerForCode(window.currentSessionCode);
+      };
+
+      // Standalone "watch/comment" entry point — takes whatever code the
+      // user typed into #watchCodeInput and opens the browser player for
+      // it directly. Deliberately bypasses joinSession()/connectToSession()
+      // entirely: no socket join, no recording setup, nothing that would
+      // count against a member cap. Just the account's own login riding
+      // along so comments post as them.
+      window.openWatchOnlyPlayer = function() {
+        var input = document.getElementById('watchCodeInput');
+        var code = (input ? input.value : '').trim().toUpperCase();
+        if (!code || code.length < 4) { alert('Enter a valid session code'); return; }
+        window.openPlayerForCode(code);
       };
       document.getElementById('settingsModal').addEventListener('click', function(e) { if (e.target.id==='settingsModal') closeSettings(); });
 
