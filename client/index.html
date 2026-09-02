@@ -944,8 +944,14 @@
             <button class="btn-save" onclick="createSession()">Create New Session</button>
             <div class="divider">— or join a friend —</div>
             <label>Session Code</label>
-            <input type="text" id="joinCodeInput" placeholder="e.g. ABCD12" maxlength="6"
-                   style="text-transform:uppercase;letter-spacing:3px;text-align:center;" />
+            <div style="position:relative;">
+              <input type="text" id="joinCodeInput" placeholder="e.g. ABCD12" maxlength="6"
+                     style="text-transform:uppercase;letter-spacing:3px;text-align:center;width:100%;box-sizing:border-box;padding-right:34px;"
+                     oninput="updateJoinCodeBrowserIcon()" />
+              <button id="joinCodeBrowserIcon" onclick="openPlayerForCode(document.getElementById('joinCodeInput').value.trim().toUpperCase())"
+                      title="Open in Web Player — view the AI Reel and comment without joining"
+                      style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;line-height:1;padding:4px;">🌐</button>
+            </div>
             <button class="btn-secondary" onclick="joinSession()">Join Session</button>
           </div>
           <div id="sessionPanel-connected" style="flex:1;flex-direction:column;">
@@ -962,25 +968,6 @@
               Leave Session
             </button>
           </div>
-          </div>
-        </div>
-
-        <!-- WATCH / COMMENT — opens the browser player for any session
-             code without joining as a squad member (no socket join, no
-             recording setup). Uses this account's own login, so comments
-             post as you; host-only actions stay server-enforced regardless. -->
-        <div class="card" id="watchOnlyPanel">
-          <div class="section-header" onclick="toggleCollapse('watchOnly')">
-            <h3>Watch / Comment</h3>
-            <button class="collapse-toggle" id="collapseBtn-watchOnly" onclick="event.stopPropagation();toggleCollapse('watchOnly')">◂</button>
-          </div>
-          <div class="collapse-body" id="collapse-watchOnly">
-            <label>Session Code</label>
-            <input type="text" id="watchCodeInput" placeholder="e.g. ABCD12" maxlength="6"
-                   style="text-transform:uppercase;letter-spacing:3px;text-align:center;"
-                   onkeydown="if(event.key==='Enter') openWatchOnlyPlayer();" />
-            <button class="btn-secondary" onclick="openWatchOnlyPlayer()">🌐 Open in Browser</button>
-            <div class="hint">View, watch the AI Reel, and comment — no need to join as a squad member.</div>
           </div>
         </div>
 
@@ -1585,6 +1572,7 @@
       });
       if (!lastHosted) return;
       document.getElementById('joinCodeInput').value = lastHosted.code;
+      updateJoinCodeBrowserIcon();
       joinSession();
     };
 
@@ -1699,6 +1687,7 @@
 
         item.addEventListener('click', function() {
           document.getElementById('joinCodeInput').value = h.code;
+          updateJoinCodeBrowserIcon();
           clipboard.writeText(h.code);
           hudLog('system', '📋 Code ' + h.code + ' copied & filled', 'success');
         });
@@ -2287,17 +2276,17 @@
         window.openPlayerForCode(window.currentSessionCode);
       };
 
-      // Standalone "watch/comment" entry point — takes whatever code the
-      // user typed into #watchCodeInput and opens the browser player for
-      // it directly. Deliberately bypasses joinSession()/connectToSession()
-      // entirely: no socket join, no recording setup, nothing that would
-      // count against a member cap. Just the account's own login riding
-      // along so comments post as them.
-      window.openWatchOnlyPlayer = function() {
-        var input = document.getElementById('watchCodeInput');
-        var code = (input ? input.value : '').trim().toUpperCase();
-        if (!code || code.length < 4) { alert('Enter a valid session code'); return; }
-        window.openPlayerForCode(code);
+      // Shows the 🌐 icon inside #joinCodeInput once it holds a plausible
+      // code — clicking it calls the existing openPlayerForCode(), which
+      // opens the browser player for that exact code without going through
+      // joinSession()/connectToSession() (no socket join, no recording
+      // setup, doesn't count against any member cap). Just this account's
+      // login riding along so comments post as them.
+      window.updateJoinCodeBrowserIcon = function() {
+        var input = document.getElementById('joinCodeInput');
+        var icon = document.getElementById('joinCodeBrowserIcon');
+        if (!input || !icon) return;
+        icon.style.display = (input.value.trim().length >= 4) ? 'block' : 'none';
       };
       document.getElementById('settingsModal').addEventListener('click', function(e) { if (e.target.id==='settingsModal') closeSettings(); });
 
@@ -3312,6 +3301,7 @@
           var wasHost = window.isSessionHost;
           window.leaveSession();
           document.getElementById('joinCodeInput').value = d.newCode;
+          updateJoinCodeBrowserIcon();
           window.isSessionHost = wasHost;
           connectToSession(d.newCode, window.authUsername);
         });
@@ -4239,6 +4229,7 @@
 
         window.autoStartAfterJoin = !!link.autostart;
         document.getElementById('joinCodeInput').value = link.code;
+        updateJoinCodeBrowserIcon();
         hudLog('squad', '\uD83D\uDD17 Joining ' + link.code + ' from invite...', 'broadcast');
         window.isSessionHost = false;
         connectToSession(link.code, window.authUsername);
