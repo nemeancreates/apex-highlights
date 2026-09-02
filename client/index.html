@@ -950,7 +950,7 @@
                      oninput="updateJoinCodeBrowserIcon()" />
               <button id="joinCodeBrowserIcon" onclick="openPlayerForCode(document.getElementById('joinCodeInput').value.trim().toUpperCase())"
                       title="Open in Web Player — view the AI Reel and comment without joining"
-                      style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;line-height:1;padding:4px;">🌐</button>
+                      style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);width:26px;height:26px;min-width:26px;background:none;border:none;cursor:pointer;font-size:16px;line-height:1;padding:0;margin:0;align-items:center;justify-content:center;">🌐</button>
             </div>
             <button class="btn-secondary" onclick="joinSession()">Join Session</button>
           </div>
@@ -2286,7 +2286,7 @@
         var input = document.getElementById('joinCodeInput');
         var icon = document.getElementById('joinCodeBrowserIcon');
         if (!input || !icon) return;
-        icon.style.display = (input.value.trim().length >= 4) ? 'block' : 'none';
+        icon.style.display = (input.value.trim().length >= 4) ? 'flex' : 'none';
       };
       document.getElementById('settingsModal').addEventListener('click', function(e) { if (e.target.id==='settingsModal') closeSettings(); });
 
