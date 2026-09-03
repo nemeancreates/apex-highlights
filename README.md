@@ -141,7 +141,7 @@ For the full deployment guide, **this is private to Peak-Abu core team only**. C
 
 ## Feature Roadmap
 
-### Current (v0.1.70)
+### Current (v0.1.71)
 - ✅ Multi-POV capture (Windows Electron)
 - ✅ Coordinated save with clock sync
 - ✅ Web-based synchronized replay, no account needed to view
@@ -229,6 +229,6 @@ See `CHANGELOG.md` for version history, or GitHub Releases for detailed notes pe
 
 ---
 
-**Last verified against live code:** September 2026, client v0.1.70
+**Last verified against live code:** September 2026, client v0.1.71
 
 **Built with care by a single developer. If Peak-Abu saves your squad time, consider subscribing to help fund development.** ❤️

@@ -8,6 +8,12 @@ const FormData = require('form-data');
 const https = require('https');
 const { checkForUpdates } = require('./updater');
 const { buildReelLocally } = require('./aireel-client');
+const { init: sentryInit } = require('@sentry/electron/main');
+const { SENTRY_DSN } = require('./sentry-config');
+
+if (SENTRY_DSN) {
+  sentryInit({ dsn: SENTRY_DSN, release: `peak-abu@${app.getVersion()}` });
+}
 
 function getFFmpegPath() {
   if (app.isPackaged) {

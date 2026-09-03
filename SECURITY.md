@@ -211,6 +211,6 @@ Peak-Abu is designed with OWASP Top 10 and Microsoft SDL categories in mind. Mar
 
 ---
 
-**Last Updated:** September 2026, verified against client v0.1.70
+**Last Updated:** September 2026, verified against client v0.1.71
 
 Peak-Abu is maintained by a single developer with security as a core priority. Your trust is essential — thank you for helping us keep Peak-Abu safe. 🔐

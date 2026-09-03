@@ -1,6 +1,6 @@
 {
   "name": "peak-abu",
-  "version": "0.1.70",
+  "version": "0.1.71",
   "description": "Multi-POV synchronized gameplay highlights",
   "author": "nemeancreates",
   "main": "main.js",
@@ -55,6 +55,7 @@
     "electron-builder": "26.15.3"
   },
   "dependencies": {
+    "@sentry/electron": "^7.18.0",
     "form-data": "4.0.6",
     "ntp-time": "2.1.1",
     "socket.io-client": "4.8.3"
