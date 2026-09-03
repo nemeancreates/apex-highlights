@@ -188,7 +188,7 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 const LATEST_CLIENT_VERSION = {
   version: '0.1.71',
   downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.71.exe',
-    releaseNotes: "AI reel builds locally on your PC from saved clips files"
+    releaseNotes: "Added crash reporting"
 };
 
 // SENTRY_DSN — crash reporting. Unset = reporting silently disabled (local dev).
