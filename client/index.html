@@ -2623,7 +2623,7 @@
             if (ev.data && ev.data.size > 0) { ipcRenderer.send('save-mic-chunk', await ev.data.arrayBuffer()); }
           };
           window.micRecorder.onerror = function(e) { console.log('Mic error:', e); };
-          window.micRecorder.start(10000);
+          window.micRecorder.start(1000);
           ipcRenderer.send('mic-recording-started', Date.now()+20);
           if (window.autoCaptureEnabled) window.acAttachMic(stream);
 
@@ -3604,7 +3604,7 @@
             if (ev.data && ev.data.size > 0) ipcRenderer.send('save-audio-chunk', await ev.data.arrayBuffer());
           };
           window.mediaRecorder.onerror = function(e) { console.log('MediaRecorder error:', e); };
-          window.mediaRecorder.start(10000);
+          window.mediaRecorder.start(1000);
           ipcRenderer.send('audio-recording-started', Date.now()+20);
           if (window.autoCaptureEnabled) window.acAttachDesktop(audioOnlyStream);
         } catch(err) { console.log('Audio capture failed:', err.name, err.message); }

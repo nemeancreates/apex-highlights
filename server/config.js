@@ -191,9 +191,13 @@ const LATEST_CLIENT_VERSION = {
     releaseNotes: "AI reel builds locally on your PC from saved clips files"
 };
 
+// SENTRY_DSN — crash reporting. Unset = reporting silently disabled (local dev).
+const SENTRY_DSN = process.env.SENTRY_DSN || null;
+
 module.exports = {
   JWT_SECRET,
   PORT,
+  SENTRY_DSN,
   ALLOWED_ORIGINS,
   BCRYPT_ROUNDS,
   JWT_EXPIRY,

@@ -2,6 +2,8 @@
 // PEAK-ABU SERVER — entry point. Wiring only: if logic is creeping into
 // this file, it belongs in a module. Target: under 150 lines, forever.
 // ================================
+require('./crash-reporter');
+
 const express = require('express');
 const http = require('http');
 const path = require('path');

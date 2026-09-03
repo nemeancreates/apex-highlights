@@ -99,14 +99,20 @@ function endAutoCapture(io, sessionCode, session, forced, ignoreMinActive) {
     return;
   }
 
+  // Lead-in. Detection fires on the first peak that clears threshold, which
+  // is already mid-action — the approach, the callout, the corner peek all
+  // land BEFORE startTs. Extend the saved span backward so the clip opens on
+  // the setup instead of the first shot. Preroll is billed against the same
+  // squad buffer cap as the detected span, so a long fight squeezes the
+  // lead-in to zero rather than clamping the action itself.
+  const AUTO_PREROLL_MS = 8000;
   const capMs = squadCapMs(session);
-  const cappedElapsed = Math.min(
-    capMs,
-    ignoreMinActive ? Math.max(elapsed, MIN_COMMIT_MS) : elapsed
-  );
+  const detectedSpan = ignoreMinActive ? Math.max(elapsed, MIN_COMMIT_MS) : elapsed;
+  const cappedElapsed = Math.min(capMs, detectedSpan);
+  const prerollMs = Math.min(AUTO_PREROLL_MS, Math.max(0, capMs - cappedElapsed));
   // The hard-cap timer fires at exactly capMs, so elapsed === cappedElapsed
   // and a naive `<` comparison misses the very case this flag exists for.
-  const buffCapped = (cappedElapsed < elapsed) || (!!forced && !ignoreMinActive);
+  const buffCapped = (cappedElapsed < detectedSpan) || (!!forced && !ignoreMinActive);
   const startTs = session.autoCaptureStartTs;
 
   log('info', 'auto_capture_end', {
@@ -132,7 +138,7 @@ function endAutoCapture(io, sessionCode, session, forced, ignoreMinActive) {
   // Anchor the save at the END of the window. main.js's 'auto' branch cuts
   // [end - duration, end], so passing the full window length makes every
   // client extract the exact span that was active.
-  fireCoordinatedHighlight(io, sessionCode, session, username, startTs + cappedElapsed, cappedElapsed, 'auto');
+  fireCoordinatedHighlight(io, sessionCode, session, username, startTs + cappedElapsed, cappedElapsed + prerollMs, 'auto');
 }
 
 function registerAutoCaptureHandlers(io, socket) {

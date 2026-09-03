@@ -2208,8 +2208,12 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
           mergeArgs.push('-map', '0:v:0', '-map', '1:a:0', '-af', 'aresample=async=1000');
         }
 
+        // -shortest let a short audio track truncate the VIDEO — the audio
+        // buffer lags the flush interval, so the last seconds of every clip
+        // were being cut to match. Bound the output by the video length
+        // instead: audio ending early now just means a quiet tail.
         mergeArgs.push('-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
-          '-movflags', '+faststart', '-shortest', '-y', outputPath);
+          '-movflags', '+faststart', '-t', copyDurationSec.toFixed(3), '-y', outputPath);
 
         const merge = spawnFFmpegLow(mergeArgs);
         merge.stderr.on('data', d => queueFFmpegLog('Merge: ' + d.toString()));
@@ -2291,7 +2295,7 @@ function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVi
         mergeArgs.push('-map', '0:v:0', '-map', '1:a:0', '-af', 'aresample=async=1000');
       }
 
-      mergeArgs.push('-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-shortest', '-y', tempMerged);
+      mergeArgs.push('-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-t', durationSec.toFixed(3), '-y', tempMerged);
 
       const merge = spawn(getFFmpegPath(), mergeArgs, { windowsHide: true });
       merge.stderr.on('data', d => console.log('WGC Merge:', d.toString()));
@@ -2321,6 +2325,92 @@ function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVi
       doMerge(false);
     }
   });
+}
+
+// ================================
+// PENDING UPLOAD TRACKING + PERSISTENT RETRY QUEUE
+// doUploadHighlight's form.submit() is a plain HTTPS POST, unrelated to the
+// socket connection — leaveSession() never touches it. What COULD kill an
+// upload mid-flight is the app itself quitting (before-quit had no idea an
+// upload was running) or a hard crash/power loss. pendingUploads is the
+// in-memory set before-quit blocks on; PENDING_UPLOADS_PATH is the on-disk
+// safety net a crash can't erase — an entry is written before the HTTP call
+// starts and only cleared once the server confirms 201.
+// ================================
+const PENDING_UPLOADS_PATH = path.join(app.getPath('userData'), 'pending-uploads.json');
+const pendingUploads = new Map(); // uploadKey -> { videoPath, metadataPath, sessionCode, startedAt }
+let quitRequested = false;
+let quitWaitTimer = null;
+const QUIT_UPLOAD_WAIT_MS = 20000; // hard cap so a dead connection can't trap quit forever
+let retriedPendingUploads = false;
+
+function readPendingManifest() {
+  try {
+    if (fs.existsSync(PENDING_UPLOADS_PATH)) {
+      return JSON.parse(fs.readFileSync(PENDING_UPLOADS_PATH, 'utf8'));
+    }
+  } catch (e) {
+    console.log('Could not read pending-uploads manifest:', e.message);
+  }
+  return {};
+}
+
+function writePendingManifest(manifest) {
+  try {
+    const tmp = PENDING_UPLOADS_PATH + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(manifest, null, 2));
+    fs.renameSync(tmp, PENDING_UPLOADS_PATH);
+  } catch (e) {
+    console.log('Could not write pending-uploads manifest:', e.message);
+  }
+}
+
+function markUploadPending(uploadKey, entry) {
+  pendingUploads.set(uploadKey, entry);
+  const manifest = readPendingManifest();
+  manifest[uploadKey] = entry;
+  writePendingManifest(manifest);
+}
+
+function markUploadDone(uploadKey) {
+  pendingUploads.delete(uploadKey);
+  const manifest = readPendingManifest();
+  delete manifest[uploadKey];
+  writePendingManifest(manifest);
+  maybeFinishQuit();
+}
+
+function maybeFinishQuit() {
+  if (!quitRequested) return;
+  if (pendingUploads.size > 0) return;
+  if (quitWaitTimer) { clearTimeout(quitWaitTimer); quitWaitTimer = null; }
+  console.log('Pending uploads cleared — resuming quit');
+  app.quit();
+}
+
+// Picks back up any upload still in the manifest from a previous run
+// (crash, force-kill, power loss — a clean quit already drains
+// pendingUploads before exiting). Runs once per launch, gated on the auth
+// token being available since performUpload needs it.
+function retryPendingUploadsFromDisk() {
+  const manifest = readPendingManifest();
+  const keys = Object.keys(manifest);
+  if (keys.length === 0) return;
+
+  console.log(`Found ${keys.length} upload(s) left pending from a previous run — retrying`);
+  let changed = false;
+  for (const uploadKey of keys) {
+    const entry = manifest[uploadKey];
+    if (!entry || !entry.videoPath || !fs.existsSync(entry.videoPath)) {
+      console.log(`Pending upload ${uploadKey} — local file missing, dropping from retry queue`);
+      delete manifest[uploadKey];
+      changed = true;
+      continue;
+    }
+    pendingUploads.set(uploadKey, entry);
+    performUpload(entry.sessionCode, entry.videoPath, entry.metadataPath, uploadKey);
+  }
+  if (changed) writePendingManifest(manifest);
 }
 
 function uploadHighlight(videoPath, metadataPath) {
@@ -2398,9 +2488,14 @@ function uploadHighlight(videoPath, metadataPath) {
 // The actual upload. Split out of uploadHighlight so the ffprobe empty-clip
 // gate above can invoke it from a callback once the clip is confirmed real
 // (or the probe failed open). Body is the original upload logic verbatim.
-function doUploadHighlight(videoPath, metadataPath) {
-  console.log(`Uploading highlight to session ${currentSession.code}...`);
-  mainWindow.webContents.send('upload-progress', 0);
+// Split into performUpload (does the actual HTTP call, session code passed
+// explicitly) and doUploadHighlight (the normal live-save entry point).
+// The split is what lets retryPendingUploadsFromDisk reuse the same upload
+// logic for a leftover clip from a previous run, without needing
+// currentSession to be populated yet.
+function performUpload(sessionCode, videoPath, metadataPath, uploadKey) {
+  console.log(`Uploading highlight to session ${sessionCode}...`);
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('upload-progress', 0);
 
   const form = new FormData();
   form.append('video', fs.createReadStream(videoPath), {
@@ -2414,13 +2509,17 @@ function doUploadHighlight(videoPath, metadataPath) {
 
   form.submit({
     protocol: 'https:', host: 'peakabu.app', port: 443,
-    path: `/sessions/${currentSession.code}/upload`, method: 'POST',
+    path: `/sessions/${sessionCode}/upload`, method: 'POST',
     headers: { 'Authorization': 'Bearer ' + authToken }
   }, (err, res) => {
     if (err) {
       console.log('Upload connection error:', err.message);
-      mainWindow.webContents.send('upload-progress', -1);
-      mainWindow.webContents.send('upload-error', 'Could not reach server');
+      // Leave the manifest entry in place — network hiccup, not a rejected
+      // clip. Retries on next launch.
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('upload-progress', -1);
+        mainWindow.webContents.send('upload-error', 'Could not reach server');
+      }
       return;
     }
     console.log('=== UPLOAD RESPONSE ===', res.statusCode);
@@ -2432,19 +2531,39 @@ function doUploadHighlight(videoPath, metadataPath) {
         const result = JSON.parse(body);
         if (res.statusCode === 201) {
           console.log('Upload successful:', result.uploadId);
-          mainWindow.webContents.send('upload-progress', 100);
-          mainWindow.webContents.send('upload-complete', result.uploadId);
+          markUploadDone(uploadKey);
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('upload-progress', 100);
+            mainWindow.webContents.send('upload-complete', result.uploadId);
+          }
         } else {
-          mainWindow.webContents.send('upload-progress', -1);
-          mainWindow.webContents.send('upload-error', result.error);
+          // Server rejected it outright — retrying won't help.
+          markUploadDone(uploadKey);
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('upload-progress', -1);
+            mainWindow.webContents.send('upload-error', result.error);
+          }
         }
       } catch (parseErr) {
-        mainWindow.webContents.send('upload-progress', -1);
-        mainWindow.webContents.send('upload-error', 'Server returned invalid response');
+        // Ambiguous response — leave it pending rather than guess.
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('upload-progress', -1);
+          mainWindow.webContents.send('upload-error', 'Server returned invalid response');
+        }
       }
       res.resume();
     });
   });
+}
+
+function doUploadHighlight(videoPath, metadataPath) {
+  const uploadKey = path.basename(videoPath);
+  markUploadPending(uploadKey, {
+    videoPath, metadataPath,
+    sessionCode: currentSession.code,
+    startedAt: Date.now()
+  });
+  performUpload(currentSession.code, videoPath, metadataPath, uploadKey);
 }
 
 app.commandLine.appendSwitch('enable-features', 'WebRtcAllowInputVolumeAdjustment');
@@ -2716,7 +2835,13 @@ function createWindow() {
   });
   ipcMain.on('set-socket-io', () => console.log('Socket.IO connection noted in main process'));
 
-  ipcMain.on('auth-token-updated', (event, token) => { authToken = token; });
+  ipcMain.on('auth-token-updated', (event, token) => {
+    authToken = token;
+    if (token && !retriedPendingUploads) {
+      retriedPendingUploads = true;
+      retryPendingUploadsFromDisk();
+    }
+  });
   ipcMain.on('session-connected', (event, { code, username }) => {
     currentSession = { code, username };
     console.log(`Session tracked in main: ${code} as ${username}`);
@@ -3431,6 +3556,27 @@ let isCleaningUp = false;
 
 app.on('before-quit', async (event) => {
   if (isCleaningUp) return;
+
+  // Block quit while an upload is mid-flight. Previously this only ever
+  // guarded the ffmpeg recording process — a highlight's form.submit()
+  // (unrelated to that process) got cut off mid-stream by app.quit() below,
+  // losing the clip. window-all-closed's app.quit() routes through this
+  // same handler, so this covers "close the window" too, not just quit.
+  if (pendingUploads.size > 0 && !quitRequested) {
+    event.preventDefault();
+    quitRequested = true;
+    console.log(`Quit deferred — ${pendingUploads.size} upload(s) still in flight`);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('quit-waiting-on-uploads', { count: pendingUploads.size });
+    }
+    quitWaitTimer = setTimeout(() => {
+      console.log('Quit wait timed out — proceeding, remaining uploads stay in the retry manifest');
+      quitWaitTimer = null;
+      app.quit();
+    }, QUIT_UPLOAD_WAIT_MS);
+    return;
+  }
+
   closeAnyPlayer();
   if (ffmpegProcess) {
     event.preventDefault();
