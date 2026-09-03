@@ -22,7 +22,7 @@
     "multer": "2.2.0",
     "socket.io": "4.8.3",
     "socket.io-client": "4.8.3",
-    "uuid": "14.0.1"
+    "uuid": "14.0.2"
   },
   "allowScripts": {
     "bcrypt@6.0.0": true,
