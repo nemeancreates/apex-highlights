@@ -145,7 +145,7 @@ function registerRoutes() {
   app.get('/account/aireel-usage', requireAuth, (req, res) => {
     const tierCfg = TIERS[req.userTier] || TIERS.t1;
     if (!tierCfg.hasAiReelPro) return res.json({ applicable: false });
-    const usage = getUsage(req.userId, tierCfg.aiReelProMonthlyCap);
+    const usage = getUsage(req.user.username, tierCfg.aiReelProMonthlyCap);
     res.json({ applicable: true, ...usage });
   });
 
@@ -188,7 +188,7 @@ function registerRoutes() {
 
     let aiCreditsWarning = null;
     if (tierCfg.hasAiReelPro) {
-      const usage = getUsage(req.userId, tierCfg.aiReelProMonthlyCap);
+      const usage = getUsage(req.user.username, tierCfg.aiReelProMonthlyCap);
       if (usage.remaining <= 0) {
         aiCreditsWarning = `You're out of AI Reel credits this month (${usage.used}/${usage.cap}). ` +
           `This reel will use the standard editor instead of the AI-powered one.`;
@@ -204,7 +204,7 @@ function registerRoutes() {
       id: jobId, code, status: 'queued', progress: 'Waiting in queue',
       createdAt: Date.now(), targetSec, game, styleNotes, includeComments,
       tier: req.userTier,
-      userId: req.userId,
+      userId: req.user.username,
       priority: tierCfg.reelPriority || 0,
       effectiveTarget: targetSec,   // clamped in runJob once real durations are known
       seg: null,                    // segment bounds, computed after analysis
@@ -283,7 +283,7 @@ function registerRoutes() {
     }
 
     const genKind = body.isReedit === true ? 'reedit' : 'fresh';
-    const usageCheck = checkAndIncrement(req.userId, genKind, tierCfg.aiReelProMonthlyCap);
+    const usageCheck = checkAndIncrement(req.user.username, genKind, tierCfg.aiReelProMonthlyCap);
     if (!usageCheck.ok) {
       return D.safeError(res, 429,
         `Monthly AI Reel limit reached (${usageCheck.usage.used}/${usageCheck.usage.cap}). Resets next calendar month.`);
