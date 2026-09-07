@@ -10,6 +10,51 @@ body {
   color: var(--pa-text, #c8d6cd);
 }
 
+/* Prism Shift's animated shimmer. Registering --pa-accent/--pa-accent-bright
+   as animatable <color> custom properties lets a keyframe animation cycle
+   THE SAME variable every other rule already reads via var(--pa-accent, ...)
+   — no other selector in this file needs to change. CSS animations take
+   priority over normal-weight declarations (including the inline
+   style.setProperty() call appearance.js makes on theme apply), so this
+   wins over the static token without !important. Scoped to
+   [data-pa-theme-id="prism-shift"] so every other theme's flat accent is
+   completely unaffected. Degrades harmlessly on any engine without
+   @property support — the static fallback color from PRESET_THEMES just
+   holds still instead of shimmering. */
+@property --pa-accent {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #39d3a0;
+}
+@property --pa-accent-bright {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #4fe0b0;
+}
+@keyframes pa-iridescent-shift {
+  0%   { --pa-accent: #39d3a0; }
+  20%  { --pa-accent: #6c8cff; }
+  40%  { --pa-accent: #b07cff; }
+  60%  { --pa-accent: #ff5f7e; }
+  80%  { --pa-accent: #ffb347; }
+  100% { --pa-accent: #39d3a0; }
+}
+@keyframes pa-iridescent-shift-bright {
+  0%   { --pa-accent-bright: #6fe8c0; }
+  20%  { --pa-accent-bright: #8aa4ff; }
+  40%  { --pa-accent-bright: #c49aff; }
+  60%  { --pa-accent-bright: #ff8ca0; }
+  80%  { --pa-accent-bright: #ffcd85; }
+  100% { --pa-accent-bright: #6fe8c0; }
+}
+:root[data-pa-theme-id="prism-shift"] {
+  animation: pa-iridescent-shift 8s linear infinite,
+             pa-iridescent-shift-bright 8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-pa-theme-id="prism-shift"] { animation: none; }
+}
+
 /* Panel surfaces */
 .card, .hud-card, .modal-content, .auth-bar, .mic-menu, .redeem-panel,
 #wgcPickerInner {
@@ -33,21 +78,21 @@ input[type="text"], input[type="password"], select, #authPanel select,
   border-color: var(--pa-border, #1e3527);
 }
 
-/* Buttons — exclude semantic variants and icon/chrome buttons */
-button:not(.btn-save):not(.btn-start):not(.btn-end):not(.btn-leave):not(.btn-icon):not(.hud-tab):not(.collapse-toggle):not(.hist-edit):not(.modal-close):not(.member-action-btn):not(.settings-tab):not(.ks-btn):not(.mic-mute-btn) {
+/* Buttons — exclude semantic variants, icon/chrome buttons, and the whole
+   AV-check module. .pa-avc's own buttons (abRaw/abClean/pbRaw/pbClean,
+   pa-avc-btn-primary/secondary) already theme themselves via --avc-*
+   variables, which derive from these same --pa-* tokens — this generic
+   rule was still catching them anyway because 13 chained :not() clauses
+   out-specify .pa-avc-ab button.active's 2 classes, silently overriding
+   the Raw/Suppressed toggle's active-state background every time. */
+button:not(.btn-save):not(.btn-start):not(.btn-end):not(.btn-leave):not(.btn-icon):not(.hud-tab):not(.collapse-toggle):not(.hist-edit):not(.modal-close):not(.member-action-btn):not(.settings-tab):not(.ks-btn):not(.mic-mute-btn):not(.pa-avc button) {
   background: var(--pa-panel, #14291d);
   border-color: var(--pa-border, #2a4636);
   color: var(--pa-text-dim, #8fbfa3);
 }
-button:not(.btn-save):not(.btn-start):not(.btn-end):not(.btn-leave):not(.btn-icon):not(.hud-tab):not(.collapse-toggle):not(.hist-edit):not(.modal-close):not(.member-action-btn):not(.settings-tab):not(.ks-btn):not(.mic-mute-btn):hover {
+button:not(.btn-save):not(.btn-start):not(.btn-end):not(.btn-leave):not(.btn-icon):not(.hud-tab):not(.collapse-toggle):not(.hist-edit):not(.modal-close):not(.member-action-btn):not(.settings-tab):not(.ks-btn):not(.mic-mute-btn):not(.pa-avc button):hover {
   border-color: var(--pa-accent, #39d3a0);
 }
-.btn-secondary {
-  background: var(--pa-panel, #14291d);
-  border-color: var(--pa-border, #2a4636);
-  color: var(--pa-text-dim, #8fbfa3);
-}
-.btn-save { box-shadow: 0 0 0 1px var(--pa-accent, #39d3a0); }
 
 /* HUD */
 .hud-rail {

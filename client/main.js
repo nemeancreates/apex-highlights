@@ -15,6 +15,7 @@ if (SENTRY_DSN) {
   sentryInit({ dsn: SENTRY_DSN, release: `peak-abu@${app.getVersion()}` });
 }
 
+
 function getFFmpegPath() {
   if (app.isPackaged) {
     return path.join(process.resourcesPath, 'ffmpeg', 'ffmpeg.exe');
@@ -3499,6 +3500,40 @@ function createWindow() {
         } catch (e) { resolve({ ok: false, error: e.message }); }
       });
       p.on('error', () => { clearTimeout(timer); resolve({ ok: false }); });
+    });
+  });
+
+  // ================================
+  // AI REEL — MONTHLY AI-CREDIT USAGE (read-only, informational)
+  // Hits /account/aireel-usage on the server so the reel window can show
+  // "X of Y left this month". Not tied to the local render pipeline below —
+  // this is purely a display value pulled from the server's usage tracker.
+  // Fails silently (returns {applicable:false}) on any network/auth issue,
+  // matching the badge's own fail-silent behavior in the renderer.
+  // ================================
+  ipcMain.handle('aireel-get-usage', () => {
+    return new Promise((resolve) => {
+      if (!authToken) { resolve({ applicable: false }); return; }
+
+      const req = https.request({
+        protocol: 'https:', host: 'peakabu.app', port: 443,
+        path: '/account/aireel-usage', method: 'GET',
+        headers: { 'Authorization': 'Bearer ' + authToken }
+      }, (res) => {
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => {
+          try {
+            if (res.statusCode !== 200) { resolve({ applicable: false }); return; }
+            resolve(JSON.parse(body));
+          } catch (e) {
+            resolve({ applicable: false });
+          }
+        });
+      });
+
+      req.on('error', () => resolve({ applicable: false }));
+      req.end();
     });
   });
 

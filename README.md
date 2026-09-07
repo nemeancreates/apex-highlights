@@ -21,13 +21,13 @@ Peak-Abu lets gaming groups record their individual perspectives during a sessio
 ```
 Peak-Abu
 ├── client/                    # Electron desktop app (Windows)
-│   ├── main.js                # IPC, auto-update, FFmpeg bridge
+│   ├── main.js                # IPC, auto-update, FFmpeg bridge, crash/error logging
 │   ├── engine/                # Capture engines (DDagrab, GDI, OBS VirtualCam fallback)
 │   ├── recorder.js            # Per-POV recording + audio sync logic
 │   ├── modules/                # Settings tabs: appearance, av-check, noise suppression
 │   └── updater.js             # Self-update from Cloudflare R2
 ├── server/                    # Node.js/Express + Socket.IO
-│   ├── index.js               # Session management, clip coordination, auth
+│   ├── index.js               # Session management, clip coordination, auth, crash/error logging
 │   ├── stores.js               # SQLite (better-sqlite3) persistence layer
 │   ├── aireel.js              # AI highlight reel pipeline (Anthropic API + local render path)
 │   ├── anomaly.js              # Abuse-pattern monitoring (session/upload/registration bursts)
@@ -45,6 +45,7 @@ Peak-Abu
 - **Storage:** Cloudflare R2 (S3-compatible, zero egress fees), nginx reverse proxy
 - **Encoding:** libx264 (veryfast preset) for composite export, AV1/HEVC scoped for later
 - **Auth:** JWT + bcrypt (12 rounds), verified server-side via middleware on both HTTP and Socket.IO connections
+- **Observability:** crash/error logging on both the client (Electron process) and server (Node process) — catches unhandled exceptions on both sides rather than failing silently
 
 ---
 
@@ -141,7 +142,7 @@ For the full deployment guide, **this is private to Peak-Abu core team only**. C
 
 ## Feature Roadmap
 
-### Current (v0.1.71)
+### Current (v0.1.70)
 - ✅ Multi-POV capture (Windows Electron)
 - ✅ Coordinated save with clock sync
 - ✅ Web-based synchronized replay, no account needed to view
@@ -229,6 +230,6 @@ See `CHANGELOG.md` for version history, or GitHub Releases for detailed notes pe
 
 ---
 
-**Last verified against live code:** September 2026, client v0.1.71
+**Last verified against live code:** September 2026, client v0.1.74
 
 **Built with care by a single developer. If Peak-Abu saves your squad time, consider subscribing to help fund development.** ❤️

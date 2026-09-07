@@ -2400,11 +2400,20 @@
 
       // Load saved gamepad prefs
       ipcRenderer.invoke('get-user-pref', 'gamepadButton').then(function(val) {
-        if (val !== null && val !== undefined) {
-          window.gamepadState.buttonIndex = parseInt(val);
-          window.gamepadState.enabled = true;
-          document.getElementById('gamepadButtonSelect').value = val;
+        if (val === null || val === undefined) return;
+        window.gamepadState.buttonIndex = parseInt(val);
+        window.gamepadState.enabled = true;
+        document.getElementById('gamepadButtonSelect').value = val;
+        // Race guard: if this resolved before any controller was detected,
+        // gamepadButtonSelect still only has the placeholder "Disabled"
+        // option — the .value set above silently no-ops against it. Re-run
+        // populate against whatever's connected right now so the real
+        // option list exists and the saved value actually applies.
+        var gamepads = navigator.getGamepads();
+        for (var i = 0; i < gamepads.length; i++) {
+          if (gamepads[i]) { populateGamepadButtons(gamepads[i]); break; }
         }
+        startGamepadPoll();
       });
       ipcRenderer.invoke('get-user-pref', 'gamepadTriggerMode').then(function(val) {
         if (val) {

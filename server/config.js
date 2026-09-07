@@ -120,12 +120,12 @@ const ANOMALY_REGISTER_BURST_WINDOW = 300000;   // 5 minutes
 // ================================
 // NEW — clipCap in seconds of highlight time per session
 const TIERS = {
-  t1: { label: 'Free',    canHost: true, memberCap: 2,  clipCap: 3600,   sessionsPerMonth: 6,   retentionDays: 1,  hasAiReel: false, aiReelMaxSec: 0,    reelPriority: 0, hasAutoCapture: false },
-  t2: { label: 'Creator', canHost: true, memberCap: 5,  clipCap: 36000,  sessionsPerMonth: 20,  retentionDays: 30,  hasAiReel: false, aiReelMaxSec: 0,    reelPriority: 0, hasAutoCapture: true },
-  t3: { label: 'Squad',   canHost: true, memberCap: 11, clipCap: 79200,  sessionsPerMonth: 45,  retentionDays: 30, hasAiReel: true,  aiReelMaxSec: 900,  reelPriority: 0, hasAutoCapture: true },
-  t4: { label: 'Pro',     canHost: true, memberCap: 25, clipCap: 144000, sessionsPerMonth: 110, retentionDays: 60, hasAiReel: true,  aiReelMaxSec: 1800, reelPriority: 1, hasAutoCapture: true },
+  t1: { label: 'Free',    canHost: true, memberCap: 2,  clipCap: 3600,   sessionsPerMonth: 6,   retentionDays: 1,  hasAiReel: false, aiReelMaxSec: 0,    reelPriority: 0, hasAutoCapture: false, hasAiReelPro: false, aiReelProMonthlyCap: 0 },
+  t2: { label: 'Creator', canHost: true, memberCap: 5,  clipCap: 36000,  sessionsPerMonth: 20,  retentionDays: 30,  hasAiReel: false, aiReelMaxSec: 0,    reelPriority: 0, hasAutoCapture: true, hasAiReelPro: false, aiReelProMonthlyCap: 0 },
+  t3: { label: 'Squad',   canHost: true, memberCap: 11, clipCap: 79200,  sessionsPerMonth: 45,  retentionDays: 30, hasAiReel: true,  aiReelMaxSec: 900,  reelPriority: 0, hasAutoCapture: true, hasAiReelPro: false, aiReelProMonthlyCap: 0 },
+  t4: { label: 'Pro',     canHost: true, memberCap: 25, clipCap: 144000, sessionsPerMonth: 110, retentionDays: 60, hasAiReel: true,  aiReelMaxSec: 1800, reelPriority: 1, hasAutoCapture: true, hasAiReelPro: true,  aiReelProMonthlyCap: 100 },
   // Founder — $1,500 lifetime Kickstarter tier.
-  t5: { label: 'Founder', canHost: true, memberCap: 41, clipCap: 144000, sessionsPerMonth: 200, retentionDays: 60, hasAiReel: true,  aiReelMaxSec: 1800, reelPriority: 2, hasAutoCapture: true }
+  t5: { label: 'Founder', canHost: true, memberCap: 41, clipCap: 144000, sessionsPerMonth: 200, retentionDays: 60, hasAiReel: true,  aiReelMaxSec: 1800, reelPriority: 2, hasAutoCapture: true, hasAiReelPro: true,  aiReelProMonthlyCap: 100 }
 };
 
 // Ordering for tier comparisons — used to stop a timed code from
@@ -186,8 +186,8 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 // Update when a new client build is uploaded to the CDN.
 // ================================
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.71',
-  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.71.exe',
+  version: '0.1.74',
+  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.74.exe',
     releaseNotes: "Added crash reporting"
 };
 

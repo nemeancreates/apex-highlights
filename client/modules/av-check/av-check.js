@@ -448,9 +448,22 @@
 
     _setMonitor: function (raw) {
       var e = this._els;
-      if (this.ns) this.ns.setBypass(raw);
+      // Update the UI FIRST, unconditionally — a failure in the engine
+      // call below must never prevent the button state from reflecting
+      // what was actually clicked. Previously setBypass() ran first, so
+      // if it threw (engine not in a state that accepts a bypass toggle),
+      // the classList updates below never executed and the click looked
+      // like it did nothing at all.
       e.abRaw.classList.toggle('active', raw);
       e.abClean.classList.toggle('active', !raw);
+      if (this.ns) {
+        try {
+          this.ns.setBypass(raw);
+        } catch (err) {
+          console.log('[av-check] setBypass failed:', err);
+          this._setStatus('Could not switch monitor source: ' + err.message, 'warn');
+        }
+      }
     },
 
     /** Meter path used when the suppression module is absent. */
@@ -907,10 +920,18 @@
 
     _applyPlaybackGains: function () {
       var clean = this._playbackSource === 'clean';
-      if (this._audioRaw) this._audioRaw.volume = clean ? 0 : 1;
-      if (this._audioClean) this._audioClean.volume = clean ? 1 : 0;
+      // Same ordering fix as _setMonitor: the button highlight is the
+      // first thing that runs, so a rejected/invalid .volume assignment
+      // on either <audio> element (e.g. before playback has actually
+      // started) can never leave the click looking like a no-op.
       this._els.pbRaw.classList.toggle('active', !clean);
       this._els.pbClean.classList.toggle('active', clean);
+      try {
+        if (this._audioRaw) this._audioRaw.volume = clean ? 0 : 1;
+        if (this._audioClean) this._audioClean.volume = clean ? 1 : 0;
+      } catch (err) {
+        console.log('[av-check] applying playback gain failed:', err);
+      }
     },
 
     _setPlaybackSource: function (which) {

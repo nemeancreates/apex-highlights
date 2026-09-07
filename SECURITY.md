@@ -8,7 +8,7 @@ Peak-Abu takes security seriously. This document outlines our security posture, 
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Instead, email: **greencompassgames@gmail.com** with:
+Instead, email: **peakabullc@gmail.com** with:
 - Vulnerability description
 - Steps to reproduce
 - Potential impact
@@ -86,7 +86,7 @@ We will:
 - Abuse-pattern monitoring beyond simple bandwidth counting: registration bursts, session-creation bursts, and upload-volume bursts are all tracked per key (per-IP or per-account, depending on the event) with configurable thresholds
 - A separate bandwidth alert flags any single account pushing more than 500GB in a calendar month, so outliers get caught before they skew cost projections
 - Discord recovery failures are logged with error detail, but the recovery code/token itself is never logged
-- **Known gap — application crash and error reporting does not exist yet.** There's no equivalent of Sentry or Crashpad, and no top-level `uncaughtException`/`unhandledRejection` handling in either the client or server process. This means an unexpected crash currently produces no automatic signal beyond whatever a person happens to notice. This is the most significant near-term item on the security/reliability list.
+- **Crash and unhandled-exception logging is implemented on both sides** — the client (Electron process) and server (Node process) both catch and log unhandled exceptions/crashes instead of failing silently. This closes what was, as of the last review, the most significant observability gap in the product. Field validation (confirming it surfaces a real crash end-to-end, not just that the hooks exist) is an ongoing part of the beta process rather than a one-time check.
 
 ### API & Network
 - REST endpoints require a valid JWT; Socket.IO connections are authenticated during the handshake
@@ -154,7 +154,6 @@ We will:
 - ❌ A user losing their password manager and forgetting their Peak-Abu password (Discord recovery covers the common case; there's no fallback beyond that)
 - ❌ A user's own PC being compromised, exposing their local clip cache
 - ❌ A nation-state-level adversary attempting to crack bcrypt hashes directly (bcrypt is industry standard; this is accepted as out of scope for a product at this stage)
-- ❌ Blind spots between crash-reporting being absent and a person noticing something broke — see the disclosed gap above. This is being treated as a near-term priority to close, not a permanently accepted risk.
 
 ---
 
@@ -177,7 +176,7 @@ We will:
 - [ ] Confirm droplet sizing is adequate under real backer-scale concurrent load
 - [x] Move off flat-file session/user storage — done via SQLite; a distributed (Redis-backed) layer remains a separate, deferred scaling step if load warrants it
 - [ ] API versioning for graceful endpoint deprecation
-- [ ] **Application crash reporting / error observability** — see disclosed gap above; this is the top item on this list
+- [x] **Application crash reporting / error observability** — implemented on both client and server; field validation during ongoing beta is the remaining piece, not a build item
 
 ### Post-Launch Maintenance
 - [ ] Recurring `npm audit` on a fixed cadence (Dependabot provides continuous partial coverage in the meantime)
@@ -199,18 +198,18 @@ Peak-Abu is designed with OWASP Top 10 and Microsoft SDL categories in mind. Mar
 - **A06:2021 – Vulnerable & Outdated Components:** ✅ Exact pinning on security-sensitive packages, weekly Dependabot on both ecosystems
 - **A07:2021 – Authentication Failures:** ✅ bcrypt (12 rounds) + JWT, timing-safe login, single-login enforcement
 - **A08:2021 – Data Integrity Failures:** ✅ JWT signature validation, upload content verified by magic bytes and structure, not just extension
-- **A09:2021 – Logging & Monitoring Failures:** ⚠️ Partial — structured logging and abuse-pattern anomaly detection are real and live; application crash/error reporting is not, and that gap is explicitly called out above rather than checked off
+- **A09:2021 – Logging & Monitoring Failures:** ✅ Structured logging, abuse-pattern anomaly detection, and crash/error logging on both client and server are all live
 - **A10:2021 – SSRF:** ✅ Limited external API surface (Anthropic API only, for the AI Reel feature)
 
 ---
 
 ## Contact
 
-- **Security inquiries:** greencompassgames@gmail.com
+- **Security inquiries:** peakabullc@gmail.com
 - **General support:** GitHub Issues or Discord
 
 ---
 
-**Last Updated:** September 2026, verified against client v0.1.71
+**Last Updated:** September 2026, verified against client v0.1.74
 
 Peak-Abu is maintained by a single developer with security as a core priority. Your trust is essential — thank you for helping us keep Peak-Abu safe. 🔐

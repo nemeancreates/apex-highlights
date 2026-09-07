@@ -61,7 +61,17 @@
     { id: 'orange', name: 'Orange', accent: '#ff8a4c', accentBright: '#ffa672' },
     { id: 'violet', name: 'Violet', accent: '#b07cff', accentBright: '#c49aff' },
     { id: 'rose',   name: 'Rose',   accent: '#ff5f7e', accentBright: '#ff7f98' },
-    { id: 'gold',   name: 'Gold',   accent: '#d8a838', accentBright: '#e8c058' }
+    { id: 'gold',   name: 'Gold',   accent: '#d8a838', accentBright: '#e8c058' },
+    { id: 'chrome',   name: 'Chrome',   accent: '#9fd8ea', accentBright: '#c5ecf7' },
+    { id: 'phosphor', name: 'Phosphor', accent: '#5aff6a', accentBright: '#9dffab' },
+    { id: 'hazard',   name: 'Hazard',   accent: '#f4e409', accentBright: '#fff066' },
+    { id: 'neon-cyan', name: 'Neon Cyan', accent: '#00f0ff', accentBright: '#7dfaff' },
+    { id: 'magenta',  name: 'Magenta',  accent: '#ff4fd8', accentBright: '#ff8ce8' },
+    { id: 'lime',     name: 'Lime',     accent: '#a8d24c', accentBright: '#c2e872' },
+    { id: 'coral',    name: 'Coral',    accent: '#ff6f7a', accentBright: '#ff8f98' },
+    { id: 'lavender', name: 'Lavender', accent: '#a992e0', accentBright: '#c3b0ee' },
+    { id: 'citrus',   name: 'Citrus',   accent: '#7ec93c', accentBright: '#97dd5a' },
+    { id: 'ice-blue', name: 'Ice Blue', accent: '#1f8fd1', accentBright: '#3fa8e6' }
   ];
 
   var PRESET_THEMES = [
@@ -97,6 +107,139 @@
         '--pa-border': '#2a2a2a', '--pa-border-strong': '#383838',
         '--pa-accent': '#e0e0e0', '--pa-accent-bright': '#ffffff',
         '--pa-text': '#d4d4d4', '--pa-text-dim': '#9a9a9a', '--pa-text-faint': '#6a6a6a'
+      }
+    },
+    {
+      id: 'steel-chrome', name: 'Steel Chrome', theme: 'dark',
+      tokens: {
+        '--pa-bg': '#15181b', '--pa-panel': '#1e2226', '--pa-panel-sunk': '#101315',
+        '--pa-border': '#2c3237', '--pa-border-strong': '#3a4147',
+        '--pa-accent': '#9fd8ea', '--pa-accent-bright': '#c5ecf7',
+        '--pa-text': '#e4ecef', '--pa-text-dim': '#a9b7bd', '--pa-text-faint': '#6b7880'
+      }
+    },
+    {
+      id: 'arctic-frost', name: 'Arctic Frost', theme: 'light',
+      tokens: {
+        '--pa-bg': '#eef3f6', '--pa-panel': '#ffffff', '--pa-panel-sunk': '#e2ebf0',
+        '--pa-border': '#ccd8de', '--pa-border-strong': '#b7c6ce',
+        '--pa-accent': '#1f8fd1', '--pa-accent-bright': '#3fa8e6',
+        '--pa-text': '#16232b', '--pa-text-dim': '#4c6472', '--pa-text-faint': '#8098a6'
+      }
+    },
+    {
+      id: 'mossy-carbon', name: 'Mossy Carbon', theme: 'dark',
+      tokens: {
+        '--pa-bg': '#12140f', '--pa-panel': '#1b1e16', '--pa-panel-sunk': '#0d0f0b',
+        '--pa-border': '#262b1f', '--pa-border-strong': '#333a29',
+        '--pa-accent': '#a8d24c', '--pa-accent-bright': '#c2e872',
+        '--pa-text': '#e3e8d8', '--pa-text-dim': '#a7b596', '--pa-text-faint': '#68715c'
+      }
+    },
+    {
+      id: 'cyber-neon', name: 'Cyber Neon', theme: 'dark',
+      tokens: {
+        '--pa-bg': '#0c0817', '--pa-panel': '#160f26', '--pa-panel-sunk': '#08051a',
+        '--pa-border': '#241a3d', '--pa-border-strong': '#31234f',
+        '--pa-accent': '#ff4fd8', '--pa-accent-bright': '#ff8ce8',
+        '--pa-text': '#e4d9f7', '--pa-text-dim': '#a897c9', '--pa-text-faint': '#685a80'
+      }
+    },
+    {
+      // The shipping "shimmer": --pa-accent and --pa-accent-bright are
+      // registered as animatable <color> custom properties in
+      // client-theme.css and cycled through a keyframe rainbow whenever
+      // this specific preset is active (matched on data-pa-theme-id, set
+      // below in apply()). These tokens are the static fallback — the
+      // color shown in the theme dropdown swatch, and what renders on any
+      // browser too old to support animatable custom properties.
+      id: 'prism-shift', name: 'Prism Shift', theme: 'dark',
+      tokens: {
+        '--pa-bg': '#120f16', '--pa-panel': '#1c1620', '--pa-panel-sunk': '#0d0a11',
+        '--pa-border': '#2c2433', '--pa-border-strong': '#3a2f43',
+        '--pa-accent': '#d88be6', '--pa-accent-bright': '#f0aef2',
+        '--pa-text': '#ece4f0', '--pa-text-dim': '#b9a8c4', '--pa-text-faint': '#7a6b85'
+      }
+    },
+    {
+      id: 'pipboy-phosphor', name: 'Pip-Boy Phosphor', theme: 'dark',
+      tokens: {
+        '--pa-bg': '#0a0f0a', '--pa-panel': '#111a11', '--pa-panel-sunk': '#080c08',
+        '--pa-border': '#1e2e1e', '--pa-border-strong': '#2a3f2a',
+        '--pa-accent': '#5aff6a', '--pa-accent-bright': '#9dffab',
+        '--pa-text': '#c8ffcf', '--pa-text-dim': '#7fcf88', '--pa-text-faint': '#4a7a50'
+      }
+    },
+    {
+      id: 'hyrule-grove', name: 'Hyrule Grove', theme: 'dark',
+      tokens: {
+        '--pa-bg': '#0f1a10', '--pa-panel': '#16261a', '--pa-panel-sunk': '#0a130c',
+        '--pa-border': '#22391f', '--pa-border-strong': '#2e4a2a',
+        '--pa-accent': '#d8b03c', '--pa-accent-bright': '#eecb6a',
+        '--pa-text': '#dde8d5', '--pa-text-dim': '#a8bb9c', '--pa-text-faint': '#6c7d63'
+      }
+    },
+    {
+      id: 'bonfire-ember', name: 'Bonfire Ember', theme: 'dark',
+      tokens: {
+        '--pa-bg': '#14100e', '--pa-panel': '#211a17', '--pa-panel-sunk': '#0d0a08',
+        '--pa-border': '#332822', '--pa-border-strong': '#43352c',
+        '--pa-accent': '#e2632c', '--pa-accent-bright': '#f0895a',
+        '--pa-text': '#ecdcd2', '--pa-text-dim': '#b89a8a', '--pa-text-faint': '#7a655a'
+      }
+    },
+    {
+      id: 'night-city', name: 'Night City Hazard', theme: 'dark',
+      tokens: {
+        '--pa-bg': '#0a0a0a', '--pa-panel': '#161616', '--pa-panel-sunk': '#050505',
+        '--pa-border': '#2a2a2a', '--pa-border-strong': '#3a3a3a',
+        '--pa-accent': '#f4e409', '--pa-accent-bright': '#fff066',
+        '--pa-text': '#f0f0e6', '--pa-text-dim': '#b8b89a', '--pa-text-faint': '#6e6e5c'
+      }
+    },
+    {
+      id: 'neon-arcade', name: 'Neon Arcade', theme: 'dark',
+      tokens: {
+        '--pa-bg': '#000000', '--pa-panel': '#0a0a0a', '--pa-panel-sunk': '#000000',
+        '--pa-border': '#1a2a2a', '--pa-border-strong': '#264040',
+        '--pa-accent': '#00f0ff', '--pa-accent-bright': '#7dfaff',
+        '--pa-text': '#d8fbff', '--pa-text-dim': '#7ec8d0', '--pa-text-faint': '#3f6a70'
+      }
+    },
+    {
+      id: 'cozy-isle', name: 'Cozy Isle', theme: 'light',
+      tokens: {
+        '--pa-bg': '#fbf3e6', '--pa-panel': '#ffffff', '--pa-panel-sunk': '#f3e6d0',
+        '--pa-border': '#e3d2b3', '--pa-border-strong': '#d0bb92',
+        '--pa-accent': '#ff9eb0', '--pa-accent-bright': '#ffb8c6',
+        '--pa-text': '#4a3b2e', '--pa-text-dim': '#8a7358', '--pa-text-faint': '#b3a081'
+      }
+    },
+    {
+      id: 'kirby-puff', name: 'Kirby Puff', theme: 'light',
+      tokens: {
+        '--pa-bg': '#fff0f0', '--pa-panel': '#ffffff', '--pa-panel-sunk': '#ffe4e6',
+        '--pa-border': '#ffd6d6', '--pa-border-strong': '#ffbfc4',
+        '--pa-accent': '#ff6f7a', '--pa-accent-bright': '#ff8f98',
+        '--pa-text': '#6a2a2f', '--pa-text-dim': '#b57a80', '--pa-text-faint': '#d1a8ac'
+      }
+    },
+    {
+      id: 'cotton-candy-sky', name: 'Cotton Candy Sky', theme: 'light',
+      tokens: {
+        '--pa-bg': '#eefaff', '--pa-panel': '#ffffff', '--pa-panel-sunk': '#dcf0ff',
+        '--pa-border': '#cdeeff', '--pa-border-strong': '#b3e0f7',
+        '--pa-accent': '#a992e0', '--pa-accent-bright': '#c3b0ee',
+        '--pa-text': '#2c4a5a', '--pa-text-dim': '#7a94a5', '--pa-text-faint': '#a8bcc7'
+      }
+    },
+    {
+      id: 'sunny-citrus', name: 'Sunny Citrus', theme: 'light',
+      tokens: {
+        '--pa-bg': '#fffbea', '--pa-panel': '#ffffff', '--pa-panel-sunk': '#fbf3c8',
+        '--pa-border': '#fbeda0', '--pa-border-strong': '#f3dd78',
+        '--pa-accent': '#7ec93c', '--pa-accent-bright': '#97dd5a',
+        '--pa-text': '#5a4b0e', '--pa-text-dim': '#9a8f5a', '--pa-text-faint': '#c2b787'
       }
     }
   ];
@@ -250,12 +393,66 @@
     this._mounted = false;
     this._panelEls = {};
     this._objectUrl = null;
+
+    // Free-tier gate. Only the two shipping presets are selectable at 't1';
+    // every other theme and every non-default accent needs a paid tier.
+    // Set via setTier() — the host app calls this whenever it learns the
+    // account's tier (login, redeem, tier refresh).
+    this.currentTier = 't1';
+    this._panelContainer = null;
   }
 
   PeakAbuAppearance.presetColors = PRESET_COLORS;
   PeakAbuAppearance.presetThemes = PRESET_THEMES;
+  PeakAbuAppearance.FREE_THEME_IDS = ['peak-dark', 'peak-light'];
 
   PeakAbuAppearance.prototype = {
+
+    isThemeLocked: function (themeId) {
+      if (this.currentTier !== 't1') return false;
+      return PeakAbuAppearance.FREE_THEME_IDS.indexOf(themeId) === -1;
+    },
+
+    /** Called by the host app whenever the account's tier is known/changes. */
+    setTier: function (tier) {
+      this.currentTier = tier || 't1';
+      // A free-tier account sitting on a locked theme (e.g. a subscription
+      // that just lapsed) falls back to Peak Dark rather than staying on a
+      // theme it can no longer pick from the list.
+      if (this.currentTier === 't1' && this.isThemeLocked(this.state.themeId)) {
+        this.applyTheme('peak-dark').then(function () {});
+      }
+      if (this._panelContainer) this.renderPanel(this._panelContainer);
+    },
+
+    /** Minimal panel for free accounts: just the two shipping themes. */
+    _renderLockedPanel: function (container) {
+      var self = this;
+      var s = this.state;
+      container.classList.add('pa-appearance');
+      container.innerHTML = '';
+
+      var sec = el('div', 'pa-ap-section');
+      sec.appendChild(el('h4', null, 'Theme'));
+
+      var row = el('div', 'pa-ap-row');
+      ['peak-dark', 'peak-light'].forEach(function (id) {
+        var t = PRESET_THEMES.filter(function (x) { return x.id === id; })[0];
+        var btn = el('button', 'pa-ap-free-theme-btn' + (s.themeId === id ? ' active' : ''), t.name);
+        btn.style.flex = '1';
+        btn.addEventListener('click', function () {
+          self.applyTheme(id).then(function () { self.renderPanel(container); });
+        });
+        row.appendChild(btn);
+      });
+      sec.appendChild(row);
+
+      sec.appendChild(el('p', 'pa-ap-note pa-ap-locked-note',
+        '🔒 Redeem a code to unlock ' + (PRESET_THEMES.length - 2) +
+        ' more themes, custom accent colors, wallpapers, and motion settings.'));
+
+      container.appendChild(sec);
+    },
 
     // =============================================================
     // Lifecycle
@@ -364,6 +561,7 @@
       var root = document.documentElement;
 
       root.setAttribute('data-pa-theme', s.theme);
+      root.setAttribute('data-pa-theme-id', s.themeId);
 
       // Clear tokens from a previous theme before applying the new set,
       // otherwise switching themes leaves orphaned overrides behind.
@@ -647,6 +845,13 @@
     renderPanel: function (container) {
       var self = this;
       if (!container) return;
+      this._panelContainer = container;
+
+      if (this.currentTier === 't1') {
+        this._renderLockedPanel(container);
+        return;
+      }
+
       container.classList.add('pa-appearance');
       container.innerHTML = '';
       var e = this._panelEls = {};

@@ -30,6 +30,7 @@ const { requireAuth, requireAuthAny, requireTier } = require('./auth');
 const { TIERS } = require('./config');
 const { getCommentsForSession } = require('./routes/comments');
 const { generateASS, checkAssFilter, escapeFilterPath } = require('./comment-overlay');
+const { initGenerationUsage, checkAndIncrement, getUsage, pruneOldMonths } = require('./generation-usage');
 
 const AIREEL_TIERS = ['t3', 't4', 't5'];
 
@@ -81,10 +82,12 @@ function initAiReel(deps) {
     return;
   }
   if (!fs.existsSync(AIREEL_DIR)) fs.mkdirSync(AIREEL_DIR, { recursive: true });
+  initGenerationUsage({ log: D.log });
   sweepOrphanedAireelFiles();
   registerRoutes();
   setInterval(cleanupJobs, 15 * 60 * 1000);
   setInterval(sweepOrphanedAireelFiles, 15 * 60 * 1000);
+  setInterval(() => pruneOldMonths(3), 24 * 60 * 60 * 1000);
   D.log('info', 'aireel_ready', {
     aiEditor: !!process.env.ANTHROPIC_API_KEY,
     model: process.env.AIREEL_MODEL || 'claude-sonnet-4-6',
@@ -139,6 +142,13 @@ function getProfileContext(game) {
 function registerRoutes() {
   const { app } = D;
 
+  app.get('/account/aireel-usage', requireAuth, (req, res) => {
+    const tierCfg = TIERS[req.userTier] || TIERS.t1;
+    if (!tierCfg.hasAiReelPro) return res.json({ applicable: false });
+    const usage = getUsage(req.userId, tierCfg.aiReelProMonthlyCap);
+    res.json({ applicable: true, ...usage });
+  });
+
   app.post('/sessions/:code/aireel', requireAuth, requireTier(AIREEL_TIERS), (req, res) => {
     const code = D.sanitizeCode(req.params.code);
     if (!code) return D.safeError(res, 400, 'Invalid session code');
@@ -176,6 +186,15 @@ function registerRoutes() {
       return D.safeError(res, 503, 'Reel queue is full. Try again in a few minutes.');
     }
 
+    let aiCreditsWarning = null;
+    if (tierCfg.hasAiReelPro) {
+      const usage = getUsage(req.userId, tierCfg.aiReelProMonthlyCap);
+      if (usage.remaining <= 0) {
+        aiCreditsWarning = `You're out of AI Reel credits this month (${usage.used}/${usage.cap}). ` +
+          `This reel will use the standard editor instead of the AI-powered one.`;
+      }
+    }
+
     const game = typeof body.game === 'string' ? body.game.trim().slice(0, 60) : '';
     const styleNotes = typeof body.styleNotes === 'string' ? body.styleNotes.trim().slice(0, 500) : '';
     const includeComments = body.includeComments !== false; // default true
@@ -185,6 +204,7 @@ function registerRoutes() {
       id: jobId, code, status: 'queued', progress: 'Waiting in queue',
       createdAt: Date.now(), targetSec, game, styleNotes, includeComments,
       tier: req.userTier,
+      userId: req.userId,
       priority: tierCfg.reelPriority || 0,
       effectiveTarget: targetSec,   // clamped in runJob once real durations are known
       seg: null,                    // segment bounds, computed after analysis
@@ -207,7 +227,7 @@ function registerRoutes() {
       jobId, session: code, clips: selected.length, targetSec,
       tier: req.userTier, priority: job.priority, game, includeComments
     });
-    res.status(202).json({ jobId });
+    res.status(202).json({ jobId, aiCreditsWarning });
 
     // Higher-tier jobs jump the queue. The worker is single-threaded, so on a
     // busy droplet this is the difference between a Pro user waiting 2 minutes
@@ -257,6 +277,16 @@ function registerRoutes() {
     if (targetSec > maxSec) {
       return D.safeError(res, 403,
         `${tierCfg.label} reels cap at ${Math.floor(maxSec / 60)} minutes. Pick a shorter length or upgrade.`);
+    }
+    if (!tierCfg.hasAiReelPro) {
+      return D.safeError(res, 403, `${tierCfg.label} does not include AI-powered editing. Upgrade to use this feature.`);
+    }
+
+    const genKind = body.isReedit === true ? 'reedit' : 'fresh';
+    const usageCheck = checkAndIncrement(req.userId, genKind, tierCfg.aiReelProMonthlyCap);
+    if (!usageCheck.ok) {
+      return D.safeError(res, 429,
+        `Monthly AI Reel limit reached (${usageCheck.usage.used}/${usageCheck.usage.cap}). Resets next calendar month.`);
     }
 
     const clips = Array.isArray(body.clips) ? body.clips : [];
@@ -473,7 +503,16 @@ async function runJob(job) {
   job.status = 'editing';
   job.progress = 'AI editor building the cut';
   let edl, report, engine;
-  const aiResult = await tryAnthropicEdl(job, analyzable);
+  const jobTierCfg = TIERS[job.tier] || TIERS.t1;
+  let aiResult = null;
+  if (jobTierCfg.hasAiReelPro) {
+    const usageCheck = checkAndIncrement(job.userId, 'fresh', jobTierCfg.aiReelProMonthlyCap);
+    if (usageCheck.ok) {
+      aiResult = await tryAnthropicEdl(job, analyzable);
+    } else {
+      D.log('info', 'aireel_cap_reached', { jobId: job.id, userId: job.userId, usage: usageCheck.usage });
+    }
+  }
   if (aiResult) { edl = aiResult.edl; report = aiResult.report; engine = 'ai'; }
   else {
     const h = heuristicEdl(job, analyzable);

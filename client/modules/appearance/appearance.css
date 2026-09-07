@@ -241,9 +241,19 @@
 .pa-ap-note { font-size: 11px; color: var(--pa-text-faint); margin: 8px 0 0; line-height: 1.55; }
 .pa-ap-warn { color: var(--pa-warn); }
 .pa-ap-hidden { display: none !important; }
+.pa-ap-locked-note { color: var(--pa-warn); }
+
+/* Free-tier panel: just a Peak Dark / Peak Light pair, styled like the
+   app's other secondary buttons rather than the full swatch dropdowns. */
+.pa-ap-free-theme-btn {
+  border: 1px solid var(--pa-border-strong); border-radius: 6px;
+  padding: 9px 10px; background: var(--pa-panel); color: var(--pa-text-dim);
+  font-size: 13px; cursor: pointer; transition: border-color 0.15s ease, color 0.15s ease;
+}
+.pa-ap-free-theme-btn:hover { border-color: var(--pa-accent); color: var(--pa-accent); }
+.pa-ap-free-theme-btn.active { border-color: var(--pa-accent); color: var(--pa-accent); font-weight: 600; }
 
 .pa-ap-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
-.pa-ap-toggle-row span { font-size: 13px; color: var(--pa-text-dim); }
 
 /* Small switch, matching the app's existing control style. */
 .pa-ap-switch { position: relative; display: inline-block; width: 38px; height: 21px; flex-shrink: 0; }
@@ -301,9 +311,14 @@
 .pa-ap-dd-list {
   position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 50;
   background: var(--pa-panel); border: 1px solid var(--pa-border-strong);
-  border-radius: 7px; overflow: hidden; padding: 4px;
+  border-radius: 7px; padding: 4px;
   box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+  max-height: 260px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
+.pa-ap-dd-list::-webkit-scrollbar { width: 6px; }
+.pa-ap-dd-list::-webkit-scrollbar-thumb { background: var(--pa-border-strong); border-radius: 3px; }
 .pa-ap-dd-opt {
   display: flex; align-items: center; gap: 7px;
   width: 100%; padding: 8px 9px;

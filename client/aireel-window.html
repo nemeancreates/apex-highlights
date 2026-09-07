@@ -93,6 +93,13 @@
 
       .summary { font-size: 12px; color: #8fbfa3; margin-top: 10px; }
 
+      .ai-usage {
+        display: none; font-size: 11px; color: #7a9686; text-align: center;
+        margin-top: 10px; padding: 6px 0;
+      }
+      .ai-usage.low { color: #d8a838; }
+      .ai-usage.empty { color: #e08a4a; }
+
       button.primary {
         margin-top: 14px; width: 100%; padding: 13px; background: #1d9e75; border: none;
         color: #04140d; font-size: 15px; font-weight: 600; border-radius: 8px; cursor: pointer;
@@ -164,6 +171,7 @@
       <label>Style notes (optional)</label>
       <input type="text" id="style" placeholder="e.g. hold on clutches, cut fast on kills" maxlength="200" />
 
+      <div class="ai-usage" id="aiUsage"></div>
       <button class="primary" id="buildBtn" onclick="build()">🤖 Build Reel Locally</button>
       <button class="secondary" id="openBtn" onclick="reveal()" style="display:none;">📂 Show in Folder</button>
 
@@ -529,8 +537,25 @@
         if (lastOutput) ipcRenderer.invoke('aireel-reveal', lastOutput);
       };
 
+      loadAiUsage();
       gateByTier();
       refresh();
+
+      async function loadAiUsage() {
+        const el = document.getElementById('aiUsage');
+        try {
+          const usage = await ipcRenderer.invoke('aireel-get-usage');
+          if (!usage || !usage.applicable) { el.style.display = 'none'; return; }
+          el.className = 'ai-usage' +
+            (usage.remaining <= 0 ? ' empty' : usage.remaining <= usage.cap * 0.15 ? ' low' : '');
+          el.textContent = usage.remaining <= 0
+            ? `⚠ AI Editor: 0 of ${usage.cap} left this month`
+            : `AI Editor: ${usage.remaining} of ${usage.cap} left this month`;
+          el.style.display = 'block';
+        } catch (e) {
+          el.style.display = 'none'; // fail silent — this is informational only
+        }
+      }
     </script>
   </body>
 </html>
