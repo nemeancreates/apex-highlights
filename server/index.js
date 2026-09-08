@@ -71,6 +71,12 @@ app.use(helmet({
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
 }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// Serves public/privacy.html at /privacy (no .html in the URL) — matches
+// the links already baked into the client's consent checkbox/modal.
+app.get('/privacy', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'privacy.html'));
+});
 app.use(cors({ origin: config.ALLOWED_ORIGINS }));
 app.use(express.json({ limit: '1mb' }));
 app.use(rateLimit);
