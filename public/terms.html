@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Peak-Abu — Terms of Service</title>
+<style>
+  :root{
+    --bg:#0a1611;
+    --bg-deep:#06100c;
+    --card:#0f2318;
+    --card-soft:#0c1c14;
+    --border:#1e3527;
+    --border-soft:#24402e;
+    --teal:#39d3a0;
+    --teal-dim:#1d9e75;
+    --teal-dark:#146a4d;
+    --pupil:#0b1a13;
+    --violet:#6c4fd8;
+    --amber:#d8a838;
+    --text:#e8f5ec;
+    --text-soft:#c8d6cd;
+    --text-dim:#8fbfa3;
+    --text-muted:#5f7a6a;
+    /* System-font stacks, not Google Fonts — this page is what tells people
+       we don't track them, so it shouldn't be the one page that does. */
+    --display: -apple-system, "Segoe UI", "Segoe UI Semibold", Roboto, sans-serif;
+    --body: -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: "Cascadia Code", "Consolas", "SFMono-Regular", Menlo, monospace;
+  }
+
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html{ scroll-behavior:smooth; }
+
+  body{
+    background:
+      radial-gradient(ellipse 900px 500px at 15% -10%, rgba(57,211,160,0.06), transparent 60%),
+      radial-gradient(ellipse 700px 500px at 90% 15%, rgba(108,79,216,0.05), transparent 60%),
+      var(--bg);
+    color:var(--text-soft);
+    font-family:var(--body);
+    line-height:1.65;
+  }
+
+  a{ color:var(--teal); text-decoration:none; }
+  a:hover{ text-decoration:underline; }
+  ::selection{ background:var(--teal); color:#04140d; }
+
+  .wrap{ max-width:920px; margin:0 auto; padding:0 24px; }
+
+  header.nav{
+    position:sticky; top:0; z-index:50;
+    background:rgba(10,22,17,0.9); backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--border);
+  }
+  .nav-inner{ display:flex; align-items:center; justify-content:space-between; padding:14px 24px; max-width:920px; margin:0 auto; }
+  .brand{ display:flex; align-items:center; gap:10px; font-family:var(--display); font-weight:700; font-size:17px; color:var(--text); }
+  .brand svg{ width:32px; height:32px; flex-shrink:0; }
+  .back-link{ font-size:13.5px; color:var(--text-dim); }
+
+  .doc-header{ padding:56px 0 32px; border-bottom:1px solid var(--border); }
+  .doc-header h1{ font-family:var(--display); font-size:clamp(28px,4vw,38px); color:var(--text); font-weight:700; letter-spacing:-0.01em; margin-bottom:14px; }
+  .doc-meta{ font-family:var(--mono); font-size:12.5px; color:var(--text-muted); line-height:1.9; }
+  .doc-meta strong{ color:var(--text-dim); }
+  .placeholder{ color:var(--amber); background:rgba(216,168,56,0.12); padding:1px 6px; border-radius:4px; font-style:normal; }
+
+  nav.toc{ background:var(--card-soft); border:1px solid var(--border-soft); border-radius:12px; padding:20px 24px; margin:32px 0 48px; }
+  nav.toc h2{ font-family:var(--display); font-size:13px; text-transform:uppercase; letter-spacing:0.1em; color:var(--teal); margin-bottom:12px; }
+  nav.toc ol{ columns:2; column-gap:28px; list-style:none; counter-reset:toc; }
+  @media(max-width:640px){ nav.toc ol{ columns:1; } }
+  nav.toc li{ font-size:13.5px; margin-bottom:7px; break-inside:avoid; }
+  nav.toc a{ color:var(--text-soft); }
+  nav.toc a:hover{ color:var(--teal); text-decoration:none; }
+
+  main{ padding-bottom:80px; }
+
+  section.clause{ padding:34px 0; border-bottom:1px solid var(--border); scroll-margin-top:80px; }
+  section.clause:last-of-type{ border-bottom:none; }
+  section.clause h2{ font-family:var(--display); font-size:20px; color:var(--text); font-weight:600; margin-bottom:14px; letter-spacing:-0.005em; }
+  section.clause h3{ font-family:var(--display); font-size:15px; color:var(--teal); font-weight:600; margin:20px 0 8px; }
+  section.clause p{ margin-bottom:14px; }
+  section.clause p:last-child{ margin-bottom:0; }
+  section.clause ul, section.clause ol{ margin:0 0 14px 22px; }
+  section.clause li{ margin-bottom:7px; }
+  section.clause strong{ color:var(--text); }
+  section.clause .callout{
+    background:var(--card-soft); border:1px solid var(--border-soft); border-left:3px solid var(--amber);
+    border-radius:8px; padding:14px 18px; font-size:14px; margin:14px 0;
+  }
+  section.clause .shout{ text-transform:uppercase; font-weight:600; color:var(--text); }
+  section.clause code{ font-family:var(--mono); font-size:12.5px; background:var(--card-soft); padding:1px 6px; border-radius:4px; }
+
+  footer{ border-top:1px solid var(--border); padding:40px 0; }
+  .foot-inner{ display:flex; flex-direction:column; gap:14px; align-items:center; text-align:center; }
+  @media(min-width:700px){ .foot-inner{ flex-direction:row; justify-content:space-between; text-align:left; } }
+  .foot-links{ display:flex; gap:20px; font-size:13.5px; color:var(--text-dim); }
+  .foot-links a{ color:var(--text-dim); }
+  .foot-links a:hover{ color:var(--teal); }
+  .foot-meta{ font-family:var(--mono); font-size:11.5px; color:var(--text-muted); }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-inner">
+    <div class="brand">
+      <svg viewBox="0 0 64 64">
+        <circle cx="32" cy="32" r="29" fill="var(--card-soft)" stroke="var(--teal)" stroke-width="1.4" opacity="0.9"/>
+        <circle cx="18.5" cy="27.5" r="7" fill="var(--teal)"/>
+        <circle cx="45.5" cy="27.5" r="7" fill="var(--teal)"/>
+        <circle cx="32" cy="36" r="15.5" fill="var(--teal)"/>
+        <ellipse cx="26" cy="33" rx="6.1" ry="5.5" fill="var(--teal-dark)"/>
+        <circle cx="38" cy="33" r="2.6" fill="var(--pupil)"/>
+      </svg>
+      Peak-Abu
+    </div>
+    <a class="back-link" href="https://peakabu.app">← peakabu.app</a>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="doc-header">
+      <h1>Terms of Service</h1>
+      <div class="doc-meta">
+        Peakabu, LLC<br>
+        <strong>Effective:</strong> <span class="placeholder">[date pending publish]</span><br>
+        <strong>Last Updated:</strong> <span class="placeholder">[date pending publish]</span> · Version 2.0
+      </div>
+    </div>
+
+    <nav class="toc" aria-label="Table of contents">
+      <h2>Contents</h2>
+      <ol>
+        <li><a href="#section-1">1. Agreement to These Terms</a></li>
+        <li><a href="#section-2">2. Definitions</a></li>
+        <li><a href="#section-3">3. Eligibility and Age Requirements</a></li>
+        <li><a href="#section-4">4. Accounts</a></li>
+        <li><a href="#section-5">5. Subscriptions, Access Codes, and Billing</a></li>
+        <li><a href="#section-6">6. Your Content</a></li>
+        <li><a href="#section-7">7. Recording Consent — Your Responsibility</a></li>
+        <li><a href="#section-8">8. Third-Party Game and Media Content</a></li>
+        <li><a href="#section-9">9. Acceptable Use</a></li>
+        <li><a href="#section-10">10. Sessions, Hosting, and Moderation</a></li>
+        <li><a href="#section-11">11. Storage, Retention, and Deletion</a></li>
+        <li><a href="#section-12">12. Share Links and Public Access</a></li>
+        <li><a href="#section-13">13. AI Reel and Automated Processing</a></li>
+        <li><a href="#section-14">14. Software License and Updates</a></li>
+        <li><a href="#section-15">15. Our Intellectual Property</a></li>
+        <li><a href="#section-16">16. Third-Party Services</a></li>
+        <li><a href="#section-17">17. Privacy and Telemetry</a></li>
+        <li><a href="#section-18">18. Service Availability, Changes, and Beta Status</a></li>
+        <li><a href="#section-19">19. Suspension and Termination</a></li>
+        <li><a href="#section-20">20. Discontinuation of the Service</a></li>
+        <li><a href="#section-21">21. Disclaimers</a></li>
+        <li><a href="#section-22">22. Limitation of Liability</a></li>
+        <li><a href="#section-23">23. Indemnification</a></li>
+        <li><a href="#section-24">24. Copyright Complaints (DMCA)</a></li>
+        <li><a href="#section-25">25. Dispute Resolution and Governing Law</a></li>
+        <li><a href="#section-26">26. Changes to These Terms</a></li>
+        <li><a href="#section-27">27. General</a></li>
+        <li><a href="#section-28">28. Contact</a></li>
+      </ol>
+    </nav>
+
+    <section class="clause" id="section-1">
+      <h2>1. Agreement to These Terms</h2>
+      <p>These Terms of Service (“Terms”) are a binding agreement between you (“you,” “your,” or “User”) and Peakabu, LLC, an Oregon limited liability company (“Peakabu,” “we,” “us,” or “our”).</p>
+      <p>They govern your use of the Peak-Abu desktop application, the peakabu.app website and web player, our servers and APIs, and any related services (collectively, the “Service”).</p>
+      <p><strong>By downloading, installing, accessing, or using the Service — or by creating an account, redeeming an access code, or joining a capture session — you agree to these Terms.</strong> If you do not agree, do not use the Service.</p>
+      <p>If you are using the Service on behalf of an organization, you represent that you have authority to bind that organization, and “you” refers to that organization.</p>
+    </section>
+
+    <section class="clause" id="section-2">
+      <h2>2. Definitions</h2>
+      <ul>
+        <li><strong>Clip</strong> — a video and/or audio recording captured, uploaded, or generated through the Service.</li>
+        <li><strong>Session</strong> — a coordinated multi-participant capture session created by a Host and joined by Members.</li>
+        <li><strong>Host</strong> — the User who creates a Session and controls its settings, membership, and moderation.</li>
+        <li><strong>Member</strong> — a User who joins a Session created by a Host.</li>
+        <li><strong>POV</strong> — an individual participant's point-of-view recording within a Session.</li>
+        <li><strong>Access Code</strong> — a redeemable code granting a defined period of access at a specified Tier.</li>
+        <li><strong>Tier</strong> — a level of Service access (Free, Creator, Squad, Pro, Founder) with defined limits.</li>
+        <li><strong>Share Link</strong> — a URL that allows playback of a Session's Clips in the web player.</li>
+        <li><strong>User Content</strong> — Clips, session names, clip titles, notes, avatars, and any other material you upload, create, or transmit through the Service.</li>
+      </ul>
+    </section>
+
+    <section class="clause" id="section-3">
+      <h2>3. Eligibility and Age Requirements</h2>
+      <p>You must be at least <strong>13 years old</strong> to use the Service. If you are between 13 and 18 (or the age of majority where you live), you may only use the Service with the consent and supervision of a parent or legal guardian who agrees to these Terms on your behalf.</p>
+      <p>If you are located in the European Economic Area, United Kingdom, or another jurisdiction with a higher digital-consent age, you must be at least <strong>16 years old</strong>, or have verifiable parental consent.</p>
+      <p>We do not knowingly collect personal information from children under 13. If we learn that we have, we will delete the account and associated data. Contact us at <a href="mailto:Peakabullc@gmail.com">Peakabullc@gmail.com</a> to report such an account.</p>
+      <p>You may not use the Service if you are barred from doing so under applicable law, or if we have previously terminated your account for violation of these Terms.</p>
+    </section>
+
+    <section class="clause" id="section-4">
+      <h2>4. Accounts</h2>
+      <p><strong>Registration.</strong> Creating an account requires only a username and password — no email address or other personal information is required. You agree to keep your account information accurate.</p>
+      <p><strong>Security.</strong> You are responsible for safeguarding your password and any access tokens issued to your device. You must notify us immediately at <a href="mailto:Peakabullc@gmail.com">Peakabullc@gmail.com</a> if you suspect unauthorized access to your account.</p>
+      <p><strong>Account recovery.</strong> Because accounts do not require an email address, password recovery is only available if you have linked a Discord account (see “Linked services” below). If you do not link Discord and you lose access to your password, we have no way to verify your identity and may not be able to recover your account.</p>
+      <p><strong>Responsibility.</strong> You are responsible for all activity that occurs under your account, whether or not you authorized it, except to the extent caused by our failure to meet our own security obligations.</p>
+      <p><strong>One account per person.</strong> You may not create multiple accounts to circumvent Tier limits, free-tier quotas, or a suspension or ban.</p>
+      <p><strong>Linked services.</strong> If you link a third-party account (such as Discord) to your Peak-Abu account, you authorize us to access the limited profile information that service provides, and you remain subject to that service's own terms.</p>
+    </section>
+
+    <section class="clause" id="section-5">
+      <h2>5. Subscriptions, Access Codes, and Billing</h2>
+      <h3>5.1 How Access Works</h3>
+      <p>Access to paid Tiers is granted through Access Codes and/or through recurring subscriptions purchased through our payment processor.</p>
+      <p>Access Codes are sold in fixed day-denominations (for example, 30, 60, 90, or 120 days) at a specified Tier, and longer denominations may be offered at a discount. Redeeming a code adds its full duration to your account's access period at that Tier. <strong>Codes stack:</strong> if you redeem more than one code, or redeem a new code while time remains on your account, the durations add together rather than resetting or running in parallel.</p>
+
+      <h3>5.2 Tiers and Limits</h3>
+      <p>Each Tier carries limits on session member count, sessions created per month, clip retention period, maximum clip length, and feature availability (including AI Reel). Current Tier definitions and pricing are published at <span class="placeholder">[pricing page pending]</span>.</p>
+      <p><strong>We may change Tier pricing, limits, and feature sets.</strong> For active recurring subscribers, we will provide at least 30 days' notice before a price increase or a material reduction in Tier limits takes effect, and the change will apply at your next renewal. Your continued use after the effective date constitutes acceptance. If you do not accept, you may cancel before renewal.</p>
+      <p>Changes to the Free Tier may take effect with 30 days' notice.</p>
+
+      <h3>5.3 Payment and Auto-Renewal</h3>
+      <p>Payments are processed by Stripe. We do not store your full payment card details. Your use of payment processing is also subject to Stripe's terms.</p>
+      <p><strong>Recurring subscriptions renew automatically</strong> at the then-current price for the same billing period until cancelled. By subscribing, you authorize us and our payment processor to charge your payment method on each renewal date.</p>
+      <p><strong>Access Codes do not auto-renew.</strong> A code grants a fixed number of days and then that portion of your access expires.</p>
+      <p>You are responsible for all taxes associated with your purchase, other than taxes on our income.</p>
+
+      <h3>5.4 Cancellation</h3>
+      <p>You may cancel a recurring subscription at any time through Stripe's self-service billing portal, accessible from your account settings in the application or website, or from the link included in your billing emails. Cancellation takes effect at the end of your current billing period. You retain access at your paid Tier until that period ends. We do not prorate partial periods.</p>
+
+      <h3>5.5 Refunds</h3>
+      <p>You may request a full refund of an initial purchase (an Access Code or the first billing period of a subscription) within 14 days of that purchase, provided your usage during that window has not exceeded 10% of the monthly session-creation allowance for the Tier you purchased (rounded down, minimum of 1 session).</p>
+      <p>Renewals, and any Access Code redeemed after the initial 14-day window on an account, are non-refundable.</p>
+      <p>Regardless of the above, we will honor refund and cancellation rights required by the consumer protection laws of your jurisdiction, including EU/UK statutory withdrawal rights and applicable U.S. state automatic-renewal laws.</p>
+
+      <h3>5.6 Failed Payments</h3>
+      <p>If a payment fails, we may suspend paid-Tier access until payment succeeds. Clips subject to a paid Tier's longer retention period may become subject to the Free Tier retention period during suspension — back up anything you want to keep.</p>
+
+      <h3>5.7 Crowdfunding and Founder Tier</h3>
+      <p>Access granted through a crowdfunding campaign (including Kickstarter) is subject to both these Terms and the reward description in the applicable campaign. Founder or lifetime access means access for as long as the Service continues to operate, and does not obligate us to operate the Service indefinitely. See Section 20 (Discontinuation).</p>
+      <p>Crowdfunding redemption codes are single-use, non-transferable, and non-refundable through us; refunds for crowdfunding pledges are governed by the campaign platform's policies.</p>
+    </section>
+
+    <section class="clause" id="section-6">
+      <h2>6. Your Content</h2>
+      <h3>6.1 You Own Your Content</h3>
+      <p>You retain all ownership rights in your User Content. We claim no ownership over your Clips.</p>
+
+      <h3>6.2 License You Grant Us</h3>
+      <p>To operate the Service, you grant Peakabu a worldwide, non-exclusive, royalty-free license to host, store, transcode, encode, cache, reproduce, transmit, composite, synchronize, and display your User Content solely for the purposes of:</p>
+      <ul>
+        <li>(a) providing the Service to you and to Members of your Sessions;</li>
+        <li>(b) delivering playback to anyone you or a Session Host shares a Share Link with;</li>
+        <li>(c) generating composites, exports, thumbnails, previews, and AI Reel output at your or a Host's request;</li>
+        <li>(d) performing technical operations necessary for storage, delivery, backup, and security.</li>
+      </ul>
+      <p>This license ends when your Content is deleted from our systems, except for (i) copies retained in routine backups for a limited period, and (ii) Content that others have downloaded before deletion, which we cannot recall.</p>
+
+      <h3>6.3 Marketing Use</h3>
+      <p><strong>We will not use your User Content for marketing or promotional purposes without your separate, express written permission.</strong></p>
+
+      <h3>6.4 Your Representations</h3>
+      <p>You represent and warrant that, for all User Content you upload or transmit:</p>
+      <ul>
+        <li>you own it or have all rights necessary to grant the license above;</li>
+        <li>it does not infringe any third party's intellectual property, privacy, or publicity rights;</li>
+        <li>you have obtained all consents required under Section 7;</li>
+        <li>it does not violate Section 9 (Acceptable Use) or any applicable law.</li>
+      </ul>
+    </section>
+
+    <section class="clause" id="section-7">
+      <h2>7. Recording Consent — Your Responsibility</h2>
+      <p class="shout">Read this section carefully. It is the single most important obligation in these Terms.</p>
+      <p>Peak-Abu captures screen content and audio, including microphone audio, from multiple participants simultaneously.</p>
+      <div class="callout"><strong>You are solely responsible for ensuring that every person whose screen, voice, likeness, or communications are captured through your use of the Service has given any consent required by law.</strong></div>
+      <p>Recording laws vary significantly by jurisdiction. Some U.S. states and many countries require the consent of <strong>all</strong> parties to a recorded communication, not just one. Violating these laws can carry civil and criminal penalties.</p>
+      <p>Specifically, you agree that:</p>
+      <ul>
+        <li><strong>As a Host,</strong> you will inform all Members that the Session records their screen and audio, before capture begins, and will not start or continue a Session with anyone who has not consented.</li>
+        <li><strong>As a Member,</strong> by joining a Session you consent to the capture of your POV, including your microphone and desktop audio, as configured by you in the application, and to that recording being shared with other Members and with anyone the Host shares the Session with.</li>
+        <li>You will not use the Service to record any person covertly, or in any context where the person has a reasonable expectation of privacy.</li>
+        <li>You will not use the Service to record confidential, medical, financial, legal, or otherwise regulated information belonging to a third party.</li>
+      </ul>
+      <p><strong>Peakabu does not monitor Sessions and does not verify consent.</strong> You indemnify us against claims arising from recordings you make or share (see Section 23).</p>
+    </section>
+
+    <section class="clause" id="section-8">
+      <h2>8. Third-Party Game and Media Content</h2>
+      <p>Clips captured through the Service will typically contain video game footage, music, voice chat, and other material owned by third parties.</p>
+      <p>You are responsible for ensuring your capture, retention, and distribution of that material complies with the terms of service, end-user license agreements, and copyright policies of the game publishers, platforms, and rights holders involved.</p>
+      <p>We do not grant you any rights in third-party content, and we make no representation that any particular capture or upload is permitted by the rights holder.</p>
+    </section>
+
+    <section class="clause" id="section-9">
+      <h2>9. Acceptable Use</h2>
+      <p>You agree <strong>not</strong> to:</p>
+      <h3>Content</h3>
+      <ul>
+        <li>Upload or share content that is unlawful, infringing, defamatory, harassing, hateful, or that depicts sexual content involving minors or non-consensual sexual content;</li>
+        <li>Use the Service to record or distribute material captured without required consent (Section 7);</li>
+        <li>Upload malware, or content designed to exploit a vulnerability in the Service or in a viewer's device.</li>
+      </ul>
+      <h3>Technical</h3>
+      <ul>
+        <li>Reverse engineer, decompile, or disassemble the Service, except to the extent this restriction is unenforceable under applicable law;</li>
+        <li>Circumvent Tier limits, retention limits, session caps, rate limits, authentication, or access controls;</li>
+        <li>Access the Service through automated means (bots, scrapers, headless clients) except through documented public endpoints;</li>
+        <li>Enumerate, scrape, or bulk-download Clips or Share Links you were not given access to;</li>
+        <li>Interfere with, overload, or attempt to disrupt our servers, storage, or network;</li>
+        <li>Resell, sublicense, or redistribute access to the Service, or share a single account among multiple people to avoid paying for additional seats.</li>
+      </ul>
+      <h3>Commercial / Legal</h3>
+      <ul>
+        <li>Use the Service to build, train, or benchmark a competing product;</li>
+        <li>Misrepresent your identity or affiliation with Peakabu;</li>
+        <li>Use the Service for any illegal purpose or in violation of export control or sanctions laws.</li>
+      </ul>
+      <p>We may investigate suspected violations and take any action described in Section 19.</p>
+    </section>
+
+    <section class="clause" id="section-10">
+      <h2>10. Sessions, Hosting, and Moderation</h2>
+      <p><strong>Host authority.</strong> A Host controls their Session, including the ability to remove (kick) or ban Members and to end the Session. Host decisions are between the Host and Members; we are not responsible for them.</p>
+      <p><strong>Automatic closure.</strong> Sessions may close automatically after a period of Host inactivity. Captured Clips are retained per Section 11.</p>
+      <p><strong>No obligation to moderate.</strong> We are not obligated to monitor Sessions or User Content, but we may review, remove, or restrict access to any Content that we reasonably believe violates these Terms or the law.</p>
+      <p><strong>Reporting.</strong> To report abusive content or a Session, contact <a href="mailto:Peakabullc@gmail.com">Peakabullc@gmail.com</a>.</p>
+    </section>
+
+    <section class="clause" id="section-11">
+      <h2>11. Storage, Retention, and Deletion</h2>
+      <p><strong>Retention is Tier-based and finite.</strong> Clips are automatically and permanently deleted after the retention period associated with the Tier under which they were created. Retention periods for each Tier are published at <span class="placeholder">[pricing page pending]</span>.</p>
+      <div class="callout"><span class="shout">The Service is not a backup or archival service.</span> You are solely responsible for downloading and preserving any Clip you wish to keep. We are not liable for the loss of Clips due to retention expiry, account suspension, payment failure, technical fault, or discontinuation of the Service.</div>
+      <p><strong>Deletion on request.</strong> You may request deletion of your account and associated User Content by emailing <a href="mailto:Peakabullc@gmail.com">Peakabullc@gmail.com</a>. We will process deletion within 30 days, excluding routine backups, which cycle out within 30 days, and excluding data we must retain for legal, tax, or fraud-prevention purposes.</p>
+    </section>
+
+    <section class="clause" id="section-12">
+      <h2>12. Share Links and Public Access</h2>
+      <p><strong>Share Links are unauthenticated by design.</strong> Anyone with a Session's Share Link can view that Session's Clips in the web player without an account, until the Clips expire.</p>
+      <p>Share Links use long, randomly generated identifiers, which makes them impractical to guess or enumerate — but they are <strong>not secret</strong>, and we cannot prevent redistribution by anyone you share a link with.</p>
+      <p><strong>Do not use the Service to capture or share anything you would not be comfortable becoming public.</strong></p>
+    </section>
+
+    <section class="clause" id="section-13">
+      <h2>13. AI Reel and Automated Processing</h2>
+      <p>Where available at your Tier, the Service may analyze your Clips automatically to generate highlight reels, edit decision lists, previews, or thumbnails.</p>
+      <ul>
+        <li>Output is generated algorithmically and may be inaccurate, poorly timed, or unsuitable. It is provided as is, with no guarantee of quality.</li>
+        <li>Processing may occur on your device, on our servers, or through Anthropic's Claude API. Where Claude is used, your Clip data is transmitted to Anthropic for the sole purpose of generating your output.</li>
+        <li>Anthropic's commercial API terms state that customer inputs and outputs are not used to train their models, and are automatically deleted from Anthropic's systems within 30 days of processing. We do not have a Zero Data Retention agreement in place with Anthropic, so the standard 30-day window applies.</li>
+        <li>You retain ownership of AI Reel output derived from your Clips, subject to Section 8 (third-party content in the underlying footage).</li>
+      </ul>
+    </section>
+
+    <section class="clause" id="section-14">
+      <h2>14. Software License and Updates</h2>
+      <p><strong>License.</strong> Subject to these Terms, we grant you a limited, revocable, non-exclusive, non-transferable, non-sublicensable license to install and use the Peak-Abu desktop application on devices you own or control, for your personal or internal business use.</p>
+      <p><strong>Automatic updates.</strong> The application checks for and may automatically download and install updates. Updates may add, change, or remove features. You consent to these updates. If you disable updating, we may be unable to support your version, and older versions may stop working with our servers.</p>
+      <p><strong>Source availability is not open source.</strong> Portions of our source code may be published publicly for transparency and community review. Publication does not grant a license to fork, redistribute, or deploy the code as a competing or derivative service. See the LICENSE file in the repository for the governing terms.</p>
+    </section>
+
+    <section class="clause" id="section-15">
+      <h2>15. Our Intellectual Property</h2>
+      <p>The Service, including the application, web player, server software, design, branding, “Peak-Abu” and “Peakabu” names and logos, and all related intellectual property, is owned by Peakabu, LLC and protected by copyright, trademark, patent, and trade secret law.</p>
+      <p><strong>Patent notice.</strong> Peakabu, LLC has a provisional patent application pending covering the Service's synchronization and buffer-extraction technology. Nothing in these Terms grants you any license under that application or any patent issuing from it.</p>
+      <p><strong>Feedback.</strong> If you send us suggestions, feature requests, or feedback, you grant us an unrestricted, perpetual, royalty-free right to use it without obligation or attribution to you.</p>
+    </section>
+
+    <section class="clause" id="section-16">
+      <h2>16. Third-Party Services</h2>
+      <p>The Service depends on third-party providers, including cloud storage and CDN, hosting, payment processing, error monitoring, and authentication providers. Their availability and performance are outside our control, and their handling of data is governed by their own terms and privacy policies. We are not liable for the acts, omissions, outages, or data practices of third-party providers.</p>
+    </section>
+
+    <section class="clause" id="section-17">
+      <h2>17. Privacy and Telemetry</h2>
+      <p>Our collection and handling of personal information is described in our <a href="privacy.html">Privacy Policy</a>, which is incorporated into these Terms by reference.</p>
+      <p>In summary: the Service collects account information, session and usage metadata, and — through automated crash and error reporting — diagnostic data including stack traces, application state, and device information. Crash reports may incidentally include file paths or session identifiers. We do not sell personal information.</p>
+    </section>
+
+    <section class="clause" id="section-18">
+      <h2>18. Service Availability, Changes, and Beta Status</h2>
+      <p><strong>Pre-1.0 software.</strong> The Service is under active development and has not reached a 1.0 release. It may contain bugs, may fail to capture, may lose or corrupt Clips, and may change substantially between versions.</p>
+      <p><strong>No uptime guarantee.</strong> We provide the Service on a commercially reasonable-efforts basis. We do not commit to any service level or uptime percentage. We may suspend the Service for maintenance, upgrades, or emergencies, with or without notice.</p>
+      <p><strong>Changes to the Service.</strong> We may add, modify, or remove features at any time. Material reductions to paid-Tier functionality are handled under Section 5.2.</p>
+    </section>
+
+    <section class="clause" id="section-19">
+      <h2>19. Suspension and Termination</h2>
+      <p><strong>By you.</strong> You may stop using the Service and delete your account at any time. See Sections 5.4 and 11.</p>
+      <p><strong>By us.</strong> We may suspend or terminate your access, with or without notice, if:</p>
+      <ul>
+        <li>you materially breach these Terms;</li>
+        <li>your use creates a security, legal, or operational risk to us or to other users;</li>
+        <li>we are required to do so by law;</li>
+        <li>your payment fails and is not cured; or</li>
+        <li>you have not used a Free Tier account for 12 months (with prior email notice, where we have a way to reach you).</li>
+      </ul>
+      <p>Where practical and lawful, we will give notice and an opportunity to cure before terminating a paid account for breach.</p>
+      <p><strong>Effect of termination.</strong> Your license to use the application ends. Your User Content is deleted per Section 11. Sections 6.2 (surviving license for undeleted content), 15, 17, 20, 21, 22, 23, and 24 survive termination.</p>
+    </section>
+
+    <section class="clause" id="section-20">
+      <h2>20. Discontinuation of the Service</h2>
+      <p>If we decide to discontinue the Service permanently, we will make reasonable efforts to:</p>
+      <ul>
+        <li>give at least 60 days' advance notice to registered users;</li>
+        <li>keep the download/export function available through the notice period so you can retrieve your Clips;</li>
+        <li>refund the unused, prepaid portion of any active paid subscription, on a pro-rata basis.</li>
+      </ul>
+      <p>Lifetime and Founder access terminates on discontinuation and does not entitle the holder to a refund beyond any unused prepaid period.</p>
+    </section>
+
+    <section class="clause" id="section-21">
+      <h2>21. Disclaimers</h2>
+      <p class="shout">The Service is provided “as is” and “as available,” without warranties of any kind, express or implied.</p>
+      <p>To the maximum extent permitted by law, we disclaim all warranties, including implied warranties of merchantability, fitness for a particular purpose, title, and non-infringement.</p>
+      <p>Without limiting the foregoing, we do not warrant that:</p>
+      <ul>
+        <li>the Service will be uninterrupted, timely, secure, or error-free;</li>
+        <li>captures will succeed, be complete, be synchronized, or be of any particular quality;</li>
+        <li>Clips will be preserved, recoverable, or free from loss or corruption;</li>
+        <li>any defect will be corrected.</li>
+      </ul>
+      <p>Some jurisdictions do not allow the exclusion of certain warranties, so parts of this section may not apply to you.</p>
+    </section>
+
+    <section class="clause" id="section-22">
+      <h2>22. Limitation of Liability</h2>
+      <p class="shout">To the maximum extent permitted by law:</p>
+      <p><strong>(a)</strong> Peakabu, LLC and its members, officers, employees, and agents will not be liable for any indirect, incidental, special, consequential, exemplary, or punitive damages, or for lost profits, lost revenue, lost data, lost recordings, loss of goodwill, or business interruption, arising out of or relating to the Service — even if we have been advised of the possibility of such damages.</p>
+      <p><strong>(b)</strong> Our total aggregate liability for all claims relating to the Service will not exceed the greater of (i) the amount you paid us in the twelve (12) months preceding the event giving rise to the claim, or (ii) fifty U.S. dollars (US$50).</p>
+      <p><strong>(c)</strong> Nothing in these Terms limits liability that cannot be limited under applicable law, including liability for fraud, gross negligence, willful misconduct, or death or personal injury caused by negligence.</p>
+      <p><strong>(d)</strong> Some jurisdictions do not allow certain limitations of liability, so parts of this section may not apply to you.</p>
+    </section>
+
+    <section class="clause" id="section-23">
+      <h2>23. Indemnification</h2>
+      <p>You will indemnify, defend, and hold harmless Peakabu, LLC and its members, officers, employees, and agents from any claim, demand, loss, liability, damage, cost, or expense (including reasonable attorneys' fees) arising out of or relating to:</p>
+      <ul>
+        <li>your User Content;</li>
+        <li><strong>your failure to obtain consents required under Section 7</strong>;</li>
+        <li>your violation of these Terms or applicable law;</li>
+        <li>your infringement of any third party's rights, including publishers' and rights holders' rights in game content;</li>
+        <li>your use of the Service.</li>
+      </ul>
+      <p>We will notify you of any such claim and may, at our option, assume control of its defense at your expense.</p>
+    </section>
+
+    <section class="clause" id="section-24">
+      <h2>24. Copyright Complaints (DMCA)</h2>
+      <p>If you believe content on the Service infringes your copyright, send a notice to our designated agent at <a href="mailto:Peakabullc@gmail.com">Peakabullc@gmail.com</a> including:</p>
+      <ol>
+        <li>your physical or electronic signature;</li>
+        <li>identification of the copyrighted work claimed to be infringed;</li>
+        <li>identification of the material claimed to be infringing and its location (Share Link or URL);</li>
+        <li>your contact information;</li>
+        <li>a statement that you have a good-faith belief the use is not authorized;</li>
+        <li>a statement, under penalty of perjury, that the information is accurate and that you are authorized to act on the owner's behalf.</li>
+      </ol>
+      <p>We will remove or disable access to material in response to valid notices and will terminate the accounts of repeat infringers. Counter-notices may be submitted to the same address.</p>
+    </section>
+
+    <section class="clause" id="section-25">
+      <h2>25. Dispute Resolution and Governing Law</h2>
+      <p><strong>Governing law.</strong> These Terms are governed by the laws of the State of Oregon, without regard to conflict-of-law principles. If you are a consumer resident in the EEA or UK, you retain the protections of the mandatory consumer laws of your country of residence.</p>
+      <p><strong>25.1 Informal resolution.</strong> Before filing a claim, you agree to contact us at <a href="mailto:Peakabullc@gmail.com">Peakabullc@gmail.com</a> and attempt to resolve the dispute informally for at least 60 days.</p>
+      <p><strong>25.2 Courts, not arbitration.</strong> Any dispute not resolved informally will be brought exclusively in the state or federal courts located in Washington County, Oregon, and both parties consent to that jurisdiction and venue.</p>
+      <p><strong>25.3 Time limit.</strong> Any claim must be brought within one (1) year after it arises, or it is permanently barred, unless applicable law prohibits this limitation.</p>
+    </section>
+
+    <section class="clause" id="section-26">
+      <h2>26. Changes to These Terms</h2>
+      <p>We may revise these Terms. If we make a material change, we will notify you by email (where we have one on file) and/or in-app notice at least 30 days before it takes effect, and update the “Last Updated” date.</p>
+      <p>Your continued use after the effective date constitutes acceptance. If you do not accept, you must stop using the Service and may cancel under Section 5.4. Material changes will not apply retroactively to disputes arising before their effective date.</p>
+    </section>
+
+    <section class="clause" id="section-27">
+      <h2>27. General</h2>
+      <p><strong>Entire agreement.</strong> These Terms, together with the Privacy Policy and any Tier or pricing terms published at <span class="placeholder">[pricing page pending]</span>, are the entire agreement between you and us regarding the Service.</p>
+      <p><strong>Severability.</strong> If any provision is held unenforceable, it will be modified to the minimum extent necessary, and the remaining provisions stay in effect.</p>
+      <p><strong>No waiver.</strong> Our failure to enforce a provision is not a waiver of it.</p>
+      <p><strong>Assignment.</strong> You may not assign these Terms without our written consent. We may assign them in connection with a merger, acquisition, or sale of assets.</p>
+      <p><strong>Force majeure.</strong> We are not liable for failures caused by events beyond our reasonable control, including outages of third-party infrastructure providers.</p>
+      <p><strong>No third-party beneficiaries.</strong> These Terms create no rights in any third party.</p>
+      <p><strong>Export compliance.</strong> You represent that you are not located in, or a national of, a country subject to U.S. embargo, and are not on any U.S. restricted-party list.</p>
+      <p><strong>Headings.</strong> Section headings are for convenience only and do not affect interpretation.</p>
+    </section>
+
+    <section class="clause" id="section-28">
+      <h2>28. Contact</h2>
+      <p>Peakabu, LLC<br><span class="placeholder">[mailing address pending]</span></p>
+      <ul>
+        <li><strong>General support:</strong> <a href="mailto:Peakabullc@gmail.com">Peakabullc@gmail.com</a></li>
+        <li><strong>Security disclosures:</strong> see <code>SECURITY.md</code></li>
+        <li><strong>Copyright / DMCA:</strong> <a href="mailto:Peakabullc@gmail.com">Peakabullc@gmail.com</a></li>
+        <li><strong>Legal notices:</strong> <a href="mailto:Peakabullc@gmail.com">Peakabullc@gmail.com</a></li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+
+<footer>
+  <div class="wrap foot-inner">
+    <div class="foot-links">
+      <a href="https://peakabu.app">peakabu.app</a>
+      <a href="privacy.html">Privacy Policy</a>
+      <a href="mailto:Peakabullc@gmail.com">Contact</a>
+    </div>
+    <div class="foot-meta">© 2026 Peakabu, LLC · Sync protocol patent pending — USPTO App #64/111,818</div>
+  </div>
+</footer>
+
+</body>
+</html>
