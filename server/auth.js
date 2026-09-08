@@ -12,8 +12,8 @@ const { JWT_SECRET, JWT_EXPIRY, BCRYPT_ROUNDS, TIERS, TIER_ORDER, ADMIN_SECRET,
         REDEEM_ATTEMPT_MAX, REDEEM_ATTEMPT_WINDOW,
         REGISTER_IP_MAX, REGISTER_IP_WINDOW,
         ANOMALY_REGISTER_BURST_MAX, ANOMALY_REGISTER_BURST_WINDOW } = require('./config');
-const { recordEvent } = require('./anomaly');
 const { users, saveUsersToDisk } = require('./stores');
+const { PRIVACY_POLICY_VERSION } = require('./config');
 const { generateRedemptionCodes, redeemCode, peekCode } = require('./redemption');
 const { getFlags, setFlags } = require('./killswitch');
 const { DISCORD_ENABLED, DISCORD_RECOVERY_REDIRECT_URI } = require('./config');
@@ -304,7 +304,8 @@ function initAuthRoutes(app) {
       username: clean, passwordHash, createdAt: new Date().toISOString(),
       tier: 't1', tierSource: 'default', tierExpiresAt: null,
       sessionsThisMonth: 0, sessionsMonthKey: getMonthKey(),
-      bandwidthBytesThisMonth: 0, bandwidthMonthKey: getMonthKey(), bandwidthAlertedThisMonth: false
+      bandwidthBytesThisMonth: 0, bandwidthMonthKey: getMonthKey(), bandwidthAlertedThisMonth: false,
+      privacyVersionAccepted: PRIVACY_POLICY_VERSION, privacyAcceptedAt: Date.now()
     };
         user.tokenVersion = 0;
     users.set(clean.toLowerCase(), user);
@@ -320,7 +321,7 @@ function initAuthRoutes(app) {
     });
     const token = jwt.sign({ username: clean, tv: user.tokenVersion }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
     log('info', 'user_registered', { username: clean, ip });
-    return res.status(201).json({ token, username: clean, tier: 't1' });
+    return res.status(201).json({ token, username: clean, tier: 't1', privacyVersionAccepted: PRIVACY_POLICY_VERSION });
   });
 
   app.post('/auth/login', async (req, res) => {
@@ -342,7 +343,11 @@ function initAuthRoutes(app) {
     saveUsersToDisk();
     const token = jwt.sign({ username: user.username, tv: user.tokenVersion }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
     log('info', 'user_login', { username: user.username, tier: getEffectiveTier(user) });
-    return res.status(200).json({ token, username: user.username, tier: getEffectiveTier(user), tierExpiresAt: user.tierExpiresAt || null });
+    return res.status(200).json({
+      token, username: user.username, tier: getEffectiveTier(user), tierExpiresAt: user.tierExpiresAt || null,
+      privacyVersionAccepted: user.privacyVersionAccepted || null,
+      privacyPolicyVersion: PRIVACY_POLICY_VERSION
+    });
   });
 
   app.get('/auth/me', requireAuth, (req, res) => {
@@ -352,8 +357,20 @@ function initAuthRoutes(app) {
       tier: getEffectiveTier(user),
       tierExpiresAt: user.tierExpiresAt || null,
       discordLinked: !!user.discordId,
-      discordUsername: user.discordUsername || null
+      discordUsername: user.discordUsername || null,
+      privacyVersionAccepted: user.privacyVersionAccepted || null,
+      privacyPolicyVersion: PRIVACY_POLICY_VERSION
     });
+  });
+
+  app.post('/auth/accept-privacy', requireAuth, (req, res) => {
+    const user = users.get(req.user.username.toLowerCase());
+    if (!user) return safeError(res, 404, 'Account not found');
+    user.privacyVersionAccepted = PRIVACY_POLICY_VERSION;
+    user.privacyAcceptedAt = Date.now();
+    saveUsersToDisk();
+    log('info', 'privacy_accepted', { username: user.username, version: PRIVACY_POLICY_VERSION });
+    return res.json({ success: true, privacyVersionAccepted: PRIVACY_POLICY_VERSION });
   });
 
   app.post('/auth/redeem', requireAuth, (req, res) => {

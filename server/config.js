@@ -185,17 +185,28 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 // CLIENT VERSION — served at /api/version for the client auto-updater.
 // Update when a new client build is uploaded to the CDN.
 // ================================
+
+// PRIVACY POLICY VERSION — bump this string whenever the privacy policy or
+// terms change materially. Users whose privacyVersionAccepted doesn't match
+// this get a blocking re-consent modal on next login. Format is free-form
+// but a date is easiest to reason about.
+const PRIVACY_POLICY_VERSION = '2026-09-07';
+
 const LATEST_CLIENT_VERSION = {
   version: '0.1.74',
   downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.74.exe',
     releaseNotes: "Added crash reporting"
 };
 
+
+
+
 // SENTRY_DSN — crash reporting. Unset = reporting silently disabled (local dev).
 const SENTRY_DSN = process.env.SENTRY_DSN || null;
 
 module.exports = {
   JWT_SECRET,
+  PRIVACY_POLICY_VERSION,
   PORT,
   SENTRY_DSN,
   ALLOWED_ORIGINS,

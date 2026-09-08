@@ -32,7 +32,9 @@ db.exec(`
     bandwidthBytesThisMonth INTEGER NOT NULL DEFAULT 0,
     bandwidthMonthKey       TEXT,
     bandwidthAlertedThisMonth INTEGER NOT NULL DEFAULT 0,
-    tokenVersion INTEGER NOT NULL DEFAULT 0
+    tokenVersion INTEGER NOT NULL DEFAULT 0,
+    privacyVersionAccepted TEXT,
+    privacyAcceptedAt INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS sessions (
@@ -137,6 +139,8 @@ addColumnIfMissing('users', 'sessionsMonthKey', 'TEXT');
 addColumnIfMissing('users', 'bandwidthBytesThisMonth', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('users', 'bandwidthMonthKey', 'TEXT');
 addColumnIfMissing('users', 'bandwidthAlertedThisMonth', 'INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('users', 'privacyVersionAccepted', 'TEXT');
+addColumnIfMissing('users', 'privacyAcceptedAt', 'INTEGER');
 
 // discordId — the Discord snowflake ID (not username, which people can
 // change) is the actual source of truth for "this Peak-Abu account is
@@ -146,6 +150,8 @@ addColumnIfMissing('users', 'bandwidthAlertedThisMonth', 'INTEGER NOT NULL DEFAU
 addColumnIfMissing('users', 'discordId', 'TEXT');
 addColumnIfMissing('users', 'discordUsername', 'TEXT'); // display cache only, never trust for identity
 addColumnIfMissing('users', 'discordLinkedAt', 'INTEGER');
+addColumnIfMissing('users', 'privacyVersionAccepted', 'TEXT');
+addColumnIfMissing('users', 'privacyAcceptedAt', 'INTEGER');
 
 // sessions — tier limits captured at creation time
 addColumnIfMissing('sessions', 'hostTier', 'TEXT');

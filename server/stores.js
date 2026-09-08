@@ -86,14 +86,16 @@ const stmt = {
       tier, tierSource, tierExpiresAt,
       sessionsThisMonth, sessionsMonthKey,
       bandwidthBytesThisMonth, bandwidthMonthKey, bandwidthAlertedThisMonth,
-      tokenVersion, discordId, discordUsername, discordLinkedAt
+      tokenVersion, discordId, discordUsername, discordLinkedAt,
+      privacyVersionAccepted, privacyAcceptedAt
     )
     VALUES (
       @username_lower, @username, @passwordHash, @createdAt,
       @tier, @tierSource, @tierExpiresAt,
       @sessionsThisMonth, @sessionsMonthKey,
       @bandwidthBytesThisMonth, @bandwidthMonthKey, @bandwidthAlertedThisMonth,
-      @tokenVersion, @discordId, @discordUsername, @discordLinkedAt
+      @tokenVersion, @discordId, @discordUsername, @discordLinkedAt,
+      @privacyVersionAccepted, @privacyAcceptedAt
     )
     ON CONFLICT(username_lower) DO UPDATE SET
       passwordHash = excluded.passwordHash,
@@ -108,7 +110,9 @@ const stmt = {
       tokenVersion = excluded.tokenVersion,
       discordId = excluded.discordId,
       discordUsername = excluded.discordUsername,
-      discordLinkedAt = excluded.discordLinkedAt
+      discordLinkedAt = excluded.discordLinkedAt,
+      privacyVersionAccepted = excluded.privacyVersionAccepted,
+      privacyAcceptedAt = excluded.privacyAcceptedAt
   `),
   allUsers: db.prepare(`SELECT * FROM users`),
 
@@ -181,7 +185,9 @@ function loadUsersFromDisk() {
       tokenVersion: row.tokenVersion || 0,
       discordId: row.discordId || null,
       discordUsername: row.discordUsername || null,
-      discordLinkedAt: row.discordLinkedAt || null
+      discordLinkedAt: row.discordLinkedAt || null,
+      privacyVersionAccepted: row.privacyVersionAccepted || null,
+      privacyAcceptedAt: row.privacyAcceptedAt || null
     });
   }
   log('info', 'users_loaded', { count: users.size });
@@ -207,8 +213,11 @@ function saveUsersToDisk() {
         bandwidthAlertedThisMonth: u.bandwidthAlertedThisMonth ? 1 : 0,
         tokenVersion: u.tokenVersion || 0,
         discordId: u.discordId ?? null,
+        discordId: u.discordId ?? null,
         discordUsername: u.discordUsername ?? null,
-        discordLinkedAt: u.discordLinkedAt ?? null
+        discordLinkedAt: u.discordLinkedAt ?? null,
+        privacyVersionAccepted: u.privacyVersionAccepted ?? null,
+        privacyAcceptedAt: u.privacyAcceptedAt ?? null
       });
     }
   });
