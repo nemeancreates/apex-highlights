@@ -856,6 +856,22 @@
         </div>
       </div>
 
+      <!-- PRIVACY RE-CONSENT — shown when the logged-in account's accepted
+           privacy version doesn't match the current one. Not dismissible. -->
+      <div id="privacyReconsentModal" class="modal">
+        <div class="modal-content" style="max-width:420px;">
+          <div class="modal-header">
+            <h2>📋 Our Privacy Policy has been updated</h2>
+          </div>
+          <p style="font-size:13px;line-height:1.5;color:#c8d6cd;margin-bottom:14px;">
+            Please review the updated <a href="#" onclick="shell.openExternal('https://peakabu.app/privacy');return false;" style="color:#39d3a0;">Privacy Policy</a> before continuing.
+          </p>
+          <div class="row">
+            <button class="btn-save" onclick="acceptPrivacyUpdate()">I Agree, Continue</button>
+          </div>
+        </div>
+      </div>
+
       <!-- AUTO-CAPTURE DISCLOSURE — shown once, first time the toggle is enabled -->
       <div id="acDisclosureModal" class="modal">
         <div class="modal-content" style="max-width:420px;">
@@ -923,6 +939,12 @@
           <div id="authConfirmWrap" style="display:none;">
             <label>Confirm Password</label>
             <input type="password" id="authConfirmInput" placeholder="Re-enter password" />
+          </div>
+          <div id="authPrivacyWrap" style="display:none;margin-bottom:10px;">
+            <label style="display:flex;align-items:flex-start;gap:8px;font-size:12px;color:#8fbfa3;text-transform:none;letter-spacing:normal;">
+              <input type="checkbox" id="authPrivacyCheck" style="margin-top:2px;">
+              <span>I agree to the <a href="#" onclick="shell.openExternal('https://peakabu.app/privacy');return false;" style="color:#39d3a0;">Privacy Policy</a> and Terms of Service.</span>
+            </label>
           </div>
           <div id="authError" style="color:#f0857a;font-size:12px;margin-top:-4px;margin-bottom:6px;display:none;"></div>
           <div class="row">
@@ -4716,7 +4738,7 @@
         
        try {
          var res = await fetch('https://peakabu.app/auth/me', { headers: { 'Authorization':'Bearer '+window.authToken } });
-         if (res.ok) { var d = await res.json(); updateTierBadge(d.tier, d.tierExpiresAt); renderDiscordStatus(!!d.discordLinked, d.discordUsername); showAuthLoggedIn(d.username); }
+         if (res.ok) { var d = await res.json(); updateTierBadge(d.tier, d.tierExpiresAt); renderDiscordStatus(!!d.discordLinked, d.discordUsername); checkPrivacyConsent(d); showAuthLoggedIn(d.username); }
          else if (res.status === 401) { clearAuthState(); showAuthLoggedOut(); }
          else { if (window.authUsername) showAuthLoggedIn(window.authUsername); else showAuthLoggedOut(); }
        } catch(e) {
@@ -4779,6 +4801,7 @@
       var confirmWrap = document.getElementById('authConfirmWrap');
       if (confirmWrap.style.display === 'none' || confirmWrap.style.display === '') {
         confirmWrap.style.display = 'block';
+        document.getElementById('authPrivacyWrap').style.display = 'block';
         document.getElementById('authConfirmInput').focus();
         showAuthError('Re-enter your password to confirm, then click Register again');
         return;
@@ -4788,6 +4811,7 @@
       var confirm = document.getElementById('authConfirmInput').value;
       if (!username || !password) { showAuthError('Fill in all fields'); return; }
       if (password !== confirm) { showAuthError('Passwords do not match'); return; }
+      if (!document.getElementById('authPrivacyCheck').checked) { showAuthError('You must agree to the Privacy Policy to create an account'); return; }
         try {
           var res = await fetch('https://peakabu.app/auth/register', {
             method:'POST', headers:{'Content-Type':'application/json'},
@@ -4814,6 +4838,7 @@
           if (!res.ok) { showAuthError(data.error||'Login failed'); return; }
           storeAuthState(data.token, data.username);
           updateTierBadge(data.tier || 't1', data.tierExpiresAt);
+          checkPrivacyConsent(data);
           showAuthLoggedIn(data.username);
         } catch(e) { showAuthError('Could not reach server'); }
       };
@@ -4872,6 +4897,26 @@
         el.textContent = msg; el.style.display = 'block';
         setTimeout(function(){ el.style.display = 'none'; }, 4000);
       }
+
+      // =====================
+      // PRIVACY CONSENT — blocking re-consent when the account's accepted
+      // version doesn't match the server's current PRIVACY_POLICY_VERSION.
+      // =====================
+      function checkPrivacyConsent(data) {
+        if (data && data.privacyPolicyVersion && data.privacyVersionAccepted !== data.privacyPolicyVersion) {
+          document.getElementById('privacyReconsentModal').classList.add('show');
+        }
+      }
+
+      window.acceptPrivacyUpdate = async function() {
+        try {
+          var res = await fetch('https://peakabu.app/auth/accept-privacy', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + window.authToken }
+          });
+          if (res.ok) document.getElementById('privacyReconsentModal').classList.remove('show');
+        } catch (e) {}
+      };
 
       // =====================
       // TIER + REDEMPTION
