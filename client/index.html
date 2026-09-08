@@ -688,7 +688,7 @@
               <img src="assets/kickstarter.png" alt="kickstarter" />
             </button>
           </div>
-          <span class="version-tag">v0.1.74</span>
+          <span class="version-tag">v40.1.75</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="redeem-wrap">
@@ -864,10 +864,35 @@
             <h2>📋 Our Privacy Policy has been updated</h2>
           </div>
           <p style="font-size:13px;line-height:1.5;color:#c8d6cd;margin-bottom:14px;">
-            Please review the updated <a href="#" onclick="shell.openExternal('https://peakabu.app/privacy');return false;" style="color:#39d3a0;">Privacy Policy</a> before continuing.
+            You've joined <strong id="beginRecordingCode">the session</strong>. Starting the rolling buffer
+            records your screen and mic; if others are in this session, it may capture their audio too.
+            Make sure everyone present is okay with being recorded before you continue.
           </p>
           <div class="row">
-            <button class="btn-save" onclick="acceptPrivacyUpdate()">I Agree, Continue</button>
+            <button class="btn-start" onclick="confirmBeginRecording()">▶ Begin Rolling Buffer</button>
+            <button class="btn-secondary" onclick="cancelBeginRecording()">Not yet</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- RECORDING CONSENT — shown once per account, ever, the first time a
+           rolling buffer starts outside the invite-link flow above (that
+           flow's own copy now covers the same ground). -->
+      <div id="recordingConsentModal" class="modal">
+        <div class="modal-content" style="max-width:420px;">
+          <div class="modal-header">
+            <h2>🎙 Before you start recording</h2>
+            <button class="modal-close" onclick="cancelRecordingConsent()">×</button>
+          </div>
+          <p style="font-size:13px;line-height:1.5;color:#c8d6cd;margin-bottom:14px;">
+            Starting the rolling buffer records your screen and microphone, and if you're in a
+            session with others recording may capture their audio too. You're responsible for making sure
+            everyone being recorded is okay with it. See
+            <a href="#" onclick="shell.openExternal('https://peakabu.app/terms.html#section-7'); return false;">Section 7 of our Terms</a>.
+          </p>
+          <div class="row">
+            <button class="btn-start" onclick="confirmRecordingConsent()">▶ Understood, Start Recording</button>
+            <button class="btn-secondary" onclick="cancelRecordingConsent()">Not yet</button>
           </div>
         </div>
       </div>
@@ -947,6 +972,16 @@
             </label>
           </div>
           <div id="authError" style="color:#f0857a;font-size:12px;margin-top:-4px;margin-bottom:6px;display:none;"></div>
+          <div id="authTermsWrap" style="display:flex;align-items:flex-start;gap:6px;margin-bottom:10px;font-size:12px;color:#a9bdae;">
+            <input type="checkbox" id="authTermsCheckbox" style="margin-top:2px;">
+            <label for="authTermsCheckbox">
+              I agree to the
+REPLACE:
+              <a href="#" onclick="shell.openExternal('https://peakabu.app/terms.html'); return false;">Terms of Service</a>
+              and
+              <a href="#" onclick="shell.openExternal('https://peakabu.app/privacy.html'); return false;">Privacy Policy</a>
+            </label>
+          </div>
           <div class="row">
             <button class="btn-save" style="padding:10px 18px;font-size:15px;" onclick="loginUser()">Log In</button>
             <button class="btn-secondary" style="padding:10px 18px;font-size:15px;" onclick="registerUser()">Register</button>
@@ -3191,13 +3226,32 @@
         document.getElementById('autoCaptureToggle').checked = false;
       };
 
-      window.confirmBeginRecording = function() {
+      async function markRecordingConsentSeen() {
+        if (window.recordingConsentSeen) return;
+        window.recordingConsentSeen = true;
+        try {
+          await fetch('https://peakabu.app/auth/ack-recording-consent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + window.authToken }
+          });
+        } catch (e) { /* best-effort — local flag lets this session proceed */ }
+      }
+      window.confirmBeginRecording = async function() {
         document.getElementById('beginRecordingModal').classList.remove('show');
+        await markRecordingConsentSeen();
         autoStartRecordingSafe();
       };
       window.cancelBeginRecording = function() {
         document.getElementById('beginRecordingModal').classList.remove('show');
         hudLog('system', 'Joined session — press Start Highlight Session whenever you\'re ready to record', 'info');
+      };
+      window.confirmRecordingConsent = async function() {
+        document.getElementById('recordingConsentModal').classList.remove('show');
+        await markRecordingConsentSeen();
+        await reallyStartRecording();
+      };
+      window.cancelRecordingConsent = function() {
+        document.getElementById('recordingConsentModal').classList.remove('show');
       };
 
       function acCommitEnabled(enabled) {
@@ -3731,6 +3785,14 @@
       window.recordingStartedAtClient = 0;
 
       window.startRecording = async function() {
+        if (!window.recordingConsentSeen) {
+          document.getElementById('recordingConsentModal').classList.add('show');
+          return;
+        }
+        await reallyStartRecording();
+      };
+
+      async function reallyStartRecording() {
         var monitorIndex = parseInt(document.getElementById('monitorSelect').value);
         var sourceLabel = document.getElementById('monitorSelect').options[document.getElementById('monitorSelect').selectedIndex].textContent;
 
@@ -3797,11 +3859,11 @@
               setSessionHistoryGame(window.currentSessionCode, detected.name);
               if (window.socket) window.socket.emit('session-game-detected', { game: detected.name });
             }
-            hudLog('system', '🎮 Detected: ' + detected.name +
+          hudLog('system', '🎮 Detected: ' + detected.name +
               (detected.known ? '' : ' (guess — rename in History if wrong)'), 'info');
           }
         } catch (e) {}
-      };
+      }
 
       // Main sends this when capture stops on its own — crash past the
       // restart limit, disk-critical auto-stop. Without it the UI would sit
@@ -4811,16 +4873,20 @@
       var confirm = document.getElementById('authConfirmInput').value;
       if (!username || !password) { showAuthError('Fill in all fields'); return; }
       if (password !== confirm) { showAuthError('Passwords do not match'); return; }
-      if (!document.getElementById('authPrivacyCheck').checked) { showAuthError('You must agree to the Privacy Policy to create an account'); return; }
+      if (!document.getElementById('authTermsCheckbox').checked) {
+        showAuthError('You must agree to the Terms of Service and Privacy Policy to create an account');
+        return;
+      }
         try {
           var res = await fetch('https://peakabu.app/auth/register', {
             method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ username:username, password:password })
+            body: JSON.stringify({ username:username, password:password, acceptedTerms:true })
           });
           var data = await res.json();
           if (!res.ok) { showAuthError(data.error||'Registration failed'); return; }
           storeAuthState(data.token, data.username);
           updateTierBadge(data.tier, data.tierExpiresAt);
+          window.recordingConsentSeen = !!data.recordingConsentSeen;
           showAuthLoggedIn(data.username);
         } catch(e) { showAuthError('Could not reach server'); }
       };
@@ -4838,7 +4904,7 @@
           if (!res.ok) { showAuthError(data.error||'Login failed'); return; }
           storeAuthState(data.token, data.username);
           updateTierBadge(data.tier || 't1', data.tierExpiresAt);
-          checkPrivacyConsent(data);
+          window.recordingConsentSeen = !!data.recordingConsentSeen;
           showAuthLoggedIn(data.username);
         } catch(e) { showAuthError('Could not reach server'); }
       };

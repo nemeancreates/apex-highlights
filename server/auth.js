@@ -13,10 +13,9 @@ const { JWT_SECRET, JWT_EXPIRY, BCRYPT_ROUNDS, TIERS, TIER_ORDER, ADMIN_SECRET,
         REGISTER_IP_MAX, REGISTER_IP_WINDOW,
         ANOMALY_REGISTER_BURST_MAX, ANOMALY_REGISTER_BURST_WINDOW } = require('./config');
 const { users, saveUsersToDisk } = require('./stores');
-const { PRIVACY_POLICY_VERSION } = require('./config');
 const { generateRedemptionCodes, redeemCode, peekCode } = require('./redemption');
 const { getFlags, setFlags } = require('./killswitch');
-const { DISCORD_ENABLED, DISCORD_RECOVERY_REDIRECT_URI } = require('./config');
+const { DISCORD_ENABLED, DISCORD_RECOVERY_REDIRECT_URI, PRIVACY_POLICY_VERSION } = require('./config');
 const { buildAuthorizeUrl, exchangeCodeForUser, consumeState, linkDiscordAccount, buildRecoveryUrl, consumeRecoveryState } = require('./discord-oauth');
 const { syncRole } = require('./discord-bot');
 // A user's tier as of right now — falls back to t1 for missing/unknown/
@@ -296,6 +295,9 @@ function initAuthRoutes(app) {
     if (!password || password.length < 8 || password.length > 128) {
       return safeError(res, 400, 'Password must be 8-128 characters');
     }
+    if (!req.body || req.body.acceptedTerms !== true) {
+      return safeError(res, 400, 'You must agree to the Terms of Service and Privacy Policy');
+    }
     if (users.has(clean.toLowerCase())) {
       return safeError(res, 409, 'Username already taken');
     }
@@ -305,7 +307,8 @@ function initAuthRoutes(app) {
       tier: 't1', tierSource: 'default', tierExpiresAt: null,
       sessionsThisMonth: 0, sessionsMonthKey: getMonthKey(),
       bandwidthBytesThisMonth: 0, bandwidthMonthKey: getMonthKey(), bandwidthAlertedThisMonth: false,
-      privacyVersionAccepted: PRIVACY_POLICY_VERSION, privacyAcceptedAt: Date.now()
+      privacyVersionAccepted: PRIVACY_POLICY_VERSION, privacyAcceptedAt: Date.now(),
+      recordingConsentSeen: false
     };
         user.tokenVersion = 0;
     users.set(clean.toLowerCase(), user);
@@ -321,7 +324,11 @@ function initAuthRoutes(app) {
     });
     const token = jwt.sign({ username: clean, tv: user.tokenVersion }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
     log('info', 'user_registered', { username: clean, ip });
-    return res.status(201).json({ token, username: clean, tier: 't1', privacyVersionAccepted: PRIVACY_POLICY_VERSION });
+    return res.status(201).json({
+      token, username: clean, tier: 't1',
+      privacyVersionAccepted: PRIVACY_POLICY_VERSION,
+      recordingConsentSeen: false
+    });
   });
 
   app.post('/auth/login', async (req, res) => {
@@ -346,7 +353,8 @@ function initAuthRoutes(app) {
     return res.status(200).json({
       token, username: user.username, tier: getEffectiveTier(user), tierExpiresAt: user.tierExpiresAt || null,
       privacyVersionAccepted: user.privacyVersionAccepted || null,
-      privacyPolicyVersion: PRIVACY_POLICY_VERSION
+      privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+      recordingConsentSeen: !!user.recordingConsentSeen
     });
   });
 
@@ -359,7 +367,8 @@ function initAuthRoutes(app) {
       discordLinked: !!user.discordId,
       discordUsername: user.discordUsername || null,
       privacyVersionAccepted: user.privacyVersionAccepted || null,
-      privacyPolicyVersion: PRIVACY_POLICY_VERSION
+      privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+      recordingConsentSeen: !!user.recordingConsentSeen
     });
   });
 
@@ -371,6 +380,14 @@ function initAuthRoutes(app) {
     saveUsersToDisk();
     log('info', 'privacy_accepted', { username: user.username, version: PRIVACY_POLICY_VERSION });
     return res.json({ success: true, privacyVersionAccepted: PRIVACY_POLICY_VERSION });
+  });
+
+  app.post('/auth/ack-recording-consent', requireAuth, (req, res) => {
+    const user = users.get(req.user.username.toLowerCase());
+    if (!user) return safeError(res, 404, 'Account not found');
+    user.recordingConsentSeen = true;
+    saveUsersToDisk();
+    return res.json({ success: true });
   });
 
   app.post('/auth/redeem', requireAuth, (req, res) => {

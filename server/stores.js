@@ -87,7 +87,7 @@ const stmt = {
       sessionsThisMonth, sessionsMonthKey,
       bandwidthBytesThisMonth, bandwidthMonthKey, bandwidthAlertedThisMonth,
       tokenVersion, discordId, discordUsername, discordLinkedAt,
-      privacyVersionAccepted, privacyAcceptedAt
+      privacyVersionAccepted, privacyAcceptedAt, recordingConsentSeen
     )
     VALUES (
       @username_lower, @username, @passwordHash, @createdAt,
@@ -95,7 +95,7 @@ const stmt = {
       @sessionsThisMonth, @sessionsMonthKey,
       @bandwidthBytesThisMonth, @bandwidthMonthKey, @bandwidthAlertedThisMonth,
       @tokenVersion, @discordId, @discordUsername, @discordLinkedAt,
-      @privacyVersionAccepted, @privacyAcceptedAt
+      @privacyVersionAccepted, @privacyAcceptedAt, @recordingConsentSeen
     )
     ON CONFLICT(username_lower) DO UPDATE SET
       passwordHash = excluded.passwordHash,
@@ -112,7 +112,8 @@ const stmt = {
       discordUsername = excluded.discordUsername,
       discordLinkedAt = excluded.discordLinkedAt,
       privacyVersionAccepted = excluded.privacyVersionAccepted,
-      privacyAcceptedAt = excluded.privacyAcceptedAt
+      privacyAcceptedAt = excluded.privacyAcceptedAt,
+      recordingConsentSeen = excluded.recordingConsentSeen
   `),
   allUsers: db.prepare(`SELECT * FROM users`),
 
@@ -185,9 +186,9 @@ function loadUsersFromDisk() {
       tokenVersion: row.tokenVersion || 0,
       discordId: row.discordId || null,
       discordUsername: row.discordUsername || null,
-      discordLinkedAt: row.discordLinkedAt || null,
       privacyVersionAccepted: row.privacyVersionAccepted || null,
-      privacyAcceptedAt: row.privacyAcceptedAt || null
+      privacyAcceptedAt: row.privacyAcceptedAt || null,
+      recordingConsentSeen: !!row.recordingConsentSeen
     });
   }
   log('info', 'users_loaded', { count: users.size });
@@ -213,11 +214,11 @@ function saveUsersToDisk() {
         bandwidthAlertedThisMonth: u.bandwidthAlertedThisMonth ? 1 : 0,
         tokenVersion: u.tokenVersion || 0,
         discordId: u.discordId ?? null,
-        discordId: u.discordId ?? null,
         discordUsername: u.discordUsername ?? null,
         discordLinkedAt: u.discordLinkedAt ?? null,
         privacyVersionAccepted: u.privacyVersionAccepted ?? null,
-        privacyAcceptedAt: u.privacyAcceptedAt ?? null
+        privacyAcceptedAt: u.privacyAcceptedAt ?? null,
+        recordingConsentSeen: u.recordingConsentSeen ? 1 : 0
       });
     }
   });

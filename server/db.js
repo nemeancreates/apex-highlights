@@ -150,6 +150,14 @@ addColumnIfMissing('users', 'privacyAcceptedAt', 'INTEGER');
 addColumnIfMissing('users', 'discordId', 'TEXT');
 addColumnIfMissing('users', 'discordUsername', 'TEXT'); // display cache only, never trust for identity
 addColumnIfMissing('users', 'discordLinkedAt', 'INTEGER');
+
+// terms/consent — termsAcceptedVersion is compared against
+// PRIVACY_POLICY_VERSION for a future re-consent prompt; recordingConsentSeen
+// is a one-time flag so an account sees the Section 7 recording notice once,
+// ever, regardless of device.
+addColumnIfMissing('users', 'privacyVersionAccepted', 'TEXT');
+addColumnIfMissing('users', 'privacyAcceptedAt', 'INTEGER');
+addColumnIfMissing('users', 'recordingConsentSeen', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('users', 'privacyVersionAccepted', 'TEXT');
 addColumnIfMissing('users', 'privacyAcceptedAt', 'INTEGER');
 
