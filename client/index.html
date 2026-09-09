@@ -688,7 +688,7 @@
               <img src="assets/kickstarter.png" alt="kickstarter" />
             </button>
           </div>
-          <span class="version-tag">v40.1.75</span>
+          <span class="version-tag">v40.1.76</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="redeem-wrap">
@@ -4004,10 +4004,16 @@ REPLACE:
 
       window.openWindowPicker = function() {
         document.getElementById('wgcPickerModal').style.display = 'block';
+        // Docked WebContentsView paints above the renderer regardless of
+        // CSS z-index — collapse it to zero bounds while the picker is up
+        // so a restored 'window' mode session (no surviving wgcSourceId)
+        // can never open this picker underneath an already-mounted player.
+        ipcRenderer.send('picker-opened');
         window.refreshWindowPicker();
       };
       window.closeWindowPicker = function() {
         document.getElementById('wgcPickerModal').style.display = 'none';
+        ipcRenderer.send('picker-closed');
       };
       // Click the dark backdrop to dismiss — a second way out if the ✕ ever
       // ends up somewhere unreachable again.

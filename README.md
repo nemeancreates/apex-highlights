@@ -230,6 +230,6 @@ See `CHANGELOG.md` for version history, or GitHub Releases for detailed notes pe
 
 ---
 
-**Last verified against live code:** September 2026, client v0.1.75
+**Last verified against live code:** September 2026, client v0.1.76
 
 **Built with care by a single developer. If Peak-Abu saves your squad time, consider subscribing to help fund development.** ❤️

@@ -2746,6 +2746,21 @@ function createWindow() {
     };
   });
 
+  // The docked WebContentsView always paints above the renderer's own DOM,
+  // regardless of CSS z-index (see layoutPlayerView). The window picker
+  // modal has no reliable way to win that paint order on its own — most
+  // visibly on a restored 'window'-mode session, where the picker is
+  // forced open automatically (no wgcSourceId survives a restart) at the
+  // exact moment the docked player is also mounting. Rather than race
+  // that timing, just collapse the player view to nothing while the
+  // picker is open, and restore real layout when it closes.
+  ipcMain.on('picker-opened', () => {
+    if (playerView) playerView.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+  });
+  ipcMain.on('picker-closed', () => {
+    layoutPlayerView();
+  });
+
   ipcMain.handle('wgc-get-capture-mode', () => ({
     mode: wgcCaptureMode ? 'window' : 'monitor',
     lastWindowTitle: wgcLastWindowTitle
