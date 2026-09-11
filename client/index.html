@@ -429,11 +429,12 @@
       .switch input:checked + .slider { background: #1d9e75; }
       .switch input:checked + .slider:before { transform: translateX(20px); background: #04140d; }
       .fs-tooltip {
-        display: none; position: absolute; top: 100%; left: 0; right: 0;
+        display: none; position: fixed;
         background: #12251a; border: 1px solid #39d3a0; border-radius: 6px;
-        padding: 8px 10px; font-size: 12px; color: #8fbfa3; z-index: 10; margin-top: 4px; line-height: 1.4;
+        padding: 8px 10px; font-size: 12px; color: #8fbfa3; z-index: 200; line-height: 1.4;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.5);
       }
-      .fs-toggle-label .info:hover + .fs-tooltip, .fs-tooltip:hover { display: block; }
+      .fs-tooltip.show { display: block; }
       .fs-detail { font-size: 12px; color: #5f7a6a; margin: 2px 0 6px; }
       .fs-detail b { color: #8fbfa3; font-weight: 600; }
       .fs-loc-row { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
@@ -688,7 +689,7 @@
               <img src="assets/kickstarter.png" alt="kickstarter" />
             </button>
           </div>
-          <span class="version-tag">v40.1.76</span>
+          <span class="version-tag">v0.1.77</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="redeem-wrap">
@@ -1069,7 +1070,7 @@ REPLACE:
                 <button class="hud-tab active" id="hudTab-activity" onclick="switchHudTab('activity')" title="Activity">⚡<span class="tab-badge" id="hudBadge-activity" style="display:none;">0</span></button>
                 <button class="hud-tab" id="hudTab-squad" onclick="switchHudTab('squad')" title="Squad">👥<span class="tab-badge" id="hudBadge-squad" style="display:none;">0</span></button>
                 <button class="hud-tab" id="hudTab-system" onclick="switchHudTab('system')" title="System">🛠<span class="tab-badge" id="hudBadge-system" style="display:none;">0</span></button>
-                <button class="hud-tab" id="hudTab-history" onclick="switchHudTab('history')" title="History">📋<span class="tab-badge" id="hudBadge-history" style="display:none;">0</span></button>
+                <button class="hud-tab" id="hudTab-history" onclick="switchHudTab('history')" title="Joined Sessions">📋<span class="tab-badge" id="hudBadge-history" style="display:none;">0</span></button>
                 <button class="hud-tab" id="hudTab-hosted" onclick="switchHudTab('hosted')" title="My Hosted Sessions">👑<span class="tab-badge" id="hudBadge-hosted" style="display:none;">0</span></button>
               </div>
               <div class="hud-body">
@@ -1078,7 +1079,7 @@ REPLACE:
                   <div class="hud-pane active" id="hudPane-activity"><div class="hud-empty">Highlight saves and uploads appear here</div></div>
                   <div class="hud-pane" id="hudPane-squad"><div class="hud-empty">Squad joins and leaves appear here</div></div>
                   <div class="hud-pane" id="hudPane-system"><div class="hud-empty">App messages appear here</div></div>
-                  <div class="hud-pane" id="hudPane-history"><div class="hud-empty">Session history appears here</div></div>
+                  <div class="hud-pane" id="hudPane-history"><div class="hud-empty">Sessions you've joined appear here</div></div>
                   <div class="hud-pane" id="hudPane-hosted"><div class="hud-empty">Sessions you've hosted appear here</div></div>
                 </div>
               </div>
@@ -1451,7 +1452,7 @@ REPLACE:
       const HUD_MAX_ITEMS = 50;
       window.activeHudTab = 'activity';
 
-      var HUD_TITLES = { activity:'Activity', squad:'Squad', system:'System', history:'Session History', hosted:'My Hosted Sessions' };
+      var HUD_TITLES = { activity:'Activity', squad:'Squad', system:'System', history:'Joined History', hosted:'My Hosted Sessions' };
 
       window.switchHudTab = function(tab) {
        window.activeHudTab = tab;
@@ -1561,6 +1562,17 @@ REPLACE:
       localStorage.setItem('peak_abu_session_history', JSON.stringify(history));
     }
 
+    // The 👑 list holds ALL of this user's still-live hosted sessions, so the
+    // cap only ever evicts joined entries (oldest first — the array is
+    // newest-first). Hosted entries leave the list only when their clips
+    // expire, which loadSessionHistory() already handles.
+    function trimSessionHistory(history) {
+      for (var i = history.length - 1; i >= 0 && history.length > SESSION_HISTORY_MAX; i--) {
+        if (history[i].role !== 'host') history.splice(i, 1);
+      }
+      return history;
+    }
+
     function addSessionToHistory(code, role, expiresAt) {
       var history = loadSessionHistory();
       var prior = history.find(function(h) { return h.code === code; });
@@ -1578,7 +1590,7 @@ REPLACE:
         title: prior ? (prior.title || null) : null,
         localNote: prior ? (prior.localNote || null) : null
       });
-      while (history.length > SESSION_HISTORY_MAX) history.pop();
+      trimSessionHistory(history);
       saveSessionHistory(history);
       renderSessionHistory();
     }
@@ -1615,7 +1627,7 @@ REPLACE:
       if (typeof game !== 'undefined' && game !== null) entry.game = game;
       if (typeof title !== 'undefined' && title !== null) entry.title = title;
 
-      while (history.length > SESSION_HISTORY_MAX) history.pop();
+      trimSessionHistory(history);
       saveSessionHistory(history);
       renderSessionHistory();
     }
@@ -1696,7 +1708,9 @@ REPLACE:
 
     function renderSessionHistory() {
       var all = loadSessionHistory();
-      renderHistoryList('hudPane-history', all, 'Session history appears here');
+      // No overlap between the two tabs: 👑 = every session this user hosted,
+      // 📋 = every session they joined as a member.
+      renderHistoryList('hudPane-history', all.filter(function(h) { return h.role !== 'host'; }), "Sessions you've joined appear here");
       renderHistoryList('hudPane-hosted', all.filter(function(h) { return h.role === 'host'; }), "Sessions you've hosted appear here");
     }
 
@@ -3444,7 +3458,7 @@ REPLACE:
         window.socket.on('session-migrated', function(d) {
           hudLog('squad', 'Host started a new session — moving to ' + d.newCode, 'broadcast');
           var wasHost = window.isSessionHost;
-          window.leaveSession();
+          window.leaveSession({ keepRecording: true });
           document.getElementById('joinCodeInput').value = d.newCode;
           updateJoinCodeBrowserIcon();
           window.isSessionHost = wasHost;
@@ -3574,7 +3588,15 @@ REPLACE:
         window.socket.on('disconnect', function() { console.log('WebSocket disconnected'); stopClockSync(); });
       }
 
-      window.leaveSession = function() {
+      // Closing out a session (leave, kicked, host closed) also ends the
+      // rolling buffer, so the app comes back to "▶ Start Highlight Session"
+      // instead of buffering with nobody to save for. session-migrated passes
+      // keepRecording — the squad is moving to a new code mid-play.
+      window.leaveSession = function(opts) {
+        if (!(opts && opts.keepRecording) && window.isRecordingActive) {
+          window.stopRecording();
+          hudLog('system', '⏹ Rolling buffer stopped — session closed', 'info');
+        }
         if (window.socket) { window.socket.disconnect(); window.socket = null; }
         window.currentSessionCode = null;
         window.isSessionHost = false;
@@ -5204,6 +5226,34 @@ REPLACE:
             get: function() { return hint.getAttribute('data-text') || ''; }
           });
         }
+      })();
+
+      // ===== Full Session tooltip: fixed-position off the ⓘ's real rect =====
+      // Same trick as the mic popover below — the row sits at the bottom of
+      // the Recording card, and .card's overflow:hidden was clipping the
+      // absolutely-positioned tooltip so it opened underneath the card edge.
+      (function() {
+        var info = document.getElementById('fsInfo');
+        var tip = document.getElementById('fsTooltip');
+        var row = info && info.closest('.fs-toggle-row');
+        if (!info || !tip || !row) return;
+        var hideTimer = null;
+        function show() {
+          clearTimeout(hideTimer);
+          var r = row.getBoundingClientRect();
+          tip.style.left = r.left + 'px';
+          tip.style.width = r.width + 'px';
+          tip.style.top = (r.bottom + 4) + 'px';
+          tip.classList.add('show');
+          // Flip above the row if it would run off the bottom of the window.
+          var tr = tip.getBoundingClientRect();
+          if (tr.bottom > window.innerHeight - 8) tip.style.top = (r.top - tr.height - 4) + 'px';
+        }
+        function hide() { hideTimer = setTimeout(function() { tip.classList.remove('show'); }, 150); }
+        info.addEventListener('mouseenter', show);
+        info.addEventListener('mouseleave', hide);
+        tip.addEventListener('mouseenter', function() { clearTimeout(hideTimer); });
+        tip.addEventListener('mouseleave', hide);
       })();
 
       // ===== Mic popover: toggle + close on outside click =====

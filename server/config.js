@@ -193,9 +193,9 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 const PRIVACY_POLICY_VERSION = '2026-09-07';
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.76',
-  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.76.exe',
-    releaseNotes: "Added Terms of Service & Privacy statements"
+  version: '0.1.77',
+  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.77.exe',
+    releaseNotes: "capture priority fix (stutter/frame drops under load) + transient DXGI capture-loss recovery"
 };
 
 

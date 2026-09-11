@@ -764,6 +764,17 @@ let midSessionRestarts = 0;
 let midRestartTimer = null;
 const MAX_MID_SESSION_RESTARTS = 3;
 
+// A DXGI_ERROR_ACCESS_LOST (AcquireNextFrame failed: 887a0026) — and the
+// "Desktop duplication access denied" / gdigrab "error 5" that follow it on
+// every engine for a second or two afterward — is the OS briefly blocking
+// screen capture system-wide (secure desktop, driver reset, exclusive-
+// fullscreen transition). It has nothing to do with engine capability, so
+// it gets its own retry budget/backoff instead of burning through
+// engineLadder like a real per-engine failure does.
+let transientCaptureRetries = 0;
+let transientRecoveryTimer = null;
+const MAX_TRANSIENT_CAPTURE_RETRIES = 8;
+
 const ENGINE_LABELS = {
   'dda-nvenc':     'GPU capture + GPU encode (zero-copy)',
   'dda-nvenc-vf':  'GPU capture + GPU encode (scaled)',
@@ -1393,13 +1404,26 @@ function stopDiskWatcher() {
 }
 
 let lastDropCount = 0;
+let lastDupCount = 0;
 let lowSpeedStreak = 0;
 
 function parseCaptureHealth(text, engine) {
   const speedMatch = text.match(/speed=\s*([\d.]+)x/);
   const dropMatch  = text.match(/drop=\s*(\d+)/);
+  const dupMatch   = text.match(/dup=\s*(\d+)/);
   const fpsMatch   = text.match(/fps=\s*([\d.]+)/);
-  if (!speedMatch && !dropMatch) return;
+  if (!speedMatch && !dropMatch && !dupMatch) return;
+
+  // ddagrab never reports drops — when it misses a frame it re-emits the
+  // last one, so starvation shows up as dup= climbing, not drop=. Log it
+  // the same way so a choppy clip has a matching line in peakabu-ffmpeg.log.
+  if (dupMatch) {
+    const dup = parseInt(dupMatch[1], 10);
+    if (dup > lastDupCount) {
+      console.log(`Capture duplicated ${dup - lastDupCount} frame(s) (total ${dup}) on [${engine}]`);
+      lastDupCount = dup;
+    }
+  }
 
   const speed = speedMatch ? parseFloat(speedMatch[1]) : null;
   const drop  = dropMatch ? parseInt(dropMatch[1], 10) : null;
@@ -1515,7 +1539,23 @@ function startRecording(monitor) {
     stdio: ['pipe', 'pipe', 'pipe']
   });
 
-  if (ffmpegProcess.pid) setBelowNormalPriority(ffmpegProcess.pid);
+  // Live capture must NOT run below normal — that helper is for extraction
+  // work that should yield to capture. Under game load a below-normal
+  // ddagrab process is the first thing Windows starves, and ddagrab covers
+  // the starvation by re-emitting the last frame (dup= climbs, drop= stays
+  // 0), which plays back as stutter. Capture is real-time; keep it a notch
+  // above the game so it always gets its slice.
+  if (ffmpegProcess.pid) {
+    try { os.setPriority(ffmpegProcess.pid, os.constants.priority.PRIORITY_ABOVE_NORMAL); }
+    catch (e) { console.log('Capture priority adjust skipped:', e.message); }
+  }
+
+  // Forgive the transient-loss budget once this run has proven itself
+  // stable, so a DXGI hiccup an hour into a session isn't penalized by
+  // retries already spent on an unrelated hiccup earlier in the same
+  // multi-hour play session.
+  if (transientRecoveryTimer) clearTimeout(transientRecoveryTimer);
+  transientRecoveryTimer = setTimeout(() => { transientCaptureRetries = 0; }, 60000);
 
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('capture-engine', ENGINE_LABELS[engine]);
@@ -1530,6 +1570,7 @@ function startRecording(monitor) {
   recordingStartTime = spawnStartTime;
   lastHighlightBoundary = 0;
   lastDropCount = 0;
+  lastDupCount = 0;
   lowSpeedStreak = 0;
   // NOTE: audioFirstChunkTime / micFirstChunkTime are NOT reset here.
   // startRecording also runs on mid-session crash restarts, where the
@@ -1560,7 +1601,32 @@ function startRecording(monitor) {
     if (stoppingIntentionally) return;
 
     const ranForMs = Date.now() - spawnStartTime;
-    const earlyFailure = code !== 0 && ranForMs < 6000;
+
+    const isTransientCaptureLoss = /AcquireNextFrame failed|Desktop duplication access denied|Failed to capture image \(error 5\)/i.test(stderrTail);
+
+    if (isTransientCaptureLoss && transientCaptureRetries < MAX_TRANSIENT_CAPTURE_RETRIES) {
+      transientCaptureRetries++;
+      const backoffMs = Math.min(1500 * transientCaptureRetries, 8000);
+      const logPath = path.join(os.tmpdir(), 'peakabu-ffmpeg.log');
+      fs.appendFileSync(logPath,
+        `\n=== ENGINE [${engine}] transient capture loss (${transientCaptureRetries}/${MAX_TRANSIENT_CAPTURE_RETRIES}) — retrying same engine in ${backoffMs}ms ===\n${stderrTail.slice(-400)}\n`);
+      console.log(`Transient capture loss on [${engine}] — retry ${transientCaptureRetries}/${MAX_TRANSIENT_CAPTURE_RETRIES} in ${backoffMs}ms`);
+      ffmpegProcess = null;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('capture-engine', '⚠ Capture briefly interrupted — recovering...');
+      }
+      if (midRestartTimer) clearTimeout(midRestartTimer);
+      midRestartTimer = setTimeout(() => {
+        midRestartTimer = null;
+        if (!stoppingIntentionally) {
+          recordingSessionTag = Date.now();
+          startRecording(currentMonitor);
+        }
+      }, backoffMs);
+      return;
+    }
+
+    const earlyFailure = !isTransientCaptureLoss && code !== 0 && ranForMs < 6000;
 
     if (earlyFailure) {
       const logPath = path.join(os.tmpdir(), 'peakabu-ffmpeg.log');
@@ -2819,6 +2885,7 @@ function createWindow() {
       wgcCaptureMode = false;
       stoppingIntentionally = false;
       midSessionRestarts = 0;
+      transientCaptureRetries = 0;
       recordingSessionTag = Date.now();
       engineLadder = buildEngineLadder();
       engineIndex = 0;
@@ -2875,6 +2942,7 @@ function createWindow() {
     // this one. ffmpegProcess is already null during that window, so the
     // kill below sees nothing to kill.
     if (midRestartTimer) { clearTimeout(midRestartTimer); midRestartTimer = null; }
+    if (transientRecoveryTimer) { clearTimeout(transientRecoveryTimer); transientRecoveryTimer = null; }
     if (ffmpegProcess) {
       stoppingIntentionally = true;
       const dying = ffmpegProcess;
@@ -2905,6 +2973,7 @@ function createWindow() {
 
     stoppingIntentionally = false;
     midSessionRestarts = 0;
+    transientCaptureRetries = 0;
     recordingSessionTag = Date.now();
 
     hlAudioPath = path.join(BUFFER_DIR, `hl_audio_${recordingSessionTag}.webm`);
@@ -2922,6 +2991,7 @@ function createWindow() {
 
   ipcMain.on('stop-recording', async () => {
     if (midRestartTimer) { clearTimeout(midRestartTimer); midRestartTimer = null; }
+    if (transientRecoveryTimer) { clearTimeout(transientRecoveryTimer); transientRecoveryTimer = null; }
     stopBufferReadyWatcher();
     stopPruneScheduler();        
     if (ffmpegProcess) {
