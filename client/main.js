@@ -6,8 +6,37 @@ const fs = require('fs');
 const os = require('os');
 const FormData = require('form-data');
 const https = require('https');
+const { Transform } = require('stream');
 const { checkForUpdates } = require('./updater');
 const { buildReelLocally } = require('./aireel-client');
+
+// ================================
+// UPLOAD THROTTLE
+// Weak-upload testers (e.g. 15ms ping normally, 300ms+ spikes mid-upload)
+// are hitting bufferbloat: our upload saturates their upstream queue and
+// everything else — including game traffic — sits behind it. Capping our
+// own send rate leaves headroom instead of grabbing 100% of upstream.
+// This is a conservative static default, not a measured per-user value —
+// a natural next step is making it adaptive or user-configurable.
+// ================================
+const UPLOAD_THROTTLE_BYTES_PER_SEC = 750 * 1024; // ~6 Mbps cap
+
+class ThrottleStream extends Transform {
+  constructor(bytesPerSec) {
+    super();
+    this.bytesPerSec = bytesPerSec;
+    this.bytesSent = 0;
+    this.windowStart = Date.now();
+  }
+  _transform(chunk, encoding, callback) {
+    this.bytesSent += chunk.length;
+    const allowedBytes = this.bytesPerSec * ((Date.now() - this.windowStart) / 1000);
+    const overageBytes = this.bytesSent - allowedBytes;
+    const delayMs = overageBytes > 0 ? (overageBytes / this.bytesPerSec) * 1000 : 0;
+    if (delayMs <= 0) { this.push(chunk); return callback(); }
+    setTimeout(() => { this.push(chunk); callback(); }, delayMs);
+  }
+}
 const { init: sentryInit } = require('@sentry/electron/main');
 const { SENTRY_DSN } = require('./sentry-config');
 
@@ -2414,7 +2443,8 @@ const PENDING_UPLOADS_PATH = path.join(app.getPath('userData'), 'pending-uploads
 const pendingUploads = new Map(); // uploadKey -> { videoPath, metadataPath, sessionCode, startedAt }
 let quitRequested = false;
 let quitWaitTimer = null;
-const QUIT_UPLOAD_WAIT_MS = 20000; // hard cap so a dead connection can't trap quit forever
+let allowWindowClose = false; // bypass flag so we don't re-prompt on our own confirmed close
+const QUIT_UPLOAD_WAIT_MS = 45000; // hard cap so a dead connection can't trap quit forever — bumped from 20s now that uploads are throttled and take longer on slow connections
 let retriedPendingUploads = false;
 
 function readPendingManifest() {
@@ -2453,12 +2483,33 @@ function markUploadDone(uploadKey) {
   maybeFinishQuit();
 }
 
+// Shared by the window 'close' handler (X button / Alt+F4) and before-quit
+// (direct app.quit() calls from the update/kick flows) so both paths ask
+// the same question. Returns true if the user chose to quit anyway.
+function askQuitWithPendingUploads() {
+  if (!mainWindow || mainWindow.isDestroyed()) return true; // nothing to prompt against — fail open
+  const choice = dialog.showMessageBoxSync(mainWindow, {
+    type: 'warning',
+    buttons: ['Wait for upload to finish', 'Quit anyway'],
+    defaultId: 0,
+    cancelId: 0,
+    title: 'Upload still in progress',
+    message: pendingUploads.size === 1
+      ? 'A highlight clip is still uploading to your squad.'
+      : `${pendingUploads.size} highlight clips are still uploading to your squad.`,
+    detail: 'Closing now pauses the upload — it resumes automatically next time you open Peak-Abu, but your squad won\'t see the clip until then.'
+  });
+  return choice === 1;
+}
+
 function maybeFinishQuit() {
   if (!quitRequested) return;
   if (pendingUploads.size > 0) return;
   if (quitWaitTimer) { clearTimeout(quitWaitTimer); quitWaitTimer = null; }
   console.log('Pending uploads cleared — resuming quit');
-  app.quit();
+  allowWindowClose = true;
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+  else app.quit();
 }
 
 // Picks back up any upload still in the manifest from a previous run
@@ -2571,7 +2622,7 @@ function performUpload(sessionCode, videoPath, metadataPath, uploadKey) {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('upload-progress', 0);
 
   const form = new FormData();
-  form.append('video', fs.createReadStream(videoPath), {
+  form.append('video', fs.createReadStream(videoPath).pipe(new ThrottleStream(UPLOAD_THROTTLE_BYTES_PER_SEC)), {
     filename: path.basename(videoPath), contentType: 'video/mp4'
   });
   if (metadataPath && fs.existsSync(metadataPath)) {
@@ -2667,6 +2718,27 @@ function createWindow() {
   // before minimizing and the renderer's padding stays stale.
   mainWindow.on('restore', () => setTimeout(() => layoutPlayerView(), 50));
   mainWindow.on('show', () => setTimeout(() => layoutPlayerView(), 50));
+  mainWindow.on('close', (event) => {
+    if (allowWindowClose || pendingUploads.size === 0) return; // nothing pending — let it close normally
+    event.preventDefault();
+
+    if (askQuitWithPendingUploads()) {
+      console.log('User chose to quit anyway — remaining uploads stay in the retry manifest');
+      allowWindowClose = true;
+      mainWindow.close();
+      return;
+    }
+
+    console.log(`Close deferred — ${pendingUploads.size} upload(s) still in flight`);
+    mainWindow.webContents.send('quit-waiting-on-uploads', { count: pendingUploads.size });
+    quitRequested = true;
+    quitWaitTimer = setTimeout(() => {
+      console.log('Close wait timed out — proceeding, remaining uploads stay in the retry manifest');
+      quitWaitTimer = null;
+      allowWindowClose = true;
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+    }, QUIT_UPLOAD_WAIT_MS);
+  });
   mainWindow.on('closed', () => { closeAnyPlayer(); });
 
   mainWindow.loadFile('index.html');
@@ -3690,6 +3762,13 @@ app.on('before-quit', async (event) => {
   // same handler, so this covers "close the window" too, not just quit.
   if (pendingUploads.size > 0 && !quitRequested) {
     event.preventDefault();
+
+    if (askQuitWithPendingUploads()) {
+      console.log('User chose to quit anyway — remaining uploads stay in the retry manifest');
+      app.exit(0);
+      return;
+    }
+
     quitRequested = true;
     console.log(`Quit deferred — ${pendingUploads.size} upload(s) still in flight`);
     if (mainWindow && !mainWindow.isDestroyed()) {
