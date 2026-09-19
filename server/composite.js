@@ -12,14 +12,14 @@ const { spawn } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 const { log } = require('./logger');
 const { sanitizeCode, downloadToFile } = require('./utils');
-const { UPLOADS_DIR } = require('./config');
+const { UPLOADS_DIR, tiersWithCapability } = require('./config');
 const { sessions } = require('./stores');
 const { requireAuth, requireAuthAny, requireTier } = require('./auth');
 const { getCommentsForSession } = require('./routes/comments');
 const { generateASS, checkAssFilter, escapeFilterPath } = require('./comment-overlay');
 
 // Paid tiers allowed to generate/download combined-view exports.
-const EXPORT_TIERS = ['t2', 't3', 't4', 't5'];
+const EXPORT_TIERS = tiersWithCapability('hasExport');
 
 const compositeJobs = new Map();
 const COMPOSITE_DIR = path.join(os.tmpdir(), 'peak-abu-composites');

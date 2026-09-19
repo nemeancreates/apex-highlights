@@ -5,7 +5,7 @@
 // ================================
 const { log } = require('../logger');
 const { sanitizeUsername, sanitizeCode } = require('../utils');
-const { MAX_MEMBERS_PER_SESSION, ALLOWED_CLIP_DURATIONS, TIERS, HOST_RECORDING_INACTIVITY_MS, HOST_NOT_RECORDING_TIMEOUT_MS, HOST_WATCHDOG_INTERVAL_MS } = require('../config');
+const { MAX_MEMBERS_PER_SESSION, ALLOWED_CLIP_DURATIONS, HOST_RECORDING_INACTIVITY_MS, HOST_NOT_RECORDING_TIMEOUT_MS, HOST_WATCHDOG_INTERVAL_MS } = require('../config');
 const { sessions, saveSessionsToDisk, users } = require('../stores');
 const { checkSocketRate, removeSocketRate } = require('../ratelimit');
 const { socketAuth, getEffectiveTier } = require('../auth');
@@ -114,7 +114,8 @@ function startHostInactivityWatchdog(io) {
 
 function initSockets(io) {
   io.use((socket, next) => {
-    const ip = socket.handshake.address;
+    const forwardedFor = socket.handshake.headers['x-forwarded-for'];
+    const ip = forwardedFor ? forwardedFor.split(',')[0].trim() : socket.handshake.address;
     const count = socketsPerIp.get(ip) || 0;
     if (count >= MAX_SOCKETS_PER_IP) return next(new Error('too_many_connections'));
     socketsPerIp.set(ip, count + 1);
@@ -186,21 +187,6 @@ function initSockets(io) {
 
       const joinerUser = users.get(cleanUsername.toLowerCase());
       const joinerTier = getEffectiveTier(joinerUser);
-
-      // Free-tier sub-cap: regardless of host tier, only so many Free
-      // members can occupy one session — stops a Pro host's seat count
-      // from being filled by freeloaders instead of paying members.
-      if (joinerTier === 't1') {
-        const hostTierCfg = TIERS[session.hostTier] || TIERS.t1;
-        const freeCap = hostTierCfg.freeMemberSubCap;
-        if (freeCap !== null && freeCap !== undefined) {
-          const freeCount = session.members.filter(m => m.tier === 't1').length;
-          if (freeCount >= freeCap) {
-            socket.emit('error-message', { message: `This session has reached its limit of ${freeCap} Free-tier members. Ask the host, or upgrade to join.` });
-            return;
-          }
-        }
-      }
 
       const member = {
         socketId: socket.id,

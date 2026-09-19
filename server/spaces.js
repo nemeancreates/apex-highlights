@@ -38,13 +38,21 @@ function isSpacesEnabled() {
 }
 
 // Push a local file to Spaces, return its CDN URL. Deletes the local file on success.
+// Streamed rather than read fully into memory first — a 500MB clip loaded via
+// readFileSync blocked the event loop for the whole read, stalling every other
+// socket (including coordinated-save timing) until it finished.
 async function uploadToSpaces(localPath, objectKey, contentType) {
-  const fileBuffer = fs.readFileSync(localPath);
+  const fileSize = fs.statSync(localPath).size;
   await spacesClient.send(new PutObjectCommand({
     Bucket: SPACES_BUCKET,
     Key: objectKey,
-    Body: fileBuffer,
-    ContentType: contentType
+    Body: fs.createReadStream(localPath),
+    ContentType: contentType,
+    ContentLength: fileSize,
+    // Object keys are timestamped and never rewritten, so a cached copy is
+    // always valid — let browsers/CDN hold it forever instead of
+    // re-validating with origin on every repeat view.
+    CacheControl: 'public, max-age=31536000, immutable'
     // ACL removed — R2 rejects this parameter (400 error). Public access
     // is a bucket-level setting on R2, set once in the dashboard, not
     // per-object.

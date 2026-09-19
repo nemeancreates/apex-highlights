@@ -36,8 +36,6 @@ const SPACES_CDN_BASE = process.env.SPACES_CDN_BASE || null;
 
 // --- Paths ---
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
-const USERS_FILE = path.join(__dirname, 'users.json');
-const SESSIONS_FILE = path.join(__dirname, 'sessions.json');
 
 // --- Capacity limits ---
 const MAX_SESSIONS = 100;
@@ -120,13 +118,21 @@ const ANOMALY_REGISTER_BURST_WINDOW = 300000;   // 5 minutes
 // ================================
 // NEW — clipCap in seconds of highlight time per session
 const TIERS = {
-  t1: { label: 'Free',    canHost: true, memberCap: 2,  clipCap: 3600,   sessionsPerMonth: 6,   retentionDays: 1,  hasAiReel: false, aiReelMaxSec: 0,    reelPriority: 0, hasAutoCapture: false, hasAiReelPro: false, aiReelProMonthlyCap: 0 },
-  t2: { label: 'Creator', canHost: true, memberCap: 5,  clipCap: 36000,  sessionsPerMonth: 20,  retentionDays: 30,  hasAiReel: false, aiReelMaxSec: 0,    reelPriority: 0, hasAutoCapture: true, hasAiReelPro: false, aiReelProMonthlyCap: 0 },
-  t3: { label: 'Squad',   canHost: true, memberCap: 11, clipCap: 79200,  sessionsPerMonth: 45,  retentionDays: 30, hasAiReel: true,  aiReelMaxSec: 900,  reelPriority: 0, hasAutoCapture: true, hasAiReelPro: false, aiReelProMonthlyCap: 0 },
-  t4: { label: 'Pro',     canHost: true, memberCap: 25, clipCap: 144000, sessionsPerMonth: 110, retentionDays: 60, hasAiReel: true,  aiReelMaxSec: 1800, reelPriority: 1, hasAutoCapture: true, hasAiReelPro: true,  aiReelProMonthlyCap: 100 },
+  t1: { label: 'Free',    canHost: true, memberCap: 2,  clipCap: 3600,   sessionsPerMonth: 6,   retentionDays: 1,  hasAiReel: false, aiReelMaxSec: 0,    reelPriority: 0, hasAutoCapture: false, hasAiReelPro: false, aiReelProMonthlyCap: 0, hasDownload: false, hasExport: false },
+  t2: { label: 'Creator', canHost: true, memberCap: 5,  clipCap: 36000,  sessionsPerMonth: 20,  retentionDays: 30,  hasAiReel: false, aiReelMaxSec: 0,    reelPriority: 0, hasAutoCapture: true, hasAiReelPro: false, aiReelProMonthlyCap: 0, hasDownload: true,  hasExport: true },
+  t3: { label: 'Squad',   canHost: true, memberCap: 11, clipCap: 79200,  sessionsPerMonth: 45,  retentionDays: 30, hasAiReel: true,  aiReelMaxSec: 900,  reelPriority: 0, hasAutoCapture: true, hasAiReelPro: false, aiReelProMonthlyCap: 0, hasDownload: true,  hasExport: true },
+  t4: { label: 'Pro',     canHost: true, memberCap: 25, clipCap: 144000, sessionsPerMonth: 110, retentionDays: 60, hasAiReel: true,  aiReelMaxSec: 1800, reelPriority: 1, hasAutoCapture: true, hasAiReelPro: true,  aiReelProMonthlyCap: 100, hasDownload: true,  hasExport: true },
   // Founder — $1,500 lifetime Kickstarter tier.
-  t5: { label: 'Founder', canHost: true, memberCap: 41, clipCap: 144000, sessionsPerMonth: 200, retentionDays: 60, hasAiReel: true,  aiReelMaxSec: 1800, reelPriority: 2, hasAutoCapture: true, hasAiReelPro: true,  aiReelProMonthlyCap: 100 }
+  t5: { label: 'Founder', canHost: true, memberCap: 41, clipCap: 144000, sessionsPerMonth: 200, retentionDays: 60, hasAiReel: true,  aiReelMaxSec: 1800, reelPriority: 2, hasAutoCapture: true, hasAiReelPro: true,  aiReelProMonthlyCap: 100, hasDownload: true,  hasExport: true }
 };
+
+// Derives a tier-key array from a TIERS capability flag, e.g.
+// tiersWithCapability('hasDownload') -> ['t2','t3','t4','t5']. Keeps
+// requireTier() calls in sync with TIERS automatically instead of a
+// hand-maintained array that can drift when a tier's flags change.
+function tiersWithCapability(flag) {
+  return Object.keys(TIERS).filter(key => TIERS[key][flag]);
+}
 
 // Ordering for tier comparisons — used to stop a timed code from
 // "stacking" on top of an equal-or-higher active subscription (see
@@ -217,8 +223,6 @@ module.exports = {
   SPACES_ENDPOINT,
   SPACES_CDN_BASE,
   UPLOADS_DIR,
-  USERS_FILE,
-  SESSIONS_FILE,
   MAX_SESSIONS,
   MAX_MEMBERS_PER_SESSION,
   MAX_HIGHLIGHTS_PER_SESSION,
@@ -237,6 +241,7 @@ module.exports = {
   COMMENT_RATE_WINDOW,
   COMMENT_MAX_TIMESTAMP_MS,
   TIERS,
+  tiersWithCapability,
   TIER_ORDER,
   HOST_RECORDING_INACTIVITY_MS,
   HOST_NOT_RECORDING_TIMEOUT_MS,

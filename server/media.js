@@ -35,8 +35,8 @@ async function processThumbnailQueue() {
 function generateThumbnail(videoPath, thumbnailPath) {
   return new Promise((resolve) => {
     const ffmpeg = spawn('ffmpeg', [
-      '-i', videoPath,
       '-ss', '00:00:01',
+      '-i', videoPath,
       '-vframes', '1',
       '-vf', 'scale=480:-1',
       '-q:v', '3',

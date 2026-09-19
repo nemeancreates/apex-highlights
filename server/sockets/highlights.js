@@ -135,13 +135,13 @@ function registerHighlightHandlers(io, socket) {
         socket.emit('error-message', { message: 'Highlight queue full — wait for cooldown' });
         return;
       }
-      pending.push({ username: socket.username, ts: now });
-      log('info', 'highlight_queued', { session: sessionCode, username: socket.username, ts: now, queueDepth: pending.length });
+      pending.push({ username: socket.username, ts: pressTs });
+      log('info', 'highlight_queued', { session: sessionCode, username: socket.username, ts: pressTs, queueDepth: pending.length });
       io.to(sessionCode).emit('highlight-queued', { username: socket.username, queued: pending.length });
       return;
     }
 
-    fireCoordinatedHighlight(io, sessionCode, session, socket.username, now);
+    fireCoordinatedHighlight(io, sessionCode, session, socket.username, pressTs);
   });
 }
 

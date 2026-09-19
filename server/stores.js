@@ -120,11 +120,11 @@ const stmt = {
   upsertSession: db.prepare(`
     INSERT INTO sessions (
       code, id, createdBy, createdAt, clipDuration, highlightCount,
-      hostTier, expiresAt, maxMembers, maxClips, title, detectedGame, closed, bannedUsernames
+      hostTier, expiresAt, maxMembers, maxClips, title, detectedGame, closed, bannedUsernames, commentSettings
     )
     VALUES (
       @code, @id, @createdBy, @createdAt, @clipDuration, @highlightCount,
-      @hostTier, @expiresAt, @maxMembers, @maxClips, @title, @detectedGame, @closed, @bannedUsernames
+      @hostTier, @expiresAt, @maxMembers, @maxClips, @title, @detectedGame, @closed, @bannedUsernames, @commentSettings
     )
     ON CONFLICT(code) DO UPDATE SET
       clipDuration = excluded.clipDuration,
@@ -136,7 +136,8 @@ const stmt = {
       title = excluded.title,
       detectedGame = excluded.detectedGame,
       closed = excluded.closed,
-      bannedUsernames = excluded.bannedUsernames
+      bannedUsernames = excluded.bannedUsernames,
+      commentSettings = excluded.commentSettings
   `),
   deleteSession: db.prepare(`DELETE FROM sessions WHERE code = ?`),
   allSessions: db.prepare(`SELECT * FROM sessions`),
@@ -144,15 +145,16 @@ const stmt = {
   upsertUpload: db.prepare(`
     INSERT INTO uploads (id, sessionCode, username, videoFile, metadataFile, thumbnailFile,
       videoUrl, thumbnailUrl, metadataUrl, videoKey, thumbnailKey, metadataKey, uploadedAt, fileSize,
-      durationMs, clipWeight)
+      durationMs, coordinatedTimestamp, clipWeight)
     VALUES (@id, @sessionCode, @username, @videoFile, @metadataFile, @thumbnailFile,
       @videoUrl, @thumbnailUrl, @metadataUrl, @videoKey, @thumbnailKey, @metadataKey, @uploadedAt, @fileSize,
-      @durationMs, @clipWeight)
+      @durationMs, @coordinatedTimestamp, @clipWeight)
     ON CONFLICT(id) DO UPDATE SET
       videoUrl = excluded.videoUrl, thumbnailUrl = excluded.thumbnailUrl, metadataUrl = excluded.metadataUrl,
       videoKey = excluded.videoKey, thumbnailKey = excluded.thumbnailKey, metadataKey = excluded.metadataKey,
       thumbnailFile = excluded.thumbnailFile,
-      durationMs = excluded.durationMs, clipWeight = excluded.clipWeight
+      durationMs = excluded.durationMs, coordinatedTimestamp = excluded.coordinatedTimestamp,
+      clipWeight = excluded.clipWeight
   `),
   uploadsForSession: db.prepare(`SELECT * FROM uploads WHERE sessionCode = ?`),
   sessionsByUser: db.prepare(`
@@ -186,6 +188,7 @@ function loadUsersFromDisk() {
       tokenVersion: row.tokenVersion || 0,
       discordId: row.discordId || null,
       discordUsername: row.discordUsername || null,
+      discordLinkedAt: row.discordLinkedAt || null,
       privacyVersionAccepted: row.privacyVersionAccepted || null,
       privacyAcceptedAt: row.privacyAcceptedAt || null,
       recordingConsentSeen: !!row.recordingConsentSeen
@@ -257,6 +260,7 @@ function loadSessionsFromDisk() {
       closed: !!row.closed,
       title: row.title ?? null,
       detectedGame: row.detectedGame ?? null,
+      commentSettings: row.commentSettings ?? JSON.stringify({ filterMode: 'all', topN: 0 }),
       bannedUsernames: row.bannedUsernames ? JSON.parse(row.bannedUsernames) : [],
       // SQLite has no boolean type — stored 0/1, surfaced as a bool.
       // A session whose host left stays closed to new joins across a
@@ -298,7 +302,8 @@ function saveSessionsToDisk() {
         title: s.title ?? null,
         detectedGame: s.detectedGame ?? null,
         closed: s.closed ? 1 : 0,
-        bannedUsernames: JSON.stringify(s.bannedUsernames || [])
+        bannedUsernames: JSON.stringify(s.bannedUsernames || []),
+        commentSettings: s.commentSettings ?? JSON.stringify({ filterMode: 'all', topN: 0 })
       });
       for (const u of s.uploads) {
         stmt.upsertUpload.run({
@@ -317,6 +322,7 @@ function saveSessionsToDisk() {
           uploadedAt: u.uploadedAt ?? null,
           fileSize: u.fileSize ?? null,
           durationMs: u.durationMs ?? null,
+          coordinatedTimestamp: u.coordinatedTimestamp ?? null,
           clipWeight: u.clipWeight || 1
         });
       }

@@ -11,3 +11,7 @@ server/.env
 server/redemption-codes.json
 server/system-flags.json
 server/ecosystem.config.js
+server/generation-usage.db
+server/generation-usage.db-shm
+server/generation-usage.db-wal
+server/sessions.json

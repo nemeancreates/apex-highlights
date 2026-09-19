@@ -13,6 +13,11 @@ const db = new Database(DB_PATH);
 // rolls back to the last committed state instead of corrupting the file.
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+// NORMAL is the recommended pairing with WAL — skips the fsync on every
+// single commit (every session save, every upload) while still syncing at
+// checkpoints. Only risk is losing the last transaction or two on an OS-level
+// crash or power loss; the DB file itself can't corrupt from this.
+db.pragma('synchronous = NORMAL');
 
 // --- Schema ---
 // NOTE: CREATE TABLE IF NOT EXISTS only runs on a fresh database. For an
@@ -69,6 +74,7 @@ db.exec(`
     uploadedAt   TEXT,
     fileSize     INTEGER,
     durationMs   INTEGER,
+    coordinatedTimestamp INTEGER,
     clipWeight   INTEGER NOT NULL DEFAULT 1,
     FOREIGN KEY (sessionCode) REFERENCES sessions(code) ON DELETE CASCADE
   );
@@ -182,6 +188,13 @@ addColumnIfMissing('sessions', 'bannedUsernames', 'TEXT');
 // uploads — duration-based clip weight (batch 2: 3min=1, 6min=2, hard cap)
 addColumnIfMissing('uploads', 'durationMs', 'INTEGER');
 addColumnIfMissing('uploads', 'clipWeight', "INTEGER NOT NULL DEFAULT 1");
+// coordinatedTimestamp — the server-issued trigger time this clip belongs to,
+// parsed from the uploaded metadata JSON's snake_case coordinated_timestamp
+// (camelCase here to match the rest of the column naming). This is what lets
+// the upload route tell "filling in a moment this session already had" from
+// "pushing new content into a closed session" — see the sync-restricted
+// branch in routes/uploads.js. Null for clips with no coordinated trigger.
+addColumnIfMissing('uploads', 'coordinatedTimestamp', 'INTEGER');
 // comments — host-dragged position (null = auto-zone)
 addColumnIfMissing('comments', 'positionX', 'REAL');
 addColumnIfMissing('comments', 'positionY', 'REAL');

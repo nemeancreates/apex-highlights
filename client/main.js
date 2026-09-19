@@ -2699,7 +2699,12 @@ function createWindow() {
     show: false,                 // avoid the un-maximized flash on launch
     backgroundColor: '#0a1611',
     webPreferences: {
-      nodeIntegration: true, contextIsolation: false, experimentalFeatures: true
+      nodeIntegration: true, contextIsolation: false, experimentalFeatures: true,
+      // Recording/highlight timing must keep running at full rate even when
+      // this window loses focus or is minimized (user is usually tabbed into
+      // the game itself) — Chromium's default background throttling would
+      // otherwise slow timers and could desync coordinated highlight capture.
+      backgroundThrottling: false
     }
   });
 

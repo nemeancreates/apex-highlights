@@ -15,7 +15,8 @@ const {
   UPLOADS_DIR,
   ALLOWED_EXTENSIONS,
   MAX_FILE_SIZE,
-  MAX_HIGHLIGHTS_PER_SESSION
+  MAX_HIGHLIGHTS_PER_SESSION,
+  tiersWithCapability
 } = require('../config');
 const { sessions, saveSessionsToDisk, users, saveUsersToDisk, clipWeightForDuration } = require('../stores');
 const { isSpacesEnabled, uploadToSpaces, deleteFromSpaces } = require('../spaces');
@@ -33,7 +34,7 @@ if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 // Paid tiers allowed to pull raw clip downloads / exports. Matches the
 // "combined web+client login with paid subscription" access decision —
 // same bracket as composite/AI Reel gating.
-const DOWNLOAD_TIERS = ['t2', 't3', 't4', 't5'];
+const DOWNLOAD_TIERS = tiersWithCapability('hasDownload');
 
 // --- Multer: disk storage with sanitized names, whitelist, size cap ---
 const upload = multer({
@@ -79,11 +80,38 @@ function initUploadRoutes(app, io) {
       return safeError(res, 400, 'Invalid account username');
     }
 
-    const isMember = session.members.some(m => m.username === uploaderName) ||
-                     session.createdBy === uploaderName;
-    if (!isMember) {
+    // ================================
+    // UPLOAD AUTHORIZATION
+    //
+    // Order is deliberate. The ban check is FIRST and unconditional:
+    // banned users were previously blocked only as a side effect of
+    // removeMemberFromSession splicing them out of members[], and the
+    // former-participant branch below would hand that access straight back.
+    // It is load-bearing, not defensive extra.
+    //
+    // members[] is emptied when the host leaves (sockets/index.js), so once
+    // a session closes only the host would otherwise pass. The
+    // former-participant branch exists so Sync can recover clips that never
+    // made it up. It is deliberately narrow: it requires proof of prior
+    // participation, and on a CLOSED session it may only fill in moments the
+    // session already knows about — enforced after the metadata parse below.
+    // ================================
+    if ((session.bannedUsernames || []).includes(uploaderName)) {
+      log('warn', 'upload_rejected', { reason: 'banned', session: code, username: uploaderName });
+      return safeError(res, 403, 'You have been banned from this session.');
+    }
+
+    const isHost = session.createdBy === uploaderName;
+    const isActiveMember = session.members.some(m => m.username === uploaderName);
+    const hasPriorUpload = session.uploads.some(u => u.username === uploaderName);
+
+    if (!isHost && !isActiveMember && !hasPriorUpload) {
       return res.status(403).json({ error: 'You are not a member of this session' });
     }
+
+    // Reconnecting participant — allowed, but gap-filling only once the
+    // session has closed. Harmless while it is open and the host is present.
+    const syncRestricted = !isHost && !isActiveMember;
 
     const sessionClipCap = session.maxClips || (MAX_HIGHLIGHTS_PER_SESSION * Math.max(session.members.length, 1));
     const weightedSoFar = session.uploads.reduce((sum, u) => sum + (u.clipWeight || 1), 0);
@@ -142,6 +170,7 @@ function initUploadRoutes(app, io) {
       }
 
       let parsedDurationMs = null;
+      let parsedCoordinatedTs = null;
 
       if (req.files.metadata) {
         const metaFile = req.files.metadata[0];
@@ -155,8 +184,32 @@ function initUploadRoutes(app, io) {
           const metaJson = JSON.parse(fs.readFileSync(metaFile.path, 'utf8'));
           const d = metaJson.durationMs;
           if (typeof d === 'number' && isFinite(d) && d > 0) parsedDurationMs = d;
+          // Server-issued trigger time this clip belongs to. Stored so the
+          // gap-filling gate below (and the player's moment-grouping later)
+          // can tell which highlight a clip is a POV of.
+          const ct = metaJson.coordinated_timestamp;
+          if (typeof ct === 'number' && isFinite(ct) && ct > 0) parsedCoordinatedTs = ct;
         } catch (e) {
           log('warn', 'duration_parse_failed', { session: code, error: e.message });
+        }
+      }
+
+      // Sync gap-filling gate. A participant no longer in the session may top
+      // up a CLOSED one only with clips from a moment it already has — never
+      // with new footage. Otherwise a former member could burn the host's
+      // retention and inject content into a session the host is not present
+      // to moderate. A null timestamp can't be verified, so it fails too.
+      if (syncRestricted && session.closed) {
+        const knownMoment = parsedCoordinatedTs !== null &&
+          session.uploads.some(u => u.coordinatedTimestamp === parsedCoordinatedTs);
+        if (!knownMoment) {
+          try { fs.unlinkSync(videoFile.path); } catch (e) {}
+          if (req.files.metadata) { try { fs.unlinkSync(req.files.metadata[0].path); } catch (e) {} }
+          log('warn', 'upload_rejected', {
+            reason: 'sync_new_moment_on_closed_session',
+            session: code, username: uploaderName, coordinatedTimestamp: parsedCoordinatedTs
+          });
+          return safeError(res, 403, 'This session has closed. You can only upload clips from highlights the session already recorded.');
         }
       }
 
@@ -174,21 +227,43 @@ function initUploadRoutes(app, io) {
 
       if (isSpacesEnabled()) {
         enqueueThumbnail(videoFile.path, thumbPath, async () => {
+          // An upload can outlive the thing it belongs to. Two ways: the
+          // hourly purge sweep (stores.js) evicts this session, or the host
+          // deletes this clip inside the 4h window — both while these pushes
+          // are still in flight. Either one leaves an object in R2 that
+          // nothing references and no future sweep can ever find, because the
+          // key was still null when the deletion ran. That is how the 202
+          // orphaned records in the old sessions.json were produced, and it
+          // is still reachable today. Re-check ownership after every push; if
+          // the owner is gone, what we just created is an orphan by
+          // definition, so delete it now instead of leaking it.
+          const stillReferenced = () => sessions.has(code) && !!findRecord();
+          const uploadedKeys = [];
           try {
             const videoUrl = await uploadToSpaces(videoFile.path, videoKey, 'video/mp4');
+            uploadedKeys.push(videoKey);
             const rec = findRecord();
             if (rec) { rec.videoUrl = videoUrl; rec.videoKey = videoKey; }
 
-            if (fs.existsSync(thumbPath)) {
+            if (stillReferenced() && fs.existsSync(thumbPath)) {
               const thumbUrl = await uploadToSpaces(thumbPath, thumbKey, 'image/jpeg');
+              uploadedKeys.push(thumbKey);
               const r2 = findRecord();
               if (r2) { r2.thumbnailUrl = thumbUrl; r2.thumbnailKey = thumbKey; }
             }
 
-            if (metaFileObj && fs.existsSync(metaFileObj.path)) {
+            if (stillReferenced() && metaFileObj && fs.existsSync(metaFileObj.path)) {
               const metaUrl = await uploadToSpaces(metaFileObj.path, metaKey, 'application/json');
+              uploadedKeys.push(metaKey);
               const r3 = findRecord();
               if (r3) { r3.metadataUrl = metaUrl; r3.metadataKey = metaKey; }
+            }
+
+            if (!stillReferenced()) {
+              const reason = sessions.has(code) ? 'clip_deleted' : 'session_purged';
+              for (const key of uploadedKeys) await deleteFromSpaces(key);
+              log('warn', 'spaces_upload_orphaned', { session: code, reason, keysDeleted: uploadedKeys.length });
+              return;
             }
 
             saveSessionsToDisk();
@@ -219,6 +294,7 @@ function initUploadRoutes(app, io) {
         uploadedAt: new Date().toISOString(),
         fileSize: videoFile.size,
         durationMs: parsedDurationMs,
+        coordinatedTimestamp: parsedCoordinatedTs,
         clipWeight: clipWeight
       };
 

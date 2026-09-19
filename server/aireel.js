@@ -27,12 +27,12 @@ const { spawn } = require('child_process');
 const crypto = require('crypto');
 
 const { requireAuth, requireAuthAny, requireTier } = require('./auth');
-const { TIERS } = require('./config');
+const { TIERS, tiersWithCapability } = require('./config');
 const { getCommentsForSession } = require('./routes/comments');
 const { generateASS, checkAssFilter, escapeFilterPath } = require('./comment-overlay');
 const { initGenerationUsage, checkAndIncrement, getUsage, pruneOldMonths } = require('./generation-usage');
 
-const AIREEL_TIERS = ['t3', 't4', 't5'];
+const AIREEL_TIERS = tiersWithCapability('hasAiReel');
 
 const AIREEL_DIR = path.join(os.tmpdir(), 'peak-abu-aireel');
 const PROFILE_FILE = path.join(__dirname, 'aiprofiles.json');

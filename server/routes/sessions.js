@@ -45,7 +45,11 @@ function createSessionForUser(rawUsername) {
     return { error: `Monthly session limit reached for ${tierConfig.label} (${tierConfig.sessionsPerMonth}/mo). Resets next month.`, status: 403 };
   }
 
-  if (sessions.size >= MAX_SESSIONS) {
+  let liveSessions = 0;
+  for (const s of sessions.values()) {
+    if (!s.closed && s.members.length > 0) liveSessions++;
+  }
+  if (liveSessions >= MAX_SESSIONS) {
     return { error: 'Server is at capacity. Try again later.', status: 503 };
   }
 
@@ -147,7 +151,17 @@ function initSessionRoutes(app) {
     const session = sessions.get(code);
     if (!session) return res.status(404).json({ error: 'Session not found' });
 
-    res.json({ uploads: session.uploads });
+    // closed/expiresAt ride along so the client can tell the three cases
+    // apart without guessing: 404 = purged past retention (nothing to sync
+    // to, ever), closed = host gone but the session still exists (sync is
+    // allowed, under the restricted rules in routes/uploads.js), and open =
+    // normal operation. Without these, a client can only infer from the
+    // status code and would show "expired" for a merely-closed session.
+    res.json({
+      uploads: session.uploads,
+      closed: !!session.closed,
+      expiresAt: session.expiresAt || null
+    });
   });
 }
 
