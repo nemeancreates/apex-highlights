@@ -618,6 +618,29 @@
       .clip-item.broadcast { color: #d8a838; }
       .clip-item.info { color: #7a9686; }
 
+      /* ===== Sync banner =====
+         Appears under the header once the player opens for a session and
+         finds local clips the server never received (main.js scans+diffs
+         automatically on 'open-player'; see the Sync spec doc). Drawn by
+         the client rather than injected into the player page — the docked
+         player sits alongside the client, so this stays visible next to
+         the POV grid either way. .sync-clip reuses .clip-item's row shape
+         since it's already the right pattern for a timestamped list row. */
+      .sync-banner {
+        background: #0f2318; border: 1px solid #2f4a3a; border-radius: 8px;
+        padding: 10px 14px; margin-bottom: 16px; font-size: 13px;
+      }
+      .sync-banner.expired { border-color: #4a3a1e; }
+      .sync-banner-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      .sync-banner-title { color: #c8d6cd; }
+      .sync-banner.expired .sync-banner-title { color: #d8a838; }
+      .sync-banner-list { margin-top: 8px; max-height: 160px; overflow-y: auto; }
+      .sync-clip-state { font-size: 11px; flex-shrink: 0; margin-left: 8px; }
+      .sync-clip-state.uploading { color: #d8a838; }
+      .sync-clip-state.done { color: #39d3a0; }
+      .sync-clip-state.failed { color: #f0857a; }
+      .sync-clip-state.retry-later { color: #7a9686; }
+
       /* ===== Modals ===== */
       .modal {
         display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -689,7 +712,7 @@
               <img src="assets/kickstarter.png" alt="kickstarter" />
             </button>
           </div>
-          <span class="version-tag">v0.1.78</span>
+          <span class="version-tag">v0.1.80</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="redeem-wrap">
@@ -704,6 +727,17 @@
           </div>
           <button class="btn-secondary btn-sm" onclick="openSettings()">⚙ Settings</button>
         </div>
+      </div>
+
+      <!-- SYNC BANNER — see Sync scan/diff logic in main.js and the
+           'sync-scan-result' / 'sync-progress' listeners below. Hidden
+           until a scan finds something to report. -->
+      <div id="syncBanner" class="sync-banner" style="display:none;">
+        <div class="sync-banner-head">
+          <span id="syncBannerTitle" class="sync-banner-title"></span>
+          <button id="syncBannerBtn" class="btn-secondary btn-sm" onclick="startSync()" style="display:none;">⟲ Sync</button>
+        </div>
+        <div id="syncBannerList" class="sync-banner-list"></div>
       </div>
 
       <!-- SETTINGS MODAL -->
@@ -2289,6 +2323,8 @@ REPLACE:
       window.closeDockedPlayer = function() {
         ipcRenderer.invoke('close-player').then(function() {
           hudLog('system', '🌐 Web player closed', 'info');
+          var banner = document.getElementById('syncBanner');
+          if (banner && !window.syncInProgress) banner.style.display = 'none';
         });
       };
 
@@ -2363,6 +2399,10 @@ REPLACE:
       window.openPlayerForCode = function(code) {
         if (!code) return;
         if (!window.authToken) { hudLog('system', '🔒 Log in to open the player with your account', 'error'); return; }
+        // Sync's scan is scoped to whichever code the player was last
+        // opened for — main.js runs it automatically alongside opening the
+        // player and reports back over 'sync-scan-result'.
+        window.currentSyncCode = code;
         ipcRenderer.invoke('open-player', { code: code, token: window.authToken, username: window.authUsername })
           .then(function(r) {
             hudLog('system', '🌐 Player opened for ' + code +
@@ -2389,6 +2429,128 @@ REPLACE:
         icon.style.display = (input.value.trim().length >= 4) ? 'flex' : 'none';
         clearJoinCodeError();
       };
+
+      // =====================
+      // SYNC — recover local clips the server never received
+      // Detection is automatic: main.js scans + diffs whenever the player
+      // opens for a session (see the 'open-player' handler and
+      // window.currentSyncCode above) and reports the result here over
+      // 'sync-scan-result'. The upload itself is always this button — see
+      // the "Sync — Feature Spec" project doc for why.
+      // =====================
+      window.currentSyncCode = null;
+      window.syncableClips = [];
+      window.syncInProgress = false;
+
+      function formatSyncBytes(bytes) {
+        if (!bytes) return '';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+      }
+
+      function renderSyncBanner(result) {
+        var banner = document.getElementById('syncBanner');
+        var title = document.getElementById('syncBannerTitle');
+        var btn = document.getElementById('syncBannerBtn');
+        var list = document.getElementById('syncBannerList');
+        if (!banner || !title || !btn || !list) return;
+
+        banner.classList.remove('expired');
+        window.syncableClips = (result && result.syncable) || [];
+
+        if (!result || result.state === 'error') {
+          banner.style.display = 'none';
+          return;
+        }
+
+        if (result.state === 'expired') {
+          banner.classList.add('expired');
+          title.textContent = "⚠ This session has expired — local clips can't be recovered here.";
+          btn.style.display = 'none';
+          list.innerHTML = '';
+          banner.style.display = 'block';
+          return;
+        }
+
+        if (window.syncableClips.length === 0) {
+          banner.style.display = 'none';
+          return;
+        }
+
+        title.textContent = window.syncableClips.length === 1
+          ? '1 clip from this session never uploaded'
+          : window.syncableClips.length + ' clips from this session never uploaded';
+        btn.style.display = 'inline-block';
+        btn.disabled = window.syncInProgress;
+        btn.textContent = window.syncInProgress ? '⟲ Syncing…' : '⟲ Sync';
+
+        list.innerHTML = '';
+        window.syncableClips.forEach(function(clip) {
+          var row = document.createElement('div');
+          row.className = 'clip-item sync-clip';
+          row.dataset.syncFile = clip.fileName;
+
+          var left = document.createElement('span');
+          left.textContent = clip.fileName;
+
+          var right = document.createElement('span');
+          right.className = 'clip-time';
+          var parts = [];
+          if (clip.durationMs) parts.push(formatDuration(clip.durationMs));
+          if (clip.sizeBytes) parts.push(formatSyncBytes(clip.sizeBytes));
+          right.textContent = parts.join(' · ');
+
+          row.appendChild(left);
+          row.appendChild(right);
+          list.appendChild(row);
+        });
+
+        banner.style.display = 'block';
+      }
+
+      window.startSync = function() {
+        if (!window.currentSyncCode || window.syncInProgress) return;
+        window.syncInProgress = true;
+        renderSyncBanner({ state: 'ok', syncable: window.syncableClips });
+        ipcRenderer.invoke('sync-start', { code: window.currentSyncCode }).then(function(r) {
+          if (!r || !r.started) {
+            // Nothing actually kicked off (already synced, session expired
+            // since the last scan, etc.) — no 'sync-progress' will arrive
+            // to clear the in-progress flag, so clear it here.
+            window.syncInProgress = false;
+            renderSyncBanner({ state: 'ok', syncable: window.syncableClips });
+            if (r && r.reason === 'expired') hudLog('system', '⚠ Session expired — nothing to sync', 'error');
+          }
+        });
+      };
+
+      ipcRenderer.on('sync-scan-result', function(ev, result) {
+        renderSyncBanner(result);
+      });
+
+      ipcRenderer.on('sync-progress', function(ev, p) {
+        if (!p) return;
+        if (p.state === 'complete') {
+          window.syncInProgress = false;
+          return;
+        }
+        var row = document.querySelector('#syncBannerList .sync-clip[data-sync-file="' + p.fileName + '"]');
+        if (row) {
+          var stateEl = row.querySelector('.sync-clip-state');
+          if (!stateEl) {
+            stateEl = document.createElement('span');
+            stateEl.className = 'sync-clip-state';
+            row.appendChild(stateEl);
+          }
+          stateEl.className = 'sync-clip-state ' + p.state;
+          stateEl.textContent = p.state === 'uploading' ? 'Uploading…'
+            : p.state === 'done' ? '✓ Synced'
+            : p.state === 'failed' ? '✕ ' + (p.message || 'Rejected')
+            : 'Will retry later';
+        }
+        var btn = document.getElementById('syncBannerBtn');
+        if (btn) btn.textContent = '⟲ Syncing ' + (p.index + 1) + '/' + p.total + '…';
+      });
+
       document.getElementById('settingsModal').addEventListener('click', function(e) { if (e.target.id==='settingsModal') closeSettings(); });
 
       // =====================

@@ -199,9 +199,9 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 const PRIVACY_POLICY_VERSION = '2026-09-07';
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.78',
-  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.78.exe',
-    releaseNotes: "Upload throttling to protect your in-game ping while a clip uploads"
+  version: '0.1.80',
+  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.80.exe',
+    releaseNotes: "Sync: recover highlight clips that saved locally but never made it to your squad (e.g. after a crash) — open the web player for a session to check automatically, then upload what's missing with one click"
 };
 
 

@@ -2617,7 +2617,21 @@ function uploadHighlight(videoPath, metadataPath) {
 // The split is what lets retryPendingUploadsFromDisk reuse the same upload
 // logic for a leftover clip from a previous run, without needing
 // currentSession to be populated yet.
-function performUpload(sessionCode, videoPath, metadataPath, uploadKey) {
+//
+// onDone is optional — Sync's sequential runner (below) passes it to know
+// when one clip's attempt is finished, success or not, before starting the
+// next. Every other call site fires-and-forgets, same as before.
+//
+// Status codes split PERMANENT vs RETRYABLE (Edge-Case Review finding
+// UP3): only a definitive "no" from the server — 400/403/404/413 — clears
+// the manifest. A 5xx, a connection error, or an unparseable body all leave
+// the entry in place so it retries on next launch. Before this split, ANY
+// non-201 cleared the manifest — so a clip could be silently dropped just
+// because the server was briefly down, which Sync would have made worse by
+// eating the exact clip the user asked it to recover.
+const PERMANENT_UPLOAD_STATUSES = new Set([400, 403, 404, 413]);
+
+function performUpload(sessionCode, videoPath, metadataPath, uploadKey, onDone) {
   console.log(`Uploading highlight to session ${sessionCode}...`);
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('upload-progress', 0);
 
@@ -2644,6 +2658,7 @@ function performUpload(sessionCode, videoPath, metadataPath, uploadKey) {
         mainWindow.webContents.send('upload-progress', -1);
         mainWindow.webContents.send('upload-error', 'Could not reach server');
       }
+      if (onDone) onDone({ ok: false, permanent: false, message: 'Could not reach server' });
       return;
     }
     console.log('=== UPLOAD RESPONSE ===', res.statusCode);
@@ -2660,13 +2675,25 @@ function performUpload(sessionCode, videoPath, metadataPath, uploadKey) {
             mainWindow.webContents.send('upload-progress', 100);
             mainWindow.webContents.send('upload-complete', result.uploadId);
           }
-        } else {
-          // Server rejected it outright — retrying won't help.
+          if (onDone) onDone({ ok: true, permanent: true, message: null });
+        } else if (PERMANENT_UPLOAD_STATUSES.has(res.statusCode)) {
+          // A definitive rejection — retrying won't help.
           markUploadDone(uploadKey);
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('upload-progress', -1);
             mainWindow.webContents.send('upload-error', result.error);
           }
+          if (onDone) onDone({ ok: false, permanent: true, message: result.error });
+        } else {
+          // 5xx or an unrecognized status — treat as transient. Leave the
+          // manifest entry in place so it retries on next launch instead of
+          // silently dropping the clip.
+          console.log(`Upload got ${res.statusCode} — treating as retryable, keeping manifest entry`);
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('upload-progress', -1);
+            mainWindow.webContents.send('upload-error', result.error || 'Server error — will retry');
+          }
+          if (onDone) onDone({ ok: false, permanent: false, message: result.error || 'Server error — will retry' });
         }
       } catch (parseErr) {
         // Ambiguous response — leave it pending rather than guess.
@@ -2674,6 +2701,7 @@ function performUpload(sessionCode, videoPath, metadataPath, uploadKey) {
           mainWindow.webContents.send('upload-progress', -1);
           mainWindow.webContents.send('upload-error', 'Server returned invalid response');
         }
+        if (onDone) onDone({ ok: false, permanent: false, message: 'Server returned invalid response' });
       }
       res.resume();
     });
@@ -2688,6 +2716,160 @@ function doUploadHighlight(videoPath, metadataPath) {
     startedAt: Date.now()
   });
   performUpload(currentSession.code, videoPath, metadataPath, uploadKey);
+}
+
+// ================================
+// SYNC — RECOVER LOCAL CLIPS THAT NEVER MADE IT TO THE SERVER
+//
+// pendingUploads only knows about a clip once doUploadHighlight has been
+// called on it. A crash before that point (mid-save, power loss right
+// after the .mp4/.json pair lands) leaves a clip on disk with nothing
+// pointing at it — invisible to every existing recovery path. Sync closes
+// that gap: scan CLIPS_DIR for sidecars belonging to a session, diff
+// against what the server actually has, and offer to upload what's
+// missing. Detection is automatic (runs whenever that session's web player
+// is opened, see the 'open-player' handler below); the upload itself is
+// always a manual button press from the renderer via 'sync-start'.
+//
+// Scoped to one session code at a time — not a sweep of every session ever
+// recorded locally. See the "Sync — Feature Spec" project doc for the full
+// design and the matching server-side authorization rewrite in
+// routes/uploads.js.
+// ================================
+
+// GET /sessions/:code/uploads — same lookup the web player itself uses, run
+// from main so the scan doesn't need the renderer to round-trip through
+// fetch(). Resolves rather than rejects on every outcome, including a
+// network failure, so callers can branch on `status` alone.
+function fetchSessionUploads(code) {
+  return new Promise((resolve) => {
+    const req = https.request({
+      protocol: 'https:', host: 'peakabu.app', port: 443,
+      path: `/sessions/${code}/uploads`, method: 'GET'
+    }, (res) => {
+      let body = '';
+      res.on('data', chunk => body += chunk);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(body);
+          resolve({
+            status: res.statusCode,
+            uploads: parsed.uploads || [],
+            closed: !!parsed.closed,
+            expiresAt: parsed.expiresAt || null
+          });
+        } catch (e) {
+          resolve({ status: res.statusCode, error: 'unparseable_response' });
+        }
+      });
+    });
+    req.on('error', (e) => resolve({ status: 0, error: e.message }));
+    req.end();
+  });
+}
+
+// Sidecar scan, scoped to one session code. Mirrors aireel-list-local-clips
+// below (same CLIPS_DIR walk, same "sidecar with no surviving .mp4 is
+// skipped" rule) but also keeps coordinated_timestamp, which that scan
+// doesn't need but the server's sync-restricted gap-fill check does.
+function scanLocalClipsForSession(code) {
+  const wantSession = String(code || '').toUpperCase();
+  let entries = [];
+  try { entries = fs.readdirSync(CLIPS_DIR).filter(f => f.toLowerCase().endsWith('.json')); }
+  catch (e) { return []; }
+
+  const out = [];
+  for (const name of entries) {
+    const jsonPath = path.join(CLIPS_DIR, name);
+    const videoPath = jsonPath.replace(/\.json$/i, '.mp4');
+    if (!fs.existsSync(videoPath)) continue; // clip deleted, sidecar orphaned
+    let meta;
+    try { meta = JSON.parse(fs.readFileSync(jsonPath, 'utf8')); } catch (e) { continue; }
+    if (!meta || !meta.clipId) continue;     // full-session archive sidecars have no clipId
+    if (String(meta.sessionId || '').toUpperCase() !== wantSession) continue;
+
+    let sizeBytes = 0;
+    try { sizeBytes = fs.statSync(videoPath).size; } catch (e) {}
+
+    out.push({
+      videoPath,
+      metadataPath: jsonPath,
+      // Local basename with no extension — this is the prefix a matching
+      // server record's videoFile must start with (see multer's filename()
+      // in routes/uploads.js: `${baseName}_${Date.now()}${ext}`).
+      baseName: path.basename(videoPath, path.extname(videoPath)),
+      fileName: path.basename(videoPath),
+      startTimeUTC: typeof meta.startTimeUTC === 'number' ? meta.startTimeUTC : null,
+      durationMs: typeof meta.durationMs === 'number' ? meta.durationMs : null,
+      coordinatedTimestamp: typeof meta.coordinated_timestamp === 'number' ? meta.coordinated_timestamp : null,
+      sizeBytes
+    });
+  }
+
+  out.sort((a, b) => (a.startTimeUTC || 0) - (b.startTimeUTC || 0));
+  return out;
+}
+
+// Scan + diff for one session. Returns a plain object the renderer can
+// switch on directly — `state` is one of 'expired' | 'error' | 'ok'.
+async function runSyncScan(code) {
+  const clean = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (clean.length < 4) return { state: 'error', syncable: [] };
+
+  const local = scanLocalClipsForSession(clean);
+  if (local.length === 0) return { state: 'ok', syncable: [] };
+
+  const remote = await fetchSessionUploads(clean);
+  if (remote.status === 404) return { state: 'expired', syncable: [] };
+  if (remote.status !== 200) return { state: 'error', syncable: [] };
+
+  // Syncable = no server record's videoFile carries this clip's basename as
+  // a prefix, AND it isn't already mid-upload via the normal live path.
+  const syncable = local.filter(clip => {
+    if (pendingUploads.has(path.basename(clip.videoPath))) return false;
+    const onServer = remote.uploads.some(u => (u.videoFile || '').startsWith(clip.baseName + '_'));
+    return !onServer;
+  });
+
+  return { state: 'ok', syncable, closed: remote.closed };
+}
+
+// Sequential upload of a syncable list — one at a time, through the same
+// throttle-respecting path as a live save (markUploadPending +
+// performUpload). Firing these concurrently would defeat
+// ThrottleStream/UPLOAD_THROTTLE_BYTES_PER_SEC, which exists specifically
+// to protect in-game ping. Per-clip progress goes to the renderer over
+// 'sync-progress'; runSyncScan() runs again at the end so the client's list
+// reflects what the server actually has rather than an optimistic guess.
+async function runSyncUpload(code, clips) {
+  const clean = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const total = clips.length;
+  for (let i = 0; i < clips.length; i++) {
+    const clip = clips[i];
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('sync-progress', { index: i, total, fileName: clip.fileName, state: 'uploading' });
+    }
+    const uploadKey = path.basename(clip.videoPath);
+    markUploadPending(uploadKey, {
+      videoPath: clip.videoPath, metadataPath: clip.metadataPath,
+      sessionCode: clean, startedAt: Date.now()
+    });
+    const result = await new Promise((resolve) => {
+      performUpload(clean, clip.videoPath, clip.metadataPath, uploadKey, resolve);
+    });
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('sync-progress', {
+        index: i, total, fileName: clip.fileName,
+        state: result.ok ? 'done' : (result.permanent ? 'failed' : 'retry-later'),
+        message: result.message
+      });
+    }
+  }
+  const rescanned = await runSyncScan(clean);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('sync-progress', { index: total, total, state: 'complete' });
+    mainWindow.webContents.send('sync-scan-result', rescanned);
+  }
 }
 
 app.commandLine.appendSwitch('enable-features', 'WebRtcAllowInputVolumeAdjustment');
@@ -3419,6 +3601,16 @@ function createWindow() {
     const code = payload && payload.code;
     const token = payload && payload.token;
     const username = payload && payload.username;
+
+    // Sync: detect local clips for this session the server never got.
+    // Fire-and-forget — opening the player doesn't wait on this; the
+    // renderer gets the result over 'sync-scan-result' whenever it lands.
+    runSyncScan(code).then((result) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('sync-scan-result', result);
+      }
+    }).catch((e) => console.log('Sync scan failed:', e.message));
+
     if (playerWindowedMode) {
       closeDockedPlayer();
       openWindowedPlayer(code, token, username);
@@ -3435,6 +3627,21 @@ function createWindow() {
   ipcMain.handle('close-player', () => {
     closeAnyPlayer();
     return { success: true };
+  });
+
+  // Renderer-triggered upload of whatever's currently syncable for this
+  // session. Re-scans right before uploading rather than trusting a list
+  // the renderer may be holding stale (a clip could have uploaded through
+  // the normal live path, or been deleted, since the last scan result).
+  // Doesn't await runSyncUpload — progress streams over 'sync-progress'.
+  ipcMain.handle('sync-start', async (event, payload) => {
+    const code = payload && payload.code;
+    const scan = await runSyncScan(code);
+    if (scan.state !== 'ok' || scan.syncable.length === 0) {
+      return { started: false, reason: scan.state };
+    }
+    runSyncUpload(code, scan.syncable);
+    return { started: true, count: scan.syncable.length };
   });
 
   // Live drag — fires on every pointermove while resizing. Cheap enough
