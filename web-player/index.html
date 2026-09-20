@@ -1335,7 +1335,8 @@
       <div class="progress-bar" id="compositeProgressBar" style="display:none;">
         <div class="progress-fill" id="compositeFill"></div>
       </div>
-      <button class="btn btn-small" onclick="startComposite()" style="margin:8px 16px;">Start Combined View Export</button>
+      <button class="btn btn-small" id="compositeStartBtn" onclick="startComposite()" style="margin:8px 16px;">Start Combined View Export</button>
+      <button class="btn btn-small btn-secondary" id="compositeCancelBtn" onclick="cancelComposite()" style="margin:8px 16px;display:none;">Stop Export</button>
     </div>
     <div class="composite-section" id="aireelSection" style="display:none;flex-wrap:wrap;gap:8px;padding:8px 16px;">
      <div style="width:100%;font-size:13px;color:#39d3a0;font-weight:600;">🎞 AI Highlight Reel</div>
@@ -3478,65 +3479,184 @@
           : '\u{1F3AC} Combined View';
     }
 
+    // Absolute client-side deadline. The server's own hard cap is 15 min,
+    // so anything past 16 is the server having stopped answering about this
+    // job \u2014 we stop waiting rather than spin forever.
+    const COMPOSITE_CLIENT_DEADLINE_MS = 16 * 60 * 1000;
+    const COMPOSITE_MAX_SERVER_ERRORS = 5;   // ~15s of 5xx before giving up
+    let compositeDeadlineAt = 0;
+    let compositeServerErrors = 0;
+
+    // ONE place where the composite UI returns to rest. Every exit path \u2014
+    // success, failure, 404, server down, timeout, cancel \u2014 goes through
+    // here, so the button can never be left stuck disabled again.
+    function finishComposite(state, message, data) {
+      if (compositePollInterval) { clearInterval(compositePollInterval); compositePollInterval = null; }
+      compositeJobId = null;
+      compositeServerErrors = 0;
+
+      const status = document.getElementById('compositeStatus');
+      const bar = document.getElementById('compositeProgressBar');
+      const btn = document.getElementById('compositeBtn');
+      const startBtn = document.getElementById('compositeStartBtn');
+      const cancelBtn = document.getElementById('compositeCancelBtn');
+
+      if (bar) bar.style.display = 'none';
+      if (btn) { btn.disabled = false; btn.textContent = '\u{1F3AC} Combined View'; }
+      if (startBtn) startBtn.style.display = '';
+      if (cancelBtn) cancelBtn.style.display = 'none';
+
+      if (state === 'done') {
+        const sizeMB = data && data.fileSize ? (data.fileSize / 1024 / 1024).toFixed(1) + 'MB' : '';
+        status.className = 'composite-status ready';
+        status.textContent = '\u2705 Ready' + (sizeMB ? ' (' + sizeMB + ')' : '') + ' \u2014 downloading...';
+        const link = document.createElement('a');
+        link.href = data.downloadUrl + '?token=' + encodeURIComponent(myAuthToken);
+        link.download = 'peak-abu-composite.mp4';
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      } else {
+        status.className = 'composite-status failed';
+        status.textContent = '\u274C ' + message;
+      }
+    }
+
     async function startComposite() {
       if (!currentSessionCode) return;
       const btn = document.getElementById('compositeBtn');
       const section = document.getElementById('compositeSection');
       const status = document.getElementById('compositeStatus');
       const progressBar = document.getElementById('compositeProgressBar');
+      const startBtn = document.getElementById('compositeStartBtn');
+      const cancelBtn = document.getElementById('compositeCancelBtn');
+
+      // Composite ONLY the clips of the highlight currently on screen. The
+      // server used to render every upload in the session regardless of what
+      // this button said \u2014 88 clips in one xstack, which killed the process.
+      const uploadIds = videos
+        .filter(v => !v.missing && !v.processing && v.uploadId)
+        .map(v => v.uploadId);
+
+      if (uploadIds.length === 0) {
+        status.className = 'composite-status failed';
+        status.textContent = '\u274C No playable clips in this highlight yet.';
+        section.style.display = 'flex';
+        return;
+      }
 
       btn.disabled = true; btn.textContent = 'Starting...';
       section.style.display = 'flex';
       status.className = 'composite-status processing';
-      status.textContent = 'Starting compositing job...';
+      status.textContent = 'Starting compositing job (' + uploadIds.length + ' clip' + (uploadIds.length === 1 ? '' : 's') + ')...';
       progressBar.style.display = 'block';
+      if (startBtn) startBtn.style.display = 'none';
+      if (cancelBtn) cancelBtn.style.display = '';
 
       try {
-       if (!myAuthToken) throw new Error('Sign in through the Peak-Abu app with a paid plan to export.');
-       const res = await fetch('/sessions/' + currentSessionCode + '/composite', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + myAuthToken }
-       });
-        if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed to start job'); }
-        const { jobId } = await res.json();
-        compositeJobId = jobId;
-        status.textContent = 'FFmpeg is stitching your clips \u2014 this takes 2-5 minutes...';
-        pollCompositeJob(jobId);
+        if (!myAuthToken) throw new Error('Sign in through the Peak-Abu app with a paid plan to export.');
+        const res = await fetch('/sessions/' + currentSessionCode + '/composite', {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + myAuthToken,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ uploadIds })
+        });
+        // Read as text first: a 502 from nginx is an HTML error page, and
+        // res.json() on it throws "Unexpected token '<'" instead of telling
+        // us the server is down.
+        const raw = await res.text();
+        let data = null;
+        try { data = JSON.parse(raw); } catch (e) {}
+
+        if (!res.ok) {
+          throw new Error(
+            (data && data.error) ||
+            (res.status >= 500 ? 'Server is not responding (' + res.status + ') \u2014 try again in a moment' : 'Failed to start job')
+          );
+        }
+        if (!data || !data.jobId) throw new Error('Server sent an unexpected response');
+
+        compositeJobId = data.jobId;
+        compositeDeadlineAt = Date.now() + COMPOSITE_CLIENT_DEADLINE_MS;
+        compositeServerErrors = 0;
+        status.textContent = 'Stitching ' + uploadIds.length + ' clips\u2026';
+        pollCompositeJob(data.jobId);
       } catch (err) {
-        status.className = 'composite-status failed';
-        status.textContent = '\u274C ' + err.message;
-        progressBar.style.display = 'none';
-        btn.disabled = false;
-        btn.textContent = '\u{1F3AC} Combined View';
+        finishComposite('failed', err.message);
       }
+    }
+
+    async function cancelComposite() {
+      const jobId = compositeJobId;
+      if (!jobId) return finishComposite('failed', 'Cancelled');
+      document.getElementById('compositeStatus').textContent = 'Stopping\u2026';
+      try {
+        await fetch('/sessions/' + currentSessionCode + '/composite/' + jobId, {
+          method: 'DELETE',
+          headers: { 'Authorization': 'Bearer ' + myAuthToken }
+        });
+      } catch (e) { /* the local stop below is what the user sees either way */ }
+      finishComposite('failed', 'Export stopped');
     }
 
     function pollCompositeJob(jobId) {
       if (compositePollInterval) clearInterval(compositePollInterval);
       compositePollInterval = setInterval(async () => {
+        if (Date.now() > compositeDeadlineAt) {
+          return finishComposite('failed', 'Export timed out \u2014 try again');
+        }
+
+        let res, raw;
         try {
-          const res = await fetch('/sessions/' + currentSessionCode + '/composite/' + jobId);
-          const data = await res.json();
-          if (data.status === 'done') {
-            clearInterval(compositePollInterval); compositePollInterval = null;
-            const sizeMB = data.fileSize ? (data.fileSize / 1024 / 1024).toFixed(1) + 'MB' : '';
-            document.getElementById('compositeStatus').className = 'composite-status ready';
-            document.getElementById('compositeStatus').textContent = '\u2705 Ready' + (sizeMB ? ' (' + sizeMB + ')' : '') + ' \u2014 downloading...';
-            document.getElementById('compositeProgressBar').style.display = 'none';
-            document.getElementById('compositeBtn').disabled = false;
-            document.getElementById('compositeBtn').textContent = '\u{1F3AC} Combined View';
-            const link = document.createElement('a');
-            link.href = data.downloadUrl + '?token=' + encodeURIComponent(myAuthToken); link.download = 'peak-abu-composite.mp4';
-            document.body.appendChild(link); link.click(); document.body.removeChild(link);
-          } else if (data.status === 'failed') {
-            clearInterval(compositePollInterval); compositePollInterval = null;
-            document.getElementById('compositeStatus').className = 'composite-status failed';
-            document.getElementById('compositeStatus').textContent = '\u274C Compositing failed \u2014 try again';
-            document.getElementById('compositeProgressBar').style.display = 'none';
-            document.getElementById('compositeBtn').disabled = false;
-            document.getElementById('compositeBtn').textContent = '\u{1F3AC} Combined View';
+          res = await fetch('/sessions/' + currentSessionCode + '/composite/' + jobId);
+          raw = await res.text();
+        } catch (e) {
+          // Genuine network blip. Tolerate a few, then stop.
+          if (++compositeServerErrors >= COMPOSITE_MAX_SERVER_ERRORS) {
+            finishComposite('failed', 'Lost connection to the server \u2014 try again');
           }
-        } catch (e) { console.log('Poll error:', e); }
+          return;
+        }
+
+        // 404 means the job is gone: the server restarted, or it aged out.
+        // It is a terminal answer, not something to keep polling through.
+        if (res.status === 404) {
+          return finishComposite('failed', 'That export is no longer on the server \u2014 start it again');
+        }
+
+        if (res.status >= 500) {
+          if (++compositeServerErrors >= COMPOSITE_MAX_SERVER_ERRORS) {
+            finishComposite('failed', 'Server stopped responding (' + res.status + ') \u2014 try again');
+          }
+          return;
+        }
+
+        let data = null;
+        try { data = JSON.parse(raw); } catch (e) {
+          if (++compositeServerErrors >= COMPOSITE_MAX_SERVER_ERRORS) {
+            finishComposite('failed', 'Server sent an unreadable response \u2014 try again');
+          }
+          return;
+        }
+
+        compositeServerErrors = 0;
+
+        if (data.status === 'done') {
+          return finishComposite('done', null, data);
+        }
+        if (data.status === 'failed') {
+          return finishComposite('failed', data.progress || 'Compositing failed \u2014 try again');
+        }
+        if (data.status !== 'processing') {
+          // Unknown state. Treat as terminal rather than polling forever.
+          return finishComposite('failed', 'Export ended unexpectedly \u2014 try again');
+        }
+
+        // Still working \u2014 show real progress.
+        const status = document.getElementById('compositeStatus');
+        if (status) status.textContent = data.progress || 'Stitching\u2026';
+        const fill = document.getElementById('compositeFill');
+        if (fill && typeof data.pct === 'number') fill.style.width = data.pct + '%';
       }, 3000);
     }
 

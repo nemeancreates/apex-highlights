@@ -4,6 +4,7 @@
 // ================================
 const fs = require('fs');
 const https = require('https');
+const http = require('http');
 const crypto = require('crypto');
 
 // --- Input sanitization ---
@@ -76,21 +77,100 @@ function verifyJSON(filePath) {
 }
 
 // --- Download a CDN object to a local file ---
-function downloadToFile(url, destPath) {
+//
+// v2 — bounded. The previous version used a bare https.get() with no timeout
+// of any kind. If the connection stalled after headers (socket open, body
+// never finishing) neither 'finish' nor 'error' ever fired and the promise
+// hung forever. In composite.js that await sat in a serial loop BEFORE ffmpeg
+// was even spawned, so the job stayed 'processing' indefinitely with nothing
+// running — the "stitching forever" symptom with no ffmpeg process to find.
+//
+// Three bounds now:
+//   idleMs  — no bytes for this long => abort (catches the stalled socket)
+//   totalMs — whole transfer cap     => abort (catches the infinitely slow one)
+//   redirects — followed up to a small limit; CDNs 302 more than you'd think,
+//               and the old code treated any non-200 as a hard failure.
+function downloadToFile(url, destPath, opts = {}) {
+  const idleMs = opts.idleMs || 30000;
+  const totalMs = opts.totalMs || 180000;
+  const maxRedirects = opts.maxRedirects != null ? opts.maxRedirects : 3;
+
   return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(destPath);
-    https.get(url, (response) => {
-      if (response.statusCode !== 200) {
-        file.close();
-        fs.unlink(destPath, () => {});
-        return reject(new Error('CDN download failed: ' + response.statusCode));
-      }
-      response.pipe(file);
-      file.on('finish', () => file.close(resolve));
-    }).on('error', (err) => {
+    let settled = false;
+    let file = null;
+    let req = null;
+    let totalTimer = null;
+
+    const cleanup = () => {
+      if (totalTimer) clearTimeout(totalTimer);
+      if (req) { try { req.destroy(); } catch (e) {} }
+      if (file) { try { file.close(); } catch (e) {} }
+    };
+
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
       fs.unlink(destPath, () => {});
       reject(err);
-    });
+    };
+
+    const succeed = () => {
+      if (settled) return;
+      settled = true;
+      if (totalTimer) clearTimeout(totalTimer);
+      resolve();
+    };
+
+    totalTimer = setTimeout(
+      () => fail(new Error(`CDN download exceeded ${totalMs}ms: ${destPath}`)),
+      totalMs
+    );
+
+    const go = (targetUrl, redirectsLeft) => {
+      let client;
+      try {
+        client = new URL(targetUrl).protocol === 'http:' ? http : https;
+      } catch (e) {
+        return fail(new Error('CDN download: malformed URL'));
+      }
+
+      req = client.get(targetUrl, (response) => {
+        const status = response.statusCode;
+
+        if (status >= 300 && status < 400 && response.headers.location) {
+          response.resume();
+          if (redirectsLeft <= 0) return fail(new Error('CDN download: too many redirects'));
+          const next = new URL(response.headers.location, targetUrl).toString();
+          return go(next, redirectsLeft - 1);
+        }
+
+        if (status !== 200) {
+          response.resume();
+          return fail(new Error('CDN download failed: ' + status));
+        }
+
+        file = fs.createWriteStream(destPath);
+        file.on('error', fail);
+
+        // Idle guard: resets on every chunk. A socket that goes quiet
+        // mid-body is the case the old code could not see.
+        response.setTimeout(idleMs, () => {
+          fail(new Error(`CDN download stalled (no data for ${idleMs}ms)`));
+        });
+
+        response.on('error', fail);
+        response.pipe(file);
+        file.on('finish', () => file.close(succeed));
+      });
+
+      req.on('error', fail);
+      req.setTimeout(idleMs, () => {
+        fail(new Error(`CDN download: connection timeout after ${idleMs}ms`));
+      });
+    };
+
+    go(url, maxRedirects);
   });
 }
 
