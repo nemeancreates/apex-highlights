@@ -69,21 +69,98 @@ const PROGRESS_POLL_MS = 15 * 1000;       // how often the idle guard checks
 // stitching. A combined view is one synced moment, not a whole session.
 const MAX_COMPOSITE_CLIPS = 9;            // 3x3 => 1920x1080 canvas ceiling
 
+// Refuse new renders below this much free space. A full disk does not just
+// fail one export — it stops SQLite writing, stops uploads landing, and
+// takes the API down with it. Failing one export loudly is the cheap outcome.
+const MIN_FREE_BYTES = 3 * 1024 * 1024 * 1024;  // 3GB
+
+// ================================
+// SCRATCH HYGIENE
+//
+// The old cleaner iterated compositeJobs — an IN-MEMORY Map. Every restart
+// emptied it, so any file it had been tracking became invisible to the only
+// code that would ever delete it. Combined with cleanup that ran solely in
+// ffmpeg's 'close' handler, a crashed render orphaned every clip it had
+// downloaded, permanently. That is how 18GB accumulated in this directory
+// and took the whole box down with a full disk.
+//
+// Neither rule below consults compositeJobs:
+//
+//   - On boot, everything here is dead by definition. No job can be running
+//     in a process that has only just started, so it all goes.
+//   - On a timer, decide by FILE AGE. The threshold is derived from the hard
+//     render cap, so it cannot drift out of sync with anything.
+//
+// Deleting an output while someone is downloading it is safe: res.download
+// holds an open file descriptor, and unlinking a file with an open handle
+// keeps the bytes readable until that transfer finishes. The directory entry
+// goes; the in-flight download does not break.
+// ================================
+const SRC_MAX_AGE_MS = 30 * 60 * 1000;     // 2x ENCODE_HARD_CAP_MS
+const OUTPUT_MAX_AGE_MS = 60 * 60 * 1000;  // the retention this already promised
+const SWEEP_INTERVAL_MS = 10 * 60 * 1000;
+
+function sweepScratch(opts = {}) {
+  const all = opts.all === true;
+  let removed = 0;
+  let bytes = 0;
+
+  let names;
+  try { names = fs.readdirSync(COMPOSITE_DIR); }
+  catch (e) { return { removed, bytes }; }
+
+  const now = Date.now();
+  for (const name of names) {
+    const full = path.join(COMPOSITE_DIR, name);
+    let st;
+    try { st = fs.statSync(full); } catch (e) { continue; }
+    if (!st.isFile()) continue;
+
+    // Sources and subtitle files are only needed while a render runs.
+    // Outputs are needed until the user downloads them.
+    const isSource = name.startsWith('src_') || name.startsWith('comments_');
+    const maxAge = isSource ? SRC_MAX_AGE_MS : OUTPUT_MAX_AGE_MS;
+
+    if (all || (now - st.mtimeMs) > maxAge) {
+      try { fs.unlinkSync(full); removed++; bytes += st.size; } catch (e) {}
+    }
+  }
+  return { removed, bytes };
+}
+
+// Free bytes on the volume holding the scratch directory. statfsSync landed
+// in Node 18.15 — on anything older we return null and the caller skips the
+// check rather than guessing.
+function freeBytes(dir) {
+  if (typeof fs.statfsSync !== 'function') return null;
+  try {
+    const st = fs.statfsSync(dir);
+    return st.bavail * st.bsize;
+  } catch (e) {
+    return null;
+  }
+}
+
 function startCompositeCleanup() {
+  const boot = sweepScratch({ all: true });
+  if (boot.removed > 0) {
+    log('info', 'composite_boot_sweep', {
+      files: boot.removed, mb: (boot.bytes / 1024 / 1024).toFixed(1)
+    });
+  }
+
   setInterval(() => {
+    const swept = sweepScratch();
+    if (swept.removed > 0) {
+      log('info', 'composite_sweep', {
+        files: swept.removed, mb: (swept.bytes / 1024 / 1024).toFixed(1)
+      });
+    }
     const now = Date.now();
     for (const [jobId, job] of compositeJobs) {
-      if (now - job.createdAt > 3600000) {
-        if (job.outputPath && fs.existsSync(job.outputPath)) {
-          try { fs.unlinkSync(job.outputPath); } catch (e) {}
-        }
-        if (job.assPath && fs.existsSync(job.assPath)) {
-          try { fs.unlinkSync(job.assPath); } catch (e) {}
-        }
-        compositeJobs.delete(jobId);
-      }
+      if (now - job.createdAt > OUTPUT_MAX_AGE_MS) compositeJobs.delete(jobId);
     }
-  }, 3600000);
+  }, SWEEP_INTERVAL_MS);
 }
 
 // --- Job state helpers. Nothing else touches a job record directly, so
@@ -443,6 +520,24 @@ function initCompositeRoutes(app) {
         error: `Combined View supports up to ${MAX_COMPOSITE_CLIPS} clips at once ` +
                `(you selected ${selected.length}). Pick a single highlight, or use an AI Reel for a whole session.`
       });
+    }
+
+    // Disk guard. Sweep first — the space may already be reclaimable — and
+    // only refuse if it is still short afterwards.
+    const free = freeBytes(COMPOSITE_DIR);
+    if (free !== null && free < MIN_FREE_BYTES) {
+      const reclaimed = sweepScratch();
+      const after = freeBytes(COMPOSITE_DIR);
+      log('warn', 'composite_low_disk', {
+        freeMB: Math.round(free / 1048576),
+        reclaimedMB: Math.round(reclaimed.bytes / 1048576),
+        afterMB: after === null ? null : Math.round(after / 1048576)
+      });
+      if (after !== null && after < MIN_FREE_BYTES) {
+        return res.status(507).json({
+          error: 'The server is low on disk space right now — try again in a few minutes.'
+        });
+      }
     }
 
     // Default: include comments. Only false when client explicitly opts out.
