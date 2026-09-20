@@ -82,7 +82,21 @@ app.use(express.json({ limit: '1mb' }));
 app.use(rateLimit);
 
 // --- Static serving ---
-app.use('/player', express.static(path.join(__dirname, '..', 'web-player')));
+// The player HTML must revalidate on every load. With no explicit
+// Cache-Control, browsers apply HEURISTIC caching to HTML — they invent a
+// freshness window (commonly 10% of the file's age since Last-Modified) and
+// serve the cached copy for hours WITHOUT asking the server whether it
+// changed. That silently ships a stale player to every user after a deploy.
+//
+// 'no-cache' does NOT disable caching. The browser still stores the file and
+// still gets a cheap 304 when nothing changed — it simply may not reuse it
+// without checking first. ETag/Last-Modified keep doing the real work, so
+// this costs one conditional request per load, not a re-download.
+app.use('/player', express.static(path.join(__dirname, '..', 'web-player'), {
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+  }
+}));
 app.use('/media', express.static(path.join(__dirname, 'uploads')));
 
 // --- Tiny inline routes ---
