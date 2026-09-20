@@ -1331,6 +1331,12 @@
       <button class="settings-close" onclick="closeExportPanel()" title="Close">&#x2715;</button>
     </div>
     <div class="composite-section" id="compositeSection" style="display:none;">
+      <div style="padding:10px 16px 2px;font-size:11.5px;line-height:1.55;color:#7a9686;">
+        <strong style="color:#c8d6cd;">Every angle, nothing cut.</strong>
+        Your selected clips are synced by timestamp and tiled into one video that runs their full
+        length &mdash; the whole fight, from every POV at once. Best for working out what actually
+        happened. Up to 9 clips.
+      </div>
       <div class="composite-status" id="compositeStatus"></div>
       <div class="progress-bar" id="compositeProgressBar" style="display:none;">
         <div class="progress-fill" id="compositeFill"></div>
@@ -1340,6 +1346,12 @@
     </div>
     <div class="composite-section" id="aireelSection" style="display:none;flex-wrap:wrap;gap:8px;padding:8px 16px;">
      <div style="width:100%;font-size:13px;color:#39d3a0;font-weight:600;">🎞 AI Highlight Reel</div>
+     <div style="width:100%;font-size:11.5px;line-height:1.55;color:#7a9686;">
+       <strong style="color:#c8d6cd;">Cut down to the good parts.</strong>
+       AI picks the strongest moments across your selected clips, trims to the length you choose, and
+       decides shot by shot whether to show one angle full-frame, two side by side, or a four-up grid.
+       Use Style notes to steer it. Best for sharing.
+     </div>
      <div>
        <label style="font-size:11px;color:#7a9686;display:block;">Length</label>
        <select id="aireelLength" style="background:#0c1c14;color:#c8d6cd;border:1px solid #24402e;border-radius:4px;padding:4px 8px;">
@@ -3529,16 +3541,28 @@
       const startBtn = document.getElementById('compositeStartBtn');
       const cancelBtn = document.getElementById('compositeCancelBtn');
 
-      // Composite ONLY the clips of the highlight currently on screen. The
-      // server used to render every upload in the session regardless of what
-      // this button said \u2014 88 clips in one xstack, which killed the process.
-      const uploadIds = videos
-        .filter(v => !v.missing && !v.processing && v.uploadId)
-        .map(v => v.uploadId);
+      // Same selection model as AI Reel: whatever is marked with + on the POV
+      // tiles. With nothing marked, fall back to the POVs of the highlight
+      // currently on screen, which is the obvious reading of "combine this".
+      //
+      // Either way an explicit list goes to the server. It used to receive
+      // none and render every upload in the session \u2014 88 clips in one xstack,
+      // which filled the disk and killed the process.
+      let uploadIds = Array.from(selectedExportClips).filter(id => {
+        const u = allUploads.find(x => x.uploadId === id);
+        return u && !u.processing;
+      });
+      const usedSelection = uploadIds.length > 0;
+
+      if (!usedSelection) {
+        uploadIds = videos
+          .filter(v => !v.missing && !v.processing && v.uploadId)
+          .map(v => v.uploadId);
+      }
 
       if (uploadIds.length === 0) {
         status.className = 'composite-status failed';
-        status.textContent = '\u274C No playable clips in this highlight yet.';
+        status.textContent = '\u274C Nothing to combine \u2014 mark clips with the + button on a POV tile, or open a highlight that has playable clips.';
         section.style.display = 'flex';
         return;
       }
@@ -3546,7 +3570,9 @@
       btn.disabled = true; btn.textContent = 'Starting...';
       section.style.display = 'flex';
       status.className = 'composite-status processing';
-      status.textContent = 'Starting compositing job (' + uploadIds.length + ' clip' + (uploadIds.length === 1 ? '' : 's') + ')...';
+      status.textContent = 'Starting compositing job (' + uploadIds.length + ' clip' +
+        (uploadIds.length === 1 ? '' : 's') +
+        (usedSelection ? ' selected' : ' from this highlight') + ')…';
       progressBar.style.display = 'block';
       if (startBtn) startBtn.style.display = 'none';
       if (cancelBtn) cancelBtn.style.display = '';
