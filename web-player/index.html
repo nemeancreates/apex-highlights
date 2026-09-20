@@ -5204,11 +5204,20 @@
       if (typeof url === 'string' && opts && opts.method === 'POST') {
         var want = window._paExportComments !== false;
 
-        // Composite POST — add JSON body with the flag
+        // Composite POST — MERGE the flag into whatever body the caller sent.
+        // This used to overwrite opts.body wholesale ("composite currently
+        // sends no body"), which silently deleted the uploadIds list once
+        // startComposite began sending one — so the server saw no selection
+        // and fell back to compositing every upload in the session.
         if (url.match(/\/sessions\/[A-Z0-9]+\/composite$/i)) {
+          var cBody = {};
+          if (opts.body) {
+            try { cBody = JSON.parse(opts.body) || {}; } catch (e) { cBody = {}; }
+          }
+          cBody.includeComments = want;
           opts = Object.assign({}, opts);
           opts.headers = Object.assign({}, opts.headers || {}, { 'Content-Type': 'application/json' });
-          opts.body = JSON.stringify({ includeComments: want });
+          opts.body = JSON.stringify(cBody);
           return _paOrigFetch.call(window, url, opts);
         }
 
