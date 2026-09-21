@@ -6,37 +6,24 @@ const fs = require('fs');
 const os = require('os');
 const FormData = require('form-data');
 const https = require('https');
-const { Transform } = require('stream');
 const { checkForUpdates } = require('./updater');
 const { buildReelLocally } = require('./aireel-client');
 
 // ================================
-// UPLOAD THROTTLE
-// Weak-upload testers (e.g. 15ms ping normally, 300ms+ spikes mid-upload)
-// are hitting bufferbloat: our upload saturates their upstream queue and
-// everything else — including game traffic — sits behind it. Capping our
-// own send rate leaves headroom instead of grabbing 100% of upstream.
-// This is a conservative static default, not a measured per-user value —
-// a natural next step is making it adaptive or user-configurable.
+// UPLOAD THROTTLE + LOW BANDWIDTH MODE
+// The old static 6 Mbps ThrottleStream never engaged for anyone whose uplink
+// is below 6 Mbps — exactly the players whose ping spiked. Throttling is now
+// 60% of each player's MEASURED upload (speed test at launch, cached 24h),
+// and in Low Bandwidth Mode videos wait for downtime. Logic + tests live in
+// upload-queue.js; the state that drives it is further down, next to the
+// pending-upload manifest.
 // ================================
-const UPLOAD_THROTTLE_BYTES_PER_SEC = 750 * 1024; // ~6 Mbps cap
-
-class ThrottleStream extends Transform {
-  constructor(bytesPerSec) {
-    super();
-    this.bytesPerSec = bytesPerSec;
-    this.bytesSent = 0;
-    this.windowStart = Date.now();
-  }
-  _transform(chunk, encoding, callback) {
-    this.bytesSent += chunk.length;
-    const allowedBytes = this.bytesPerSec * ((Date.now() - this.windowStart) / 1000);
-    const overageBytes = this.bytesSent - allowedBytes;
-    const delayMs = overageBytes > 0 ? (overageBytes / this.bytesPerSec) * 1000 : 0;
-    if (delayMs <= 0) { this.push(chunk); return callback(); }
-    setTimeout(() => { this.push(chunk); callback(); }, delayMs);
-  }
-}
+const {
+  FIGHT_QUIET_MS, UPLOAD_MODES,
+  normalizeSettings, isLowBandwidth, speedTestIsStale, baseThrottleBps, currentThrottleBps,
+  RateThrottleStream, runSpeedTest,
+  findLandedRecord, findPendingRecord, decideSweepAction
+} = require('./upload-queue');
 const { init: sentryInit } = require('@sentry/electron/main');
 const { SENTRY_DSN } = require('./sentry-config');
 
@@ -637,6 +624,7 @@ function releaseSavePipeline() {
   if (!pipelineBusy) return; // already released, avoid double-drain
   pipelineBusy = false;
   wgcSaveInFlight = false;
+  markFightSignal();   // quiet period restarts from the end of the save
   if (pendingSaveQueue.length > 0) {
     const next = pendingSaveQueue.shift();
     console.log(`Save pipeline free — starting queued ${next.triggerSource || 'manual'} save`);
@@ -1758,6 +1746,7 @@ function computeManualPostDelay(saveTimeUTC, durationMs) {
 
 
 function saveHighlight(coordinatedTimestamp = null, clipDurationMs = null, triggerSource = null) {
+  markFightSignal();   // a save means action — hold queued videos (Low Bandwidth Mode)
   const duration = clipDurationMs || 30000;
   const clipChunks = Math.ceil(duration / (CHUNK_SECONDS * 1000));
   const saveTimeUTC = coordinatedTimestamp || getPreciseUTC();
@@ -2443,6 +2432,8 @@ const PENDING_UPLOADS_PATH = path.join(app.getPath('userData'), 'pending-uploads
 const pendingUploads = new Map(); // uploadKey -> { videoPath, metadataPath, sessionCode, startedAt }
 let quitRequested = false;
 let quitWaitTimer = null;
+let quitWaitResults = null;     // { ok, failed, messages } while waiting to quit — shown when the wait ends
+let quitFinishScheduled = false;
 let allowWindowClose = false; // bypass flag so we don't re-prompt on our own confirmed close
 const QUIT_UPLOAD_WAIT_MS = 45000; // hard cap so a dead connection can't trap quit forever — bumped from 20s now that uploads are throttled and take longer on slow connections
 let retriedPendingUploads = false;
@@ -2463,6 +2454,191 @@ const inFlightUploads = new Set();   // uploadKey -> currently being sent
 const uploadAttempts = new Map();    // uploadKey -> { count, nextAt }
 let uploadRetryTimer = null;
 let uploadSweepRunning = false;
+
+// ================================
+// LOW BANDWIDTH MODE — STATE
+//
+// Settings live in their own file (not user prefs) so this never touches
+// the prefs read-modify-write path. mode: 'auto' | 'on' | 'off'. Auto turns
+// Low Bandwidth on when the measured upload is under 10 Mbps.
+//
+// "Fight" = an auto-capture window is open, a save is extracting, or either
+// ended less than FIGHT_QUIET_MS ago. In Low Bandwidth Mode no video starts
+// during a fight, and one already sending drops to a keep-alive trickle.
+// Metadata posts are never held — they're a few KB and they're what locks
+// the POV into the squad's timeline.
+// ================================
+const UPLOAD_SETTINGS_PATH = path.join(app.getPath('userData'), 'upload-settings.json');
+let uploadSettings = loadUploadSettings();
+let speedTestRunning = false;
+let speedTestError = null;      // plain-English reason the last test failed (shown in the 📤 tab)
+let fightQuietUntil = 0;
+let fightWakeTimer = null;
+let queueBroadcastTimer = null;
+let squadPending = { count: 0, names: [] };   // host only — reported by the renderer
+const uploadProgress = new Map();             // uploadKey -> { sent, total }
+
+function loadUploadSettings() {
+  try {
+    if (fs.existsSync(UPLOAD_SETTINGS_PATH)) {
+      return normalizeSettings(JSON.parse(fs.readFileSync(UPLOAD_SETTINGS_PATH, 'utf8')));
+    }
+  } catch (e) {
+    console.log('Could not read upload settings:', e.message);
+  }
+  return normalizeSettings(null);
+}
+
+function saveUploadSettings() {
+  try {
+    const tmp = UPLOAD_SETTINGS_PATH + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(uploadSettings, null, 2));
+    fs.renameSync(tmp, UPLOAD_SETTINGS_PATH);
+  } catch (e) {
+    console.log('Could not write upload settings:', e.message);
+  }
+}
+
+function lowBandwidthActive() { return isLowBandwidth(uploadSettings); }
+function isFightActive() { return autoCaptureLocked || pipelineBusy || Date.now() < fightQuietUntil; }
+function uploadRateNow() { return currentThrottleBps(uploadSettings, isFightActive()); }
+
+// Every fight-ish signal (auto-capture window open/close, save start/end)
+// pushes the quiet deadline out and schedules one sweep for the moment
+// downtime actually begins — so a queued video starts ~20s after the fight
+// instead of waiting on the 60s retry timer.
+function markFightSignal() {
+  fightQuietUntil = Date.now() + FIGHT_QUIET_MS;
+  if (fightWakeTimer) clearTimeout(fightWakeTimer);
+  fightWakeTimer = setTimeout(function onQuiet() {
+    fightWakeTimer = null;
+    if (isFightActive()) { fightWakeTimer = setTimeout(onQuiet, 5000); return; } // window still open / save still running
+    broadcastQueueState();
+    sweepPendingUploads();
+  }, FIGHT_QUIET_MS + 250);
+  broadcastQueueState();
+}
+
+function hasDeferredQueued() {
+  for (const e of pendingUploads.values()) if (e && e.deferred) return true;
+  return false;
+}
+
+const queueSizeCache = new Map(); // videoPath -> bytes
+function queueFileSize(p) {
+  if (!p) return null;
+  if (queueSizeCache.has(p)) return queueSizeCache.get(p);
+  let size = null;
+  try { size = fs.statSync(p).size; } catch (e) {}
+  if (size !== null) queueSizeCache.set(p, size);
+  return size;
+}
+
+function queueItemStatus(key, entry) {
+  if (inFlightUploads.has(key)) return uploadProgress.has(key) ? 'uploading' : 'syncing';
+  if (entry.deferred && !entry.uploadId) return 'syncing';
+  const att = uploadAttempts.get(key);
+  if (att && att.nextAt > Date.now()) return 'retrying';
+  if (lowBandwidthActive() && isFightActive()) return 'paused-fight';
+  return 'waiting';
+}
+
+// Snapshot for the renderer's 📤 tab.
+function getQueueState() {
+  const items = [];
+  for (const [key, e] of pendingUploads) {
+    if (!e) continue;
+    const p = uploadProgress.get(key);
+    items.push({
+      key,
+      fileName: path.basename(e.videoPath || key),
+      sessionCode: e.sessionCode || null,
+      deferred: !!e.deferred,
+      synced: !!e.uploadId,
+      sizeBytes: queueFileSize(e.videoPath),
+      status: queueItemStatus(key, e),
+      pct: (p && p.total) ? Math.min(100, Math.round(p.sent / p.total * 100)) : null,
+      startedAt: e.startedAt || 0
+    });
+  }
+  items.sort((a, b) => a.startedAt - b.startedAt);
+  return {
+    mode: uploadSettings.mode,
+    lowBandwidth: lowBandwidthActive(),
+    measuredMbps: uploadSettings.measuredMbps,
+    testedAt: uploadSettings.testedAt,
+    testing: speedTestRunning,
+    speedTestError: speedTestError,
+    throttleMbps: +(baseThrottleBps(uploadSettings) * 8 / 1e6).toFixed(1),
+    fightActive: lowBandwidthActive() && isFightActive(),
+    items
+  };
+}
+
+// Coalesced: progress ticks can arrive many times a second.
+function broadcastQueueState() {
+  if (queueBroadcastTimer) return;
+  queueBroadcastTimer = setTimeout(() => {
+    queueBroadcastTimer = null;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('upload-queue-state', getQueueState());
+    }
+  }, 250);
+}
+
+function noteUploadBytes(uploadKey, sent) {
+  const p = uploadProgress.get(uploadKey);
+  if (p) p.sent = sent;
+  broadcastQueueState();
+}
+
+// Runs at login when the cached result is stale (>24h), or on demand from
+// the 📤 tab. Skipped while a clip is sending — it would measure half a line.
+// A failed or skipped test used to fail silently, so Retest looked like it
+// did nothing. Every exit now leaves a reason the 📤 tab can show.
+function speedTestFailureText(r) {
+  if (r.status === 404) return 'Speed test isn\'t available on the server yet';
+  if (r.status === 429) return 'Too many tests — try again in a minute';
+  if (r.status === 401) return 'Login expired — log in again';
+  if (r.status === 0) return 'Couldn\'t reach the server';
+  return `Server error (${r.status})`;
+}
+
+async function runUploadSpeedTest(force) {
+  if (speedTestRunning) return;
+  if (!authToken) {
+    if (force) { speedTestError = 'Log in to test upload speed'; broadcastQueueState(); }
+    return;
+  }
+  if (!force && !speedTestIsStale(uploadSettings, Date.now())) return;
+  if (inFlightUploads.size > 0) {
+    console.log('Upload speed test skipped — an upload is in flight');
+    if (force) { speedTestError = 'Wait for the current upload to finish, then retest'; broadcastQueueState(); }
+    return;
+  }
+  speedTestRunning = true;
+  broadcastQueueState();
+  try {
+    const r = await runSpeedTest({ token: authToken });
+    if (r.ok && r.mbps > 0) {
+      uploadSettings.measuredMbps = r.mbps;
+      uploadSettings.testedAt = Date.now();
+      saveUploadSettings();
+      speedTestError = null;
+      console.log(`Upload speed test: ${r.mbps} Mbps${r.timedOut ? ' (timed out — upper bound)' : ''} → ` +
+        `throttle ${(baseThrottleBps(uploadSettings) * 8 / 1e6).toFixed(1)} Mbps, Low Bandwidth ${lowBandwidthActive() ? 'ON' : 'off'} (mode ${uploadSettings.mode})`);
+    } else {
+      speedTestError = speedTestFailureText(r);
+      console.log(`Upload speed test failed (status ${r.status}${r.error ? ', ' + r.error : ''}) — keeping previous result`);
+    }
+  } catch (e) {
+    speedTestError = 'Speed test error — ' + e.message;
+    console.log('Upload speed test error:', e.message);
+  } finally {
+    speedTestRunning = false;
+    broadcastQueueState();
+  }
+}
 
 function readPendingManifest() {
   try {
@@ -2490,6 +2666,7 @@ function markUploadPending(uploadKey, entry) {
   const manifest = readPendingManifest();
   manifest[uploadKey] = entry;
   writePendingManifest(manifest);
+  broadcastQueueState();
 }
 
 function markUploadDone(uploadKey) {
@@ -2497,36 +2674,185 @@ function markUploadDone(uploadKey) {
   const manifest = readPendingManifest();
   delete manifest[uploadKey];
   writePendingManifest(manifest);
+  uploadProgress.delete(uploadKey);
+  broadcastQueueState();
   maybeFinishQuit();
 }
 
 // Shared by the window 'close' handler (X button / Alt+F4) and before-quit
 // (direct app.quit() calls from the update/kick flows) so both paths ask
-// the same question. Returns true if the user chose to quit anyway.
+// the same question. Returns 'quit' | 'wait' | 'minimize'.
+//
+// Two shapes. Clips queued by Low Bandwidth Mode can take a long time to
+// drain (they wait for downtime), so "wait" makes no sense there — offer
+// minimize instead; the queue survives a quit either way. Otherwise it's
+// the original short wait for an in-flight upload.
+function squadUploadsText() {
+  if (!squadPending.count) return '';
+  const names = squadPending.names.length ? squadPending.names.join(', ') : 'Your squad';
+  const verb = squadPending.names.length === 1 ? 'is' : 'are';
+  return `${names} ${verb} still uploading ${squadPending.count} clip${squadPending.count === 1 ? '' : 's'} to this session.`;
+}
+
 function askQuitWithPendingUploads() {
-  if (!mainWindow || mainWindow.isDestroyed()) return true; // nothing to prompt against — fail open
+  if (!mainWindow || mainWindow.isDestroyed()) return 'quit'; // nothing to prompt against — fail open
+  const n = pendingUploads.size;
+  const squad = squadUploadsText();
+  const squadDetail = squad ? `\n\n${squad} Their uploads keep going after you close.` : '';
+
+  if (hasDeferredQueued()) {
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+      type: 'warning',
+      buttons: ['Minimize & keep uploading', 'Quit anyway'],
+      defaultId: 0,
+      cancelId: 0,
+      title: 'Clips still queued to upload',
+      message: n === 1
+        ? '1 highlight clip is still queued to upload.'
+        : `${n} highlight clips are still queued to upload.`,
+      detail: 'Low Bandwidth Mode sends videos during downtime. Your squad already has the sync data — ' +
+        'the clip shows as uploading in the web player until the video arrives.\n\n' +
+        'Quitting pauses the queue; it picks back up next time you open Peak-Abu.' + squadDetail
+    });
+    return choice === 1 ? 'quit' : 'minimize';
+  }
+
   const choice = dialog.showMessageBoxSync(mainWindow, {
     type: 'warning',
     buttons: ['Wait for upload to finish', 'Quit anyway'],
     defaultId: 0,
     cancelId: 0,
     title: 'Upload still in progress',
-    message: pendingUploads.size === 1
+    message: n === 1
       ? 'A highlight clip is still uploading to your squad.'
-      : `${pendingUploads.size} highlight clips are still uploading to your squad.`,
-    detail: 'Closing now pauses the upload — it resumes automatically next time you open Peak-Abu, but your squad won\'t see the clip until then.'
+      : `${n} highlight clips are still uploading to your squad.`,
+    detail: 'Closing now pauses the upload — it resumes automatically next time you open Peak-Abu, but your squad won\'t see the clip until then.' + squadDetail
   });
-  return choice === 1;
+  return choice === 1 ? 'quit' : 'wait';
+}
+
+// Host closing with nothing of their own pending, but squadmates still
+// uploading. Informational — closing can't hurt their uploads (the attach
+// route doesn't need the session open) — but the host should know the
+// web player will fill in after they're gone. Returns true to close.
+function askCloseWithSquadUploads() {
+  if (!mainWindow || mainWindow.isDestroyed() || !squadPending.count) return true;
+  const choice = dialog.showMessageBoxSync(mainWindow, {
+    type: 'info',
+    buttons: ['Close', 'Cancel'],
+    defaultId: 0,
+    cancelId: 1,
+    title: 'Squad still uploading',
+    message: squadUploadsText(),
+    detail: 'Their uploads keep going after you close. Some POVs will show as uploading in the web player until they land.'
+  });
+  return choice === 0;
+}
+
+// ================================
+// WAITING TO QUIT
+// The user chose "Wait for upload to finish". This used to close the app
+// the instant the queue emptied (or silently after 45s), with no word on
+// whether the clip made it. Now:
+//   • the renderer shows a "closing after upload" bar with Cancel
+//   • when the queue empties, a dialog says how it went, then closes
+//     (or stays open, if they'd rather)
+//   • if it's still going at 45s, they choose: keep waiting / minimize /
+//     quit — never a silent close
+// ================================
+function startQuitWait() {
+  quitRequested = true;
+  quitWaitResults = { ok: 0, failed: 0, messages: [] };
+  if (quitWaitTimer) clearTimeout(quitWaitTimer);
+  quitWaitTimer = setTimeout(onQuitWaitTimeout, QUIT_UPLOAD_WAIT_MS);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('quit-waiting-on-uploads', { count: pendingUploads.size });
+  }
+}
+
+function cancelQuitWait(reason) {
+  if (!quitRequested) return;
+  quitRequested = false;
+  quitWaitResults = null;
+  if (quitWaitTimer) { clearTimeout(quitWaitTimer); quitWaitTimer = null; }
+  console.log(`Quit wait cancelled (${reason || 'user'}) — staying open`);
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('quit-wait-ended');
+}
+
+function closeNowAfterWait() {
+  quitRequested = false;
+  allowWindowClose = true;   // before-quit won't ask again
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+  else app.quit();
 }
 
 function maybeFinishQuit() {
-  if (!quitRequested) return;
-  if (pendingUploads.size > 0) return;
+  if (!quitRequested || pendingUploads.size > 0 || quitFinishScheduled) return;
+  // markUploadDone runs just BEFORE the upload's onDone records its outcome
+  // — give that a moment so the dialog reports the clip that just landed.
+  quitFinishScheduled = true;
+  setTimeout(() => { quitFinishScheduled = false; finishQuitWait(); }, 50);
+}
+
+function finishQuitWait() {
+  if (!quitRequested || pendingUploads.size > 0) return;
   if (quitWaitTimer) { clearTimeout(quitWaitTimer); quitWaitTimer = null; }
-  console.log('Pending uploads cleared — resuming quit');
-  allowWindowClose = true;
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
-  else app.quit();
+  const r = quitWaitResults || { ok: 0, failed: 0, messages: [] };
+  quitWaitResults = null;
+  console.log(`Pending uploads cleared (${r.ok} ok, ${r.failed} failed) — confirming close`);
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('quit-wait-ended');
+  if (!mainWindow || mainWindow.isDestroyed()) { closeNowAfterWait(); return; }
+
+  let opts;
+  if (r.failed > 0) {
+    opts = {
+      type: 'warning',
+      title: 'Upload didn\'t finish',
+      message: r.failed === 1 ? '1 clip couldn\'t be uploaded.' : `${r.failed} clips couldn't be uploaded.`,
+      detail: (r.messages[0] ? 'Server said: ' + r.messages[0] + '\n\n' : '') +
+        (r.ok > 0 ? `${r.ok} other clip${r.ok === 1 ? '' : 's'} uploaded fine.\n\n` : '') +
+        'The clip is still saved on your PC — open the session in the web player and use Sync to try again.'
+    };
+  } else {
+    opts = {
+      type: 'info',
+      title: 'Upload finished',
+      message: r.ok === 1 ? '✓ Your clip finished uploading.'
+        : r.ok > 1 ? `✓ All ${r.ok} clips finished uploading.`
+        : '✓ Nothing left to upload.',
+      detail: 'Your squad can see it in the web player now.'
+    };
+  }
+  const choice = dialog.showMessageBoxSync(mainWindow, Object.assign(opts, {
+    buttons: ['Close Peak-Abu', 'Stay open'], defaultId: 0, cancelId: 1
+  }));
+  if (choice === 1) { quitRequested = false; console.log('User stayed open after upload wait'); return; }
+  closeNowAfterWait();
+}
+
+function onQuitWaitTimeout() {
+  quitWaitTimer = null;
+  if (!quitRequested) return;
+  if (!mainWindow || mainWindow.isDestroyed()) { closeNowAfterWait(); return; }
+  let pctText = '';
+  for (const [key] of pendingUploads) {
+    const p = uploadProgress.get(key);
+    if (p && p.total) { pctText = ` (${Math.min(100, Math.round(p.sent / p.total * 100))}%)`; break; }
+  }
+  const n = pendingUploads.size;
+  const choice = dialog.showMessageBoxSync(mainWindow, {
+    type: 'question',
+    title: 'Upload still running',
+    message: `Still uploading${pctText}${n > 1 ? ` — ${n} clips left` : ''}.`,
+    detail: 'Your connection is slow right now. Keep waiting, let it finish in the background, or quit — anything left picks back up next time you open Peak-Abu.',
+    buttons: ['Keep waiting', 'Minimize & keep uploading', 'Quit anyway'],
+    defaultId: 0,
+    cancelId: 0
+  });
+  if (choice === 0) { quitWaitTimer = setTimeout(onQuitWaitTimeout, QUIT_UPLOAD_WAIT_MS); return; }
+  if (choice === 1) { cancelQuitWait('minimized'); mainWindow.minimize(); return; }
+  console.log('Quit wait: user chose to quit — remaining uploads stay in the retry manifest');
+  closeNowAfterWait();
 }
 
 // Picks back up any upload still in the manifest from a previous run
@@ -2542,6 +2868,16 @@ function retryPendingUploadsFromDisk() {
 // Record how an attempt ended, for backoff. Success and definitive
 // rejections clear the history; anything transient schedules the next try.
 function noteUploadAttempt(uploadKey, result) {
+  // While the user waits to quit, tally how each clip ended so the closing
+  // dialog can say whether it actually made it. A clip still in the queue
+  // (e.g. a deferred one falling back to a normal upload) isn't an outcome.
+  if (quitWaitResults && result && !pendingUploads.has(uploadKey) && (result.ok || result.permanent)) {
+    if (result.ok) quitWaitResults.ok++;
+    else {
+      quitWaitResults.failed++;
+      if (result.message) quitWaitResults.messages.push(result.message);
+    }
+  }
   if (!result || result.ok || result.permanent) { uploadAttempts.delete(uploadKey); return; }
   const prev = uploadAttempts.get(uploadKey) || { count: 0, nextAt: 0 };
   const count = prev.count + 1;
@@ -2560,12 +2896,17 @@ function startUploadRetryLoop() {
 // throttled to protect the user's connection while they play, and a burst of
 // parallel retries would undo that.
 //
-// Before re-sending, ask the server whether the clip already landed. The
-// dangerous case with more frequent retries is an upload that SUCCEEDED but
-// whose response was lost: without this check it would be sent twice and
-// show up as a duplicate. Same filename-prefix match Sync uses.
+// Before sending anything, ask the server what it already has. The dangerous
+// case with frequent retries is an upload that SUCCEEDED but whose response
+// was lost: without this check it would be sent twice and show up as a
+// duplicate. decideSweepAction (upload-queue.js) makes the call per clip —
+// including the deferred cases: post metadata, attach video, adopt a
+// pending record whose response was lost, or hold for a fight.
+//
+// Fight state is read per clip, not once per sweep, so a fight that starts
+// mid-sweep stops the next video from starting.
 async function sweepPendingUploads() {
-  if (!authToken || uploadSweepRunning) return;
+  if (!authToken || uploadSweepRunning || speedTestRunning) return;
   uploadSweepRunning = true;
   try {
     const manifest = readPendingManifest();
@@ -2591,35 +2932,54 @@ async function sweepPendingUploads() {
 
     for (const [code, items] of bySession) {
       const remote = await fetchSessionUploads(code);
-      if (remote.status === 404) {
-        // The session is gone, so there is nowhere to send these. Stop
-        // retrying — the clips themselves stay on disk untouched.
-        for (const [uploadKey] of items) {
-          console.log(`Pending upload ${uploadKey} — session ${code} no longer exists, keeping local copy`);
-          markUploadDone(uploadKey);
-        }
-        continue;
-      }
-      if (remote.status !== 200) continue;   // server unreachable — next sweep
+      if (remote.status !== 200 && remote.status !== 404) continue; // server unreachable — next sweep
 
-      for (const [uploadKey, entry] of items) {
-        const base = path.basename(entry.videoPath, path.extname(entry.videoPath));
-        const landed = (remote.uploads || []).some(u => (u.videoFile || '').startsWith(base + '_'));
-        if (landed) {
-          console.log(`Pending upload ${uploadKey} — already on the server, clearing (response had been lost)`);
-          markUploadDone(uploadKey);
-          continue;
-        }
+      for (const [uploadKey, entryIn] of items) {
         if (!authToken) return;              // logged out mid-sweep
-        console.log(`Retrying upload ${uploadKey} (attempt ${((uploadAttempts.get(uploadKey) || {}).count || 0) + 1})`);
-        await new Promise((resolve) =>
-          performUpload(entry.sessionCode, entry.videoPath, entry.metadataPath, uploadKey, () => resolve()));
+        let entry = entryIn;
+        const ctx = () => ({ lowBandwidth: lowBandwidthActive(), fightActive: isFightActive() });
+        let decision = decideSweepAction(entry, remote, ctx());
+
+        if (decision.action === 'adopt') {
+          entry = Object.assign({}, entry, { deferred: true, uploadId: decision.uploadId });
+          markUploadPending(uploadKey, entry);
+          console.log(`Pending upload ${uploadKey} — server already has its sync record (${decision.uploadId}), sending video only`);
+          decision = decideSweepAction(entry, remote, ctx());
+        }
+
+        switch (decision.action) {
+          case 'drop':
+            // Nowhere to send it (session gone, or the host deleted the
+            // clip). The clip itself stays on disk untouched.
+            console.log(`Pending upload ${uploadKey} — ${decision.reason}, removing from queue (local copy kept)`);
+            markUploadDone(uploadKey);
+            break;
+          case 'done':
+            console.log(`Pending upload ${uploadKey} — already on the server, clearing (response had been lost)`);
+            markUploadDone(uploadKey);
+            break;
+          case 'skip':
+            break;
+          case 'post-meta':
+            await new Promise((resolve) => performPostMeta(uploadKey, entry, () => resolve()));
+            break;
+          case 'attach':
+            console.log(`Attaching video ${uploadKey} → ${entry.uploadId} (attempt ${((uploadAttempts.get(uploadKey) || {}).count || 0) + 1})`);
+            await new Promise((resolve) => performAttachVideo(uploadKey, entry, () => resolve()));
+            break;
+          case 'upload':
+            console.log(`Retrying upload ${uploadKey} (attempt ${((uploadAttempts.get(uploadKey) || {}).count || 0) + 1})`);
+            await new Promise((resolve) =>
+              performUpload(entry.sessionCode, entry.videoPath, entry.metadataPath, uploadKey, () => resolve()));
+            break;
+        }
       }
     }
   } catch (e) {
     console.log('Upload retry sweep failed:', e.message);
   } finally {
     uploadSweepRunning = false;
+    broadcastQueueState();
   }
 }
 
@@ -2727,15 +3087,19 @@ function performUpload(sessionCode, videoPath, metadataPath, uploadKey, onDoneCa
     if (finished) return;
     finished = true;
     inFlightUploads.delete(uploadKey);
+    uploadProgress.delete(uploadKey);
     noteUploadAttempt(uploadKey, result);
+    broadcastQueueState();
     if (onDoneCaller) onDoneCaller(result);
   };
 
   console.log(`Uploading highlight to session ${sessionCode}...`);
+  uploadProgress.set(uploadKey, { sent: 0, total: queueFileSize(videoPath) });
+  broadcastQueueState();
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('upload-progress', 0);
 
   const form = new FormData();
-  form.append('video', fs.createReadStream(videoPath).pipe(new ThrottleStream(UPLOAD_THROTTLE_BYTES_PER_SEC)), {
+  form.append('video', fs.createReadStream(videoPath).pipe(new RateThrottleStream(uploadRateNow, (sent) => noteUploadBytes(uploadKey, sent))), {
     filename: path.basename(videoPath), contentType: 'video/mp4'
   });
   if (metadataPath && fs.existsSync(metadataPath)) {
@@ -2817,14 +3181,200 @@ function performUpload(sessionCode, videoPath, metadataPath, uploadKey, onDoneCa
   }
 }
 
-function doUploadHighlight(videoPath, metadataPath) {
-  const uploadKey = path.basename(videoPath);
-  markUploadPending(uploadKey, {
-    videoPath, metadataPath,
-    sessionCode: currentSession.code,
-    startedAt: Date.now()
+// ================================
+// DEFERRED UPLOAD — Low Bandwidth Mode's two halves.
+// performPostMeta: the metadata JSON alone → POST /sessions/:code/upload-pending,
+//   which creates the server record (videoFile null = pending) and charges
+//   the clip's weight. Returns the uploadId, stored on the manifest entry.
+// performAttachVideo: the video → POST /sessions/:code/uploads/:id/video,
+//   during downtime, through the same live-rate throttle.
+// Both follow performUpload's contract: onDone runs exactly once, 4xx that
+// can't succeed clears the entry, everything else stays for the sweep.
+// ================================
+function performPostMeta(uploadKey, entry, onDoneCaller) {
+  inFlightUploads.add(uploadKey);
+  broadcastQueueState();
+  let finished = false;
+  const onDone = (result) => {
+    if (finished) return;
+    finished = true;
+    inFlightUploads.delete(uploadKey);
+    noteUploadAttempt(uploadKey, result);
+    broadcastQueueState();
+    if (onDoneCaller) onDoneCaller(result);
+  };
+
+  // No sidecar → nothing to defer with. Send it the normal way.
+  if (!entry.metadataPath || !fs.existsSync(entry.metadataPath)) {
+    markUploadPending(uploadKey, Object.assign({}, entry, { deferred: false, uploadId: null }));
+    return onDone({ ok: false, permanent: true, message: 'No metadata — sending as a normal upload' });
+  }
+
+  const form = new FormData();
+  form.append('metadata', fs.createReadStream(entry.metadataPath), {
+    filename: path.basename(entry.metadataPath), contentType: 'application/json'
   });
-  performUpload(currentSession.code, videoPath, metadataPath, uploadKey);
+
+  const req = form.submit({
+    protocol: 'https:', host: 'peakabu.app', port: 443,
+    path: `/sessions/${entry.sessionCode}/upload-pending`, method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + authToken }
+  }, (err, res) => {
+    if (err) {
+      console.log('Sync-data post connection error:', err.message);
+      return onDone({ ok: false, permanent: false, message: 'Could not reach server' });
+    }
+    let body = '';
+    res.on('data', chunk => body += chunk);
+    res.on('end', () => {
+      let result = {};
+      try { result = JSON.parse(body); } catch (e) {}
+
+      if (res.statusCode === 201 && result.uploadId) {
+        markUploadPending(uploadKey, Object.assign({}, entry, { deferred: true, uploadId: result.uploadId }));
+        console.log(`Sync data posted for ${uploadKey} → pending ${result.uploadId}, video queued for downtime`);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('upload-deferred', { uploadId: result.uploadId, fileName: path.basename(entry.videoPath) });
+        }
+        return onDone({ ok: true, permanent: true, message: null });
+      }
+
+      // The server only refuses to DEFER a clip when its metadata has no
+      // duration — the clip itself is fine, so send it the normal way.
+      if (res.statusCode === 400 && /durationMs/.test(result.error || '')) {
+        console.log(`Sync-data post refused for ${uploadKey} (${result.error}) — falling back to normal upload`);
+        markUploadPending(uploadKey, Object.assign({}, entry, { deferred: false, uploadId: null }));
+        return onDone({ ok: false, permanent: true, message: result.error });
+      }
+
+      // 404 with no JSON error = the route itself isn't there (server
+      // rolled back / not deployed), not "session gone". Don't drop the
+      // clip — send it through the normal combined upload instead.
+      if (res.statusCode === 404 && !result.error) {
+        console.log(`Sync-data route unavailable for ${uploadKey} — falling back to normal upload`);
+        markUploadPending(uploadKey, Object.assign({}, entry, { deferred: false, uploadId: null }));
+        return onDone({ ok: false, permanent: true, message: 'Deferred upload unavailable' });
+      }
+
+      if (PERMANENT_UPLOAD_STATUSES.has(res.statusCode)) {
+        // Clip cap reached, banned, session gone — the video would be refused too.
+        markUploadDone(uploadKey);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('upload-error', result.error || `Upload refused (${res.statusCode})`);
+        }
+        return onDone({ ok: false, permanent: true, message: result.error });
+      }
+
+      console.log(`Sync-data post got ${res.statusCode} — will retry`);
+      onDone({ ok: false, permanent: false, message: result.error || 'Server error — will retry' });
+    });
+  });
+
+  if (req && typeof req.setTimeout === 'function') {
+    req.setTimeout(60 * 1000, () => req.destroy(new Error('sync-data post stalled')));
+  }
+}
+
+function performAttachVideo(uploadKey, entry, onDoneCaller) {
+  inFlightUploads.add(uploadKey);
+  let finished = false;
+  const onDone = (result) => {
+    if (finished) return;
+    finished = true;
+    inFlightUploads.delete(uploadKey);
+    uploadProgress.delete(uploadKey);
+    noteUploadAttempt(uploadKey, result);
+    broadcastQueueState();
+    if (onDoneCaller) onDoneCaller(result);
+  };
+
+  uploadProgress.set(uploadKey, { sent: 0, total: queueFileSize(entry.videoPath) });
+  broadcastQueueState();
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('upload-progress', 0);
+
+  const form = new FormData();
+  form.append('video', fs.createReadStream(entry.videoPath).pipe(new RateThrottleStream(uploadRateNow, (sent) => noteUploadBytes(uploadKey, sent))), {
+    filename: path.basename(entry.videoPath), contentType: 'video/mp4'
+  });
+
+  const req = form.submit({
+    protocol: 'https:', host: 'peakabu.app', port: 443,
+    path: `/sessions/${entry.sessionCode}/uploads/${encodeURIComponent(entry.uploadId)}/video`, method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + authToken }
+  }, (err, res) => {
+    if (err) {
+      console.log('Video attach connection error:', err.message);
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('upload-progress', -1);
+      return onDone({ ok: false, permanent: false, message: 'Could not reach server' });
+    }
+    let body = '';
+    res.on('data', chunk => body += chunk);
+    res.on('end', () => {
+      let result = {};
+      try { result = JSON.parse(body); } catch (e) {}
+      const send = (ch, v) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(ch, v); };
+
+      if (res.statusCode === 201 || res.statusCode === 409) {
+        // 409 = already attached (a lost response on an earlier try) — same outcome.
+        console.log(`Video attached: ${uploadKey} → ${entry.uploadId}${res.statusCode === 409 ? ' (was already attached)' : ''}`);
+        markUploadDone(uploadKey);
+        send('upload-progress', 100);
+        send('upload-complete', entry.uploadId);
+        return onDone({ ok: true, permanent: true, message: null });
+      }
+      if (res.statusCode === 404 && !result.error) {
+        // No JSON error = route missing (server rolled back), not a deleted
+        // clip. Keep it queued and retry rather than dropping it.
+        console.log(`Video attach route unavailable for ${uploadKey} — will retry`);
+        send('upload-progress', -1);
+        return onDone({ ok: false, permanent: false, message: 'Server route unavailable — will retry' });
+      }
+      if (res.statusCode === 404) {
+        // Host deleted the clip while it was queued, or the session expired.
+        console.log(`Video attach ${uploadKey} — clip no longer on server (${result.error || 404}), local copy kept`);
+        markUploadDone(uploadKey);
+        send('upload-progress', -1);
+        return onDone({ ok: false, permanent: true, message: result.error || 'Clip no longer on server' });
+      }
+      if (PERMANENT_UPLOAD_STATUSES.has(res.statusCode)) {
+        markUploadDone(uploadKey);
+        send('upload-progress', -1);
+        send('upload-error', result.error || `Upload refused (${res.statusCode})`);
+        return onDone({ ok: false, permanent: true, message: result.error });
+      }
+      console.log(`Video attach got ${res.statusCode} — will retry`);
+      send('upload-progress', -1);
+      onDone({ ok: false, permanent: false, message: result.error || 'Server error — will retry' });
+    });
+  });
+
+  // Same stall guard as performUpload. The mid-fight trickle still sends a
+  // slice every second, so it never trips this.
+  if (req && typeof req.setTimeout === 'function') {
+    req.setTimeout(UPLOAD_IDLE_TIMEOUT_MS, () => {
+      console.log(`Video attach ${uploadKey} stalled for ${UPLOAD_IDLE_TIMEOUT_MS / 1000}s — aborting, will retry`);
+      req.destroy(new Error('upload stalled'));
+    });
+  }
+}
+
+function doUploadHighlight(videoPath, metadataPath) {
+  // currentSession can clear between the save and here (ffprobe runs first).
+  const code = currentSession && currentSession.code;
+  if (!code) { console.log('Session ended before upload started — clip kept locally for Sync'); return; }
+  const uploadKey = path.basename(videoPath);
+  const deferred = lowBandwidthActive() && !!metadataPath && fs.existsSync(metadataPath);
+  const entry = { videoPath, metadataPath, sessionCode: code, startedAt: Date.now(), deferred, uploadId: null };
+  markUploadPending(uploadKey, entry);
+
+  if (deferred) {
+    // Low Bandwidth Mode: sync data now, video once the fight is over.
+    performPostMeta(uploadKey, entry, (r) => {
+      if (r && r.ok && !isFightActive()) sweepPendingUploads();
+    });
+    return;
+  }
+  performUpload(code, videoPath, metadataPath, uploadKey);
 }
 
 // ================================
@@ -2934,11 +3484,31 @@ async function runSyncScan(code) {
 
   // Syncable = no server record's videoFile carries this clip's basename as
   // a prefix, AND it isn't already mid-upload via the normal live path.
+  //
+  // A clip whose METADATA is on the server but whose video isn't (Low
+  // Bandwidth Mode, queue entry lost) is not "missing" — re-uploading it in
+  // full would create a second record and charge its weight twice. Instead
+  // it goes back into the queue to have just its video attached.
+  let adopted = 0;
   const syncable = local.filter(clip => {
-    if (pendingUploads.has(path.basename(clip.videoPath))) return false;
-    const onServer = remote.uploads.some(u => (u.videoFile || '').startsWith(clip.baseName + '_'));
-    return !onServer;
+    const key = path.basename(clip.videoPath);
+    if (pendingUploads.has(key)) return false;
+    if (findLandedRecord(remote.uploads, clip.videoPath)) return false;
+    const pend = findPendingRecord(remote.uploads, clip.metadataPath);
+    if (pend) {
+      markUploadPending(key, {
+        videoPath: clip.videoPath, metadataPath: clip.metadataPath, sessionCode: clean,
+        startedAt: Date.now(), deferred: true, uploadId: pend.id
+      });
+      adopted++;
+      return false;
+    }
+    return true;
   });
+  if (adopted > 0) {
+    console.log(`Sync: ${adopted} clip(s) already have sync data on the server — queued to attach video only`);
+    sweepPendingUploads();
+  }
 
   return { state: 'ok', syncable, closed: remote.closed };
 }
@@ -2946,7 +3516,7 @@ async function runSyncScan(code) {
 // Sequential upload of a syncable list — one at a time, through the same
 // throttle-respecting path as a live save (markUploadPending +
 // performUpload). Firing these concurrently would defeat
-// ThrottleStream/UPLOAD_THROTTLE_BYTES_PER_SEC, which exists specifically
+// RateThrottleStream (upload-queue.js), which exists specifically
 // to protect in-game ping. Per-clip progress goes to the renderer over
 // 'sync-progress'; runSyncScan() runs again at the end so the client's list
 // reflects what the server actually has rather than an optimistic guess.
@@ -3015,25 +3585,36 @@ function createWindow() {
   mainWindow.on('restore', () => setTimeout(() => layoutPlayerView(), 50));
   mainWindow.on('show', () => setTimeout(() => layoutPlayerView(), 50));
   mainWindow.on('close', (event) => {
-    if (allowWindowClose || pendingUploads.size === 0) return; // nothing pending — let it close normally
+    if (allowWindowClose) return;
+    if (pendingUploads.size === 0) {
+      // Nothing of our own pending. A host with squadmates still uploading
+      // gets a heads-up (closing can't hurt their uploads).
+      if (squadPending.count > 0) {
+        event.preventDefault();
+        if (askCloseWithSquadUploads()) {
+          allowWindowClose = true;
+          mainWindow.close();
+        }
+      }
+      return;
+    }
     event.preventDefault();
 
-    if (askQuitWithPendingUploads()) {
+    const choice = askQuitWithPendingUploads();
+    if (choice === 'quit') {
       console.log('User chose to quit anyway — remaining uploads stay in the retry manifest');
       allowWindowClose = true;
       mainWindow.close();
       return;
     }
+    if (choice === 'minimize') {
+      console.log(`Close → minimized — ${pendingUploads.size} queued upload(s) keep going`);
+      mainWindow.minimize();
+      return;
+    }
 
     console.log(`Close deferred — ${pendingUploads.size} upload(s) still in flight`);
-    mainWindow.webContents.send('quit-waiting-on-uploads', { count: pendingUploads.size });
-    quitRequested = true;
-    quitWaitTimer = setTimeout(() => {
-      console.log('Close wait timed out — proceeding, remaining uploads stay in the retry manifest');
-      quitWaitTimer = null;
-      allowWindowClose = true;
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
-    }, QUIT_UPLOAD_WAIT_MS);
+    startQuitWait();
   });
   mainWindow.on('closed', () => { closeAnyPlayer(); });
 
@@ -3300,7 +3881,9 @@ function createWindow() {
     for (const a of uploadAttempts.values()) a.nextAt = 0;
     if (!retriedPendingUploads) {
       retriedPendingUploads = true;
-      retryPendingUploadsFromDisk();   // starts the in-session retry loop
+      // Speed test first (only if the cached result is >24h old), so the
+      // first sweep already uses the measured rate and doesn't skew the test.
+      runUploadSpeedTest(false).finally(() => retryPendingUploadsFromDisk());   // starts the in-session retry loop
     } else {
       sweepPendingUploads();
     }
@@ -3533,6 +4116,32 @@ function createWindow() {
   ipcMain.on('auto-capture-active', (event, active) => {
     autoCaptureLocked = !!active;
     console.log(`Auto-capture buffer lock: ${autoCaptureLocked ? 'ON (pruning suspended)' : 'OFF'}`);
+    markFightSignal();   // Low Bandwidth Mode: hold/trickle videos until ~20s after the window
+  });
+
+  // --- Upload queue (📤 tab) ---
+  ipcMain.handle('upload-queue-get', () => getQueueState());
+  ipcMain.on('cancel-quit-wait', () => cancelQuitWait('user'));
+  ipcMain.handle('upload-set-mode', (event, mode) => {
+    if (!UPLOAD_MODES.includes(mode)) return getQueueState();
+    uploadSettings.mode = mode;
+    saveUploadSettings();
+    console.log(`Upload mode set to ${mode} — Low Bandwidth ${lowBandwidthActive() ? 'ON' : 'off'}`);
+    broadcastQueueState();
+    sweepPendingUploads();   // turning it off releases anything held for a fight
+    return getQueueState();
+  });
+  ipcMain.handle('upload-retest', async () => {
+    await runUploadSpeedTest(true);
+    return getQueueState();
+  });
+  // Host only: squadmates' clips that are synced but still uploading video.
+  // Feeds the close-app notice. Renderer-supplied, display-only.
+  ipcMain.on('squad-pending-uploads', (event, payload) => {
+    const count = payload && Number.isFinite(payload.count) ? Math.max(0, Math.min(999, Math.floor(payload.count))) : 0;
+    const names = (payload && Array.isArray(payload.names) ? payload.names : [])
+      .filter(n => typeof n === 'string').map(n => n.slice(0, 32)).slice(0, 8);
+    squadPending = { count, names: count > 0 ? names : [] };
   });
 
   let audioOutputDeviceId = 'default';
@@ -4087,25 +4696,25 @@ app.on('before-quit', async (event) => {
   // (unrelated to that process) got cut off mid-stream by app.quit() below,
   // losing the clip. window-all-closed's app.quit() routes through this
   // same handler, so this covers "close the window" too, not just quit.
-  if (pendingUploads.size > 0 && !quitRequested) {
+  // allowWindowClose: the close handler already asked (and the user chose
+  // quit, or the wait finished) — don't ask a second time on the way out.
+  if (pendingUploads.size > 0 && !quitRequested && !allowWindowClose) {
     event.preventDefault();
 
-    if (askQuitWithPendingUploads()) {
+    const choice = askQuitWithPendingUploads();
+    if (choice === 'quit') {
       console.log('User chose to quit anyway — remaining uploads stay in the retry manifest');
       app.exit(0);
       return;
     }
-
-    quitRequested = true;
-    console.log(`Quit deferred — ${pendingUploads.size} upload(s) still in flight`);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('quit-waiting-on-uploads', { count: pendingUploads.size });
+    if (choice === 'minimize') {
+      console.log(`Quit cancelled → minimized — ${pendingUploads.size} queued upload(s) keep going`);
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
+      return;
     }
-    quitWaitTimer = setTimeout(() => {
-      console.log('Quit wait timed out — proceeding, remaining uploads stay in the retry manifest');
-      quitWaitTimer = null;
-      app.quit();
-    }, QUIT_UPLOAD_WAIT_MS);
+
+    console.log(`Quit deferred — ${pendingUploads.size} upload(s) still in flight`);
+    startQuitWait();
     return;
   }
 

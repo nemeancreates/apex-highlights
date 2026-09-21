@@ -618,6 +618,80 @@
       .clip-item.broadcast { color: #d8a838; }
       .clip-item.info { color: #7a9686; }
 
+      /* ===== Upload queue (📤 tab) =====
+         Rendered from main's 'upload-queue-state' (Low Bandwidth Mode). Same
+         palette as the rest of the HUD: green = moving, amber = held for a
+         fight, rose = retrying. */
+      .uq-head { padding: 4px 0 8px; border-bottom: 1px solid #14291d; margin-bottom: 2px; }
+      .uq-label { font-size: 11px; color: #45604f; text-transform: uppercase; letter-spacing: 1px; margin: 8px 0 3px; }
+      .uq-head .uq-label { margin-top: 2px; }
+      .uq-mode { display: flex; gap: 4px; margin-bottom: 6px; }
+      .uq-mode button {
+        flex: 1; background: #0c1c14; border: 1px solid #24402e; color: #7a9686;
+        font-size: 12px; padding: 4px 0; border-radius: 4px; cursor: pointer;
+      }
+      .uq-mode button:hover { background: #14291d; }
+      .uq-mode button.active { border-color: #39d3a0; color: #39d3a0; }
+      .uq-meta { font-size: 12px; color: #45604f; }
+      .uq-meta a { color: #39d3a0; cursor: pointer; text-decoration: none; }
+      .uq-meta a.disabled { color: #45604f; pointer-events: none; }
+      .uq-state { font-size: 12px; color: #7a9686; margin-top: 4px; }
+      .uq-state.hold { color: #d8a838; }
+      .uq-empty { color: #3a5244; font-size: 13px; font-style: italic; padding: 10px 0; text-align: center; }
+      .uq-row { padding: 5px 0; border-bottom: 1px solid #14291d; font-size: 13px; color: #7a9686; }
+      .uq-row:last-child { border-bottom: none; }
+      .uq-row-top { display: flex; justify-content: space-between; gap: 6px; }
+      .uq-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+      .uq-size { color: #45604f; font-size: 12px; flex-shrink: 0; }
+      .uq-status { font-size: 12px; color: #45604f; }
+      .uq-status.hold { color: #d8a838; }
+      .uq-status.active { color: #39d3a0; }
+      .uq-status.retry { color: #f0857a; }
+      .uq-bar { height: 3px; background: #14291d; border-radius: 2px; margin-top: 3px; overflow: hidden; }
+      .uq-bar > div { height: 100%; background: #39d3a0; width: 0; transition: width 0.3s ease; }
+
+      /* Session uploads — one compact row per player (you included). The
+         list shows ~4-5 players, then scrolls inside its own box so
+         "Your clips" always stays at the bottom of the pane. */
+      .su-summary { font-size: 12px; color: #d8a838; margin: 0 0 4px; }
+      .su-summary.clear { color: #45604f; }
+      .su-people { max-height: 186px; overflow-y: auto; padding-right: 4px; }
+      .su-people::-webkit-scrollbar { width: 6px; }
+      .su-people::-webkit-scrollbar-thumb { background: #24402e; border-radius: 3px; }
+      .su-person { padding: 5px 0 6px; border-bottom: 1px solid #14291d; }
+      .su-person:last-child { border-bottom: none; }
+      .su-top { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; font-size: 13px; }
+      .su-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #8fbfa3; font-weight: 600; }
+      .su-who.me { color: #39d3a0; }
+      .su-count { font-weight: 400; color: #45604f; font-size: 12px; margin-left: 6px; }
+      .su-status { flex-shrink: 0; font-size: 12px; color: #45604f; }
+      .su-status.active { color: #39d3a0; }
+      .su-status.hold { color: #d8a838; }
+      .su-status.retry, .su-status.off { color: #f0857a; }
+      .su-bar { display: flex; gap: 3px; margin-top: 4px; }
+      .su-seg { flex: 1; height: 5px; border-radius: 2px; background: #14291d; overflow: hidden; position: relative; }
+      .su-seg.done { background: #39d3a0; }
+      .su-seg.hold { background: #3b3420; }
+      .su-seg > i { position: absolute; left: 0; top: 0; bottom: 0; background: #39d3a0; transition: width 0.3s ease; }
+      .uq-meta .uq-err { color: #f0857a; }
+
+      /* "Closing after your upload finishes" — shown while the app waits to
+         quit, so closing is never a surprise. */
+      .quit-wait-bar {
+        position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 9999;
+        display: none; align-items: center; gap: 12px;
+        background: #0c1c14; border: 1px solid #39d3a0; border-radius: 6px;
+        padding: 9px 12px 9px 14px; color: #8fbfa3; font-size: 13px;
+        box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+      }
+      .quit-wait-bar.show { display: flex; }
+      .quit-wait-bar b { color: #39d3a0; font-weight: 600; }
+      .quit-wait-bar button {
+        background: transparent; border: 1px solid #24402e; color: #7a9686;
+        border-radius: 4px; padding: 3px 10px; font-size: 12px; cursor: pointer;
+      }
+      .quit-wait-bar button:hover { background: #14291d; color: #8fbfa3; }
+
       /* ===== Sync banner =====
          Appears under the header once the player opens for a session and
          finds local clips the server never received (main.js scans+diffs
@@ -1084,7 +1158,7 @@ REPLACE:
             <div class="member-list" id="memberList"></div>
             <div class="usage-track-wrap" id="usageTrackWrap" style="display:none;"></div>
             <button class="btn-secondary" id="migrateBtn" onclick="migrateSession()" style="display:none;margin-bottom:6px;">↺ Start New Session for Squad</button>
-            <button class="btn-leave" onclick="leaveSession()">
+            <button class="btn-leave" onclick="confirmLeaveSession()">
               <span class="btn-leave-usage" id="leaveUsageLabel"></span>
               Leave Session
             </button>
@@ -1102,19 +1176,39 @@ REPLACE:
             <div class="hud-card">
               <div class="hud-rail">
                 <button class="hud-tab active" id="hudTab-activity" onclick="switchHudTab('activity')" title="Activity">⚡<span class="tab-badge" id="hudBadge-activity" style="display:none;">0</span></button>
+                <button class="hud-tab" id="hudTab-hosted" onclick="switchHudTab('hosted')" title="My Hosted Sessions">👑<span class="tab-badge" id="hudBadge-hosted" style="display:none;">0</span></button>
+                <button class="hud-tab" id="hudTab-history" onclick="switchHudTab('history')" title="Joined Sessions">📋<span class="tab-badge" id="hudBadge-history" style="display:none;">0</span></button>
                 <button class="hud-tab" id="hudTab-squad" onclick="switchHudTab('squad')" title="Squad">👥<span class="tab-badge" id="hudBadge-squad" style="display:none;">0</span></button>
                 <button class="hud-tab" id="hudTab-system" onclick="switchHudTab('system')" title="System">🛠<span class="tab-badge" id="hudBadge-system" style="display:none;">0</span></button>
-                <button class="hud-tab" id="hudTab-history" onclick="switchHudTab('history')" title="Joined Sessions">📋<span class="tab-badge" id="hudBadge-history" style="display:none;">0</span></button>
-                <button class="hud-tab" id="hudTab-hosted" onclick="switchHudTab('hosted')" title="My Hosted Sessions">👑<span class="tab-badge" id="hudBadge-hosted" style="display:none;">0</span></button>
+                <button class="hud-tab" id="hudTab-uploads" onclick="switchHudTab('uploads')" title="Upload Queue">📤<span class="tab-badge" id="hudBadge-uploads" style="display:none;">0</span></button>
               </div>
               <div class="hud-body">
                 <div class="hud-title" id="hudTitle">Activity</div>
                 <div class="hud-panes">
                   <div class="hud-pane active" id="hudPane-activity"><div class="hud-empty">Highlight saves and uploads appear here</div></div>
+                  <div class="hud-pane" id="hudPane-hosted"><div class="hud-empty">Sessions you've hosted appear here</div></div>
+                  <div class="hud-pane" id="hudPane-history"><div class="hud-empty">Sessions you've joined appear here</div></div>
                   <div class="hud-pane" id="hudPane-squad"><div class="hud-empty">Squad joins and leaves appear here</div></div>
                   <div class="hud-pane" id="hudPane-system"><div class="hud-empty">App messages appear here</div></div>
-                  <div class="hud-pane" id="hudPane-history"><div class="hud-empty">Sessions you've joined appear here</div></div>
-                  <div class="hud-pane" id="hudPane-hosted"><div class="hud-empty">Sessions you've hosted appear here</div></div>
+                  <div class="hud-pane" id="hudPane-uploads">
+                    <div class="uq-head">
+                      <div class="uq-label">Low Bandwidth Mode</div>
+                      <div class="uq-mode" id="uqMode">
+                        <button data-mode="auto" onclick="setUploadMode('auto')" title="On automatically when your measured upload is under 10 Mbps">Auto</button>
+                        <button data-mode="on" onclick="setUploadMode('on')" title="Always send videos during downtime">On</button>
+                        <button data-mode="off" onclick="setUploadMode('off')" title="Always upload right away">Off</button>
+                      </div>
+                      <div class="uq-meta"><span id="uqSpeed">Upload speed not tested yet</span> · <a id="uqRetest" onclick="retestUploadSpeed()">Retest</a></div>
+                      <div class="uq-state" id="uqState"></div>
+                    </div>
+                    <div id="uqSessionWrap" style="display:none;">
+                      <div class="uq-label">Session uploads</div>
+                      <div class="su-summary" id="uqSessionSummary"></div>
+                      <div class="su-people" id="uqPeople"></div>
+                    </div>
+                    <div class="uq-label">Your clips</div>
+                    <div id="uqMine"><div class="uq-empty">No clips waiting to upload</div></div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1486,11 +1580,11 @@ REPLACE:
       const HUD_MAX_ITEMS = 50;
       window.activeHudTab = 'activity';
 
-      var HUD_TITLES = { activity:'Activity', squad:'Squad', system:'System', history:'Joined History', hosted:'My Hosted Sessions' };
+      var HUD_TITLES = { activity:'Activity', hosted:'My Hosted Sessions', history:'Joined History', squad:'Squad', system:'System', uploads:'Upload Queue' };
 
       window.switchHudTab = function(tab) {
        window.activeHudTab = tab;
-       ['activity','squad','system','history','hosted'].forEach(t => {
+       ['activity','hosted','history','squad','system','uploads'].forEach(t => {
          document.getElementById('hudTab-'+t).classList.toggle('active', t===tab);
          document.getElementById('hudPane-'+t).classList.toggle('active', t===tab);
        });
@@ -1853,6 +1947,495 @@ REPLACE:
           badge.style.display = 'inline-block';
         }
       }
+
+      // =====================
+      // UPLOAD QUEUE (📤 tab)
+      // main.js owns your queue and pushes a full snapshot over
+      // 'upload-queue-state' on every change; renderUploadQueue only draws it.
+      // =====================
+      window.uploadQueueState = null;
+
+      var UQ_STATUS = {
+        'syncing':      { text: 'Sending sync data…',            cls: 'active' },
+        'waiting':      { text: 'Waiting for downtime',            cls: '' },
+        'paused-fight': { text: 'Paused — fight in progress',      cls: 'hold' },
+        'uploading':    { text: 'Uploading',                       cls: 'active' },
+        'retrying':     { text: 'Couldn\'t send — retrying soon', cls: 'retry' }
+      };
+
+      function uqFmtSize(bytes) {
+        if (typeof bytes !== 'number' || bytes <= 0) return '';
+        return bytes >= 1048576 ? (bytes / 1048576).toFixed(1) + ' MB' : Math.round(bytes / 1024) + ' KB';
+      }
+
+      window.renderUploadQueue = function(st) {
+        if (!st) return;
+        window.uploadQueueState = st;
+
+        document.querySelectorAll('#uqMode button').forEach(function(b) {
+          b.classList.toggle('active', b.getAttribute('data-mode') === st.mode);
+        });
+
+        var speed = document.getElementById('uqSpeed');
+        var retest = document.getElementById('uqRetest');
+        speed.innerHTML = '';
+        if (st.testing) {
+          speed.textContent = 'Testing upload speed…';
+        } else if (st.measuredMbps) {
+          speed.textContent = 'Upload ' + st.measuredMbps + ' Mbps · using up to ' + st.throttleMbps + ' Mbps';
+          if (st.speedTestError) {
+            var stale = document.createElement('span');
+            stale.className = 'uq-err';
+            stale.textContent = ' (last retest failed)';
+            stale.title = st.speedTestError;
+            speed.appendChild(stale);
+          }
+        } else if (st.speedTestError) {
+          var err = document.createElement('span');
+          err.className = 'uq-err';
+          err.textContent = '⚠ ' + st.speedTestError;
+          speed.appendChild(err);
+        } else {
+          speed.textContent = 'Upload speed not tested yet';
+        }
+        retest.classList.toggle('disabled', !!st.testing);
+        updateQuitWaitBar();
+
+        var state = document.getElementById('uqState');
+        if (st.lowBandwidth && st.fightActive) {
+          state.textContent = '⏸ Holding videos until the fight ends';
+          state.className = 'uq-state hold';
+        } else if (st.lowBandwidth) {
+          state.textContent = '🐢 On — videos upload during downtime';
+          state.className = 'uq-state';
+        } else {
+          state.textContent = 'Off — clips upload right away';
+          state.className = 'uq-state';
+        }
+
+        var mine = document.getElementById('uqMine');
+        mine.innerHTML = '';
+        var items = st.items || [];
+        if (items.length === 0) {
+          var empty = document.createElement('div');
+          empty.className = 'uq-empty';
+          empty.textContent = 'No clips waiting to upload';
+          mine.appendChild(empty);
+        }
+        items.forEach(function(it) {
+          var row = document.createElement('div');
+          row.className = 'uq-row';
+          var top = document.createElement('div');
+          top.className = 'uq-row-top';
+          var name = document.createElement('span');
+          name.className = 'uq-name';
+          name.textContent = it.fileName;
+          name.title = it.fileName + (it.sessionCode ? ' — session ' + it.sessionCode : '');
+          var size = document.createElement('span');
+          size.className = 'uq-size';
+          size.textContent = uqFmtSize(it.sizeBytes);
+          top.appendChild(name);
+          top.appendChild(size);
+          row.appendChild(top);
+
+          var meta = UQ_STATUS[it.status] || { text: it.status, cls: '' };
+          var status = document.createElement('div');
+          status.className = 'uq-status' + (meta.cls ? ' ' + meta.cls : '');
+          var label = meta.text;
+          if (it.status === 'uploading' && typeof it.pct === 'number') label += ' ' + it.pct + '%';
+          if (it.synced && it.status !== 'uploading') label += ' · synced';
+          status.textContent = label;
+          row.appendChild(status);
+
+          if (it.status === 'uploading' && typeof it.pct === 'number') {
+            var bar = document.createElement('div');
+            bar.className = 'uq-bar';
+            var fill = document.createElement('div');
+            fill.style.width = it.pct + '%';
+            bar.appendChild(fill);
+            row.appendChild(bar);
+          }
+          mine.appendChild(row);
+        });
+
+        // Badge = your clips still queued. Hidden while the tab is open.
+        var badge = document.getElementById('hudBadge-uploads');
+        if (badge) {
+          if (items.length > 0 && window.activeHudTab !== 'uploads') {
+            badge.textContent = items.length > 99 ? '99+' : items.length;
+            badge.style.display = 'inline-block';
+          } else {
+            badge.style.display = 'none';
+          }
+        }
+
+        updateSquadPending();          // your row in Session uploads
+        sendMyUploadStatus(false);     // and tell the squad
+      };
+
+      // "Closing after upload" bar — main tells us when a wait-to-quit starts
+      // and ends; progress comes from the queue snapshot.
+      window.quitWaitActive = false;
+      function updateQuitWaitBar() {
+        var bar = document.getElementById('quitWaitBar');
+        if (!bar) {
+          bar = document.createElement('div');
+          bar.id = 'quitWaitBar';
+          bar.className = 'quit-wait-bar';
+          var txt = document.createElement('span');
+          txt.id = 'quitWaitText';
+          var cancel = document.createElement('button');
+          cancel.textContent = 'Cancel';
+          cancel.title = 'Stay open — uploads keep going';
+          cancel.onclick = function() { ipcRenderer.send('cancel-quit-wait'); };
+          bar.appendChild(txt);
+          bar.appendChild(cancel);
+          document.body.appendChild(bar);
+        }
+        bar.classList.toggle('show', !!window.quitWaitActive);
+        if (!window.quitWaitActive) return;
+        var items = (window.uploadQueueState && window.uploadQueueState.items) || [];
+        var cur = items.filter(function(i) { return i.status === 'uploading' && typeof i.pct === 'number'; })[0];
+        var t = document.getElementById('quitWaitText');
+        t.innerHTML = '';
+        t.appendChild(document.createTextNode('⏳ Closing after your upload finishes'));
+        if (cur) {
+          var b = document.createElement('b');
+          b.textContent = ' — ' + cur.pct + '%';
+          t.appendChild(b);
+        }
+        if (items.length > 1) t.appendChild(document.createTextNode(' · ' + items.length + ' clips left'));
+      }
+
+      window.setUploadMode = function(mode) {
+        ipcRenderer.invoke('upload-set-mode', mode).then(function(st) {
+          renderUploadQueue(st);
+          var names = { auto: 'Auto', on: 'On', off: 'Off' };
+          hudLog('system', '📤 Low Bandwidth Mode: ' + (names[mode] || mode) + (st && st.lowBandwidth ? ' (active)' : ''), 'info');
+        });
+      };
+
+      window.retestUploadSpeed = function() {
+        var st = window.uploadQueueState;
+        if (st && st.testing) return;
+        document.getElementById('uqSpeed').textContent = 'Testing upload speed…';
+        ipcRenderer.invoke('upload-retest').then(function(next) {
+          renderUploadQueue(next);
+          if (next && next.speedTestError) {
+            hudLog('system', '⚠ Speed test failed: ' + next.speedTestError, 'error');
+          } else if (next && next.measuredMbps) {
+            hudLog('system', '📶 Upload speed: ' + next.measuredMbps + ' Mbps' + (next.lowBandwidth ? ' — Low Bandwidth Mode active' : ''), 'info');
+          }
+        });
+      };
+
+      // =====================
+      // SESSION UPLOADS — one row per player (you included), for everyone
+      // in the session, host or not. Three live sources:
+      //   • your own queue ('upload-queue-state' above)
+      //   • squadmates' relayed summaries ('squad-upload-status': clips left,
+      //     % of the one sending now, status) — sent by their clients on
+      //     change, at most every ~3s, relayed by the server
+      //   • the server's records ('upload-pending' / 'upload-received' /
+      //     'highlight-deleted', seeded on join) — these cover anyone whose
+      //     app is closed (shown as Offline) or too old to relay
+      // A player's row covers one "batch": it appears with their first clip
+      // still to send and stays 90s after their last one lands (✓ done).
+      // =====================
+      window.squadPendingUploads = {};   // uploadId -> username (squadmates' synced clips awaiting video)
+      window.sessionUploadPlayers = {};  // username -> { relay, done, active, finishedAt }
+      window.sessionOnline = {};         // username -> true while connected to the session
+      var SU_LINGER_MS = 90 * 1000;
+      var SU_MAX_SEGMENTS = 8;           // beyond this, one continuous bar
+      var suRenderTimer = null;
+      var suLastIpcKey = null;
+
+      function suPlayer(u) {
+        if (!window.sessionUploadPlayers[u]) {
+          window.sessionUploadPlayers[u] = { relay: null, done: 0, active: false, finishedAt: null };
+        }
+        return window.sessionUploadPlayers[u];
+      }
+
+      function myQueueForSession() {
+        var st = window.uploadQueueState;
+        var code = window.currentSessionCode;
+        if (!st || !code) return [];
+        return (st.items || []).filter(function(i) { return i.sessionCode === code; });
+      }
+
+      // Same shape we relay to the squad: { pending, pct, status }.
+      function summarizeQueue(items) {
+        var cur = null, has = {};
+        items.forEach(function(i) {
+          has[i.status] = true;
+          if (i.status === 'uploading' && !cur) cur = i;
+        });
+        var status = items.length === 0 ? 'idle'
+          : cur ? 'uploading'
+          : has['syncing'] ? 'syncing'
+          : has['retrying'] ? 'retrying'
+          : has['paused-fight'] ? 'paused-fight'
+          : 'waiting';
+        return { pending: items.length, pct: (cur && typeof cur.pct === 'number') ? cur.pct : null, status: status };
+      }
+
+      function serverPendingCount(u) {
+        var n = 0;
+        for (var id in window.squadPendingUploads) if (window.squadPendingUploads[id] === u) n++;
+        return n;
+      }
+
+      // A player's current state. A fresh relay wins while they're online;
+      // otherwise fall back to the server's pending records.
+      function suPlayerView(u) {
+        if (u === window.authUsername) return summarizeQueue(myQueueForSession());
+        var p = window.sessionUploadPlayers[u];
+        var online = !!window.sessionOnline[u];
+        if (p && p.relay && online) return { pending: p.relay.pending, pct: p.relay.pct, status: p.relay.status };
+        var serverPending = serverPendingCount(u);
+        if (serverPending === 0) return { pending: 0, pct: null, status: 'idle' };
+        return { pending: serverPending, pct: null, status: online ? 'waiting' : 'offline' };
+      }
+
+      // A clip of theirs landed on the server.
+      function suNoteReceived(u) {
+        var p = suPlayer(u);
+        var now = Date.now();
+        if (!p.active && (!p.finishedAt || now - p.finishedAt >= SU_LINGER_MS)) p.done = 0; // new batch
+        p.done++;
+        if (!p.active) p.finishedAt = now;
+        if (u !== window.authUsername && p.relay && p.relay.pending > 0) p.relay.pending--; // until their next relay
+      }
+
+      // Walks every known player, advances their batch, returns visible rows.
+      function suCollect() {
+        var now = Date.now();
+        var names = {};
+        Object.keys(window.sessionUploadPlayers).forEach(function(n) { names[n] = 1; });
+        Object.keys(window.squadPendingUploads).forEach(function(id) { names[window.squadPendingUploads[id]] = 1; });
+        if (window.authUsername) names[window.authUsername] = 1;
+
+        var rows = [];
+        Object.keys(names).forEach(function(u) {
+          var v = suPlayerView(u);
+          var p = suPlayer(u);
+          if (v.pending > 0) {
+            if (!p.active) {
+              if (!p.finishedAt || now - p.finishedAt >= SU_LINGER_MS) p.done = 0;
+              p.active = true;
+              p.finishedAt = null;
+            }
+          } else if (p.active) {
+            p.active = false;
+            p.finishedAt = now;
+          }
+          var lingering = !!p.finishedAt && (now - p.finishedAt < SU_LINGER_MS) && p.done > 0;
+          if (v.pending > 0 || lingering) {
+            rows.push({ username: u, me: u === window.authUsername, pending: v.pending, pct: v.pct,
+                        status: v.pending > 0 ? v.status : 'done', done: p.done, finishedAt: p.finishedAt });
+          }
+        });
+        // You first, then whoever has the most left, then finished rows.
+        rows.sort(function(a, b) {
+          if (a.me !== b.me) return a.me ? -1 : 1;
+          if ((a.pending > 0) !== (b.pending > 0)) return a.pending > 0 ? -1 : 1;
+          if (a.pending !== b.pending) return b.pending - a.pending;
+          return a.username.localeCompare(b.username);
+        });
+        return rows;
+      }
+
+      var SU_STATUS = {
+        'uploading':    { text: 'Uploading',            cls: 'active' },
+        'syncing':      { text: 'Sending sync data…',   cls: 'active' },
+        'waiting':      { text: 'Waiting for downtime', cls: '' },
+        'paused-fight': { text: 'Paused — in a fight',  cls: 'hold' },
+        'retrying':     { text: 'Retrying soon',        cls: 'retry' },
+        'offline':      { text: 'Offline',              cls: 'off' },
+        'done':         { text: '✓ All uploaded',       cls: 'active' }
+      };
+
+      function suRow(r) {
+        var row = document.createElement('div');
+        row.className = 'su-person';
+        var total = r.done + r.pending;
+
+        var top = document.createElement('div');
+        top.className = 'su-top';
+        var who = document.createElement('span');
+        who.className = 'su-who' + (r.me ? ' me' : '');
+        who.textContent = r.me ? 'You' : r.username;
+        who.title = r.username;
+        var count = document.createElement('span');
+        count.className = 'su-count';
+        count.textContent = r.done + '/' + total;
+        who.appendChild(count);
+
+        var meta = SU_STATUS[r.status] || { text: r.status, cls: '' };
+        var status = document.createElement('span');
+        status.className = 'su-status' + (meta.cls ? ' ' + meta.cls : '');
+        status.textContent = meta.text + (r.status === 'uploading' && typeof r.pct === 'number' ? ' ' + r.pct + '%' : '');
+        if (r.status === 'offline') status.title = 'Their app is closed — these finish when they reopen Peak-Abu';
+        top.appendChild(who);
+        top.appendChild(status);
+        row.appendChild(top);
+
+        // One segment per clip: green = landed, filling = sending now,
+        // amber = held for a fight, dark = still to go. Long batches get
+        // one continuous bar instead.
+        var bar = document.createElement('div');
+        bar.className = 'su-bar';
+        if (total > SU_MAX_SEGMENTS) {
+          var seg = document.createElement('div');
+          seg.className = 'su-seg';
+          var fill = document.createElement('i');
+          fill.style.width = Math.round(total ? (r.done / total) * 100 : 0) + '%';
+          seg.appendChild(fill);
+          bar.appendChild(seg);
+        } else {
+          for (var k = 0; k < total; k++) {
+            var s = document.createElement('div');
+            if (k < r.done) {
+              s.className = 'su-seg done';
+            } else if (k === r.done && r.status === 'uploading') {
+              s.className = 'su-seg';
+              var f = document.createElement('i');
+              f.style.width = (typeof r.pct === 'number' ? r.pct : 0) + '%';
+              s.appendChild(f);
+            } else {
+              s.className = 'su-seg' + (r.status === 'paused-fight' ? ' hold' : '');
+            }
+            bar.appendChild(s);
+          }
+        }
+        row.appendChild(bar);
+        return row;
+      }
+
+      // Squadmates still sending — for the host's close/leave notices.
+      function squadPendingSummary() {
+        var names = [], count = 0;
+        var seen = {};
+        Object.keys(window.sessionUploadPlayers).forEach(function(n) { seen[n] = 1; });
+        Object.keys(window.squadPendingUploads).forEach(function(id) { seen[window.squadPendingUploads[id]] = 1; });
+        Object.keys(seen).forEach(function(u) {
+          if (u === window.authUsername) return;
+          var v = suPlayerView(u);
+          if (v.pending > 0) { names.push(u); count += v.pending; }
+        });
+        return { count: count, names: names };
+      }
+
+      // Redraws Session uploads. (Name kept from the first draft — every
+      // live hook calls this.)
+      window.updateSquadPending = function() {
+        if (suRenderTimer) { clearTimeout(suRenderTimer); suRenderTimer = null; }
+        var wrap = document.getElementById('uqSessionWrap');
+        var list = document.getElementById('uqPeople');
+        var sumEl = document.getElementById('uqSessionSummary');
+        var inSession = !!window.currentSessionCode;
+        var rows = inSession ? suCollect() : [];
+
+        if (wrap && list && sumEl) {
+          wrap.style.display = inSession ? 'block' : 'none';
+          var keepScroll = list.scrollTop;
+          list.innerHTML = '';
+          var clipsLeft = 0, playersLeft = 0;
+          rows.forEach(function(r) {
+            if (r.pending > 0) { clipsLeft += r.pending; playersLeft++; }
+            list.appendChild(suRow(r));
+          });
+          list.scrollTop = keepScroll;
+          if (clipsLeft > 0) {
+            sumEl.textContent = '⏳ ' + clipsLeft + ' clip' + (clipsLeft === 1 ? '' : 's') + ' still uploading · ' +
+              playersLeft + ' player' + (playersLeft === 1 ? '' : 's');
+            sumEl.className = 'su-summary';
+          } else {
+            sumEl.textContent = rows.length ? '✓ Everyone\'s clips are uploaded' : 'No one is uploading right now';
+            sumEl.className = 'su-summary clear';
+          }
+        }
+
+        // Drop finished rows once their 90s linger is up.
+        var now = Date.now(), nextExpiry = null;
+        rows.forEach(function(r) {
+          if (r.pending === 0 && r.finishedAt) {
+            var at = r.finishedAt + SU_LINGER_MS;
+            if (nextExpiry === null || at < nextExpiry) nextExpiry = at;
+          }
+        });
+        if (nextExpiry !== null) suRenderTimer = setTimeout(updateSquadPending, Math.max(250, nextExpiry - now + 100));
+
+        // Host only: main uses this for the close-app notice.
+        var sum = squadPendingSummary();
+        var payload = window.isSessionHost ? { count: sum.count, names: sum.names } : { count: 0, names: [] };
+        var key = JSON.stringify(payload);
+        if (key !== suLastIpcKey) { suLastIpcKey = key; ipcRenderer.send('squad-pending-uploads', payload); }
+      };
+
+      // Tell the squad how our own queue for this session is doing. Only on
+      // change (clips left, status, or 5% of progress), at most every 3s.
+      var suLastSentKey = null, suLastSentAt = 0, suSendTimer = null;
+      window.sendMyUploadStatus = function(force) {
+        if (!window.socket || !window.currentSessionCode) return;
+        var s = summarizeQueue(myQueueForSession());
+        var key = s.pending + '|' + s.status + '|' + (s.pct === null ? '-' : Math.floor(s.pct / 5));
+        // Nothing queued and never said otherwise — squadmates already assume idle.
+        if (s.pending === 0 && (suLastSentKey === null || suLastSentKey === key)) return;
+        if (!force && key === suLastSentKey) return;
+        var wait = 3000 - (Date.now() - suLastSentAt);
+        if (wait > 0) {
+          if (!suSendTimer) suSendTimer = setTimeout(function() { suSendTimer = null; sendMyUploadStatus(true); }, wait);
+          return;
+        }
+        if (suSendTimer) { clearTimeout(suSendTimer); suSendTimer = null; }
+        window.socket.emit('upload-status', s);
+        suLastSentKey = key;
+        suLastSentAt = Date.now();
+      };
+
+      function resetSessionUploads() {
+        window.squadPendingUploads = {};
+        window.sessionUploadPlayers = {};
+        window.sessionOnline = {};
+        suLastSentKey = null;
+        if (suSendTimer) { clearTimeout(suSendTimer); suSendTimer = null; }
+      }
+
+      // A late joiner (or a reconnect) has missed the live events — seed from
+      // the session's uploads: a record with no videoFile is still pending.
+      window.seedSquadPending = function(code) {
+        fetch('https://peakabu.app/sessions/' + encodeURIComponent(code) + '/uploads')
+          .then(function(r) { return r.ok ? r.json() : null; })
+          .then(function(d) {
+            if (!d || !Array.isArray(d.uploads) || window.currentSessionCode !== code) return;
+            window.squadPendingUploads = {};
+            d.uploads.forEach(function(u) {
+              if (!u.videoFile && u.username && u.username !== window.authUsername) {
+                window.squadPendingUploads[u.id] = u.username;
+              }
+            });
+            updateSquadPending();
+          })
+          .catch(function() {});
+      };
+
+      // Leave Session button. Informational for the host: leaving can't hurt
+      // squadmates' uploads (the server takes them after the session closes),
+      // but the web player will fill in after they're gone.
+      window.confirmLeaveSession = function() {
+        var sum = squadPendingSummary();
+        if (window.isSessionHost && sum.count > 0) {
+          var who = sum.names.join(', ');
+          var ok = confirm(who + (sum.names.length === 1 ? ' is' : ' are') + ' still uploading ' + sum.count +
+            ' clip' + (sum.count === 1 ? '' : 's') + ' to this session.\n\n' +
+            'They\'ll finish even after you leave — some POVs will show as uploading in the web player until then.\n\n' +
+            'Leave the session?');
+          if (!ok) return;
+        }
+        window.leaveSession();
+      };
 
       // =====================
       // COPY SESSION CODE
@@ -3547,6 +4130,11 @@ REPLACE:
         window.socket.on('session-joined', function(data) {
           window.currentSessionCode = data.code;
           window.isSessionHost = (data.createdBy === window.authUsername);
+          resetSessionUploads();
+          (data.members || []).forEach(function(m) { if (m && m.username) window.sessionOnline[m.username] = true; });
+          seedSquadPending(data.code);
+          updateSquadPending();
+          sendMyUploadStatus(true);
           document.getElementById('sessionPanel-disconnected').style.display = 'none';
           document.getElementById('sessionPanel-connected').style.display = 'block';
           document.getElementById('sessionCodeDisplay').textContent = data.code;
@@ -3684,7 +4272,53 @@ REPLACE:
           restoreReadyStatus();
         });
 
-        window.socket.on('upload-received', function(d) { hudLog('activity','☁️ '+d.username+' uploaded their clip','success'); });
+        window.socket.on('upload-received', function(d) {
+          var wasPending = !!window.squadPendingUploads[d.uploadId];
+          if (wasPending) delete window.squadPendingUploads[d.uploadId];
+          if (d && d.username) suNoteReceived(d.username);
+          updateSquadPending();
+          hudLog('activity','☁️ '+d.username+(wasPending ? ' finished uploading their clip' : ' uploaded their clip'),'success');
+        });
+        // Low Bandwidth Mode: a squadmate's sync data landed, video to follow.
+        // Our own is announced by main ('upload-deferred') instead.
+        window.socket.on('upload-pending', function(d) {
+          if (!d || d.username === window.authUsername) return;
+          window.squadPendingUploads[d.uploadId] = d.username;
+          updateSquadPending();
+          hudLog('activity','⏳ '+d.username+'\'s clip is synced — video uploads after the fight','info');
+        });
+        window.socket.on('highlight-deleted', function(d) {
+          if (d && window.squadPendingUploads[d.uploadId]) {
+            delete window.squadPendingUploads[d.uploadId];
+            updateSquadPending();
+          }
+        });
+        // Squadmates' queue summaries (relayed by the server).
+        window.socket.on('squad-upload-status', function(d) {
+          if (!d || !d.username || d.username === window.authUsername) return;
+          window.sessionOnline[d.username] = true;   // the server only relays from connected members
+          suPlayer(d.username).relay = {
+            pending: Math.max(0, d.pending | 0),
+            pct: typeof d.pct === 'number' ? d.pct : null,
+            status: d.status
+          };
+          updateSquadPending();
+        });
+        // Presence, for Online vs Offline. A newcomer hasn't heard our
+        // status yet, so re-send it.
+        window.socket.on('member-joined', function(d) {
+          if (!d || !d.username) return;
+          window.sessionOnline[d.username] = true;
+          updateSquadPending();
+          sendMyUploadStatus(true);
+        });
+        window.socket.on('member-left', function(d) {
+          if (!d || !d.username) return;
+          delete window.sessionOnline[d.username];
+          var p = window.sessionUploadPlayers[d.username];
+          if (p) p.relay = null;   // fall back to the server's records (Offline)
+          updateSquadPending();
+        });
 
         window.socket.on('auto-capture-start', function(d) {
           // Not recording = nothing to extract from, so don't show the
@@ -3780,6 +4414,8 @@ REPLACE:
         renderSessionGame(null);
         var noteEl = document.getElementById('sessionNoteText');
         if (noteEl) { noteEl.textContent = ''; noteEl.classList.add('empty'); }
+        resetSessionUploads();
+        updateSquadPending();
         ipcRenderer.send('session-disconnected');
       };
 
@@ -4895,6 +5531,22 @@ REPLACE:
       });
 
       ipcRenderer.on('upload-complete', function(ev, id) { hudLog('activity','☁️ Upload complete: '+id,'success'); });
+
+      // Upload queue (📤 tab) — main pushes a snapshot on every change.
+      ipcRenderer.on('upload-queue-state', function(ev, st) { renderUploadQueue(st); });
+      ipcRenderer.on('quit-waiting-on-uploads', function() {
+        window.quitWaitActive = true;
+        updateQuitWaitBar();
+        hudLog('system', '⏳ Closing after your upload finishes — Cancel to stay open', 'info');
+      });
+      ipcRenderer.on('quit-wait-ended', function() {
+        window.quitWaitActive = false;
+        updateQuitWaitBar();
+      });
+      ipcRenderer.on('upload-deferred', function(ev, d) {
+        hudLog('activity','⏳ Clip synced with your squad — video uploads after the fight','info');
+      });
+      ipcRenderer.invoke('upload-queue-get').then(renderUploadQueue).catch(function() {});
 
       // =====================
       // AUTO-UPDATER BANNER
