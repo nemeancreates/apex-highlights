@@ -7,7 +7,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { log } = require('./logger');
-const { safeError } = require('./utils');
+const { safeError, getMonthKey } = require('./utils');
 const { JWT_SECRET, JWT_EXPIRY, BCRYPT_ROUNDS, TIERS, TIER_ORDER, ADMIN_SECRET,
         REDEEM_ATTEMPT_MAX, REDEEM_ATTEMPT_WINDOW,
         REGISTER_IP_MAX, REGISTER_IP_WINDOW,
@@ -28,7 +28,9 @@ function getEffectiveTier(user) {
   return user.tier;
 }
 
-function getMonthKey() { return new Date().toISOString().slice(0, 7); }
+// getMonthKey moved to utils.js so every monthly counter in the app shares
+// one definition (it was computed here in UTC and in generation-usage.js in
+// local time). Still re-exported below, so existing importers are unaffected.
 
 // ================================
 // ABUSE LIMITERS — both in-memory and volatile on purpose. A restart

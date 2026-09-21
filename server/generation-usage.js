@@ -18,6 +18,10 @@
 
 const path = require('path');
 const Database = require('better-sqlite3');
+// One shared definition of the quota month (UTC) — see utils.js. This module
+// used to compute its own from local server time, which meant AI credits and
+// the session/bandwidth counters in auth.js could roll over a day apart.
+const { getMonthKey, monthKeyBefore } = require('./utils');
 
 const DB_FILE = path.join(__dirname, 'generation-usage.db');
 
@@ -47,13 +51,11 @@ function initGenerationUsage(deps) {
   D.log('info', 'generation_usage_ready', { dbFile: DB_FILE });
 }
 
-// Calendar-month key, e.g. "2026-09". Simpler than a per-user billing-
-// cycle anchor — revisit only if the cap ever needs to reset on each
-// user's individual subscription renewal date instead of the 1st.
-function currentMonthKey() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
+// Calendar-month key, e.g. "2026-09" — now getMonthKey() from utils.js, in
+// UTC, shared with every other monthly counter. Still simpler than a per-user
+// billing-cycle anchor; revisit only if the cap ever needs to reset on each
+// user's own renewal date instead of the 1st.
+const currentMonthKey = getMonthKey;
 
 function getRow(userId, monthKey) {
   return db.prepare(
@@ -112,9 +114,9 @@ function checkAndIncrement(userId, kind, cap) {
 // couple months. Call on an interval the way aireel.js does with
 // cleanupJobs/sweepOrphanedAireelFiles.
 function pruneOldMonths(keepMonths = 3) {
-  const cutoff = new Date();
-  cutoff.setMonth(cutoff.getMonth() - keepMonths);
-  const cutoffKey = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}`;
+  // Same UTC helper as everything else, so the retention window can't drift
+  // across a boundary relative to the keys actually stored in the table.
+  const cutoffKey = monthKeyBefore(keepMonths);
   const result = db.prepare('DELETE FROM aireel_generation_usage WHERE monthKey < ?').run(cutoffKey);
   if (result.changes > 0) D.log('info', 'generation_usage_pruned', { rows: result.changes, cutoffKey });
 }

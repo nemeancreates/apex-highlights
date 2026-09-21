@@ -36,6 +36,30 @@ function generateCode() {
   return code;
 }
 
+// --- Monthly quota period ---
+//
+// THE single definition of "which month is it" for every monthly counter:
+// AI Reel edit credits, sessions per month, bandwidth per month. There used
+// to be two — auth.js computed it in UTC while generation-usage.js used local
+// server time — so AI credits and session quotas rolled over on different
+// clocks. Identical on a UTC host, up to a day apart on any other, and the
+// kind of thing that only bites after someone changes the server timezone.
+//
+// UTC on purpose: deployment-independent and immune to DST, so the boundary
+// never moves and never occurs twice.
+function getMonthKey(date) {
+  return (date || new Date()).toISOString().slice(0, 7);   // e.g. "2026-09"
+}
+
+// The key N whole months before `date`, for retention pruning. Uses UTC
+// arithmetic so it can't drift across a boundary the way setMonth() can.
+function monthKeyBefore(months, date) {
+  const d = new Date(date || new Date());
+  d.setUTCDate(1);                       // avoid Jan 31 -> Mar 3 style overflow
+  d.setUTCMonth(d.getUTCMonth() - months);
+  return getMonthKey(d);
+}
+
 // --- Content-type verification: real MP4 bytes, not just extension ---
 const MP4_SIGNATURES = [
   Buffer.from([0x66, 0x74, 0x79, 0x70]), // ftyp
@@ -179,6 +203,8 @@ module.exports = {
   sanitizeCode,
   safeError,
   generateCode,
+  getMonthKey,
+  monthKeyBefore,
   verifyMP4,
   verifyJSON,
   downloadToFile
