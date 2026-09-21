@@ -27,7 +27,8 @@ const http = require('http');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
 
-const { requireAuth, requireAuthAny, requireTier } = require('./auth');
+const { requireAuth, requireAuthAny, requireTier, getEffectiveTier } = require('./auth');
+const { users } = require('./stores');
 const { TIERS, tiersWithCapability } = require('./config');
 const { getCommentsForSession } = require('./routes/comments');
 const { generateASS, checkAssFilter, escapeFilterPath } = require('./comment-overlay');
@@ -144,10 +145,21 @@ function registerRoutes() {
   const { app } = D;
 
   app.get('/account/aireel-usage', requireAuth, (req, res) => {
-    const tierCfg = TIERS[req.userTier] || TIERS.t1;
-    if (!tierCfg.hasAiReelPro) return res.json({ applicable: false });
+    // requireAuth sets req.user ONLY — req.userTier is set by requireTier(),
+    // which this route deliberately does not use, because it has to answer
+    // for every tier rather than 403 the ones without credits.
+    //
+    // Reading req.userTier here meant TIERS[undefined] || TIERS.t1, so this
+    // route reported Free to everyone and always answered
+    // { applicable: false } — even for Pro and Founder. Resolve the tier the
+    // way requireTier does: from the store, never from the JWT, so a
+    // redemption takes effect immediately.
+    const user = users.get((req.user.username || '').toLowerCase());
+    const tier = getEffectiveTier(user);
+    const tierCfg = TIERS[tier] || TIERS.t1;
+    if (!tierCfg.hasAiReelPro) return res.json({ applicable: false, tier });
     const usage = getUsage(req.user.username, tierCfg.aiReelProMonthlyCap);
-    res.json({ applicable: true, ...usage });
+    res.json({ applicable: true, tier, ...usage });
   });
 
   app.post('/sessions/:code/aireel', requireAuth, requireTier(AIREEL_TIERS), (req, res) => {
