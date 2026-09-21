@@ -221,6 +221,7 @@ async function runComposite(uploads, code, outputPath, jobId, includeComments) {
   // cannot be fetched is skipped, exactly as before — but a stalled fetch
   // now fails fast instead of hanging the job.
   const resolved = await mapLimit(uploads, DOWNLOAD_CONCURRENCY, async (upload) => {
+    if (!upload.videoFile) return null; // pending deferred upload — skipped like an unfetchable clip
     const localPath = path.join(sessionDir, upload.videoFile);
     if (fs.existsSync(localPath)) return { upload, videoPath: localPath };
 

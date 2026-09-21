@@ -363,6 +363,7 @@ function retryPendingSpacesUploads(opts = {}) {
     const sessionDir = path.join(UPLOADS_DIR, code);
     for (const rec of session.uploads) {
       if (rec.videoKey) continue;
+      if (!rec.videoFile) continue; // pending deferred upload — video not attached yet
       const localPath = path.join(sessionDir, rec.videoFile);
       if (!fs.existsSync(localPath)) continue;
 

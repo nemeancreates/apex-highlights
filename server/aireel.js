@@ -188,7 +188,7 @@ function registerRoutes() {
     if (requestedIds.length === 0) return D.safeError(res, 400, 'Select at least one clip');
     if (requestedIds.length > MAX_CLIPS) return D.safeError(res, 400, `Maximum ${MAX_CLIPS} clips per reel (v1)`);
 
-    const selected = session.uploads.filter(u => requestedIds.includes(u.id));
+    const selected = session.uploads.filter(u => requestedIds.includes(u.id) && u.videoFile);
     if (selected.length === 0) return D.safeError(res, 400, 'No matching uploads in this session');
 
     const last = lastRunPerSession.get(code) || 0;
