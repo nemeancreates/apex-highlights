@@ -1384,6 +1384,7 @@
      <div class="progress-bar" id="aireelProgressBar" style="display:none;width:100%;">
        <div class="progress-fill" id="aireelFill"></div>
      </div>
+     <div id="aireelUsage" style="width:100%;font-size:11px;color:#7a9686;margin-top:2px;"></div>
      <div id="aireelStatus" style="width:100%;font-size:12px;color:#7a9686;margin-top:4px;"></div>
      <div id="aireelReport" style="width:100%;font-size:12px;color:#8fbfa3;background:#0a1611;border-left:2px solid #39d3a0;padding:8px 12px;display:none;white-space:pre-wrap;"></div>
     </div>
@@ -3476,8 +3477,53 @@
         title.textContent = 'AI Highlight Reel';
         comp.style.display = 'none';
         ai.style.display = 'flex';
+        refreshAiReelUsage();
       }
       panel.style.display = 'block';
+    }
+
+    // The server has always exposed the remaining AI-edit credits at
+    // /account/aireel-usage, and no client ever asked for it — so the only
+    // time anyone heard about credits was the warning after running out.
+    //
+    // The credit is spent inside the job at the EDIT stage, not when the
+    // button is pressed, so this is refreshed when a reel finishes (a reel
+    // cancelled before editing costs nothing).
+    async function refreshAiReelUsage() {
+      const el = document.getElementById('aireelUsage');
+      if (!el) return;
+      if (!myAuthToken) { el.textContent = ''; return; }
+      try {
+        const res = await fetch('/account/aireel-usage', {
+          headers: { 'Authorization': 'Bearer ' + myAuthToken }
+        });
+        if (!res.ok) { el.textContent = ''; return; }
+        const raw = await res.text();
+        let d = null;
+        try { d = JSON.parse(raw); } catch (e) { el.textContent = ''; return; }
+
+        // Squad has AI Reel but not AI EDITING — it always uses the standard
+        // editor, so it has no credits to count. Saying "unlimited" there
+        // would be wrong.
+        if (!d || d.applicable === false) {
+          el.textContent = 'Standard editor — no AI credits used';
+          el.style.color = '#7a9686';
+          return;
+        }
+
+        const left = typeof d.remaining === 'number' ? d.remaining : null;
+        if (left === null) { el.textContent = ''; return; }
+
+        if (left <= 0) {
+          el.textContent = 'AI edits: none left this month — reels will use the standard editor';
+          el.style.color = '#e06c5a';
+        } else {
+          el.textContent = 'AI edits: ' + left + ' of ' + d.cap + ' left this month';
+          el.style.color = left <= Math.max(1, Math.round(d.cap * 0.1)) ? '#d8a838' : '#7a9686';
+        }
+      } catch (e) {
+        el.textContent = '';   // never let this block the panel
+      }
     }
 
     function closeExportPanel() {
@@ -3526,6 +3572,10 @@
       if (btn) { btn.disabled = false; btn.textContent = '\u{1F3AC} Combined View'; }
       if (startBtn) startBtn.style.display = '';
       if (cancelBtn) cancelBtn.style.display = 'none';
+      // Back to the indeterminate loop, or the next export starts by showing
+      // the previous one's fill.
+      const doneFill = document.getElementById('compositeFill');
+      if (doneFill) { doneFill.classList.remove('determinate'); doneFill.style.width = ''; }
 
       if (state === 'done') {
         const sizeMB = data && data.fileSize ? (data.fileSize / 1024 / 1024).toFixed(1) + 'MB' : '';
@@ -3690,8 +3740,14 @@
         // Still working \u2014 show real progress.
         const status = document.getElementById('compositeStatus');
         if (status) status.textContent = data.progress || 'Stitching\u2026';
+        // .determinate switches off the looping keyframe animation — without
+        // it the animation overrides this inline width and the bar keeps
+        // cycling while the percentage text climbs.
         const fill = document.getElementById('compositeFill');
-        if (fill && typeof data.pct === 'number') fill.style.width = data.pct + '%';
+        if (fill && typeof data.pct === 'number' && data.pct > 0) {
+          fill.classList.add('determinate');
+          fill.style.width = data.pct + '%';
+        }
       }, 3000);
     }
 
@@ -3728,6 +3784,7 @@
       aireelJobId = null;
       aireelServerErrors = 0;
       setAiReelRunningUI(false);
+      refreshAiReelUsage();   // a finished reel may have spent a credit
 
       const status = document.getElementById('aireelStatus');
       const report = document.getElementById('aireelReport');
