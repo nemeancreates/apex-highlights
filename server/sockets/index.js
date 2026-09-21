@@ -13,6 +13,9 @@ const { registerHighlightHandlers } = require('./highlights');
 const { registerAutoCaptureHandlers } = require('./autocapture');
 const { createSessionForUser } = require('../routes/sessions');
 
+// Statuses a client may report over 'upload-status' (see the relay below).
+const UPLOAD_RELAY_STATUSES = ['idle', 'syncing', 'waiting', 'paused-fight', 'uploading', 'retrying'];
+
 // Per-IP socket connection cap. Sits before socketAuth so it rejects
 // before doing JWT work. Generous ceiling — households/LANs behind one
 // NAT share an IP, and 15 is well above a real squad's usage.
@@ -401,6 +404,31 @@ function initSockets(io) {
       });
 
       log('info', 'recording_status', { session: sessionCode, username: socket.username, isRecording });
+    });
+
+    // ================================
+    // UPLOAD STATUS RELAY — feeds the 📤 tab's per-player "Session uploads"
+    // view. Each client reports a tiny summary of its OWN upload queue for
+    // this session (clips still to send, % of the one sending now, status)
+    // and we pass it straight to the rest of the squad. Nothing is stored.
+    // Clients send only on change and at most every ~3s, well inside the
+    // per-socket budget. Every field is clamped / allow-listed here, and the
+    // username always comes from the socket, never the payload.
+    // ================================
+    socket.on('upload-status', (payload) => {
+      if (!checkSocketRate(socket.id)) return;
+      const sessionCode = socket.sessionCode;
+      if (!sessionCode || !payload || typeof payload !== 'object') return;
+      const session = sessions.get(sessionCode);
+      if (!session || !session.members.some(m => m.socketId === socket.id)) return;
+
+      const clampInt = (v, max) => Math.max(0, Math.min(max, Math.floor(v)));
+      socket.to(sessionCode).emit('squad-upload-status', {
+        username: socket.username,
+        pending: Number.isFinite(payload.pending) ? clampInt(payload.pending, 999) : 0,
+        pct: Number.isFinite(payload.pct) ? clampInt(payload.pct, 100) : null,
+        status: UPLOAD_RELAY_STATUSES.includes(payload.status) ? payload.status : 'waiting'
+      });
     });
 
     // ================================

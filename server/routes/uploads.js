@@ -33,6 +33,10 @@ const uploadLimiter = createRateLimiter({ windowMs: 60000, max: 10 });
 // backlog of queued videos can't starve their own new metadata posts.
 const pendingMetaLimiter = createRateLimiter({ windowMs: 60000, max: 10 });
 const attachVideoLimiter = createRateLimiter({ windowMs: 60000, max: 10 });
+// Speed test is a few MB of throwaway bytes — cheap, but not free, so it
+// gets a tight budget. The client caches the result for 24h anyway.
+const speedtestLimiter = createRateLimiter({ windowMs: 60000, max: 3 });
+const SPEEDTEST_MAX_BYTES = 4 * 1024 * 1024;
 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
@@ -73,6 +77,37 @@ const upload = multer({
 });
 
 function initUploadRoutes(app, io) {
+  // ================================
+  // UPLOAD SPEED TEST — the client posts ~3MB of random bytes and times the
+  // round trip itself. Server side just drains and counts; it can't time the
+  // transfer, because nginx buffers the whole request body before proxying
+  // (proxy_request_buffering), so Node only sees it arrive over localhost.
+  //
+  // Nothing touches disk. Content-Type is application/octet-stream, so the
+  // global express.json() parser skips it. Anything past 4MB is refused so
+  // this can't be used as a free bandwidth sink.
+  // ================================
+  app.post('/api/speedtest', requireAuth, speedtestLimiter, (req, res) => {
+    let received = 0;
+    let rejected = false;
+    req.on('data', (chunk) => {
+      if (rejected) return;
+      received += chunk.length;
+      if (received > SPEEDTEST_MAX_BYTES) {
+        rejected = true;
+        res.status(413).json({ error: 'Speed test payload too large' });
+        req.resume();
+      }
+    });
+    req.on('end', () => {
+      if (rejected) return;
+      res.json({ bytes: received });
+    });
+    req.on('error', () => {
+      if (!res.headersSent) res.status(400).json({ error: 'Speed test aborted' });
+    });
+  });
+
   app.post('/sessions/:code/upload', requireAuth, uploadLimiter, (req, res) => {
     const code = sanitizeCode(req.params.code);
     if (!code) return res.status(400).json({ error: 'Invalid session code' });

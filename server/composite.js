@@ -128,6 +128,48 @@ function sweepScratch(opts = {}) {
   return { removed, bytes };
 }
 
+// ================================
+// CLIP SYNC DATA
+// A clip's start time lives in its metadata JSON. This used to be read ONLY
+// from the local copy — but uploadToSpaces (spaces.js) deletes the local
+// file once it's safely in R2, which is every clip in production. The read
+// quietly failed, every startTimeUTC came back null, every offset fell to 0,
+// and Combined View stacked all POVs from their first frame instead of
+// lining them up on the moment.
+//
+// Local copy first (dev, or a clip whose R2 push hasn't finished), then the
+// R2 copy via metadataUrl. The fetch goes through downloadToFile, so it gets
+// the same idle/total timeouts and redirect cap as the video pulls, and a
+// stalled CDN can't hang the job. The temp file is named src_* so the
+// scratch sweeper treats it as a render input if anything goes wrong.
+// Returns the raw JSON text, or null.
+// ================================
+const META_MAX_BYTES = 256 * 1024;   // real sidecars are a few KB
+
+async function readClipMetadata(upload, sessionDir, jobId) {
+  if (upload.metadataFile) {
+    const metaPath = path.join(sessionDir, upload.metadataFile);
+    if (fs.existsSync(metaPath)) return fs.readFileSync(metaPath, 'utf8');
+  }
+  if (!upload.metadataUrl) return null;
+
+  const tmp = path.join(COMPOSITE_DIR, `src_meta_${jobId}_${upload.id}.json`);
+  try {
+    await downloadToFile(upload.metadataUrl, tmp, { idleMs: 10000, totalMs: 15000 });
+    const st = fs.statSync(tmp);
+    if (st.size > META_MAX_BYTES) {
+      log('warn', 'composite_meta_too_large', { jobId, uploadId: upload.id, bytes: st.size });
+      return null;
+    }
+    return fs.readFileSync(tmp, 'utf8');
+  } catch (e) {
+    log('warn', 'composite_meta_fetch_failed', { jobId, uploadId: upload.id, error: e.message });
+    return null;
+  } finally {
+    try { fs.unlinkSync(tmp); } catch (e) {}
+  }
+}
+
 // Free bytes on the volume holding the scratch directory. statfsSync landed
 // in Node 18.15 — on anything older we return null and the caller skips the
 // check rather than guessing.
@@ -256,16 +298,18 @@ async function runComposite(uploads, code, outputPath, jobId, includeComments) {
     const { upload, videoPath } = entry;
 
     let startTimeUTC = null;
-    if (upload.metadataFile) {
+    if (upload.metadataFile || upload.metadataUrl) {
       try {
-        const metaPath = path.join(sessionDir, upload.metadataFile);
-        const metaRaw = fs.existsSync(metaPath) ? fs.readFileSync(metaPath, 'utf8') : null;
+        const metaRaw = await readClipMetadata(upload, sessionDir, jobId);
         if (metaRaw) {
           const meta = JSON.parse(metaRaw);
           startTimeUTC = meta.startTimeUTC || null;
           if (startTimeUTC) earliestStart = Math.min(earliestStart, startTimeUTC);
         }
       } catch (e) {}
+      if (!startTimeUTC) {
+        log('warn', 'composite_no_sync_data', { jobId, uploadId: upload.id, username: upload.username });
+      }
     }
 
     clipData.push({
