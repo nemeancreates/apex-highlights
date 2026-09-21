@@ -702,6 +702,11 @@
       100% { width: 20%; margin-left: 80%; }
     }
 
+    /* Once a real percentage is known, stop the looping animation. A CSS
+       animation overrides an inline style on the property it animates, so
+       without this, setting style.width does nothing visible. */
+    .progress-fill.determinate { animation: none; margin-left: 0; }
+
     .empty-state {
       display: flex;
       flex-direction: column;
@@ -1375,6 +1380,10 @@
        <input type="text" id="aireelStyle" placeholder="e.g. keep clutches long, cut fast on kills" style="background:#0c1c14;color:#c8d6cd;border:1px solid #24402e;border-radius:4px;padding:4px 8px;width:100%;" />
      </div>
      <button class="btn btn-small" id="aireelBtn" onclick="startAiReel()">🤖 Generate AI Reel</button>
+     <button class="btn btn-small btn-secondary" id="aireelCancelBtn" onclick="cancelAiReel()" style="display:none;">Stop Reel</button>
+     <div class="progress-bar" id="aireelProgressBar" style="display:none;width:100%;">
+       <div class="progress-fill" id="aireelFill"></div>
+     </div>
      <div id="aireelStatus" style="width:100%;font-size:12px;color:#7a9686;margin-top:4px;"></div>
      <div id="aireelReport" style="width:100%;font-size:12px;color:#8fbfa3;background:#0a1611;border-left:2px solid #39d3a0;padding:8px 12px;display:none;white-space:pre-wrap;"></div>
     </div>
@@ -3690,6 +3699,54 @@
     let aireelJobId = null;
     let aireelPollInterval = null;
 
+    // The server now guarantees every reel ends in 'done' or 'failed'
+    // (watchdog, cancel, crash handling), and answers 404 for a job it no
+    // longer knows about. So this deadline is only a last-resort net, set past
+    // the server's 3h job lifetime so it can never cut off a real long reel.
+    const AIREEL_CLIENT_DEADLINE_MS = 3.25 * 60 * 60 * 1000;
+    const AIREEL_MAX_SERVER_ERRORS = 20;          // ~60s of 5xx / no answer
+    const AIREEL_LIVE_STATES = ['queued', 'preparing', 'analyzing', 'editing', 'rendering'];
+    let aireelDeadlineAt = 0;
+    let aireelServerErrors = 0;
+
+    function setAiReelRunningUI(running) {
+      const btn = document.getElementById('aireelBtn');
+      const stop = document.getElementById('aireelCancelBtn');
+      const bar = document.getElementById('aireelProgressBar');
+      const fill = document.getElementById('aireelFill');
+      if (btn) { btn.disabled = running; btn.textContent = running ? 'Working…' : '\u{1F916} Generate AI Reel'; }
+      if (stop) stop.style.display = running ? '' : 'none';
+      if (bar) bar.style.display = running ? 'block' : 'none';
+      if (fill && !running) { fill.classList.remove('determinate'); fill.style.width = ''; }
+    }
+
+    // ONE place where the reel UI returns to rest. Every exit path — done,
+    // failed, 404, server down, bad response, deadline, cancel — goes through
+    // here, so the Generate button can never again be left stuck disabled.
+    function finishAiReel(state, message, data) {
+      if (aireelPollInterval) { clearInterval(aireelPollInterval); aireelPollInterval = null; }
+      aireelJobId = null;
+      aireelServerErrors = 0;
+      setAiReelRunningUI(false);
+
+      const status = document.getElementById('aireelStatus');
+      const report = document.getElementById('aireelReport');
+      if (state === 'done') {
+        const sizeMB = data && data.fileSize ? (data.fileSize / 1024 / 1024).toFixed(1) + 'MB' : '';
+        status.textContent = '✅ Reel ready' + (sizeMB ? ' (' + sizeMB + ')' : '') + ' — downloading...';
+        if (data.report) {
+          report.textContent = '\u{1F4DD} Editor: ' + data.editorEngine + '\n\n' + data.report;
+          report.style.display = 'block';
+        }
+        const link = document.createElement('a');
+        link.href = data.downloadUrl + '?token=' + encodeURIComponent(myAuthToken);
+        link.download = 'peak-abu-ai-reel.mp4';
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      } else {
+        status.textContent = '❌ ' + message;
+      }
+    }
+
     async function startAiReel() {
       if (!currentSessionCode) return;
       if (selectedExportClips.size === 0) {
@@ -3706,10 +3763,9 @@
       });
       if (uploadIds.length === 0) { alert('Selected clips are not ready yet'); return; }
 
-      const btn = document.getElementById('aireelBtn');
       const status = document.getElementById('aireelStatus');
       const report = document.getElementById('aireelReport');
-      btn.disabled = true; btn.textContent = 'Starting...';
+      setAiReelRunningUI(true);
       status.textContent = 'Queuing job...';
       report.style.display = 'none';
 
@@ -3720,46 +3776,112 @@
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + myAuthToken },
           body: JSON.stringify({ uploadIds, targetSec, game, styleNotes })
         });
-        if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed to start'); }
-        const { jobId } = await res.json();
-        aireelJobId = jobId;
-        status.textContent = 'Job queued — analyzing your clips...';
-        pollAiReel(jobId);
+        // Read as text first: a 502 from nginx is an HTML page, and res.json()
+        // on it throws "Unexpected token '<'" instead of saying the server is down.
+        const raw = await res.text();
+        let data = null;
+        try { data = JSON.parse(raw); } catch (e) {}
+
+        if (!res.ok) {
+          throw new Error(
+            (data && data.error) ||
+            (res.status >= 500 ? 'Server is not responding (' + res.status + ') — try again in a moment' : 'Failed to start')
+          );
+        }
+        if (!data || !data.jobId) throw new Error('Server sent an unexpected response');
+
+        aireelJobId = data.jobId;
+        aireelDeadlineAt = Date.now() + AIREEL_CLIENT_DEADLINE_MS;
+        aireelServerErrors = 0;
+        // The server already returned this; it was being dropped on the floor.
+        status.textContent = data.aiCreditsWarning
+          ? '⚠️ ' + data.aiCreditsWarning
+          : 'Job queued — analyzing your clips...';
+        pollAiReel(data.jobId);
       } catch (err) {
-        status.textContent = '❌ ' + err.message;
-        btn.disabled = false;
-        btn.textContent = '🤖 Generate AI Reel';
+        finishAiReel('failed', err.message);
       }
+    }
+
+    async function cancelAiReel() {
+      const jobId = aireelJobId;
+      if (!jobId) return finishAiReel('failed', 'Reel stopped');
+      document.getElementById('aireelStatus').textContent = 'Stopping…';
+      try {
+        await fetch('/sessions/' + currentSessionCode + '/aireel/' + jobId, {
+          method: 'DELETE',
+          headers: { 'Authorization': 'Bearer ' + myAuthToken }
+        });
+      } catch (e) { /* the local stop below is what the user sees either way */ }
+      // Only reset if nothing newer has started while the DELETE was in flight.
+      if (aireelJobId === jobId) finishAiReel('failed', 'Reel stopped');
     }
 
     function pollAiReel(jobId) {
       if (aireelPollInterval) clearInterval(aireelPollInterval);
       aireelPollInterval = setInterval(async () => {
+        if (aireelJobId !== jobId) return;               // superseded or finished
+        if (Date.now() > aireelDeadlineAt) {
+          return finishAiReel('failed', 'Stopped waiting for this reel — try again');
+        }
+
+        let res, raw;
         try {
-          const res = await fetch('/sessions/' + currentSessionCode + '/aireel/' + jobId);
-          const data = await res.json();
-          const status = document.getElementById('aireelStatus');
-          const report = document.getElementById('aireelReport');
-          const btn = document.getElementById('aireelBtn');
-          status.textContent = data.progress || data.status;
-          if (data.status === 'done') {
-            clearInterval(aireelPollInterval); aireelPollInterval = null;
-            const sizeMB = data.fileSize ? (data.fileSize / 1024 / 1024).toFixed(1) + 'MB' : '';
-            status.textContent = '✅ Reel ready' + (sizeMB ? ' (' + sizeMB + ')' : '') + ' — downloading...';
-            if (data.report) {
-              report.textContent = '📝 Editor: ' + data.editorEngine + '\n\n' + data.report;
-              report.style.display = 'block';
-            }
-            btn.disabled = false; btn.textContent = '🤖 Generate AI Reel';
-            const link = document.createElement('a');
-            link.href = data.downloadUrl + '?token=' + encodeURIComponent(myAuthToken); link.download = 'peak-abu-ai-reel.mp4';
-            document.body.appendChild(link); link.click(); document.body.removeChild(link);
-          } else if (data.status === 'failed') {
-            clearInterval(aireelPollInterval); aireelPollInterval = null;
-            status.textContent = '❌ ' + (data.progress || 'Failed');
-            btn.disabled = false; btn.textContent = '🤖 Generate AI Reel';
+          res = await fetch('/sessions/' + currentSessionCode + '/aireel/' + jobId);
+          raw = await res.text();
+        } catch (e) {
+          if (aireelJobId === jobId && ++aireelServerErrors >= AIREEL_MAX_SERVER_ERRORS) {
+            finishAiReel('failed', 'Lost connection to the server — try again');
           }
-        } catch (e) { /* transient, keep polling */ }
+          return;
+        }
+        // A response for a job that was cancelled or replaced while this
+        // request was in flight must not repaint the UI.
+        if (aireelJobId !== jobId) return;
+
+        // 404: the server no longer has this job (it restarted, or the job
+        // aged out). Terminal — this is the case that used to grey the button
+        // out forever.
+        if (res.status === 404) {
+          return finishAiReel('failed', 'That reel is no longer on the server (it may have restarted) — start it again');
+        }
+        if (res.status >= 500) {
+          if (++aireelServerErrors >= AIREEL_MAX_SERVER_ERRORS) {
+            finishAiReel('failed', 'Server stopped responding (' + res.status + ') — try again');
+          }
+          return;
+        }
+
+        let data = null;
+        try { data = JSON.parse(raw); } catch (e) {
+          if (++aireelServerErrors >= AIREEL_MAX_SERVER_ERRORS) {
+            finishAiReel('failed', 'Server sent an unreadable response — try again');
+          }
+          return;
+        }
+        aireelServerErrors = 0;
+
+        if (data.status === 'done') return finishAiReel('done', null, data);
+        if (data.status === 'failed') return finishAiReel('failed', data.progress || 'Reel failed — try again');
+        if (AIREEL_LIVE_STATES.indexOf(data.status) === -1) {
+          return finishAiReel('failed', 'Reel ended unexpectedly — try again');
+        }
+
+        // Still working — show where it is.
+        const status = document.getElementById('aireelStatus');
+        const fill = document.getElementById('aireelFill');
+        const pct = typeof data.pct === 'number' ? data.pct : 0;
+        if (data.status === 'queued') {
+          status.textContent = data.queuePosition
+            ? 'Waiting in queue — position ' + data.queuePosition
+            : 'Waiting in queue';
+        } else {
+          status.textContent = (data.progress || data.status) + (pct > 0 ? ' — ' + pct + '%' : '');
+        }
+        if (fill && pct > 0) {
+          fill.classList.add('determinate');
+          fill.style.width = pct + '%';
+        }
       }, 3000);
     }
 

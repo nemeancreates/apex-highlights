@@ -23,6 +23,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const https = require('https');
+const http = require('http');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
 
@@ -83,7 +84,7 @@ function initAiReel(deps) {
   }
   if (!fs.existsSync(AIREEL_DIR)) fs.mkdirSync(AIREEL_DIR, { recursive: true });
   initGenerationUsage({ log: D.log });
-  sweepOrphanedAireelFiles();
+  sweepOrphanedAireelFiles({ all: true });
   registerRoutes();
   setInterval(cleanupJobs, 15 * 60 * 1000);
   setInterval(sweepOrphanedAireelFiles, 15 * 60 * 1000);
@@ -186,6 +187,21 @@ function registerRoutes() {
       return D.safeError(res, 503, 'Reel queue is full. Try again in a few minutes.');
     }
 
+    // Disk guard. Sweep first — the space may already be reclaimable — and
+    // refuse only if it is still short afterwards.
+    const free = freeBytes(AIREEL_DIR);
+    if (free !== null && free < minFreeBytes()) {
+      sweepOrphanedAireelFiles();
+      const after = freeBytes(AIREEL_DIR);
+      D.log('warn', 'aireel_low_disk', {
+        freeMB: Math.round(free / 1048576),
+        afterMB: after === null ? null : Math.round(after / 1048576)
+      });
+      if (after !== null && after < minFreeBytes()) {
+        return D.safeError(res, 507, 'The server is low on disk space right now — try again in a few minutes.');
+      }
+    }
+
     let aiCreditsWarning = null;
     if (tierCfg.hasAiReelPro) {
       const usage = getUsage(req.user.username, tierCfg.aiReelProMonthlyCap);
@@ -239,14 +255,43 @@ function registerRoutes() {
 
   app.get('/sessions/:code/aireel/:jobId', (req, res) => {
     const job = jobs.get(req.params.jobId);
-    if (!job) return D.safeError(res, 404, 'Job not found');
+    // 404 means the job is gone — a server restart emptied the in-memory map,
+    // or it aged out. That is a terminal answer the client must act on, not a
+    // state to keep polling through (which is what greyed the button out).
+    if (!job) return res.status(404).json({ error: 'Job not found', status: 'lost' });
     res.json({
       status: job.status, progress: job.progress,
+      pct: job.status === 'done' ? 100 : (job.pct || 0),
+      errorCode: job.errorCode || null,
+      queuePosition: job.status === 'queued' ? jobQueue.indexOf(job) + 1 : 0,
       report: job.status === 'done' ? job.report : null,
       editorEngine: job.status === 'done' ? job.editorEngine : null,
       fileSize: job.fileSize,
       downloadUrl: job.status === 'done' ? `/aireel/${job.id}/download` : null
     });
+  });
+
+  // Cancel. A queued job is simply removed; a running one has its ffmpeg
+  // killed and the worker released immediately for the next reel.
+  app.delete('/sessions/:code/aireel/:jobId', requireAuth, (req, res) => {
+    const job = jobs.get(req.params.jobId);
+    if (!job) return D.safeError(res, 404, 'Job not found');
+    if (job.userId !== req.user.username) return D.safeError(res, 403, 'Not your reel');
+    if (isTerminal(job)) return res.json({ status: job.status, message: 'Already finished' });
+
+    const qi = jobQueue.indexOf(job);
+    if (qi !== -1) {
+      jobQueue.splice(qi, 1);
+      job.cancelled = true;
+      failJob(job, 'cancelled', 'Cancelled');
+      // Never started, cost nothing — don't make the user sit out the
+      // session cooldown to retry with different settings.
+      lastRunPerSession.delete(job.code);
+    } else {
+      abortJob(job, 'cancelled', 'Cancelled');
+    }
+    D.log('info', 'aireel_cancelled', { jobId: job.id, wasQueued: qi !== -1 });
+    res.json({ status: 'cancelled' });
   });
 
   app.get('/aireel/:jobId/download', requireAuthAny, requireTier(AIREEL_TIERS), (req, res) => {
@@ -321,19 +366,93 @@ function registerRoutes() {
 }
 
 // ---------- Job queue ----------
+//
+// Single worker. v0.1.13 had two ways to wedge it permanently: a runJob that
+// awaited forever (an unbounded fetch), and no way to stop a job once it had
+// started. Now every job runs under a time budget, can be cancelled, and the
+// worker is released exactly once per job whichever of those happens first.
+
+const TERMINAL = new Set(['done', 'failed']);
+function isTerminal(job) { return TERMINAL.has(job.status); }
+
+function failJob(job, errorCode, message) {
+  if (isTerminal(job)) return;
+  job.status = 'failed';
+  job.errorCode = errorCode;
+  job.progress = message;
+}
+
+// Thrown by checkpoint() once a job has been cancelled or timed out, so runJob
+// unwinds without overwriting the terminal status that was already set.
+class JobStopped extends Error {
+  constructor() { super('job stopped'); this.code = 'JOB_STOPPED'; }
+}
+function checkpoint(job) { if (job.cancelled) throw new JobStopped(); }
+
+// Progress only ever moves forward, and only reaches 100 on 'done'.
+function setPct(job, pct) {
+  const v = Math.max(0, Math.min(99, Math.round(pct)));
+  if (v > (job.pct || 0)) job.pct = v;
+}
+
+// Deliberately generous — a backstop against a wedged worker, not a speed
+// target. Scales with requested length, and stays under the TTL so the
+// periodic sweep can never delete a workdir that is still in use.
+// AIREEL_MAX_JOB_MS optionally tightens it for small droplets.
+function jobBudgetMs(job) {
+  const computed = 20 * 60 * 1000 + (job.targetSec || 60) * 4000;
+  const ceiling = JOB_TTL_MS - 15 * 60 * 1000;
+  const envCap = Number(process.env.AIREEL_MAX_JOB_MS) || Infinity;
+  return Math.min(computed, ceiling, envCap);
+}
+
+// Stop a job from outside the pipeline (cancel, watchdog). Marks it terminal,
+// kills its ffmpeg, and frees the worker now rather than whenever runJob
+// next notices. Returns false if the job had already finished.
+function abortJob(job, errorCode, message) {
+  if (isTerminal(job)) return false;
+  job.cancelled = true;
+  failJob(job, errorCode, message);
+  killJobChildren(job);
+  if (typeof job._release === 'function') job._release();
+  return true;
+}
+
 async function pumpQueue() {
   if (jobRunning || jobQueue.length === 0) return;
   jobRunning = true;
   const job = jobQueue.shift();
-  try { await runJob(job); }
-  catch (e) {
-    job.status = 'failed';
-    job.progress = 'Internal error';
-    D.log('error', 'aireel_job_crashed', { jobId: job.id, error: e.message });
-  } finally {
+
+  let released = false;
+  let watchdog = null;
+  job._release = () => {
+    if (released) return;
+    released = true;
+    if (watchdog) clearTimeout(watchdog);
     try { fs.rmSync(job.workDir, { recursive: true, force: true }); } catch (e) {}
     jobRunning = false;
-    pumpQueue();
+    setImmediate(pumpQueue);
+  };
+
+  const budget = jobBudgetMs(job);
+  watchdog = setTimeout(() => {
+    if (abortJob(job, 'timeout', 'Reel took too long and was stopped — try fewer clips or a shorter length')) {
+      D.log('warn', 'aireel_job_timeout', { jobId: job.id, budgetMin: +(budget / 60000).toFixed(1) });
+    }
+  }, budget);
+
+  try {
+    await runJob(job);
+    // runJob returning without a terminal status would be a bug. Never leave
+    // a job looking alive after the worker has moved on from it.
+    if (!isTerminal(job)) failJob(job, 'internal_error', 'Internal error');
+  } catch (e) {
+    if (!(e && e.code === 'JOB_STOPPED')) {
+      failJob(job, 'internal_error', 'Internal error');
+      D.log('error', 'aireel_job_crashed', { jobId: job.id, error: e && e.message });
+    }
+  } finally {
+    job._release();
   }
 }
 
@@ -353,12 +472,18 @@ function cleanupJobs() {
 // crash never get cleaned up and the in-memory `jobs` Map that cleanupJobs()
 // relies on starts empty on every fresh boot anyway. This sweeps anything
 // stale left in AIREEL_DIR that nothing currently tracks.
-function sweepOrphanedAireelFiles() {
+//
+// On BOOT ({ all: true }) everything goes regardless of age. The jobs Map is
+// empty in a fresh process, so the download route cannot serve any reel left
+// here — keeping files "still within TTL" after a restart only held disk
+// hostage for up to three hours. On the timer, the age rule still applies.
+function sweepOrphanedAireelFiles(opts) {
+  const all = !!(opts && opts.all === true);
   let entries;
   try { entries = fs.readdirSync(AIREEL_DIR, { withFileTypes: true }); }
   catch (e) { return; }
 
-  const cutoff = Date.now() - JOB_TTL_MS;
+  const cutoff = all ? Infinity : Date.now() - JOB_TTL_MS;
   let swept = 0, bytesFreed = 0;
 
   for (const entry of entries) {
@@ -390,6 +515,20 @@ function sweepOrphanedAireelFiles() {
   }
 }
 
+// Free bytes on the volume holding AIREEL_DIR, or null where statfsSync is
+// unavailable (Node < 18.15), in which case the guard is skipped, not guessed.
+function freeBytes(dir) {
+  if (typeof fs.statfsSync !== 'function') return null;
+  try { const st = fs.statfsSync(dir); return st.bavail * st.bsize; }
+  catch (e) { return null; }
+}
+
+// A full disk does not fail one reel — it stops SQLite, uploads and the API
+// all at once. Refusing one reel loudly is the cheap outcome.
+function minFreeBytes() {
+  return Number(process.env.AIREEL_MIN_FREE_BYTES) || 3 * 1024 * 1024 * 1024;
+}
+
 function dirSize(dir) {
   let total = 0;
   try {
@@ -406,17 +545,26 @@ async function runJob(job) {
   fs.mkdirSync(job.workDir, { recursive: true });
   const sessionDir = path.join(D.UPLOADS_DIR, job.code);
 
+  // Progress bands: prepare 0-5, analyze 5-35, edit 35-40, render 40-95,
+  // stitch 95-99, done 100. Each checkpoint() lets a cancel or a watchdog
+  // abort unwind the pipeline without overwriting the status it already set.
+
   // 1. PREPARE
   job.status = 'preparing';
   job.progress = 'Fetching clips';
   const clips = [];
-  for (const up of job.uploads) {
+  for (let ui = 0; ui < job.uploads.length; ui++) {
+    checkpoint(job);
+    setPct(job, 5 * ui / job.uploads.length);
+    const up = job.uploads[ui];
     let localPath = path.join(sessionDir, up.videoFile);
     if (!fs.existsSync(localPath)) {
       if (!up.videoUrl) { D.log('warn', 'aireel_clip_missing', { jobId: job.id, file: up.videoFile }); continue; }
       const tmp = path.join(job.workDir, `src_${up.id}.mp4`);
       try {
-        await D.downloadToFile(up.videoUrl, tmp);
+        // Explicit bounds: reels tolerate a slower pull than a composite does,
+        // but a stalled socket must still fail rather than hold the worker.
+        await D.downloadToFile(up.videoUrl, tmp, { idleMs: 30000, totalMs: 10 * 60 * 1000 });
         localPath = tmp;
       } catch (e) {
         D.log('warn', 'aireel_download_failed', { jobId: job.id, error: e.message });
@@ -440,6 +588,7 @@ async function runJob(job) {
     });
   }
 
+  checkpoint(job);
   if (clips.length === 0) {
     job.status = 'failed';
     job.progress = 'No usable clips (files missing locally and on CDN)';
@@ -464,9 +613,12 @@ async function runJob(job) {
   // 2. ANALYZE
   job.status = 'analyzing';
   for (let i = 0; i < clips.length; i++) {
+    checkpoint(job);
+    setPct(job, 5 + 30 * i / clips.length);
     job.progress = `Analyzing clip ${i + 1}/${clips.length} (${clips[i].username})`;
-    await analyzeClip(clips[i]);
+    await analyzeClip(clips[i], job);
   }
+  checkpoint(job);
 
   const analyzable = clips.filter(c => c.duration > 2);
   if (analyzable.length === 0) {
@@ -502,6 +654,7 @@ async function runJob(job) {
   // 3. EDIT
   job.status = 'editing';
   job.progress = 'AI editor building the cut';
+  setPct(job, 35);
   let edl, report, engine;
   const jobTierCfg = TIERS[job.tier] || TIERS.t1;
   let aiResult = null;
@@ -518,6 +671,8 @@ async function runJob(job) {
     const h = heuristicEdl(job, analyzable);
     edl = h.edl; report = h.report; engine = 'heuristic';
   }
+  checkpoint(job);   // the AI call can take up to a minute; honour a cancel made during it
+  setPct(job, 40);
 
   if (edl.length === 0) {
     job.status = 'failed';
@@ -533,6 +688,8 @@ async function runJob(job) {
   job.status = 'rendering';
   const segFiles = [];
   for (let i = 0; i < edl.length; i++) {
+    checkpoint(job);
+    setPct(job, 40 + 55 * i / edl.length);
     job.progress = `Rendering segment ${i + 1}/${edl.length}`;
     const segPath = path.join(job.workDir, `seg_${String(i).padStart(2, '0')}.mp4`);
     const ok = await renderSegment(edl[i], clips, segPath, job);
@@ -540,12 +697,14 @@ async function runJob(job) {
     else D.log('warn', 'aireel_segment_failed', { jobId: job.id, seg: i, layout: edl[i].layout });
   }
 
+  checkpoint(job);
   if (segFiles.length === 0) {
     job.status = 'failed';
     job.progress = 'Rendering failed for all segments';
     return;
   }
 
+  setPct(job, 95);
   job.progress = 'Stitching final reel';
   const listPath = path.join(job.workDir, 'concat.txt');
   fs.writeFileSync(listPath, segFiles.map(f => `file '${f.replace(/'/g, "'\\''")}'`).join('\n'));
@@ -553,7 +712,8 @@ async function runJob(job) {
   const concatOk = await runFF([
     '-f', 'concat', '-safe', '0', '-i', listPath,
     '-c', 'copy', '-movflags', '+faststart', '-y', job.outputPath
-  ], RENDER_TIMEOUT_MS);
+  ], RENDER_TIMEOUT_MS, job);
+  checkpoint(job);
 
   if (!concatOk || !fs.existsSync(job.outputPath)) {
     job.status = 'failed';
@@ -564,6 +724,7 @@ async function runJob(job) {
   job.fileSize = fs.statSync(job.outputPath).size;
   job.report = report;
   job.editorEngine = engine;
+  job.pct = 100;
   job.status = 'done';
   job.progress = 'Ready';
   recordProfileReport(job.game, report);
@@ -574,20 +735,52 @@ async function runJob(job) {
 }
 
 // ---------- Analysis ----------
-function runFFCollect(args, timeoutMs) {
+// Every ffmpeg the pipeline starts goes through here. Two changes from v0.1.13:
+//
+//  - -nostdin with stdin ignored. Default stdio hands ffmpeg an open stdin
+//    it reads for interactive keys; that is a known way to get a process
+//    that never exits. stdout is ignored too — every call here writes to a
+//    file or to the null muxer, and stderr carries everything we parse.
+//
+//  - Children are tracked on the job, so cancel and the watchdog can kill
+//    what is actually running instead of waiting out a 20-minute render
+//    timeout. A job already cancelled spawns nothing at all.
+function runFFCollect(args, timeoutMs, job) {
   return new Promise((resolve) => {
-    const p = spawn('ffmpeg', ['-hide_banner', '-nostats', ...args]);
+    if (job && job.cancelled) return resolve({ code: -2, stderr: '' });
+
+    const p = spawn('ffmpeg', ['-nostdin', '-hide_banner', '-nostats', ...args], {
+      stdio: ['ignore', 'ignore', 'pipe']
+    });
+    if (job) (job._children || (job._children = new Set())).add(p);
+
     let err = '';
+    let settled = false;
     const timer = setTimeout(() => { try { p.kill('SIGKILL'); } catch (e) {} }, timeoutMs);
+    const settle = (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (job && job._children) job._children.delete(p);
+      resolve({ code, stderr: err });
+    };
+
     p.stderr.on('data', d => { err += d.toString(); if (err.length > 4e6) err = err.slice(-2e6); });
-    p.on('close', (code) => { clearTimeout(timer); resolve({ code, stderr: err }); });
-    p.on('error', () => { clearTimeout(timer); resolve({ code: -1, stderr: err }); });
+    p.on('close', (code) => settle(code));
+    p.on('error', () => settle(-1));
   });
 }
-function runFF(args, timeoutMs) { return runFFCollect(args, timeoutMs).then(r => r.code === 0); }
+function runFF(args, timeoutMs, job) { return runFFCollect(args, timeoutMs, job).then(r => r.code === 0); }
 
-async function analyzeClip(clip) {
-  const loud = await runFFCollect(['-i', clip.path, '-map', '0:a:0', '-filter:a', 'ebur128', '-f', 'null', '-'], ANALYZE_TIMEOUT_MS);
+function killJobChildren(job) {
+  if (!job || !job._children) return 0;
+  let n = 0;
+  for (const p of job._children) { try { p.kill('SIGKILL'); n++; } catch (e) {} }
+  return n;
+}
+
+async function analyzeClip(clip, job) {
+  const loud = await runFFCollect(['-i', clip.path, '-map', '0:a:0', '-filter:a', 'ebur128', '-f', 'null', '-'], ANALYZE_TIMEOUT_MS, job);
   const durMatch = loud.stderr.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
   if (durMatch) clip.duration = (+durMatch[1]) * 3600 + (+durMatch[2]) * 60 + (+durMatch[3]);
   const loudRe = /t:\s*([\d.]+)\s+.*?M:\s*(-?[\d.]+)/g;
@@ -598,7 +791,7 @@ async function analyzeClip(clip) {
   }
   clip.hasAudio = clip.loudness.length > 0;
 
-  const scene = await runFFCollect(['-i', clip.path, '-vf', "select='gt(scene,0.30)',showinfo", '-f', 'null', '-'], ANALYZE_TIMEOUT_MS);
+  const scene = await runFFCollect(['-i', clip.path, '-vf', "select='gt(scene,0.30)',showinfo", '-f', 'null', '-'], ANALYZE_TIMEOUT_MS, job);
   if (!clip.duration) {
     const d2 = scene.stderr.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
     if (d2) clip.duration = (+d2[1]) * 3600 + (+d2[2]) * 60 + (+d2[3]);
@@ -987,7 +1180,7 @@ async function renderSegment(seg, clips, outPath, job) {
       '-af', 'aresample=async=1000',
       ...ENC, '-shortest', '-y', outPath
     ];
-    return runFF(args, RENDER_TIMEOUT_MS);
+    return runFF(args, RENDER_TIMEOUT_MS, job);
   }
 
   // --- 2-4 POVs: composite ---
@@ -1019,18 +1212,52 @@ async function renderSegment(seg, clips, outPath, job) {
     '-af', 'aresample=async=1000',
     ...ENC, '-shortest', '-y', outPath
   );
-  return runFF(args, RENDER_TIMEOUT_MS);
+  return runFF(args, RENDER_TIMEOUT_MS, job);
 }
 
 // ---------- Util ----------
-function fetchText(url) {
+// Bounded. The previous version had no timeout of any kind, and it runs inside
+// runJob on a SINGLE-worker queue: one metadata fetch whose socket stalled
+// after headers left runJob awaiting forever, jobRunning stuck true, and every
+// reel for every user sitting at "Waiting in queue" until a restart.
+function fetchText(url, opts = {}) {
+  const idleMs = opts.idleMs || 15000;
+  const totalMs = opts.totalMs || 30000;
+  const maxBytes = opts.maxBytes || 2 * 1024 * 1024;   // metadata is tiny
+
   return new Promise((resolve, reject) => {
-    https.get(url, (res) => {
-      if (res.statusCode !== 200) { res.resume(); return reject(new Error('fetch ' + res.statusCode)); }
+    let settled = false;
+    let req = null;
+    const finish = (fn, v) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(totalTimer);
+      if (fn === reject && req) { try { req.destroy(); } catch (e) {} }
+      fn(v);
+    };
+    const totalTimer = setTimeout(
+      () => finish(reject, new Error(`fetchText exceeded ${totalMs}ms`)), totalMs);
+
+    let client;
+    try { client = new URL(url).protocol === 'http:' ? http : https; }
+    catch (e) { return finish(reject, new Error('fetchText: malformed URL')); }
+
+    req = client.get(url, (res) => {
+      if (res.statusCode !== 200) {
+        res.resume();
+        return finish(reject, new Error('fetch ' + res.statusCode));
+      }
       let data = '';
-      res.on('data', c => data += c);
-      res.on('end', () => resolve(data));
-    }).on('error', reject);
+      res.setTimeout(idleMs, () => finish(reject, new Error(`fetchText stalled (${idleMs}ms idle)`)));
+      res.on('data', c => {
+        data += c;
+        if (data.length > maxBytes) finish(reject, new Error('fetchText: response too large'));
+      });
+      res.on('end', () => finish(resolve, data));
+      res.on('error', e => finish(reject, e));
+    });
+    req.on('error', e => finish(reject, e));
+    req.setTimeout(idleMs, () => finish(reject, new Error(`fetchText: connect timeout (${idleMs}ms)`)));
   });
 }
 
