@@ -1298,7 +1298,7 @@
           <div class="selection-detail" id="selDetail"></div>
         </div>
         <div class="selection-actions">
-          <button class="btn btn-small btn-secondary" onclick="selectAllClips()">All</button>
+          <button class="btn btn-small btn-secondary" id="selectAllBtn" onclick="toggleSelectAllClips()">All</button>
           <button class="btn btn-small" onclick="downloadSelected(event)">&#11015; Download</button>
           <button class="btn btn-small btn-secondary" id="compositeBtn" onclick="openExportPanel('composite')" disabled>&#127916; Combined</button>
           <button class="btn btn-small btn-secondary" id="aireelOpenBtn" onclick="openExportPanel('aireel')">&#129302; AI Reel</button>
@@ -3225,6 +3225,9 @@
 
       countEl.textContent = count;
 
+      const allBtn = document.getElementById('selectAllBtn');
+      if (allBtn) allBtn.textContent = isEverythingSelected() ? 'Deselect All' : 'All';
+
       // Collect unique players and highlight numbers from selection
       const players = new Set();
       const hlNums = new Set();
@@ -3258,6 +3261,24 @@
         if (!validIds.has(id)) selectedExportClips.delete(id);
       }
       updateSelectionBar();
+    }
+
+    // Every clip that COULD be selected — clips still processing have no
+    // file to export yet, so they never count toward "everything".
+    function allSelectableIds() {
+      return allUploads.filter(u => !u.processing && u.uploadId).map(u => u.uploadId);
+    }
+
+    function isEverythingSelected() {
+      const ids = allSelectableIds();
+      return ids.length > 0 && ids.every(id => selectedExportClips.has(id));
+    }
+
+    // The All button is a toggle. Once everything is selected, clicking it
+    // again used to do nothing at all; now it clears, and its label says so.
+    function toggleSelectAllClips() {
+      if (isEverythingSelected()) deselectAllClips();
+      else selectAllClips();
     }
 
     function selectAllClips() {
