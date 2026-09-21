@@ -122,7 +122,11 @@ loadUsersFromDisk();
 loadSessionsFromDisk();
 loadCodesFromDisk();
 loadFlagsFromDisk();
-retryPendingSpacesUploads();
+retryPendingSpacesUploads();                    // boot: nothing in flight, retry everything
+// Self-healing while running: a clip whose push to R2 failed used to wait
+// for the next restart. The 10-minute age gate keeps this away from fresh
+// uploads whose first push may still be queued; see stores.js.
+setInterval(() => retryPendingSpacesUploads({ minAgeMs: 10 * 60 * 1000 }), 5 * 60 * 1000);
 startRateLimitCleanup();
 startSessionPurge();
 startCompositeCleanup();

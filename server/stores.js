@@ -335,9 +335,29 @@ function saveSessionsToDisk() {
   }
 }
 
-// --- Boot task: re-upload anything that never made it to Spaces ---
-function retryPendingSpacesUploads() {
+// --- Re-upload anything that never made it to Spaces ---
+//
+// Used to run once, at boot. A push that failed while the server was up
+// (an R2 blip, a network drop) then sat unsent — the tile stuck on
+// "Upload processing…" — until the next restart. It now also runs on a
+// timer (see index.js), which needs three guards the boot-only version
+// could skip:
+//
+//   minAgeMs   — a brand-new upload's FIRST push may still be in flight in
+//                the thumbnail queue. Retrying it would push the same file
+//                twice. At boot nothing is in flight, so boot passes 0.
+//   in-flight  — a large retry can outlast the timer interval; don't queue
+//                a second retry of one that is still running.
+//   backoff    — a file that fails every time (corrupt, or R2 refusing it)
+//                must not be re-pushed in full every few minutes forever.
+const spacesRetryInFlight = new Set();          // videoKey
+const spacesRetryAttempts = new Map();          // videoKey -> { count, nextAt }
+const SPACES_RETRY_BACKOFF_MS = [5, 10, 20, 40, 60].map(m => m * 60 * 1000);
+
+function retryPendingSpacesUploads(opts = {}) {
   if (!isSpacesEnabled()) return;
+  const minAgeMs = typeof opts.minAgeMs === 'number' ? opts.minAgeMs : 0;
+  const now = Date.now();
   let retried = 0;
   for (const [code, session] of sessions) {
     const sessionDir = path.join(UPLOADS_DIR, code);
@@ -346,13 +366,21 @@ function retryPendingSpacesUploads() {
       const localPath = path.join(sessionDir, rec.videoFile);
       if (!fs.existsSync(localPath)) continue;
 
+      const uploadedMs = rec.uploadedAt ? Date.parse(rec.uploadedAt) : NaN;
+      if (minAgeMs > 0 && Number.isFinite(uploadedMs) && now - uploadedMs < minAgeMs) continue;
+
       const thumbName = `thumb_${path.basename(rec.videoFile, '.mp4')}.jpg`;
       const thumbPath = path.join(sessionDir, thumbName);
       const videoKey = `${code}/${rec.videoFile}`;
       const thumbKey = `${code}/${thumbName}`;
       const metaKey = rec.metadataFile ? `${code}/${rec.metadataFile}` : null;
 
+      if (spacesRetryInFlight.has(videoKey)) continue;
+      const att = spacesRetryAttempts.get(videoKey);
+      if (att && att.nextAt > now) continue;
+
       retried++;
+      spacesRetryInFlight.add(videoKey);
       enqueueThumbnail(localPath, thumbPath, async () => {
         try {
           rec.videoUrl = await uploadToSpaces(localPath, videoKey, 'video/mp4');
@@ -369,9 +397,18 @@ function retryPendingSpacesUploads() {
             }
           }
           saveSessionsToDisk();
+          spacesRetryAttempts.delete(videoKey);
           log('info', 'spaces_retry_complete', { session: code, key: videoKey });
         } catch (e) {
-          log('error', 'spaces_retry_failed', { session: code, error: e.message });
+          const prev = spacesRetryAttempts.get(videoKey) || { count: 0 };
+          const count = prev.count + 1;
+          const wait = SPACES_RETRY_BACKOFF_MS[Math.min(count - 1, SPACES_RETRY_BACKOFF_MS.length - 1)];
+          spacesRetryAttempts.set(videoKey, { count, nextAt: Date.now() + wait });
+          log('error', 'spaces_retry_failed', {
+            session: code, error: e.message, attempt: count, nextRetryMin: wait / 60000
+          });
+        } finally {
+          spacesRetryInFlight.delete(videoKey);
         }
       });
     }

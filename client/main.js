@@ -2447,6 +2447,23 @@ let allowWindowClose = false; // bypass flag so we don't re-prompt on our own co
 const QUIT_UPLOAD_WAIT_MS = 45000; // hard cap so a dead connection can't trap quit forever — bumped from 20s now that uploads are throttled and take longer on slow connections
 let retriedPendingUploads = false;
 
+// --- In-session self-healing retry ---------------------------------------
+// A clip whose upload failed mid-session used to sit in the manifest until
+// the user next LAUNCHED the app — the retry ran once per launch. In a live
+// squad session that meant clips that were recorded fine never reached
+// anyone. Now the manifest is swept on a timer while the app runs.
+const UPLOAD_RETRY_SWEEP_MS = 60 * 1000;
+// Per-clip backoff after each failed attempt; the last step repeats.
+const UPLOAD_RETRY_BACKOFF_MS = [30e3, 60e3, 2 * 60e3, 5 * 60e3, 10 * 60e3];
+// A throttled upload streams bytes continuously, so this only fires on a
+// genuinely stalled socket — which previously left a clip "uploading"
+// forever and therefore never retried.
+const UPLOAD_IDLE_TIMEOUT_MS = 2 * 60 * 1000;
+const inFlightUploads = new Set();   // uploadKey -> currently being sent
+const uploadAttempts = new Map();    // uploadKey -> { count, nextAt }
+let uploadRetryTimer = null;
+let uploadSweepRunning = false;
+
 function readPendingManifest() {
   try {
     if (fs.existsSync(PENDING_UPLOADS_PATH)) {
@@ -2517,24 +2534,93 @@ function maybeFinishQuit() {
 // pendingUploads before exiting). Runs once per launch, gated on the auth
 // token being available since performUpload needs it.
 function retryPendingUploadsFromDisk() {
-  const manifest = readPendingManifest();
-  const keys = Object.keys(manifest);
-  if (keys.length === 0) return;
+  // Kept for its name; the launch-time retry is now simply the first sweep,
+  // so it gets the same duplicate check and one-at-a-time pacing.
+  startUploadRetryLoop();
+}
 
-  console.log(`Found ${keys.length} upload(s) left pending from a previous run — retrying`);
-  let changed = false;
-  for (const uploadKey of keys) {
-    const entry = manifest[uploadKey];
-    if (!entry || !entry.videoPath || !fs.existsSync(entry.videoPath)) {
-      console.log(`Pending upload ${uploadKey} — local file missing, dropping from retry queue`);
-      delete manifest[uploadKey];
-      changed = true;
-      continue;
-    }
-    pendingUploads.set(uploadKey, entry);
-    performUpload(entry.sessionCode, entry.videoPath, entry.metadataPath, uploadKey);
+// Record how an attempt ended, for backoff. Success and definitive
+// rejections clear the history; anything transient schedules the next try.
+function noteUploadAttempt(uploadKey, result) {
+  if (!result || result.ok || result.permanent) { uploadAttempts.delete(uploadKey); return; }
+  const prev = uploadAttempts.get(uploadKey) || { count: 0, nextAt: 0 };
+  const count = prev.count + 1;
+  const wait = UPLOAD_RETRY_BACKOFF_MS[Math.min(count - 1, UPLOAD_RETRY_BACKOFF_MS.length - 1)];
+  uploadAttempts.set(uploadKey, { count, nextAt: Date.now() + wait });
+}
+
+function startUploadRetryLoop() {
+  if (!uploadRetryTimer) {
+    uploadRetryTimer = setInterval(() => { sweepPendingUploads(); }, UPLOAD_RETRY_SWEEP_MS);
   }
-  if (changed) writePendingManifest(manifest);
+  sweepPendingUploads();
+}
+
+// One pass over the manifest. Clips are retried ONE AT A TIME — uploads are
+// throttled to protect the user's connection while they play, and a burst of
+// parallel retries would undo that.
+//
+// Before re-sending, ask the server whether the clip already landed. The
+// dangerous case with more frequent retries is an upload that SUCCEEDED but
+// whose response was lost: without this check it would be sent twice and
+// show up as a duplicate. Same filename-prefix match Sync uses.
+async function sweepPendingUploads() {
+  if (!authToken || uploadSweepRunning) return;
+  uploadSweepRunning = true;
+  try {
+    const manifest = readPendingManifest();
+    const now = Date.now();
+    const bySession = new Map();
+
+    for (const [uploadKey, entry] of Object.entries(manifest)) {
+      if (!entry || !entry.videoPath || !fs.existsSync(entry.videoPath)) {
+        console.log(`Pending upload ${uploadKey} — local file missing, dropping from retry queue`);
+        markUploadDone(uploadKey);
+        continue;
+      }
+      // Keep the in-memory map in step with disk, so the quit prompt and
+      // Sync both know about clips left over from a previous run.
+      if (!pendingUploads.has(uploadKey)) pendingUploads.set(uploadKey, entry);
+      if (inFlightUploads.has(uploadKey)) continue;
+      const att = uploadAttempts.get(uploadKey);
+      if (att && att.nextAt > now) continue;
+      const code = entry.sessionCode;
+      if (!bySession.has(code)) bySession.set(code, []);
+      bySession.get(code).push([uploadKey, entry]);
+    }
+
+    for (const [code, items] of bySession) {
+      const remote = await fetchSessionUploads(code);
+      if (remote.status === 404) {
+        // The session is gone, so there is nowhere to send these. Stop
+        // retrying — the clips themselves stay on disk untouched.
+        for (const [uploadKey] of items) {
+          console.log(`Pending upload ${uploadKey} — session ${code} no longer exists, keeping local copy`);
+          markUploadDone(uploadKey);
+        }
+        continue;
+      }
+      if (remote.status !== 200) continue;   // server unreachable — next sweep
+
+      for (const [uploadKey, entry] of items) {
+        const base = path.basename(entry.videoPath, path.extname(entry.videoPath));
+        const landed = (remote.uploads || []).some(u => (u.videoFile || '').startsWith(base + '_'));
+        if (landed) {
+          console.log(`Pending upload ${uploadKey} — already on the server, clearing (response had been lost)`);
+          markUploadDone(uploadKey);
+          continue;
+        }
+        if (!authToken) return;              // logged out mid-sweep
+        console.log(`Retrying upload ${uploadKey} (attempt ${((uploadAttempts.get(uploadKey) || {}).count || 0) + 1})`);
+        await new Promise((resolve) =>
+          performUpload(entry.sessionCode, entry.videoPath, entry.metadataPath, uploadKey, () => resolve()));
+      }
+    }
+  } catch (e) {
+    console.log('Upload retry sweep failed:', e.message);
+  } finally {
+    uploadSweepRunning = false;
+  }
 }
 
 function uploadHighlight(videoPath, metadataPath) {
@@ -2631,7 +2717,20 @@ function uploadHighlight(videoPath, metadataPath) {
 // eating the exact clip the user asked it to recover.
 const PERMANENT_UPLOAD_STATUSES = new Set([400, 403, 404, 413]);
 
-function performUpload(sessionCode, videoPath, metadataPath, uploadKey, onDone) {
+function performUpload(sessionCode, videoPath, metadataPath, uploadKey, onDoneCaller) {
+  // Every exit path below calls onDone. Wrapping it here marks the clip as
+  // no longer in flight, records the outcome for backoff, and guarantees
+  // it runs exactly once even if a timeout and a late response both land.
+  inFlightUploads.add(uploadKey);
+  let finished = false;
+  const onDone = (result) => {
+    if (finished) return;
+    finished = true;
+    inFlightUploads.delete(uploadKey);
+    noteUploadAttempt(uploadKey, result);
+    if (onDoneCaller) onDoneCaller(result);
+  };
+
   console.log(`Uploading highlight to session ${sessionCode}...`);
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('upload-progress', 0);
 
@@ -2645,7 +2744,7 @@ function performUpload(sessionCode, videoPath, metadataPath, uploadKey, onDone) 
     });
   }
 
-  form.submit({
+  const req = form.submit({
     protocol: 'https:', host: 'peakabu.app', port: 443,
     path: `/sessions/${sessionCode}/upload`, method: 'POST',
     headers: { 'Authorization': 'Bearer ' + authToken }
@@ -2706,6 +2805,16 @@ function performUpload(sessionCode, videoPath, metadataPath, uploadKey, onDone) 
       res.resume();
     });
   });
+
+  // A stalled socket used to hold the clip "in progress" forever, so no
+  // retry would ever pick it up. Destroying the request raises 'error',
+  // which lands in the err branch above: transient, clip kept, retried.
+  if (req && typeof req.setTimeout === 'function') {
+    req.setTimeout(UPLOAD_IDLE_TIMEOUT_MS, () => {
+      console.log(`Upload ${uploadKey} stalled for ${UPLOAD_IDLE_TIMEOUT_MS / 1000}s — aborting, will retry`);
+      req.destroy(new Error('upload stalled'));
+    });
+  }
 }
 
 function doUploadHighlight(videoPath, metadataPath) {
@@ -3185,9 +3294,15 @@ function createWindow() {
 
   ipcMain.on('auth-token-updated', (event, token) => {
     authToken = token;
-    if (token && !retriedPendingUploads) {
+    if (!token) return;
+    // A fresh token may be exactly what a 401-failed clip was waiting on,
+    // so don't make those sit out the rest of their backoff.
+    for (const a of uploadAttempts.values()) a.nextAt = 0;
+    if (!retriedPendingUploads) {
       retriedPendingUploads = true;
-      retryPendingUploadsFromDisk();
+      retryPendingUploadsFromDisk();   // starts the in-session retry loop
+    } else {
+      sweepPendingUploads();
     }
   });
   ipcMain.on('session-connected', (event, { code, username }) => {
