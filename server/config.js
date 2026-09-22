@@ -199,9 +199,9 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 const PRIVACY_POLICY_VERSION = '2026-09-07';
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.81',
-  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.81.exe',
-    releaseNotes: "Uploads now heal themselves: a highlight that fails to upload mid-session is retried automatically while Peak-Abu is open, instead of waiting until you restart it — and without creating duplicates. Uploads that stall also recover on their own instead of hanging."
+  version: '0.1.82',
+  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.82.exe',
+    releaseNotes: "Low Bandwidth Mode: on slower connections, Peak-Abu sends your clip's sync data right away and uploads the video between fights, so uploads stop spiking your ping. Uploads are now paced to your measured connection speed. New Upload Queue tab shows your clips and everyone's upload progress in the session. Closing while a clip uploads now shows progress and tells you whether it made it — no more surprise closes. Combined View exports now line up every POV on the moment again."
 };
 
 
