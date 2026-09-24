@@ -199,9 +199,9 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 const PRIVACY_POLICY_VERSION = '2026-09-07';
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.82',
-  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.82.exe',
-    releaseNotes: "Low Bandwidth Mode: on slower connections, Peak-Abu sends your clip's sync data right away and uploads the video between fights, so uploads stop spiking your ping. Uploads are now paced to your measured connection speed. New Upload Queue tab shows your clips and everyone's upload progress in the session. Closing while a clip uploads now shows progress and tells you whether it made it — no more surprise closes. Combined View exports now line up every POV on the moment again."
+  version: '0.1.83',
+  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.83.exe',
+    releaseNotes: "Uploads now go out at full speed. The speed limit only applies when Low Bandwidth Mode is on. New ⟲ Sync button in the Upload Queue tab checks your recent sessions for clips that never uploaded and lets you send them, even after the host has left. Fixed the Privacy Policy update prompt that couldn't be closed: you can now accept it or log out."
 };
 
 

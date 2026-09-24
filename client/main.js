@@ -2569,7 +2569,8 @@ function getQueueState() {
     testedAt: uploadSettings.testedAt,
     testing: speedTestRunning,
     speedTestError: speedTestError,
-    throttleMbps: +(baseThrottleBps(uploadSettings) * 8 / 1e6).toFixed(1),
+    // null = unthrottled (Low Bandwidth Mode off) — the 📤 tab shows "full speed".
+    throttleMbps: lowBandwidthActive() ? +(baseThrottleBps(uploadSettings) * 8 / 1e6).toFixed(1) : null,
     fightActive: lowBandwidthActive() && isFightActive(),
     items
   };
@@ -2626,7 +2627,7 @@ async function runUploadSpeedTest(force) {
       saveUploadSettings();
       speedTestError = null;
       console.log(`Upload speed test: ${r.mbps} Mbps${r.timedOut ? ' (timed out — upper bound)' : ''} → ` +
-        `throttle ${(baseThrottleBps(uploadSettings) * 8 / 1e6).toFixed(1)} Mbps, Low Bandwidth ${lowBandwidthActive() ? 'ON' : 'off'} (mode ${uploadSettings.mode})`);
+        `${lowBandwidthActive() ? `throttle ${(baseThrottleBps(uploadSettings) * 8 / 1e6).toFixed(1)} Mbps` : 'unthrottled'}, Low Bandwidth ${lowBandwidthActive() ? 'ON' : 'off'} (mode ${uploadSettings.mode})`);
     } else {
       speedTestError = speedTestFailureText(r);
       console.log(`Upload speed test failed (status ${r.status}${r.error ? ', ' + r.error : ''}) — keeping previous result`);
@@ -3473,14 +3474,17 @@ function scanLocalClipsForSession(code) {
 // switch on directly — `state` is one of 'expired' | 'error' | 'ok'.
 async function runSyncScan(code) {
   const clean = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (clean.length < 4) return { state: 'error', syncable: [] };
+  if (clean.length < 4) return { state: 'error', code: clean, syncable: [] };
 
   const local = scanLocalClipsForSession(clean);
-  if (local.length === 0) return { state: 'ok', syncable: [] };
+  if (local.length === 0) return { state: 'ok', code: clean, syncable: [] };
 
+  // `code` rides along on every result so the renderer can tell which
+  // session a result belongs to (the 📤 tab checks several at once), and
+  // `status` on errors so a rate limit (429) can be told apart from an outage.
   const remote = await fetchSessionUploads(clean);
-  if (remote.status === 404) return { state: 'expired', syncable: [] };
-  if (remote.status !== 200) return { state: 'error', syncable: [] };
+  if (remote.status === 404) return { state: 'expired', code: clean, syncable: [] };
+  if (remote.status !== 200) return { state: 'error', code: clean, status: remote.status, syncable: [] };
 
   // Syncable = no server record's videoFile carries this clip's basename as
   // a prefix, AND it isn't already mid-upload via the normal live path.
@@ -3510,7 +3514,69 @@ async function runSyncScan(code) {
     sweepPendingUploads();
   }
 
-  return { state: 'ok', syncable, closed: remote.closed };
+  return { state: 'ok', code: clean, syncable, closed: remote.closed };
+}
+
+// ================================
+// MANUAL SYNC CHECK — the 📤 tab's "⟲ Sync" button
+//
+// The automatic scan above only runs when the web player is opened for a
+// session. A squadmate can't rejoin a closed session (the server holds it
+// for the host), and rejoining never triggered the scan anyway — so clips
+// from a session they didn't reopen in the player were never offered for
+// recovery (RAE8X9, 9/23). This checks every recent session that has clips
+// on this PC. Uploading stays a separate, explicit button press per session.
+// ================================
+const SYNC_CHECK_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000; // longest tier retention (t4/t5: 60 days)
+const SYNC_CHECK_MAX_SESSIONS = 8; // GET /sessions/:code/uploads shares a 20/min limit with the player
+let syncCheckRunning = false;
+
+// Every session code with at least one surviving local clip, newest first.
+function listLocalSessionCodes() {
+  let entries = [];
+  try { entries = fs.readdirSync(CLIPS_DIR).filter(f => f.toLowerCase().endsWith('.json')); }
+  catch (e) { return []; }
+  const cutoff = Date.now() - SYNC_CHECK_MAX_AGE_MS;
+  const byCode = new Map();
+  for (const name of entries) {
+    const jsonPath = path.join(CLIPS_DIR, name);
+    if (!fs.existsSync(jsonPath.replace(/\.json$/i, '.mp4'))) continue;
+    let meta;
+    try { meta = JSON.parse(fs.readFileSync(jsonPath, 'utf8')); } catch (e) { continue; }
+    if (!meta || !meta.clipId || !meta.sessionId) continue; // solo clips have no session to sync to
+    const t = typeof meta.startTimeUTC === 'number' ? meta.startTimeUTC : 0;
+    if (t && t < cutoff) continue;                          // past every tier's retention
+    const code = String(meta.sessionId).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (code.length < 4) continue;
+    const cur = byCode.get(code) || { code, localClips: 0, lastAt: 0 };
+    cur.localClips++;
+    if (t > cur.lastAt) cur.lastAt = t;
+    byCode.set(code, cur);
+  }
+  return [...byCode.values()].sort((a, b) => b.lastAt - a.lastAt);
+}
+
+// One scan per session, sequentially (runSyncScan does the diff). Stops on
+// a 429 rather than burning the rest of the minute's lookups.
+async function runSyncCheckAll() {
+  const codes = listLocalSessionCodes();
+  const sessions = [];
+  let rateLimited = false;
+  for (const c of codes.slice(0, SYNC_CHECK_MAX_SESSIONS)) {
+    let r;
+    try { r = await runSyncScan(c.code); }
+    catch (e) { r = { state: 'error', code: c.code, syncable: [] }; }
+    if (r.state === 'error' && r.status === 429) { rateLimited = true; break; }
+    sessions.push({
+      code: c.code, lastAt: c.lastAt, localClips: c.localClips,
+      state: r.state, status: r.status || null, closed: !!r.closed,
+      syncable: r.syncable || []
+    });
+  }
+  console.log(`Sync check: ${sessions.length}/${codes.length} session(s) checked` +
+    (rateLimited ? ' (stopped — rate limited)' : '') + ', ' +
+    sessions.reduce((n, s) => n + s.syncable.length, 0) + ' clip(s) missing');
+  return { total: codes.length, checked: sessions.length, rateLimited, sessions };
 }
 
 // Sequential upload of a syncable list — one at a time, through the same
@@ -4358,6 +4424,15 @@ function createWindow() {
   // the renderer may be holding stale (a clip could have uploaded through
   // the normal live path, or been deleted, since the last scan result).
   // Doesn't await runSyncUpload — progress streams over 'sync-progress'.
+  // 📤 tab "⟲ Sync" — check every recent local session for missing clips.
+  ipcMain.handle('sync-check-all', async () => {
+    if (!authToken) return { error: 'login' };
+    if (syncCheckRunning) return { error: 'busy' };
+    syncCheckRunning = true;
+    try { return await runSyncCheckAll(); }
+    finally { syncCheckRunning = false; }
+  });
+
   ipcMain.handle('sync-start', async (event, payload) => {
     const code = payload && payload.code;
     const scan = await runSyncScan(code);

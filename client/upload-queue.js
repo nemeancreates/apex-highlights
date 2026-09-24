@@ -62,10 +62,16 @@ function baseThrottleBps(settings) {
   return Math.round(Math.min(UPLOAD_THROTTLE_CAP_BPS, Math.max(UPLOAD_THROTTLE_FLOOR_BPS, bps)));
 }
 
-// Rate right now. The trickle only applies in Low Bandwidth Mode — normal
-// mode uploads exactly as before (just with the measured throttle).
+// Rate right now. Throttling is a Low Bandwidth Mode feature only:
+//   LBM on, fight active -> trickle (UPLOAD_TRICKLE_BPS)
+//   LBM on, no fight     -> measured throttle (baseThrottleBps)
+//   LBM off              -> unthrottled (Infinity) — RateThrottleStream
+//     passes data straight through.
+// Normal mode used to get the measured throttle too, which capped every
+// player at <=6 Mbps and let auto-capture queues fall behind (RAE8X9, 9/23).
 function currentThrottleBps(settings, fightActive) {
-  if (fightActive && isLowBandwidth(settings)) return UPLOAD_TRICKLE_BPS;
+  if (!isLowBandwidth(settings)) return Infinity;
+  if (fightActive) return UPLOAD_TRICKLE_BPS;
   return baseThrottleBps(settings);
 }
 
@@ -87,9 +93,23 @@ class RateThrottleStream extends Transform {
     let off = 0;
     const step = () => {
       if (off >= chunk.length) return callback();
+      const bps = Math.max(1, this.getBps());
+      // Unthrottled (Low Bandwidth Mode off): pass the rest of the chunk
+      // through in one push. Slicing it would recurse once per 16KB with no
+      // wait, which is pointless work and can overflow the stack on a big
+      // chunk. The rate is re-read per chunk, so switching modes mid-upload
+      // still takes effect on the next chunk.
+      if (bps === Infinity) {
+        const rest = off === 0 ? chunk : chunk.subarray(off);
+        off = chunk.length;
+        this.nextAt = 0;
+        this.sent += rest.length;
+        this.push(rest);
+        if (this.onProgress) { try { this.onProgress(this.sent); } catch (e) {} }
+        return callback();
+      }
       const piece = chunk.subarray(off, off + THROTTLE_SLICE_BYTES);
       off += piece.length;
-      const bps = Math.max(1, this.getBps());
       const now = Date.now();
       const start = Math.max(now, this.nextAt);
       this.nextAt = start + (piece.length / bps) * 1000;

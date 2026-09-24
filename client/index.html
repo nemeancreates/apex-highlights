@@ -632,6 +632,19 @@
       }
       .uq-mode button:hover { background: #14291d; }
       .uq-mode button.active { border-color: #39d3a0; color: #39d3a0; }
+      /* ⟲ Sync sits in the mode row but isn't a mode — dashed so it never
+         reads as the selected option. */
+      .uq-mode button.uq-sync-btn { border-style: dashed; color: #39d3a0; }
+      .uq-mode button.uq-sync-btn:disabled { opacity: 0.55; cursor: default; }
+      .uq-sync { font-size: 12px; margin-top: 6px; border-top: 1px solid #14291d; padding-top: 4px; }
+      .uq-sync-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 3px 0; color: #7a9686; }
+      .uq-sync-row.missing { color: #d8a838; }
+      .uq-sync-row.bad { color: #f0857a; }
+      .uq-sync-row button {
+        width: auto; flex-shrink: 0; font-size: 11px; padding: 2px 10px; border-radius: 4px;
+        background: #0c1c14; border: 1px solid #39d3a0; color: #39d3a0;
+      }
+      .uq-sync-note { color: #45604f; padding: 2px 0; }
       .uq-meta { font-size: 12px; color: #45604f; }
       .uq-meta a { color: #39d3a0; cursor: pointer; text-decoration: none; }
       .uq-meta a.disabled { color: #45604f; pointer-events: none; }
@@ -786,7 +799,7 @@
               <img src="assets/kickstarter.png" alt="kickstarter" />
             </button>
           </div>
-          <span class="version-tag">v0.1.82</span>
+          <span class="version-tag">v0.1.83</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="redeem-wrap">
@@ -966,20 +979,29 @@
       </div>
 
       <!-- PRIVACY RE-CONSENT — shown when the logged-in account's accepted
-           privacy version doesn't match the current one. Not dismissible. -->
+           privacy version doesn't match the current one. Not dismissible:
+           the only ways out are Accept (recorded server-side) or Log out.
+           (Its body used to be a pasted copy of beginRecordingModal, so its
+           buttons closed THAT modal and started recording — this one never
+           closed, and acceptPrivacyUpdate() was never called.) -->
       <div id="privacyReconsentModal" class="modal">
         <div class="modal-content" style="max-width:420px;">
           <div class="modal-header">
             <h2>📋 Our Privacy Policy has been updated</h2>
           </div>
-          <p style="font-size:13px;line-height:1.5;color:#c8d6cd;margin-bottom:14px;">
-            You've joined <strong id="beginRecordingCode">the session</strong>. Starting the rolling buffer
-            records your screen and mic; if others are in this session, it may capture their audio too.
-            Make sure everyone present is okay with being recorded before you continue.
+          <p style="font-size:13px;line-height:1.5;color:#c8d6cd;margin-bottom:10px;">
+            We've updated our Privacy Policy and Terms of Service. Please review the changes and
+            accept them to keep using Peak-Abu.
           </p>
+          <p style="font-size:12px;margin-bottom:14px;">
+            <a href="#" onclick="shell.openExternal('https://peakabu.app/privacy.html'); return false;">Read the Privacy Policy</a>
+            &nbsp;·&nbsp;
+            <a href="#" onclick="shell.openExternal('https://peakabu.app/terms.html'); return false;">Terms of Service</a>
+          </p>
+          <div id="privacyReconsentError" style="display:none;color:#f0857a;font-size:12px;margin-bottom:10px;"></div>
           <div class="row">
-            <button class="btn-start" onclick="confirmBeginRecording()">▶ Begin Rolling Buffer</button>
-            <button class="btn-secondary" onclick="cancelBeginRecording()">Not yet</button>
+            <button class="btn-start" id="privacyAcceptBtn" onclick="acceptPrivacyUpdate()">✓ I Accept</button>
+            <button class="btn-secondary" onclick="declinePrivacyUpdate()">Log out</button>
           </div>
         </div>
       </div>
@@ -1197,9 +1219,11 @@ REPLACE:
                         <button data-mode="auto" onclick="setUploadMode('auto')" title="On automatically when your measured upload is under 10 Mbps">Auto</button>
                         <button data-mode="on" onclick="setUploadMode('on')" title="Always send videos during downtime">On</button>
                         <button data-mode="off" onclick="setUploadMode('off')" title="Always upload right away">Off</button>
+                        <button class="uq-sync-btn" id="uqSyncCheckBtn" onclick="checkMissingClips()" title="Check your recent sessions for clips that never uploaded">⟲ Sync</button>
                       </div>
                       <div class="uq-meta"><span id="uqSpeed">Upload speed not tested yet</span> · <a id="uqRetest" onclick="retestUploadSpeed()">Retest</a></div>
                       <div class="uq-state" id="uqState"></div>
+                      <div class="uq-sync" id="uqSyncResults" style="display:none;"></div>
                     </div>
                     <div id="uqSessionWrap" style="display:none;">
                       <div class="uq-label">Session uploads</div>
@@ -1982,7 +2006,8 @@ REPLACE:
         if (st.testing) {
           speed.textContent = 'Testing upload speed…';
         } else if (st.measuredMbps) {
-          speed.textContent = 'Upload ' + st.measuredMbps + ' Mbps · using up to ' + st.throttleMbps + ' Mbps';
+          speed.textContent = 'Upload ' + st.measuredMbps + ' Mbps · ' +
+            (st.throttleMbps == null ? 'full speed' : 'using up to ' + st.throttleMbps + ' Mbps');
           if (st.speedTestError) {
             var stale = document.createElement('span');
             stale.className = 'uq-err';
@@ -3059,9 +3084,10 @@ REPLACE:
           return;
         }
 
+        var fromWhere = result.code ? ' from session ' + result.code : ' from this session';
         title.textContent = window.syncableClips.length === 1
-          ? '1 clip from this session never uploaded'
-          : window.syncableClips.length + ' clips from this session never uploaded';
+          ? '1 clip' + fromWhere + ' never uploaded'
+          : window.syncableClips.length + ' clips' + fromWhere + ' never uploaded';
         btn.style.display = 'inline-block';
         btn.disabled = window.syncInProgress;
         btn.textContent = window.syncInProgress ? '⟲ Syncing…' : '⟲ Sync';
@@ -3093,14 +3119,14 @@ REPLACE:
       window.startSync = function() {
         if (!window.currentSyncCode || window.syncInProgress) return;
         window.syncInProgress = true;
-        renderSyncBanner({ state: 'ok', syncable: window.syncableClips });
+        renderSyncBanner({ state: 'ok', code: window.currentSyncCode, syncable: window.syncableClips });
         ipcRenderer.invoke('sync-start', { code: window.currentSyncCode }).then(function(r) {
           if (!r || !r.started) {
             // Nothing actually kicked off (already synced, session expired
             // since the last scan, etc.) — no 'sync-progress' will arrive
             // to clear the in-progress flag, so clear it here.
             window.syncInProgress = false;
-            renderSyncBanner({ state: 'ok', syncable: window.syncableClips });
+            renderSyncBanner({ state: 'ok', code: window.currentSyncCode, syncable: window.syncableClips });
             if (r && r.reason === 'expired') hudLog('system', '⚠ Session expired — nothing to sync', 'error');
           }
         });
@@ -3108,12 +3134,125 @@ REPLACE:
 
       ipcRenderer.on('sync-scan-result', function(ev, result) {
         renderSyncBanner(result);
+        updateSyncCheckRow(result);
       });
+
+      // ---- 📤 tab "⟲ Sync" — manual check across recent sessions ----
+      // The automatic check above only runs when the web player opens for a
+      // session, and squadmates can't rejoin a closed one — so this lists
+      // every recent session with clips on this PC. Each session with
+      // missing clips gets its own Sync button, which hands off to the
+      // banner above (same upload path, same per-clip progress).
+      window.syncCheckResults = null;
+
+      function syncCheckNote(box, text) {
+        var d = document.createElement('div');
+        d.className = 'uq-sync-note';
+        d.textContent = text;
+        box.appendChild(d);
+      }
+
+      function renderSyncCheck(r) {
+        var box = document.getElementById('uqSyncResults');
+        if (!box) return;
+        box.innerHTML = '';
+        box.style.display = 'block';
+        if (!r) { syncCheckNote(box, 'Check failed — try again.'); return; }
+        if (r.error === 'login') { syncCheckNote(box, 'Log in to check for missing clips.'); return; }
+        if (r.error === 'busy') { syncCheckNote(box, 'Already checking…'); return; }
+        if (!r.total) { syncCheckNote(box, 'No clips from recent sessions on this PC.'); return; }
+
+        var missing = 0, withMissing = 0;
+        r.sessions.forEach(function(s) { if (s.syncable.length) { missing += s.syncable.length; withMissing++; } });
+        syncCheckNote(box, missing
+          ? missing + ' clip' + (missing === 1 ? '' : 's') + ' missing across ' + withMissing + ' session' + (withMissing === 1 ? '' : 's')
+          : (r.checked < r.total
+            ? 'Nothing missing in the ' + r.checked + ' checked'
+            : '✓ All caught up — nothing missing'));
+
+        r.sessions.forEach(function(s) {
+          var row = document.createElement('div');
+          row.className = 'uq-sync-row';
+          var label = document.createElement('span');
+          var text = s.code + ' — ';
+          if (s.state === 'expired') {
+            text += 'expired (clips kept on this PC)';
+          } else if (s.state === 'error') {
+            row.classList.add('bad');
+            text += "couldn't check" + (s.status ? ' (' + s.status + ')' : ' (offline?)');
+          } else if (s.syncable.length) {
+            row.classList.add('missing');
+            text += s.syncable.length + ' missing';
+          } else {
+            text += 'all uploaded ✓';
+          }
+          label.textContent = text;
+          row.appendChild(label);
+          if (s.state === 'ok' && s.syncable.length) {
+            var b = document.createElement('button');
+            b.textContent = window.syncInProgress && window.currentSyncCode === s.code ? 'Syncing…' : 'Sync';
+            b.disabled = !!window.syncInProgress;
+            b.onclick = function() { syncSessionFromTab(s.code); };
+            row.appendChild(b);
+          }
+          box.appendChild(row);
+        });
+
+        if (r.rateLimited) {
+          syncCheckNote(box, 'Checked ' + r.checked + ' of ' + r.total + ' — server limit reached, press ⟲ Sync again in a minute.');
+        } else if (r.total > r.checked) {
+          syncCheckNote(box, 'Showing your ' + r.checked + ' most recent of ' + r.total + ' sessions.');
+        }
+      }
+
+      function updateSyncCheckRow(result) {
+        var r = window.syncCheckResults;
+        if (!r || !r.sessions || !result || !result.code) return;
+        var s = r.sessions.find(function(x) { return x.code === result.code; });
+        if (!s) return;
+        s.state = result.state;
+        s.status = result.status || null;
+        s.syncable = result.syncable || [];
+        renderSyncCheck(r);
+      }
+
+      window.checkMissingClips = function() {
+        var btn = document.getElementById('uqSyncCheckBtn');
+        if (!btn || btn.disabled) return;
+        if (!window.authToken) { hudLog('system', '🔒 Log in to check for missing clips', 'error'); return; }
+        btn.disabled = true;
+        btn.textContent = 'Checking…';
+        var box = document.getElementById('uqSyncResults');
+        box.innerHTML = '';
+        box.style.display = 'block';
+        syncCheckNote(box, 'Checking your recent sessions…');
+        ipcRenderer.invoke('sync-check-all').then(function(r) {
+          if (r && !r.error) window.syncCheckResults = r;
+          renderSyncCheck(r);
+        }).catch(function() {
+          renderSyncCheck(null);
+        }).then(function() {
+          btn.disabled = false;
+          btn.textContent = '⟲ Sync';
+        });
+      };
+
+      window.syncSessionFromTab = function(code) {
+        if (window.syncInProgress) { hudLog('system', '⟲ A sync is already running — wait for it to finish', 'info'); return; }
+        var r = window.syncCheckResults;
+        var s = r && r.sessions && r.sessions.find(function(x) { return x.code === code; });
+        if (!s || !s.syncable.length) return;
+        window.currentSyncCode = code;
+        renderSyncBanner({ state: 'ok', code: code, syncable: s.syncable });
+        startSync();
+        renderSyncCheck(r);
+      };
 
       ipcRenderer.on('sync-progress', function(ev, p) {
         if (!p) return;
         if (p.state === 'complete') {
           window.syncInProgress = false;
+          if (window.syncCheckResults) renderSyncCheck(window.syncCheckResults);
           return;
         }
         var row = document.querySelector('#syncBannerList .sync-clip[data-sync-file="' + p.fileName + '"]');
@@ -5748,6 +5887,9 @@ REPLACE:
           updateTierBadge(data.tier || 't1', data.tierExpiresAt);
           window.recordingConsentSeen = !!data.recordingConsentSeen;
           showAuthLoggedIn(data.username);
+          // The login response carries the privacy versions too — prompt now
+          // instead of waiting for the next app launch's /auth/me.
+          checkPrivacyConsent(data);
         } catch(e) { showAuthError('Could not reach server'); }
       };
 
@@ -5811,19 +5953,47 @@ REPLACE:
       // version doesn't match the server's current PRIVACY_POLICY_VERSION.
       // =====================
       function checkPrivacyConsent(data) {
+        var modal = document.getElementById('privacyReconsentModal');
         if (data && data.privacyPolicyVersion && data.privacyVersionAccepted !== data.privacyPolicyVersion) {
-          document.getElementById('privacyReconsentModal').classList.add('show');
+          document.getElementById('privacyReconsentError').style.display = 'none';
+          modal.classList.add('show');
+        } else {
+          // Up to date (e.g. a different account just logged in) — make sure
+          // a prompt left over from the previous account isn't still showing.
+          modal.classList.remove('show');
         }
       }
 
       window.acceptPrivacyUpdate = async function() {
+        var btn = document.getElementById('privacyAcceptBtn');
+        var err = document.getElementById('privacyReconsentError');
+        btn.disabled = true;
+        err.style.display = 'none';
         try {
           var res = await fetch('https://peakabu.app/auth/accept-privacy', {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + window.authToken }
           });
-          if (res.ok) document.getElementById('privacyReconsentModal').classList.remove('show');
-        } catch (e) {}
+          if (res.ok) {
+            document.getElementById('privacyReconsentModal').classList.remove('show');
+            return;
+          }
+          if (res.status === 401) {
+            err.textContent = 'Your login has expired — log out and sign back in to accept.';
+          } else {
+            err.textContent = 'Couldn\'t save that (server error ' + res.status + '). Please try again.';
+          }
+        } catch (e) {
+          err.textContent = 'Couldn\'t reach the server. Check your connection and try again.';
+        } finally {
+          btn.disabled = false;
+        }
+        err.style.display = 'block';
+      };
+
+      window.declinePrivacyUpdate = function() {
+        document.getElementById('privacyReconsentModal').classList.remove('show');
+        logoutUser();
       };
 
       // =====================
