@@ -61,6 +61,13 @@ const SOCKET_RATE_WINDOW = 10000;    // 10 seconds
 // --- Highlights ---
 const MAX_PENDING_HIGHLIGHTS = 3;    // queued triggers during cooldown lock
 
+// --- Stars (v0.1.87) ---
+// A star press stars any highlight from the last STAR_WINDOW_MS; failing
+// that, it waits STAR_WINDOW_MS for one and otherwise captures one itself.
+// See sockets/stars.js.
+const STAR_WINDOW_MS = 10000;
+const STAR_MAX_PER_SESSION = 10000;  // ceiling on star rows per session (junk bound)
+
 // --- Host inactivity auto-close ---
 // Two independent clocks, checked by the watchdog sweep in sockets/index.js:
 // - HOST_RECORDING_INACTIVITY_MS: host IS recording but sends no uploads or
@@ -199,9 +206,9 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 const PRIVACY_POLICY_VERSION = '2026-09-07';
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.86',
-  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.86.exe',
-    releaseNotes: "Fixes squad clips that never arrived: when a clip waited in the upload queue (Low Bandwidth Mode, or a retry after a failed upload), a squadmate's upload of the same highlight could make Peak-Abu think yours was already sent, so it was dropped. After updating, press ⟲ Sync in the 📤 tab to send any clips this missed. Sync no longer re-uploads a clip a closed session can't accept — it tells you instead — and shows clip lengths as minutes:seconds."
+  version: '0.1.87',
+  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.87.exe',
+    releaseNotes: "Stars, chapters and game folders. Star a highlight with the new star key (set it with ★ next to your highlight key): it stars the highlight you just saved, or saves this moment starred if nothing was saved. In the web player, click ☆ on a highlight to star it for the whole squad, and use ★ Starred only to see just those. Long sessions are split into chapters at breaks longer than 4 minutes. New clips save into a folder per game and session, and Settings → Organize clips sorts your older clips the same way (with a preview first, and Undo). Also fixed: your highlight key no longer blocks that key in other apps — with Shift+R you can type a capital R again (it only saves while a game has focus, not while you're typing in Discord or a browser)."
 };
 
 
@@ -235,6 +242,8 @@ module.exports = {
   SOCKET_RATE_MAX,
   SOCKET_RATE_WINDOW,
   MAX_PENDING_HIGHLIGHTS,
+  STAR_WINDOW_MS,
+  STAR_MAX_PER_SESSION,
   COMMENT_MAX_LENGTH,
   COMMENT_MAX_PER_CLIP,
   COMMENT_RATE_MAX,

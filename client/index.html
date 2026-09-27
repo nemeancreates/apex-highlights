@@ -283,6 +283,11 @@
       .session-note-text.empty::before { content: 'Add a private note'; color: #3a5244; font-style: italic; }
       .session-title-row .hist-edit, .session-note-row .hist-edit { font-size: 11px; }
 
+      /* ===== Organize clips preview (v0.1.87) ===== */
+      .organize-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+      .organize-row input { flex: 1; margin: 0; }
+      .organize-count { font-size: 11px; color: #7a9686; white-space: nowrap; }
+
       /* ===== Player link ===== */
       .player-link { display: block; text-align: center; margin: 7px 0; font-size: 13px; color: #39d3a0; text-decoration: none; }
       .player-link:hover { text-decoration: underline; color: #4fe0b0; }
@@ -799,7 +804,7 @@
               <img src="assets/kickstarter.png" alt="kickstarter" />
             </button>
           </div>
-          <span class="version-tag">v0.1.86</span>
+          <span class="version-tag">v0.1.87</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="redeem-wrap">
@@ -856,6 +861,13 @@
             <label>Video Storage Location</label>
             <div class="storage-path" id="storagePathDisplay">Loading...</div>
             <button class="btn-secondary" style="width:100%;margin-bottom:16px;" onclick="pickStorageDirectory()">📁 Change Storage Directory</button>
+
+            <label>Organize Clips</label>
+            <p style="font-size:11px;color:#5f7a6a;margin:0 0 6px;">New clips save into game and session folders. This sorts the clips you saved before that. You'll see a preview first.</p>
+            <div class="row" style="margin-bottom:16px;">
+              <button class="btn-secondary" onclick="openOrganizeClips()">📂 Organize clips</button>
+              <button class="btn-secondary" id="organizeUndoBtn" style="display:none;" onclick="undoOrganizeClips()">↩ Undo organize</button>
+            </div>
 
             <hr style="border:1px solid #1e3527;margin:16px 0;">
 
@@ -956,6 +968,23 @@
           <div class="row">
             <button class="btn-save" onclick="submitTextInputModal()">Save</button>
             <button class="btn-secondary" onclick="closeTextInputModal()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ORGANIZE CLIPS (v0.1.87) — preview + confirm; see openOrganizeClips -->
+      <div id="organizeModal" class="modal">
+        <div class="modal-content" style="max-width:540px;">
+          <div class="modal-header">
+            <h2>Organize clips</h2>
+            <button class="modal-close" onclick="closeOrganizeModal()">×</button>
+          </div>
+          <div id="organizeSummary" style="font-size:13px;color:#8fbfa3;margin-bottom:6px;"></div>
+          <div id="organizeGroups" style="max-height:340px;overflow-y:auto;"></div>
+          <div id="organizeStatus" style="font-size:12px;color:#7a9686;margin:10px 0;"></div>
+          <div class="row">
+            <button class="btn-save" id="organizeRunBtn" onclick="runOrganizeClips()" disabled>Move clips</button>
+            <button class="btn-secondary" onclick="closeOrganizeModal()">Close</button>
           </div>
         </div>
       </div>
@@ -1174,6 +1203,11 @@ REPLACE:
               <button class="btn-icon" id="inviteLinkHeaderBtn" onclick="copyInviteLink()" title="Copy invite link — paste it in Discord to bring your squad in" style="display:none;">🔗</button>
             </div>
             <div class="hint" id="sessionCodeHint">Click the code to copy to clipboard</div>
+            <div class="session-note-row" id="clipFolderRow" style="display:none;">
+              <span>📁</span>
+              <span class="session-note-text" id="clipFolderText" style="font-style:normal;"></span>
+              <button class="hist-edit" onclick="renameClipFolder()" title="Rename this game's folder">✏</button>
+            </div>
 
             <a class="player-link" id="playerLink" href="#" onclick="openWebPlayer(event)">🌐 Open in Web Player</a>
             <div class="uc-label" style="margin-top:13px;">Squad</div>
@@ -1258,6 +1292,11 @@ REPLACE:
                 <button class="btn-icon" id="hotkeyBtn" title="Change highlight hotkey" onclick="toggleHotkeyCapture()"
                         style="width:36px;height:36px;font-size:18px;flex-shrink:0;">⌨</button>
                 <div class="hotkey-current" id="hotkeyCurrent">F9</div>
+              </div>
+              <div class="hotkey-ctl" style="margin-left:8px;">
+                <button class="btn-icon" id="starHotkeyBtn" title="Set a star key: stars the highlight you just saved, or saves this moment starred" onclick="toggleStarHotkeyCapture()"
+                        style="width:36px;height:36px;font-size:18px;flex-shrink:0;">★</button>
+                <div class="hotkey-current" id="starHotkeyCurrent">—</div>
               </div>
             </div>
             <div class="hotkey-inline-hint" id="hotkeyInlineHint"></div>
@@ -2518,6 +2557,246 @@ REPLACE:
       }
 
       // =====================
+      // CLIP FOLDER (v0.1.87) — where this session's clips save on this PC,
+      // decided at the session's first save (main.js CLIP FOLDERS). ✏
+      // renames the game folder: main moves the clips and remembers the
+      // name for that game.
+      // =====================
+      window.currentClipFolder = null;
+
+      function renderClipFolder(info) {
+        var row = document.getElementById('clipFolderRow');
+        var text = document.getElementById('clipFolderText');
+        if (!row || !text) return;
+        window.currentClipFolder = info || null;
+        if (!info) { row.style.display = 'none'; return; }
+        text.textContent = info.game;
+        row.title = 'Clips from this session save to ' + info.folder +
+          (info.known ? '' : ' (game guessed from the window title)');
+        row.style.display = 'flex';
+      }
+
+      window.renameClipFolder = function() {
+        var info = window.currentClipFolder;
+        if (!info) return;
+        openTextInputModal('Folder name for this game', info.game, function(value) {
+          if (!value || value === info.game) return;
+          ipcRenderer.invoke('rename-clip-folder', { code: info.code, name: value }).then(function(r) {
+            if (!r || !r.ok) { hudLog('system', '⚠ ' + ((r && r.error) || 'Could not rename the folder'), 'error'); return; }
+            renderClipFolder(r);
+            hudLog('system', '📁 Clips now save to ' + r.folder +
+              (r.moved ? ' — moved ' + r.moved + ' clip' + (r.moved === 1 ? '' : 's') : '') +
+              (r.waiting ? ' (' + r.waiting + ' more move' + (r.waiting === 1 ? 's' : '') + ' after uploading)' : ''), 'success');
+          });
+        });
+      };
+
+      ipcRenderer.on('clip-folder', function(ev, info) {
+        if (!info || info.code !== window.currentSessionCode) return;
+        renderClipFolder(info);
+        hudLog('system', '📁 This session\'s clips save to ' + info.folder +
+          (info.known ? '' : ' — game guessed from the window title, ✏ next to 📁 renames it'), 'info');
+      });
+
+      // =====================
+      // ORGANIZE CLIPS (v0.1.87) — Settings → General. Sorts clips saved
+      // before folders existed into <Game>\<date> · <CODE>\. main.js does the
+      // moving (ORGANIZE CLIPS there); this builds the preview, where game
+      // names can be edited and Unsorted sessions given a game.
+      // =====================
+      // Game per session code: local history (game, else title), then the
+      // server's hosted-session list. Raw history, not loadSessionHistory():
+      // that one drops expired sessions, whose clips are still on this PC.
+      async function organizeSessionGames() {
+        var map = {};
+        try {
+          JSON.parse(localStorage.getItem('peak_abu_session_history') || '[]').forEach(function(h) {
+            if (h && h.code && !map[h.code] && (h.game || h.title)) map[h.code] = h.game || h.title;
+          });
+        } catch (e) {}
+        try {
+          if (window.authToken) {
+            var res = await fetch('https://peakabu.app/sessions/mine', {
+              headers: { 'Authorization': 'Bearer ' + window.authToken }
+            });
+            if (res.ok) {
+              var data = await res.json();
+              ((data && data.sessions) || []).forEach(function(s) {
+                if (s && s.code && !map[s.code] && s.detectedGame) map[s.code] = s.detectedGame;
+              });
+            }
+          }
+        } catch (e) { /* offline — history alone */ }
+        return map;
+      }
+
+      function organizeCount(n, one, many) {
+        return n.toLocaleString() + ' ' + (n === 1 ? one : many);
+      }
+
+      function refreshOrganizeUndo() {
+        ipcRenderer.invoke('organize-status').then(function(s) {
+          var b = document.getElementById('organizeUndoBtn');
+          if (b) b.style.display = (s && s.canUndo) ? '' : 'none';
+        }).catch(function() {});
+      }
+
+      window.closeOrganizeModal = function() {
+        document.getElementById('organizeModal').classList.remove('show');
+      };
+
+      window.openOrganizeClips = async function() {
+        var summary = document.getElementById('organizeSummary');
+        document.getElementById('organizeGroups').innerHTML = '';
+        document.getElementById('organizeStatus').textContent = '';
+        document.getElementById('organizeRunBtn').disabled = true;
+        summary.textContent = 'Looking through your clips…';
+        document.getElementById('organizeModal').classList.add('show');
+        var plan;
+        try { plan = await ipcRenderer.invoke('organize-plan', { sessionGames: await organizeSessionGames() }); }
+        catch (e) { plan = { ok: false, error: e.message }; }
+        if (!plan || !plan.ok) { summary.textContent = '⚠ ' + ((plan && plan.error) || 'Could not read your clips.'); return; }
+        window._organizePlanId = plan.planId;
+        renderOrganizePlan(plan);
+      };
+
+      function renderOrganizePlan(plan) {
+        var summary = document.getElementById('organizeSummary');
+        var groupsEl = document.getElementById('organizeGroups');
+        var status = document.getElementById('organizeStatus');
+        var uploading = plan.skippedUploading
+          ? organizeCount(plan.skippedUploading, 'clip is', 'clips are') + ' still uploading and will stay where ' +
+            (plan.skippedUploading === 1 ? 'it is' : 'they are') + '. Run Organize again once uploads finish.'
+          : '';
+        if (!plan.total) {
+          summary.textContent = 'Nothing to organize. Every clip is already in a folder.';
+          status.textContent = uploading;
+          return;
+        }
+
+        var byGame = {}, unsorted = [], solo = { days: 0, clips: 0 };
+        plan.groups.forEach(function(g) {
+          if (!g.code) { solo.days++; solo.clips += g.count; return; }
+          if (!g.game) { unsorted.push(g); return; }
+          (byGame[g.game] = byGame[g.game] || []).push(g);
+        });
+        var games = Object.keys(byGame).sort();
+        function sessionsIn(list) {
+          var seen = {};
+          list.forEach(function(g) { seen[g.code] = true; });
+          return Object.keys(seen).length;
+        }
+        function clipsIn(list) { return list.reduce(function(n, g) { return n + g.count; }, 0); }
+        function counts(list) {
+          return organizeCount(sessionsIn(list), 'session', 'sessions') + ', ' + organizeCount(clipsIn(list), 'clip', 'clips');
+        }
+
+        var parts = games.map(function(game) { return game + ': ' + counts(byGame[game]); });
+        if (unsorted.length) parts.push('Unsorted: ' + counts(unsorted));
+        if (solo.clips) parts.push('Solo: ' + organizeCount(solo.days, 'day', 'days') + ', ' + organizeCount(solo.clips, 'clip', 'clips'));
+        summary.textContent = parts.join(' · ');
+
+        var dl = document.createElement('datalist');
+        dl.id = 'organizeGameList';
+        games.forEach(function(g) { var o = document.createElement('option'); o.value = g; dl.appendChild(o); });
+        groupsEl.appendChild(dl);
+
+        function section(title) {
+          var h = document.createElement('div');
+          h.className = 'uc-label';
+          h.style.marginTop = '10px';
+          h.textContent = title;
+          groupsEl.appendChild(h);
+        }
+        function inputRow(value, placeholder, label, groupIds) {
+          var r = document.createElement('div');
+          r.className = 'organize-row';
+          var inp = document.createElement('input');
+          inp.type = 'text';
+          inp.value = value || '';
+          inp.placeholder = placeholder;
+          inp.maxLength = 60;
+          inp.setAttribute('list', 'organizeGameList');
+          inp.setAttribute('data-groups', groupIds.join(','));
+          var lab = document.createElement('span');
+          lab.className = 'organize-count';
+          lab.textContent = label;
+          r.appendChild(inp);
+          r.appendChild(lab);
+          groupsEl.appendChild(r);
+        }
+
+        if (games.length) {
+          section('Games (edit a name to change its folder)');
+          games.forEach(function(game) {
+            inputRow(game, 'Game name', counts(byGame[game]), byGame[game].map(function(g) { return g.id; }));
+          });
+        }
+        if (unsorted.length) {
+          section('Unsorted (type a game to file a session under it)');
+          unsorted.forEach(function(g) {
+            inputRow('', 'Unsorted', g.code + ' · ' + g.date + ' · ' + organizeCount(g.count, 'clip', 'clips'), [g.id]);
+          });
+        }
+        if (solo.clips) {
+          section('Solo');
+          var p = document.createElement('div');
+          p.className = 'organize-count';
+          p.textContent = 'Solo\\<date>\\ — ' + organizeCount(solo.clips, 'clip', 'clips') + ' over ' + organizeCount(solo.days, 'day', 'days');
+          groupsEl.appendChild(p);
+        }
+
+        status.textContent = uploading;
+        document.getElementById('organizeRunBtn').disabled = false;
+      }
+
+      window.runOrganizeClips = async function() {
+        var runBtn = document.getElementById('organizeRunBtn');
+        var status = document.getElementById('organizeStatus');
+        var games = {};
+        document.querySelectorAll('#organizeGroups input[data-groups]').forEach(function(inp) {
+          var name = inp.value.trim();
+          inp.getAttribute('data-groups').split(',').forEach(function(id) { games[id] = name || null; });
+        });
+        runBtn.disabled = true;
+        status.textContent = 'Moving clips…';
+        var r;
+        try { r = await ipcRenderer.invoke('organize-run', { planId: window._organizePlanId, games: games }); }
+        catch (e) { r = { ok: false, error: e.message }; }
+        if (!r || !r.ok) {
+          status.textContent = '⚠ ' + ((r && r.error) || 'Organize failed.');
+          runBtn.disabled = false;
+          return;
+        }
+        status.textContent = '✓ Moved ' + organizeCount(r.moved, 'clip', 'clips') +
+          (r.skipped ? ', skipped ' + r.skipped : '') +
+          (r.failed ? ', ' + r.failed + ' couldn\'t be moved' : '') +
+          '. Undo organize (Settings → General) puts them back.';
+        hudLog('system', '📂 Organized ' + organizeCount(r.moved, 'clip', 'clips') + ' into game folders', 'success');
+        refreshOrganizeUndo();
+      };
+
+      ipcRenderer.on('organize-progress', function(ev, d) {
+        var status = document.getElementById('organizeStatus');
+        if (status && d && d.total && d.done < d.total) {
+          status.textContent = 'Moving clips… ' + d.done.toLocaleString() + ' / ' + d.total.toLocaleString();
+        }
+      });
+
+      window.undoOrganizeClips = async function() {
+        if (!confirm('Move the organized clips back to where they were?')) return;
+        var r;
+        try { r = await ipcRenderer.invoke('organize-undo'); }
+        catch (e) { r = { ok: false, error: e.message }; }
+        if (!r || !r.ok) { hudLog('system', '⚠ ' + ((r && r.error) || 'Undo failed'), 'error'); return; }
+        hudLog('system', '↩ Put ' + organizeCount(r.restored, 'clip', 'clips') + ' back' +
+          (r.busy ? ' — ' + r.busy + ' still uploading, press Undo again later' : ''), 'success');
+        refreshOrganizeUndo();
+      };
+
+      refreshOrganizeUndo();
+
+      // =====================
       // TEXT INPUT MODAL — Electron does not implement window.prompt();
       // it's a documented no-op. This is the replacement for every place
       // that used to call prompt() (session title, local note, history rename).
@@ -3434,6 +3713,7 @@ REPLACE:
           document.getElementById('hotkeyHint').textContent = 'Press any F-key, or Ctrl/Alt/Shift + key';
         } else {
           window.capturingHotkey = true;
+          window.capturingHotkeyTarget = 'save';
           document.getElementById('hotkeyCapture').focus();
           document.getElementById('hotkeyDisplay').classList.add('listening');
           document.getElementById('hotkeyDisplay').textContent = '...';
@@ -3441,6 +3721,50 @@ REPLACE:
           document.getElementById('hotkeyHint').textContent = 'Listening — press your key combo now';
         }
       };
+
+      // STAR KEY (v0.1.87) — same capture as the highlight key, aimed at
+      // the star key instead (window.capturingHotkeyTarget). Backspace clears.
+      window.toggleStarHotkeyCapture = function() {
+        if (window.capturingHotkey) {
+          var wasStar = window.capturingHotkeyTarget === 'star';
+          window.capturingHotkey = false;
+          window.capturingHotkeyTarget = 'save';
+          document.getElementById('hotkeyCapture').blur();
+          document.getElementById('hotkeyDisplay').classList.remove('listening');
+          document.getElementById('hotkeyBtn').textContent = 'Change';
+          document.getElementById('hotkeyHint').textContent = '';
+          if (wasStar) return;
+        }
+        window.capturingHotkey = true;
+        window.capturingHotkeyTarget = 'star';
+        document.getElementById('hotkeyCapture').focus();
+        document.getElementById('hotkeyHint').textContent = 'Listening — press your star key (Backspace clears it, Esc cancels)';
+      };
+
+      function updateStarHotkeyDisplay(key) {
+        window.currentStarHotkey = key || null;
+        var cur = document.getElementById('starHotkeyCurrent');
+        if (cur) cur.textContent = key || '—';
+      }
+
+      ipcRenderer.invoke('get-star-hotkey').then(function(s) {
+        if (!s) return;
+        updateStarHotkeyDisplay(s.key);
+        if (s.key && !s.registered) hudLog('system', '⚠ Star key \'' + s.key + '\' couldn\'t be registered at startup — another app may have claimed it. Click ★ to pick a different key.', 'error');
+      });
+
+      ipcRenderer.on('star-hotkey-updated', function(ev, key) {
+        updateStarHotkeyDisplay(key);
+        document.getElementById('hotkeyHint').textContent = key ? '✓ Star key set to ' + key : '✓ Star key cleared';
+        setTimeout(function() {
+          var el = document.getElementById('hotkeyInlineHint');
+          if (el && /✓ Star key/.test(el.textContent)) el.classList.remove('show');
+        }, 2500);
+      });
+      ipcRenderer.on('star-hotkey-error', function(ev, msg) {
+        updateStarHotkeyDisplay(window.currentStarHotkey);
+        document.getElementById('hotkeyHint').textContent = '⚠ ' + msg;
+      });
 
       // Main process XInput connection status (works even when game is focused)
       ipcRenderer.on('xinput-connection', function(ev, connected) {
@@ -3466,6 +3790,17 @@ REPLACE:
         if (!window.capturingHotkey) return;
         e.preventDefault(); e.stopPropagation();
         if (['Control','Alt','Shift','Meta'].includes(e.key)) return;
+        var target = window.capturingHotkeyTarget || 'save';
+        if (target === 'star') {
+          if (e.key === 'Escape') { toggleStarHotkeyCapture(); return; }
+          if (e.key === 'Backspace' && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+            window.capturingHotkey = false;
+            window.capturingHotkeyTarget = 'save';
+            document.getElementById('hotkeyCapture').blur();
+            ipcRenderer.send('update-settings', { starHotkey: null });
+            return;
+          }
+        }
         var parts = [];
         if (e.ctrlKey) parts.push('Ctrl');
         if (e.altKey) parts.push('Alt');
@@ -3482,6 +3817,13 @@ REPLACE:
         parts.push(keyName);
         var hotkey = parts.join('+');
         window.capturingHotkey = false;
+        if (target === 'star') {
+          window.capturingHotkeyTarget = 'save';
+          document.getElementById('hotkeyCapture').blur();
+          document.getElementById('hotkeyHint').textContent = 'Registering ' + hotkey + ' as your star key…';
+          ipcRenderer.send('update-settings', { starHotkey: hotkey });
+          return;
+        }
         // Do NOT adopt the new key yet. Main is the only thing that knows
         // whether Windows actually granted it — claiming it here and then
         // failing left the client showing a key main had never registered,
@@ -4355,6 +4697,7 @@ REPLACE:
           if (data.title) setSessionHistoryGame(data.code, data.detectedGame || null, data.title);
           else if (data.detectedGame) setSessionHistoryGame(data.code, data.detectedGame);
           renderSessionLocalNote(data.code);
+          ipcRenderer.invoke('get-clip-folder', data.code).then(renderClipFolder).catch(function() {});
 
           if (window.autoStartAfterJoin) {
             window.autoStartAfterJoin = false;
@@ -4385,6 +4728,28 @@ REPLACE:
         window.socket.on('session-game-detected', function(d) {
           renderSessionGame(d.game);
           if (window.currentSessionCode) setSessionHistoryGame(window.currentSessionCode, d.game);
+        });
+
+        // STARS (v0.1.87). Every change goes to main for the clip sidecars;
+        // only star-KEY stars are announced, so a web player starring run
+        // doesn't flood the log.
+        window.socket.on('stars-changed', function(d) {
+          if (!d || !Array.isArray(d.momentTs) || !window.currentSessionCode) return;
+          ipcRenderer.send('stars-changed', { code: window.currentSessionCode, momentTs: d.momentTs, starred: !!d.starred });
+          if (d.source !== 'key' || !d.starred) return;
+          var n = d.momentTs.length;
+          hudLog('activity', '★ ' + (d.by === window.authUsername ? 'Starred' : d.by + ' starred') + ' ' +
+            (n > 1 ? n + ' highlights' : 'a highlight'), 'success');
+        });
+        window.socket.on('star-window-open', function(d) {
+          if (!d) return;
+          if (d.joined) hudLog('activity', '★ Joined ' + (d.by === window.authUsername ? 'your' : d.by + '\'s') + ' star — saving in a few seconds', 'info');
+          else if (d.by === window.authUsername) hudLog('activity', '★ Marked — saving this moment in 10s unless a highlight fires first', 'broadcast');
+          else hudLog('activity', '★ ' + d.by + ' marked a moment', 'info');
+        });
+        window.socket.on('star-settings-changed', function(d) {
+          if (!d) return;
+          hudLog('squad', d.squadCanStar ? '★ The whole squad can star highlights' : '★ Starring is host-only in this session', 'info');
         });
 
         window.socket.on('member-joined', function(d) {
@@ -4447,7 +4812,9 @@ REPLACE:
            hudLog('activity', '⚡ ' + d.username + ' saved a highlight (you\'re not recording)', 'info');
            return;
          }
-         hudLog('activity','⚡ '+d.username+' triggered highlight — syncing all POVs...','broadcast');
+         hudLog('activity', d.triggerSource === 'star'
+           ? '★ ' + d.username + '\'s star — saving the moment for all POVs...'
+           : '⚡ '+d.username+' triggered highlight — syncing all POVs...', 'broadcast');
          ipcRenderer.send('broadcast-save-highlight', { coordinated_timestamp: d.coordinated_timestamp, clipDuration: d.clipDuration, triggerSource: d.triggerSource });
 
          // Disable immediately as a fallback — don't wait on a separate cooldown event
@@ -4607,6 +4974,7 @@ REPLACE:
         document.getElementById('migrateBtn').style.display = 'none';
         renderSessionTitle(null);
         renderSessionGame(null);
+        renderClipFolder(null);
         var noteEl = document.getElementById('sessionNoteText');
         if (noteEl) { noteEl.textContent = ''; noteEl.classList.add('empty'); }
         resetSessionUploads();
@@ -5510,7 +5878,47 @@ REPLACE:
 
       ipcRenderer.on('deep-link-join', function(ev, link) { handleDeepLink(link); });
 
-      ipcRenderer.on('hotkey-save-pressed', function() { window.saveHighlight(); });
+      // The hotkeys no longer take the key from other apps (main.js key
+      // watcher), so a press while THIS window has focus also reaches us as
+      // a normal keystroke. Ignore it while a hotkey is being set, and — for
+      // a typing key like Shift+R — while you're typing in a field.
+      function hotkeyBlockedInApp(d) {
+        if (!d || !d.inApp) return false;
+        if (window.capturingHotkey) return true;
+        var el = document.activeElement;
+        var typingHere = !!el && (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable ||
+          (el.tagName === 'INPUT' && !/^(checkbox|radio|button|submit|range|color|file)$/i.test(el.type || '')));
+        return !!d.typingKey && typingHere;
+      }
+
+      ipcRenderer.on('hotkey-save-pressed', function(ev, d) {
+        if (hotkeyBlockedInApp(d)) return;
+        window.saveHighlight();
+      });
+
+      // STAR KEY (v0.1.87) — sends a mark, never saves on its own. In a
+      // connected session the server decides (server/sockets/stars.js);
+      // otherwise main runs the same rules against this PC's saves.
+      ipcRenderer.on('hotkey-star-pressed', function(ev, d) {
+        if (hotkeyBlockedInApp(d)) return;
+        var pressTs = d && d.pressTs;
+        if (window.socket && window.socket.connected && window.currentSessionCode) {
+          window.socket.emit('star-mark', { pressTs: pressTs });
+          return;
+        }
+        if (!window.isRecordingActive) { hudLog('system', '★ Not recording — nothing to star', 'info'); return; }
+        ipcRenderer.send('star-mark-local', { pressTs: pressTs, canCapture: !!window.bufferReady });
+      });
+
+      ipcRenderer.on('star-local', function(ev, d) {
+        var s = d && d.state;
+        if (s === 'starred') hudLog('activity', '★ Starred ' + (d.count > 1 ? 'your last ' + d.count + ' highlights' : 'your last highlight'), 'success');
+        else if (s === 'waiting') hudLog('activity', '★ Marked — saving this moment in 10s unless you save a highlight first', 'broadcast');
+        else if (s === 'joined') hudLog('activity', '★ Already marked — saving in a few seconds', 'info');
+        else if (s === 'capturing') { hudLog('activity', '★ Saving the starred moment...', 'broadcast'); startSaveCooldown(15); }
+        else if (s === 'nothing') hudLog('system', '★ Buffer not ready yet — nothing to star', 'error');
+        else if (s === 'not-recording') hudLog('system', '★ Recording stopped — the starred moment wasn\'t saved', 'error');
+      });
       // =====================
       // GAMEPAD CONTROLLER SUPPORT
       // =====================

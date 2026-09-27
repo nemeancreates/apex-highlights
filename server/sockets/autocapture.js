@@ -16,7 +16,7 @@ const { log } = require('../logger');
 const { sessions } = require('../stores');
 const { checkSocketRate } = require('../ratelimit');
 const { getEffectiveTier } = require('../auth');
-const { fireCoordinatedHighlight } = require('./highlights');
+const { fireCoordinatedHighlight, announceHighlightRequest } = require('./highlights');
 
 const MAX_AUTO_CAPTURE_MS = 3 * 60 * 1000;      // absolute hard cap — forces a save regardless of settle state
 const DEFAULT_MIN_ACTIVE_MS = 20 * 1000;        // floor below which a peak-then-quiet is discarded as noise
@@ -96,6 +96,8 @@ function endAutoCapture(io, sessionCode, session, forced, ignoreMinActive) {
     log('info', 'auto_capture_cancelled', { session: sessionCode, elapsedMs: elapsed, minActiveMs: minActive });
     io.to(sessionCode).emit('auto-capture-cancel', { elapsedMs: elapsed });
     resetAutoCaptureState(session);
+    // A star waiting on this window captures on its own now (sockets/stars.js).
+    announceHighlightRequest(io, sessionCode, session, { kind: 'auto-none' });
     return;
   }
 
@@ -138,7 +140,13 @@ function endAutoCapture(io, sessionCode, session, forced, ignoreMinActive) {
   // Anchor the save at the END of the window. main.js's 'auto' branch cuts
   // [end - duration, end], so passing the full window length makes every
   // client extract the exact span that was active.
-  fireCoordinatedHighlight(io, sessionCode, session, username, startTs + cappedElapsed, cappedElapsed + prerollMs, 'auto');
+  const endTs = startTs + cappedElapsed;
+  const fired = fireCoordinatedHighlight(io, sessionCode, session, username, endTs, cappedElapsed + prerollMs, 'auto');
+  // Lets a pending star attach to this highlight — or, if the cap blocked
+  // it, capture on its own (sockets/stars.js).
+  announceHighlightRequest(io, sessionCode, session, fired
+    ? { kind: 'request', ts: endTs, clipDuration: cappedElapsed + prerollMs, source: 'auto' }
+    : { kind: 'auto-none' });
 }
 
 function registerAutoCaptureHandlers(io, socket) {

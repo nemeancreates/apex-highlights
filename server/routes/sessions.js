@@ -15,6 +15,7 @@ const { recordEvent } = require('../anomaly');
 const sessionLookupLimiter = createRateLimiter({ windowMs: 60000, max: 20 });
 const { sessions, users, saveUsersToDisk, getSessionsByUser } = require('../stores');
 const { requireAuth, getEffectiveTier, getMonthKey } = require('../auth');
+const { listStars, getSquadCanStar } = require('./stars');
 
 // Shared by POST /sessions and the migrate-session socket handler.
 // Returns { session } on success or { error, status } on failure.
@@ -160,11 +161,15 @@ function initSessionRoutes(app) {
     // createdBy lets the client apply that closed-session rule itself (the
     // host is exempt) instead of uploading a whole clip just to be refused.
     // Already public via GET /sessions/:code.
+    // stars/squadCanStar (v0.1.87): the web player shows them, and the
+    // desktop app's Sync writes the star flag into local clip sidecars.
     res.json({
       uploads: session.uploads,
       closed: !!session.closed,
       createdBy: session.createdBy,
-      expiresAt: session.expiresAt || null
+      expiresAt: session.expiresAt || null,
+      stars: listStars(code),
+      squadCanStar: getSquadCanStar(code)
     });
   });
 }

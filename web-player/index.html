@@ -1126,6 +1126,55 @@
 
     .hl-pill-empty { font-size: 10px; color: #3a5244; text-align: center; padding: 16px 6px; }
 
+    /* ========================
+       CHAPTERS + STARS (v0.1.87). A chapter header groups the pills between
+       long gaps; only open chapters build their pills. ★ on a pill stars
+       the moment for every POV.
+    ======================== */
+    .hl-star-filter {
+      flex-shrink: 0; margin: 6px 6px 0; padding: 4px 6px;
+      background: #0c1c14; border: 1px solid #24402e; border-radius: 5px;
+      color: #7a9686; font-size: 10px; font-weight: 600; cursor: pointer; text-align: center;
+    }
+    .hl-star-filter:hover { border-color: #d8a838; color: #d8a838; }
+    .hl-star-filter.on { background: #2a2210; border-color: #d8a838; color: #f0c04a; }
+    .highlights-column.collapsed .hl-star-filter { display: none; }
+
+    .hl-chapter {
+      flex-shrink: 0; padding: 4px 6px; margin-top: 4px;
+      background: #0a1611; border: 1px dashed #24402e; border-radius: 5px;
+      color: #8fbfa3; font-size: 10px; line-height: 1.35; cursor: pointer; user-select: none;
+    }
+    .hl-chapter:first-child { margin-top: 0; }
+    .hl-chapter:hover { border-color: #39d3a0; }
+    .hl-chapter.open { border-style: solid; }
+    .hl-chapter-line { display: flex; align-items: center; gap: 3px; font-weight: 700; color: #39d3a0; white-space: nowrap; overflow: hidden; }
+    .hl-chapter-chev { width: 10px; flex-shrink: 0; color: #5f7a6a; }
+    .hl-chapter-meta { padding-left: 13px; color: #7a9686; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .hl-star { font-size: 11px; margin-left: 3px; flex-shrink: 0; color: #d8a838; }
+    .hl-star.can { cursor: pointer; }
+    /* Unstarred: no icon until the pill is hovered or active. It still takes
+       its space, so the pill doesn't shift when ☆ appears. */
+    .hl-star.can:not(.on) { visibility: hidden; color: #5f7a6a; }
+    .hl-pill:hover .hl-star.can:not(.on),
+    .hl-pill.active .hl-star.can:not(.on) { visibility: visible; }
+    /* Gold only ever means starred; the ☆ turns gold under the pointer. */
+    .hl-star.can:hover { color: #f0c04a; }
+    /* Gold on the active pill too; a dark edge keeps it readable on green. */
+    .hl-pill.active .hl-star.on { color: #f0c04a; text-shadow: 0 0 2px #04140d, 0 0 1px #04140d; }
+    .hl-pill.active .hl-star.can:not(.on) { color: #0c3a28; }
+    .hl-pill.active .hl-star.can:not(.on):hover { color: #f0c04a; text-shadow: 0 0 2px #04140d, 0 0 1px #04140d; }
+
+    .hl-chapter-card {
+      position: fixed; z-index: 900; display: none; min-width: 170px; max-width: 230px;
+      padding: 8px 10px; background: #0c1c14; border: 1px solid #39d3a0; border-radius: 6px;
+      color: #c8d6cd; font-size: 11px; line-height: 1.55; pointer-events: none;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    }
+    .hl-chapter-card.show { display: block; }
+    .hl-chapter-card .hl-cc-title { color: #39d3a0; font-weight: 700; }
+
     /* Full-grid loading state — shown while a session is being fetched,
        including the auto-load that fires when someone opens a shared
        "Open in Web Player" link. Reuses the monkey-in-a-bush motif from
@@ -1322,6 +1371,7 @@
     <div class="highlights-column" id="highlightsColumn" style="display:none;">
       <button class="panel-collapse-btn" id="highlightsColumnToggle" onclick="togglePanelCollapse('highlights')">◂ Collapse</button>
       <h3>Highlights</h3>
+      <button class="hl-star-filter" id="hlStarFilter" onclick="toggleStarFilter()" title="Show only starred highlights">☆ Starred only</button>
       <div class="hl-pill-list" id="hlPillList"></div>
       <div class="hl-delete-bar" id="hlDeleteBar">
         <button onclick="deleteSelectedHighlights()" id="hlDeleteBtn">Delete (<span id="hlDelCount">0</span>)</button>
@@ -1473,6 +1523,21 @@
     let commentSettings = { filterMode: 'all', topN: 0 };
     let sessionTotalDuration = 0;
 
+    // STARS (v0.1.87) — server/routes/stars.js. A star belongs to a moment
+    // (the coordinated timestamp every POV of a highlight shares). They
+    // arrive with GET /sessions/:code/uploads.
+    let starSet = new Set();
+    let squadCanStar = true;
+    let sessionMemberNames = [];
+    let starredOnly = false;
+    try { starredOnly = localStorage.getItem('pa_starred_only') === '1'; } catch (e) {}
+
+    // CHAPTERS — a gap longer than this between consecutive highlights starts
+    // a new chapter (roughly requeue + lobby time).
+    const CHAPTER_GAP_MS = 4 * 60 * 1000;
+    let chapterOpenState = {};        // chapter key -> open/closed, as the viewer set it (per session, this device)
+    let lastRenderedHighlightIndex = -1;
+
     // ========================
     // HOST CREDENTIALS — only present when the app itself opened this
     // player for its own logged-in user (see main.js playerUrlFor). Kept
@@ -1590,18 +1655,30 @@
 
     async function scanDirectoryHandle(dirHandle) {
       localClipMap.clear();
-      const jsonFiles = new Map(); // name → handle
-      const mp4Files = new Map();  // name → handle
+      const jsonFiles = new Map(); // path → handle
+      const mp4Files = new Map();  // path → handle
 
-      for await (const entry of dirHandle.values()) {
-        if (entry.kind !== 'file') continue;
-        const name = entry.name.toLowerCase();
-        if (name.startsWith('highlight-') && name.endsWith('.json')) {
-          jsonFiles.set(entry.name, entry);
-        } else if (name.startsWith('highlight-') && name.endsWith('.mp4')) {
-          mp4Files.set(entry.name, entry);
+      // Clips sit in <Game>\<date> · <CODE>\ folders since v0.1.87 (flat in
+      // the root before), so walk down. Keyed by path so a .json pairs with
+      // the .mp4 in its own folder. Full-session archives are skipped.
+      async function collect(handle, prefix, depth) {
+        for await (const entry of handle.values()) {
+          if (entry.kind === 'directory') {
+            if (depth < 4 && !entry.name.startsWith('.') && entry.name.toLowerCase() !== 'archives') {
+              await collect(entry, prefix + entry.name + '/', depth + 1);
+            }
+            continue;
+          }
+          if (entry.kind !== 'file') continue;
+          const name = entry.name.toLowerCase();
+          if (name.startsWith('highlight-') && name.endsWith('.json')) {
+            jsonFiles.set(prefix + entry.name, entry);
+          } else if (name.startsWith('highlight-') && name.endsWith('.mp4')) {
+            mp4Files.set(prefix + entry.name, entry);
+          }
         }
       }
+      await collect(dirHandle, '', 0);
 
       for (const [jsonName, jsonHandle] of jsonFiles) {
         try {
@@ -1634,12 +1711,15 @@
       const jsonFiles = new Map();
       const mp4Files = new Map();
 
+      // The folder input already includes subfolders (v0.1.87 clip folders);
+      // key by relative path so each .json pairs with its own folder's .mp4.
       for (const file of fileList) {
         const name = file.name.toLowerCase();
+        const key = file.webkitRelativePath || file.name;
         if (name.startsWith('highlight-') && name.endsWith('.json')) {
-          jsonFiles.set(file.name, file);
+          jsonFiles.set(key, file);
         } else if (name.startsWith('highlight-') && name.endsWith('.mp4')) {
-          mp4Files.set(file.name, file);
+          mp4Files.set(key, file);
         }
       }
 
@@ -2201,6 +2281,259 @@
       return Date.now() - earliest;
     }
 
+    // ------------------------
+    // STARS (v0.1.87)
+    // ------------------------
+    // The moment(s) a highlight's clips belong to. Normally one: every POV
+    // carries the same coordinated timestamp. A clip saved without the server
+    // falls back to its saveTimeUTC, same as clusterHighlights.
+    function momentTsOf(hl) {
+      const out = [];
+      hl.clips.forEach(c => {
+        const m = c.metadata;
+        const ts = m && (m.coordinated_timestamp || m.saveTimeUTC);
+        if (typeof ts === 'number' && ts > 0 && out.indexOf(ts) === -1) out.push(ts);
+      });
+      return out;
+    }
+
+    function isHlStarred(hl) {
+      return momentTsOf(hl).some(ts => starSet.has(ts));
+    }
+
+    // UI gating only; the server enforces the same rules (routes/stars.js).
+    function canStarHere() {
+      if (!myAuthToken || !myUsername) return false;
+      if (isHost) return true;
+      if (!squadCanStar) return false;
+      const me = myUsername.toLowerCase();
+      return allUploads.some(u => (u.username || '').toLowerCase() === me) ||
+        sessionMemberNames.some(n => String(n).toLowerCase() === me);
+    }
+
+    // Takes stars + squadCanStar from a /uploads response. True if anything changed.
+    function applyStarsFromServer(data) {
+      if (!data) return false;
+      const next = new Set((Array.isArray(data.stars) ? data.stars : [])
+        .map(s => s && s.momentTs).filter(t => typeof t === 'number'));
+      const nextCan = data.squadCanStar !== false;
+      let changed = nextCan !== squadCanStar || next.size !== starSet.size;
+      if (!changed) for (const t of next) { if (!starSet.has(t)) { changed = true; break; } }
+      starSet = next;
+      squadCanStar = nextCan;
+      return changed;
+    }
+
+    async function toggleStar(i) {
+      const hl = highlights[i];
+      if (!hl || !currentSessionCode || !myAuthToken) return;
+      const tsList = momentTsOf(hl);
+      if (!tsList.length) return;
+      const want = !isHlStarred(hl);
+      tsList.forEach(ts => { if (want) starSet.add(ts); else starSet.delete(ts); });
+      renderHighlightsColumn();
+
+      let failed = null;
+      for (const ts of tsList) {
+        try {
+          const res = await fetch('/sessions/' + currentSessionCode + '/stars/' + ts, {
+            method: want ? 'PUT' : 'DELETE',
+            headers: { 'Authorization': 'Bearer ' + myAuthToken }
+          });
+          if (!res.ok) {
+            let msg = '';
+            try { msg = (await res.json()).error || ''; } catch (e) {}
+            failed = msg || ('Could not ' + (want ? 'star' : 'unstar') + ' that highlight.');
+            break;
+          }
+        } catch (e) { failed = 'Could not reach the server.'; break; }
+      }
+      if (failed) {
+        tsList.forEach(ts => { if (want) starSet.delete(ts); else starSet.add(ts); });
+        renderHighlightsColumn();
+        alert(failed);
+      }
+    }
+
+    // Host's "Squad can star" switch (⚙ panel). Server-enforced.
+    async function setSquadCanStar(want) {
+      const res = await fetch('/sessions/' + currentSessionCode + '/star-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + myAuthToken },
+        body: JSON.stringify({ squadCanStar: want })
+      });
+      if (!res.ok) throw new Error('failed');
+      squadCanStar = want;
+      renderHighlightsColumn();
+    }
+
+    function toggleStarFilter() {
+      starredOnly = !starredOnly;
+      try { localStorage.setItem('pa_starred_only', starredOnly ? '1' : '0'); } catch (e) {}
+      renderHighlightsColumn();
+    }
+
+    function updateStarFilterButton(starredTotal) {
+      const b = document.getElementById('hlStarFilter');
+      if (!b) return;
+      b.classList.toggle('on', starredOnly);
+      b.textContent = (starredOnly ? '★' : '☆') + ' Starred only' + (starredTotal ? ' · ' + starredTotal : '');
+    }
+
+    // ------------------------
+    // CHAPTERS (v0.1.87)
+    // ------------------------
+    // Consecutive highlights more than CHAPTER_GAP_MS apart start a new
+    // chapter. H numbers stay global, so no pill changes identity. A
+    // highlight with no timestamp stays in the chapter it follows.
+    function computeChapters() {
+      const chapters = [];
+      let cur = null;
+      let prevTs = 0;
+      highlights.forEach((hl, i) => {
+        const ts = hl.timestamp > 0 ? hl.timestamp : 0;
+        if (!cur || (ts && prevTs && ts - prevTs > CHAPTER_GAP_MS)) {
+          cur = { n: chapters.length + 1, first: i, last: i, key: String(ts || 'i' + i), startTs: ts, count: 0, starred: 0 };
+          chapters.push(cur);
+        }
+        cur.last = i;
+        cur.count++;
+        if (isHlStarred(hl)) cur.starred++;
+        if (ts) { prevTs = ts; if (!cur.startTs) cur.startTs = ts; }
+      });
+      return chapters;
+    }
+
+    function loadChapterState(code) {
+      lastRenderedHighlightIndex = -1;
+      try { chapterOpenState = JSON.parse(localStorage.getItem('pa_chapters_' + code) || '{}') || {}; }
+      catch (e) { chapterOpenState = {}; }
+    }
+
+    function saveChapterState() {
+      if (!currentSessionCode) return;
+      try { localStorage.setItem('pa_chapters_' + currentSessionCode, JSON.stringify(chapterOpenState)); } catch (e) {}
+    }
+
+    function hlClock(ts) {
+      return new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+
+    function hlDay(ts) {
+      return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric' });
+    }
+
+    function hlSpanText(ms) {
+      const s = Math.max(0, Math.round(ms / 1000));
+      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+      if (h) return h + 'h ' + String(m).padStart(2, '0') + 'm';
+      return m + 'm ' + String(sec).padStart(2, '0') + 's';
+    }
+
+    // First frame to last frame across the chapter's clips.
+    function chapterSpan(ch) {
+      let start = Infinity, end = -Infinity;
+      for (let i = ch.first; i <= ch.last; i++) {
+        const hl = highlights[i];
+        hl.clips.forEach(c => {
+          const m = c.metadata;
+          if (m && typeof m.startTimeUTC === 'number') {
+            start = Math.min(start, m.startTimeUTC);
+            end = Math.max(end, m.startTimeUTC + (m.durationMs || 0));
+          }
+        });
+        if (hl.timestamp > 0) { start = Math.min(start, hl.timestamp); end = Math.max(end, hl.timestamp); }
+      }
+      return isFinite(start) ? { start, end } : null;
+    }
+
+    function showChapterCard(ch, anchor) {
+      let card = document.getElementById('hlChapterCard');
+      if (!card) {
+        card = document.createElement('div');
+        card.id = 'hlChapterCard';
+        card.className = 'hl-chapter-card';
+        document.body.appendChild(card);
+      }
+      card.innerHTML = '';
+      const row = (text, cls) => {
+        const d = document.createElement('div');
+        if (cls) d.className = cls;
+        d.textContent = text;
+        card.appendChild(d);
+      };
+      const span = chapterSpan(ch);
+      row('Chapter ' + ch.n, 'hl-cc-title');
+      if (span) {
+        row(hlDay(span.start) + ' · ' + hlClock(span.start) + ' – ' + hlClock(span.end));
+        row(hlSpanText(span.end - span.start));
+      }
+      row(ch.count + ' highlight' + (ch.count === 1 ? '' : 's') + ' · ★ ' + ch.starred + ' starred');
+      row(ch.first === ch.last ? 'H' + (ch.first + 1) : 'H' + (ch.first + 1) + '–H' + (ch.last + 1));
+      card.dataset.key = ch.key;
+      card.classList.add('show');
+
+      // Beside the column, on the video side.
+      const r = anchor.getBoundingClientRect();
+      const layout = document.querySelector('.main-layout');
+      const panelsLeft = !!(layout && layout.classList.contains('panels-left'));
+      const cr = card.getBoundingClientRect();
+      const left = panelsLeft ? r.right + 8 : r.left - cr.width - 8;
+      const top = Math.max(8, Math.min(r.top, window.innerHeight - cr.height - 8));
+      card.style.left = Math.max(8, left) + 'px';
+      card.style.top = top + 'px';
+    }
+
+    function hideChapterCard() {
+      const card = document.getElementById('hlChapterCard');
+      if (card) card.classList.remove('show');
+    }
+
+    function buildChapterHeader(ch, open, firstDay) {
+      const h = document.createElement('div');
+      h.className = 'hl-chapter' + (open ? ' open' : '');
+
+      const line = document.createElement('div');
+      line.className = 'hl-chapter-line';
+      const chev = document.createElement('span');
+      chev.className = 'hl-chapter-chev';
+      chev.textContent = open ? '▾' : '▸';
+      const title = document.createElement('span');
+      title.textContent = 'Ch ' + ch.n + (ch.startTs ? ' · ' + hlClock(ch.startTs) : '');
+      line.appendChild(chev);
+      line.appendChild(title);
+
+      const meta = document.createElement('div');
+      meta.className = 'hl-chapter-meta';
+      const day = ch.startTs ? hlDay(ch.startTs) : '';
+      meta.textContent = (day && day !== firstDay ? day + ' · ' : '') + ch.count + ' · ★' + ch.starred;
+
+      h.appendChild(line);
+      h.appendChild(meta);
+
+      // Mouse: hover shows the info card, click collapses. Touch: tapping the
+      // chevron collapses, tapping anywhere else toggles the info card.
+      let lastPointer = 'mouse';
+      h.addEventListener('pointerdown', e => { lastPointer = e.pointerType; });
+      h.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') showChapterCard(ch, h); });
+      h.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') hideChapterCard(); });
+      h.addEventListener('click', e => {
+        if (lastPointer === 'touch' && e.target !== chev) {
+          const card = document.getElementById('hlChapterCard');
+          if (card && card.classList.contains('show') && card.dataset.key === ch.key) hideChapterCard();
+          else showChapterCard(ch, h);
+          return;
+        }
+        chapterOpenState[ch.key] = !open;
+        saveChapterState();
+        hideChapterCard();
+        renderHighlightsColumn();
+      });
+      return h;
+    }
+
+    // Only OPEN chapters build their pills. A long session is a handful of
+    // headers plus the chapter you're in, not a thousand pills per repaint.
     function renderHighlightsColumn() {
       const list = document.getElementById('hlPillList');
       if (!list) return;
@@ -2208,11 +2541,50 @@
 
       if (highlights.length === 0) {
         list.innerHTML = '<div class="hl-pill-empty">Highlights appear here as they\'re saved</div>';
+        updateStarFilterButton(0);
         updateHlDeleteBar();
         return;
       }
 
-      highlights.forEach((hl, i) => {
+      const chapters = computeChapters();
+      const starredTotal = chapters.reduce((n, ch) => n + ch.starred, 0);
+      updateStarFilterButton(starredTotal);
+      const active = chapters.find(ch => currentHighlightIndex >= ch.first && currentHighlightIndex <= ch.last);
+      // Switching to a highlight in a chapter you'd collapsed opens it again,
+      // so the pill you're watching is never hidden. (Collapsing the chapter
+      // you're in sticks until you switch.)
+      if (active && currentHighlightIndex !== lastRenderedHighlightIndex) {
+        if (chapterOpenState[active.key] === false) { delete chapterOpenState[active.key]; saveChapterState(); }
+      }
+      lastRenderedHighlightIndex = currentHighlightIndex;
+
+      const showHeaders = chapters.length > 1;
+      const firstDay = chapters[0].startTs ? hlDay(chapters[0].startTs) : '';
+      const starAllowed = canStarHere();
+      const frag = document.createDocumentFragment();
+      chapters.forEach(ch => {
+        if (starredOnly && ch.starred === 0) return;
+        const open = !showHeaders || chapterOpenState[ch.key] === true ||
+          (ch === active && chapterOpenState[ch.key] !== false);
+        if (showHeaders) frag.appendChild(buildChapterHeader(ch, open, firstDay));
+        if (!open) return;
+        for (let i = ch.first; i <= ch.last; i++) {
+          if (starredOnly && !isHlStarred(highlights[i])) continue;
+          frag.appendChild(buildHighlightPill(highlights[i], i, starAllowed));
+        }
+      });
+
+      if (!frag.childNodes.length) {
+        list.innerHTML = '<div class="hl-pill-empty">' + (starAllowed
+          ? 'No starred highlights yet. Click ☆ on a highlight to star it.'
+          : 'No starred highlights in this session.') + '</div>';
+      } else {
+        list.appendChild(frag);
+      }
+      updateHlDeleteBar();
+    }
+
+    function buildHighlightPill(hl, i, starAllowed) {
         const locked = clusterAgeMs(hl) >= DELETE_WINDOW_MS;
 
         const pill = document.createElement('div');
@@ -2258,6 +2630,24 @@
         label.textContent = 'H' + (i + 1);
         pill.appendChild(label);
 
+        // ★ stars the moment for every POV. Viewers who can't star only see
+        // it on highlights that already are.
+        const starred = isHlStarred(hl);
+        const canToggle = starAllowed && momentTsOf(hl).length > 0;
+        if (starred || canToggle) {
+          const star = document.createElement('span');
+          star.className = 'hl-star' + (starred ? ' on' : '') + (canToggle ? ' can' : '');
+          star.textContent = starred ? '★' : '☆';
+          star.title = canToggle ? (starred ? 'Unstar this highlight' : 'Star this highlight') : 'Starred';
+          if (canToggle) {
+            star.addEventListener('click', function(e) {
+              e.stopPropagation();
+              toggleStar(i);
+            });
+          }
+          pill.appendChild(star);
+        }
+
         if (isHost && !locked) {
           const check = document.createElement('div');
           check.className = 'hl-select-check';
@@ -2273,10 +2663,7 @@
         }
 
         pill.addEventListener('click', function() { switchHighlight(i); });
-        list.appendChild(pill);
-      });
-
-      updateHlDeleteBar();
+        return pill;
     }
 
     function updateHlDeleteBar() {
@@ -2380,18 +2767,15 @@
         currentSessionCode = code;
         currentHighlightIndex = 0;
         expectedClips = session.members ? session.members.length : 0;
+        sessionMemberNames = (session.members || []).map(m => m.username).filter(Boolean);
+        applyStarsFromServer(uploadsData);
+        loadChapterState(code);
 
         let hasProcessing = false;
+        const metas = await fetchUploadMetadata(uploadsData.uploads, code);
 
-        for (const upload of uploadsData.uploads) {
-          let metadata = null;
-          const metaUrl = upload.metadataUrl || (upload.metadataFile ? '/media/' + code + '/' + upload.metadataFile : null);
-          if (metaUrl) {
-            try {
-              const metaRes = await fetch(metaUrl);
-              if (metaRes.ok) metadata = await metaRes.json();
-            } catch (e) {}
-          }
+        for (const [idx, upload] of uploadsData.uploads.entries()) {
+          const metadata = metas[idx];
 
           const isProcessing = !upload.videoUrl;
           if (isProcessing) hasProcessing = true;
@@ -2491,6 +2875,28 @@
       if (shareBtn) shareBtn.style.display = 'none';
     }
 
+    // Metadata for a list of uploads, six requests at a time. One at a time,
+    // a long session's first load made hundreds of round trips in a row.
+    // Results line up with `uploads`; a failed fetch is null.
+    async function fetchUploadMetadata(uploads, code) {
+      const out = new Array(uploads.length).fill(null);
+      let next = 0;
+      async function worker() {
+        while (next < uploads.length) {
+          const i = next++;
+          const u = uploads[i];
+          const metaUrl = u.metadataUrl || (u.metadataFile ? '/media/' + code + '/' + u.metadataFile : null);
+          if (!metaUrl) continue;
+          try {
+            const metaRes = await fetch(metaUrl);
+            if (metaRes.ok) out[i] = await metaRes.json();
+          } catch (e) {}
+        }
+      }
+      await Promise.all(Array.from({ length: Math.min(6, uploads.length) }, worker));
+      return out;
+    }
+
     // ========================
     // AUTO-REFRESH
     // ========================
@@ -2509,6 +2915,7 @@
         if (!uploadsRes.ok) return;
         const uploadsData = await uploadsRes.json();
         if (!uploadsData.uploads) return;
+        const starsChanged = applyStarsFromServer(uploadsData);
 
         const existingIds = new Set(allUploads.map(u => u.uploadId));
         const newRaw = uploadsData.uploads.filter(u => !existingIds.has(u.id));
@@ -2544,15 +2951,9 @@
         }
 
         if (newRaw.length > 0) {
-          for (const upload of newRaw) {
-            let metadata = null;
-            const metaUrl = upload.metadataUrl || (upload.metadataFile ? '/media/' + currentSessionCode + '/' + upload.metadataFile : null);
-            if (metaUrl) {
-              try {
-                const metaRes = await fetch(metaUrl);
-                if (metaRes.ok) metadata = await metaRes.json();
-              } catch (e) {}
-            }
+          const metas = await fetchUploadMetadata(newRaw, currentSessionCode);
+          for (const [idx, upload] of newRaw.entries()) {
+            const metadata = metas[idx];
 
             const isProcessing = !upload.videoUrl;
             if (isProcessing) stillProcessing = true;
@@ -2597,6 +2998,8 @@
           renderExportTimeline();
           updateCompositeButton();
           renderSessionTimeline();
+          renderHighlightsColumn();
+        } else if (starsChanged) {
           renderHighlightsColumn();
         }
 
@@ -5301,6 +5704,23 @@
 
       t2.appendChild(l2); t2.appendChild(c2);
       ui.body.appendChild(t2); ui.body.appendChild(n2);
+
+      // Stars (v0.1.87): setSquadCanStar lives in the main player script.
+      var tStar = document.createElement('label'); tStar.className = 'pa-toggle';
+      var lStar = document.createElement('span'); lStar.textContent = 'Squad can star highlights';
+      var cStar = document.createElement('input'); cStar.type = 'checkbox';
+      try { cStar.checked = squadCanStar !== false; } catch (e) { cStar.checked = true; }
+      var nStar = document.createElement('div'); nStar.className = 'pa-note';
+      nStar.textContent = 'Host control. Off means only you can star. Stars already made stay.';
+      cStar.addEventListener('change', function () {
+        var want = cStar.checked; cStar.disabled = true;
+        setSquadCanStar(want).then(function () {
+          nStar.textContent = want ? 'Anyone in the session can star highlights.' : 'Only you can star highlights now.';
+        }).catch(function () { cStar.checked = !want; nStar.textContent = 'Could not save that. Try again.'; })
+        .then(function () { cStar.disabled = false; });
+      });
+      tStar.appendChild(lStar); tStar.appendChild(cStar);
+      ui.body.appendChild(tStar); ui.body.appendChild(nStar);
 
       // Drag hint for host
       var dh = document.createElement('div'); dh.className = 'pa-note';

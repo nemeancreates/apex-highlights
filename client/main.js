@@ -560,6 +560,8 @@ let recordResolutionKey = 'native'; // 'native' | '720' | '480' — persisted ke
 let savedMonitorIndex = null; // last user-selected monitor index, persisted
 let customHotkey = 'F9';
 let startupHotkeyRegistered = true;
+let starHotkey = null;              // star key (v0.1.87) — unbound until the user sets one
+let starHotkeyRegistered = true;
 let captureHdr = false;
 let captureAdapter = null;
 let captureWindowTitle = null; 
@@ -896,6 +898,217 @@ function processXInputLine(line) {
   }
 }
 
+// ================================
+// HOTKEYS THAT DON'T STEAL THE KEY
+//
+// globalShortcut is Windows RegisterHotKey, which takes the key away from
+// every other app while Peak-Abu runs: with Shift+R as the hotkey, no
+// capital R could be typed anywhere. The key watcher reads the keyboard
+// instead (GetAsyncKeyState, same PowerShell + Add-Type approach as the
+// XInput poll above) and leaves every key where it was going.
+// globalShortcut stays as the fallback: it covers the second the watcher
+// takes to start, and takes over again if the watcher can't run.
+//
+// The key now also reaches whatever app has focus, so a "typing" key (a
+// letter, digit, Space, Enter… alone or with Shift) is ignored while a chat
+// app, browser or other known non-game program has focus: a capital R typed
+// in Discord doesn't save a highlight. F-keys and Ctrl/Alt combos fire from
+// anywhere, as before. In Peak-Abu's own window the renderer decides (it
+// ignores the key while you type in a field or set a hotkey).
+// ================================
+const KEY_WATCHER_CS = [
+  'using System;',
+  'using System.Collections.Generic;',
+  'using System.Diagnostics;',
+  'using System.Runtime.InteropServices;',
+  'using System.Threading;',
+  'public static class PAKeys {',
+  '  [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vKey);',
+  '  [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();',
+  '  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);',
+  '  class Bind { public int Vk; public int Mods; public bool Down; }',
+  '  static readonly Dictionary<string, Bind> binds = new Dictionary<string, Bind>();',
+  '  static bool IsDown(int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; }',
+  '  public static void Run() {',
+  // Commands on stdin: SET <id> <vk> <mods>, CLEAR <id>. stdin closing means
+  // Peak-Abu is gone, so the watcher never outlives it.
+  '    var reader = new Thread(() => {',
+  '      string line;',
+  '      while ((line = Console.In.ReadLine()) != null) {',
+  '        var p = line.Trim().Split(\' \');',
+  '        lock (binds) {',
+  '          if (p.Length == 4 && p[0] == "SET") binds[p[1]] = new Bind { Vk = int.Parse(p[2]), Mods = int.Parse(p[3]), Down = true };',
+  '          else if (p.Length == 2 && p[0] == "CLEAR") binds.Remove(p[1]);',
+  '        }',
+  '      }',
+  '      Environment.Exit(0);',
+  '    });',
+  '    reader.IsBackground = true;',
+  '    reader.Start();',
+  '    Console.WriteLine("READY");',
+  '    Console.Out.Flush();',
+  // Fires on the key going down with exactly the bound modifiers held
+  // (1 Ctrl, 2 Alt, 4 Shift), and names the app that had focus.
+  '    while (true) {',
+  '      lock (binds) {',
+  '        foreach (var kv in binds) {',
+  '          var b = kv.Value;',
+  '          bool down = IsDown(b.Vk);',
+  '          if (down && !b.Down) {',
+  '            int mods = (IsDown(0x11) ? 1 : 0) | (IsDown(0x12) ? 2 : 0) | (IsDown(0x10) ? 4 : 0);',
+  '            if (mods == b.Mods) {',
+  '              uint pid = 0;',
+  '              GetWindowThreadProcessId(GetForegroundWindow(), out pid);',
+  '              string name = "";',
+  '              try { name = Process.GetProcessById((int)pid).ProcessName; } catch { }',
+  '              Console.WriteLine("PRESS " + kv.Key + " " + pid + " " + name);',
+  '              Console.Out.Flush();',
+  '            }',
+  '          }',
+  '          b.Down = down;',
+  '        }',
+  '      }',
+  '      Thread.Sleep(10);',
+  '    }',
+  '  }',
+  '}'
+].join('\n');
+
+let keyWatcher = null;
+let keyWatcherReady = false;
+let keyWatcherStopping = false;
+let keyWatcherRestarts = 0;
+const KEY_WATCHER_MAX_RESTARTS = 3;
+
+const VK_NAMED = { Backspace: 0x08, Tab: 0x09, Enter: 0x0D, Space: 0x20, Left: 0x25, Up: 0x26, Right: 0x27, Down: 0x28, Delete: 0x2E };
+
+// 'Shift+R' -> { vk, mods (1 Ctrl, 2 Alt, 4 Shift), typing }
+function parseHotkey(accel) {
+  if (!isValidHotkey(accel)) return null;
+  const parts = accel.split('+');
+  const key = parts.pop();
+  let mods = 0;
+  for (const m of parts) mods |= (m === 'Alt') ? 2 : (m === 'Shift') ? 4 : 1;   // Ctrl / Control / CmdOrCtrl / Command
+  let vk;
+  if (/^F([1-9]|1[0-2])$/.test(key)) vk = 0x6F + parseInt(key.slice(1), 10);
+  else if (/^[A-Z0-9]$/.test(key)) vk = key.charCodeAt(0);
+  else vk = VK_NAMED[key];
+  if (!vk) return null;
+  return { vk, mods, typing: !(mods & 3) && !/^F\d/.test(key) };
+}
+
+function sendKeyWatcher(line) {
+  if (!keyWatcher || !keyWatcher.stdin || keyWatcher.stdin.destroyed) return false;
+  try { keyWatcher.stdin.write(line + '\n'); return true; } catch (e) { return false; }
+}
+
+function watchHotkey(id, accel) {
+  const k = accel ? parseHotkey(accel) : null;
+  return sendKeyWatcher(k ? `SET ${id} ${k.vk} ${k.mods}` : `CLEAR ${id}`);
+}
+
+// Binds hotkey `id` ('save' | 'star') to `accel` (null = unbind): through
+// the watcher when it's running, else as a globalShortcut. False only when
+// Windows refused the globalShortcut (the previous key is restored).
+function bindHotkey(id, accel, previous) {
+  const handler = (id === 'star') ? onStarHotkeyPressed : onHotkeyPressed;
+  if (keyWatcherReady && watchHotkey(id, accel)) return true;
+  if (previous && globalShortcut.isRegistered(previous)) globalShortcut.unregister(previous);
+  if (!accel) return true;
+  if (globalShortcut.register(accel, () => handler())) return true;
+  if (previous) globalShortcut.register(previous, () => handler());
+  return false;
+}
+
+function registerHotkeysFallback() {
+  if (customHotkey && !globalShortcut.isRegistered(customHotkey)) {
+    startupHotkeyRegistered = globalShortcut.register(customHotkey, () => onHotkeyPressed());
+  }
+  if (starHotkey && starHotkey !== customHotkey && !globalShortcut.isRegistered(starHotkey)) {
+    starHotkeyRegistered = globalShortcut.register(starHotkey, () => onStarHotkeyPressed());
+  }
+}
+
+function onKeyWatcherReady() {
+  // Hand the keys back to every other app, then watch them instead.
+  if (customHotkey && globalShortcut.isRegistered(customHotkey)) globalShortcut.unregister(customHotkey);
+  if (starHotkey && globalShortcut.isRegistered(starHotkey)) globalShortcut.unregister(starHotkey);
+  keyWatcherReady = true;
+  watchHotkey('save', customHotkey);
+  if (starHotkey) watchHotkey('star', starHotkey);
+  startupHotkeyRegistered = true;
+  starHotkeyRegistered = true;
+  console.log(`Key watcher running: ${customHotkey}${starHotkey ? ' / ' + starHotkey : ''} no longer blocked in other apps`);
+}
+
+function onWatchedHotkey(id, pid, procName) {
+  const accel = id === 'star' ? starHotkey : (id === 'save' ? customHotkey : null);
+  const k = accel ? parseHotkey(accel) : null;
+  if (!k) return;
+  const inApp = pid === process.pid;
+  if (inApp) {
+    // Peak-Abu itself: the main window only, and not while typing in the
+    // docked web player.
+    if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isFocused()) return;
+    if (playerView && playerView.webContents && !playerView.webContents.isDestroyed() &&
+        playerView.webContents.isFocused()) return;
+  } else if (k.typing && NON_GAME_PROCESSES.has(normalizeProcName(procName))) {
+    return;   // typing in a chat app, browser… — that key press is theirs
+  }
+  const info = { inApp, typingKey: k.typing };
+  if (id === 'star') onStarHotkeyPressed(info);
+  else onHotkeyPressed(info);
+}
+
+function startKeyWatcher() {
+  if (keyWatcher || process.platform !== 'win32') return;
+  keyWatcherStopping = false;
+  const script = ["Add-Type -TypeDefinition @'", KEY_WATCHER_CS, "'@", '[PAKeys]::Run()'].join('\n');
+  let proc;
+  try {
+    proc = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true });
+  } catch (e) {
+    console.log('Key watcher spawn failed:', e.message);
+    return;
+  }
+  keyWatcher = proc;
+
+  let lineBuffer = '';
+  proc.stdout.on('data', (data) => {
+    lineBuffer += data.toString();
+    const lines = lineBuffer.split(/\r?\n/);
+    lineBuffer = lines.pop();
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (line === 'READY') onKeyWatcherReady();
+      else if (line.startsWith('PRESS ')) {
+        const [, id, pid, ...name] = line.split(' ');
+        onWatchedHotkey(id, Number(pid), name.join(' '));
+      }
+    }
+  });
+  proc.stderr.on('data', (d) => console.log('Key watcher error:', d.toString().slice(0, 200)));
+  proc.stdin.on('error', () => {});   // it died; 'close' below handles it
+  proc.on('error', (e) => console.log('Key watcher failed:', e.message));
+  proc.on('close', () => {
+    if (keyWatcher === proc) { keyWatcher = null; keyWatcherReady = false; }
+    if (keyWatcherStopping) return;
+    console.log('Key watcher exited — hotkeys back on globalShortcut');
+    registerHotkeysFallback();
+    if (keyWatcherRestarts++ < KEY_WATCHER_MAX_RESTARTS) setTimeout(startKeyWatcher, 5000);
+  });
+}
+
+function stopKeyWatcher() {
+  keyWatcherStopping = true;
+  keyWatcherReady = false;
+  if (keyWatcher) {
+    try { keyWatcher.stdin.end(); } catch (e) {}
+    try { keyWatcher.kill(); } catch (e) {}
+    keyWatcher = null;
+  }
+}
+
 let engineLadder = [];
 let engineIndex = 0;
 let stoppingIntentionally = false;
@@ -1063,6 +1276,11 @@ function loadUserPreferences() {
     console.log(`Loaded user hotkey preference: ${customHotkey}`);
   }
 
+  if (prefs.starHotkey && isValidHotkey(prefs.starHotkey)) {
+    starHotkey = prefs.starHotkey;
+    console.log(`Loaded star key preference: ${starHotkey}`);
+  }
+
   if (typeof prefs.captureHdr === 'boolean') {
     captureHdr = prefs.captureHdr;
     console.log(`Loaded HDR capture preference: ${captureHdr}`);
@@ -1153,12 +1371,26 @@ function isValidHotkey(hotkey) {
   return true;
 }
 
-function onHotkeyPressed() {
+// info (from the key watcher): { inApp, typingKey } — lets the renderer
+// ignore the key while you're typing in one of its fields.
+function onHotkeyPressed(info) {
   console.log(`${customHotkey} pressed — routing to renderer save path`);
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('hotkey-save-pressed');
+    mainWindow.webContents.send('hotkey-save-pressed', info || {});
   } else {
     saveHighlight();
+  }
+}
+
+// Star key: stamp the press now (server clock) and let the renderer route it
+// — to the server in a connected session, or to localStarMark otherwise.
+function onStarHotkeyPressed(info) {
+  const pressTs = getPreciseUTC();
+  console.log(`${starHotkey} (star key) pressed`);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('hotkey-star-pressed', Object.assign({ pressTs }, info || {}));
+  } else {
+    localStarMark(pressTs, true);
   }
 }
 
@@ -2128,6 +2360,763 @@ function computePostDelay(windowEndLocal, mode) {
   return Math.max(0, Math.min(untilEnd + CHUNK_SECONDS * 1000 + 3000, ms));
 }
 
+// ================================
+// STARS (v0.1.87)
+//
+// Which highlight moments are starred, per session code ('' = solo), keyed
+// by the clip's saveTimeUTC. For a session clip that IS the server's
+// coordinated timestamp, the moment's identity. The server is the source of
+// truth for session clips (server/routes/stars.js); this mirror is what lets
+// a clip's sidecar carry `starred`: set when the sidecar is written, patched
+// by live 'stars-changed' events for clips saved this run, and reconciled by
+// Sync (reconcileSidecarStars).
+//
+// A star made here without the server (solo, or not connected) on a SESSION
+// clip is `starPending` in the sidecar; Sync hands it to the server once the
+// server has that clip.
+// ================================
+const starredMoments = new Map();     // code -> Map<momentTs, pending:boolean>
+const clipsSavedThisRun = new Map();  // `${code}|${momentTs}` -> [sidecar paths]
+
+function starKey(code) { return code ? String(code).toUpperCase() : ''; }
+
+function starEntry(code, ts) {
+  const m = starredMoments.get(starKey(code));
+  return (m && m.has(ts)) ? { pending: m.get(ts) } : null;
+}
+
+// Rewrites only the given fields of a sidecar (undefined removes a field).
+// tmp + rename like adoptOrphanClips, so a crash never leaves half a file.
+function writeSidecarPatch(jsonPath, patch) {
+  try {
+    const meta = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+    for (const k of Object.keys(patch)) {
+      if (patch[k] === undefined) delete meta[k];
+      else meta[k] = patch[k];
+    }
+    const tmp = jsonPath + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(meta, null, 2));
+    fs.renameSync(tmp, jsonPath);
+    return true;
+  } catch (e) {
+    console.log(`Stars: couldn't update ${path.basename(jsonPath)}:`, e.message);
+    return false;
+  }
+}
+
+function setMomentStarred(code, ts, starred, pending) {
+  const key = starKey(code);
+  let m = starredMoments.get(key);
+  if (!m) { m = new Map(); starredMoments.set(key, m); }
+  if (starred) m.set(ts, !!pending);
+  else m.delete(ts);
+  for (const jsonPath of clipsSavedThisRun.get(key + '|' + ts) || []) {
+    writeSidecarPatch(jsonPath, { starred: !!starred, starPending: (starred && pending) ? true : undefined });
+  }
+}
+
+// Every clip's sidecar is written through here: the same file with the same
+// fields as always, plus the star flag and the game (see CLIP FOLDERS).
+function writeClipSidecar(metadataPath, metadata) {
+  const star = starEntry(metadata.sessionId, metadata.saveTimeUTC);
+  metadata.starred = !!star;
+  if (star && star.pending) metadata.starPending = true;
+  metadata.game = clipGameFor(metadata.sessionId);
+  fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
+  const k = starKey(metadata.sessionId) + '|' + metadata.saveTimeUTC;
+  if (!clipsSavedThisRun.has(k)) clipsSavedThisRun.set(k, []);
+  clipsSavedThisRun.get(k).push(metadataPath);
+}
+
+// --- Star key without the server (solo, or not connected) ----------------
+// The same rules as server/sockets/stars.js, against this PC's own saves:
+// star a save from the last STAR_WINDOW_MS; otherwise wait that long for
+// one; otherwise save one, starred. Presses during a window join it.
+const STAR_WINDOW_MS = 10000;        // matches STAR_WINDOW_MS in server/config.js
+let recentSaveRequests = [];         // { ts, triggeredAt, durationMs, source, code, at }
+let localStarWindow = null;          // { T, code, timer }
+let localStarCapture = false;        // true only while localStarDeadline calls saveHighlight
+// Set by localStarDeadline right before it calls saveHighlight for the
+// star's own fill-in capture, so noteSaveRequest can record WHEN THE PRESS
+// HAPPENED (not the clip's anchor, 10s later — see noteSaveRequest).
+let pendingStarTriggeredAt = null;
+
+function sendStarLocal(state, extra) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('star-local', Object.assign({ state }, extra || {}));
+  }
+}
+
+// saveHighlight calls this for every save, with the moment it will carry.
+// triggeredAt is when the request actually happened; for every save except
+// the star key's own fill-in capture, that's saveTimeUTC itself. The star
+// capture's clip anchors STAR_WINDOW_MS after the press that caused it
+// (pendingStarTriggeredAt), which is what a LATER star press needs to check
+// "did something just happen" against — using the clip's anchor there let a
+// press up to 2×STAR_WINDOW_MS after the original one silently re-confirm
+// the same clip instead of opening a fresh window.
+function noteSaveRequest(ctx, saveTimeUTC, durationMs, triggerSource) {
+  const code = starKey(ctx.sessionCode);
+  const now = Date.now();
+  const triggeredAt = (triggerSource === 'star' && pendingStarTriggeredAt !== null) ? pendingStarTriggeredAt : saveTimeUTC;
+  recentSaveRequests = recentSaveRequests.filter(r => now - r.at < 60000);
+  recentSaveRequests.push({ ts: saveTimeUTC, triggeredAt, durationMs, source: triggerSource || 'manual', code, at: now });
+
+  if (triggerSource === 'star') {
+    // Star captures are starred from the start. The server's own captures
+    // are pre-starred there too, but its 'stars-changed' can land after the
+    // sidecar is written; a local one is pending until Sync hands it up.
+    setMomentStarred(code, saveTimeUTC, true, localStarCapture && code !== '');
+    return;
+  }
+  // A NEW save resolves an open local window. A queued save carrying an
+  // older moment (saveTimeUTC before the press) doesn't.
+  const w = localStarWindow;
+  if (w && w.code === code && saveTimeUTC >= w.T) {
+    clearTimeout(w.timer);
+    localStarWindow = null;
+    setMomentStarred(code, saveTimeUTC, true, code !== '');
+    sendStarLocal('starred', { count: 1 });
+  }
+}
+
+function localStarMark(pressTs, canCapture) {
+  const T = (typeof pressTs === 'number' && isFinite(pressTs)) ? pressTs : getPreciseUTC();
+  const code = starKey(currentSession && currentSession.code);
+  if (localStarWindow) { sendStarLocal('joined'); return; }
+
+  const hits = new Set(recentSaveRequests
+    .filter(r => r.code === code && (r.triggeredAt >= T - STAR_WINDOW_MS ||
+      (r.source !== 'auto' && r.ts <= T && T <= r.ts + Math.ceil(r.durationMs * 0.1))))
+    .map(r => r.ts));
+  if (hits.size) {
+    for (const ts of hits) setMomentStarred(code, ts, true, code !== '');
+    sendStarLocal('starred', { count: hits.size });
+    return;
+  }
+  if (!canCapture) { sendStarLocal('nothing'); return; }
+
+  localStarWindow = {
+    T, code,
+    timer: setTimeout(localStarDeadline, Math.max(0, T + STAR_WINDOW_MS - getPreciseUTC()))
+  };
+  sendStarLocal('waiting', { deadline: T + STAR_WINDOW_MS });
+}
+
+function localStarDeadline() {
+  const w = localStarWindow;
+  localStarWindow = null;
+  if (!w) return;
+  const capturing = !!ffmpegProcess || Object.keys(wgcFileStreams).length > 0;
+  if (!capturing) { sendStarLocal('not-recording'); return; }
+  // Same clip length a highlight press would get right now.
+  const duration = (currentSession && sessionClipDurationMs) ? sessionClipDurationMs : null;
+  // Explicit anchor (not saveHighlight's default getPreciseUTC()-at-call-time)
+  // so it can't drift past w.T + STAR_WINDOW_MS if the timer fires a little
+  // late — matches the server's Math.min(Date.now(), w.T + STAR_WINDOW_MS).
+  const anchor = Math.min(getPreciseUTC(), w.T + STAR_WINDOW_MS);
+  localStarCapture = true;
+  pendingStarTriggeredAt = w.T;
+  try { saveHighlight(anchor, duration, 'star'); }
+  finally { localStarCapture = false; pendingStarTriggeredAt = null; }
+  sendStarLocal('capturing');
+}
+
+// PUT /sessions/:code/stars/:ts: hands a star made offline to the server.
+// Resolves to the HTTP status (0 = unreachable).
+function putStar(code, momentTs) {
+  return new Promise((resolve) => {
+    if (!authToken) { resolve(0); return; }
+    const req = https.request({
+      protocol: 'https:', host: 'peakabu.app', port: 443,
+      path: `/sessions/${code}/stars/${momentTs}`, method: 'PUT',
+      headers: { 'Authorization': 'Bearer ' + authToken, 'Content-Length': 0 }
+    }, (res) => {
+      res.resume();
+      res.on('end', () => resolve(res.statusCode));
+      res.on('error', () => resolve(0));
+    });
+    req.setTimeout(15000, () => req.destroy(new Error('star push timed out')));
+    req.on('error', () => resolve(0));
+    req.end();
+  });
+}
+
+// Sync: brings one session's local sidecars in line with the server's stars
+// (remote = a fetchSessionUploads result). Only clips whose flag differs are
+// rewritten. An offline star goes up once the server has that clip; a
+// definitive refusal (host-only mode, not a member) drops it.
+function reconcileSidecarStars(code, localClips, remote) {
+  const serverStars = new Set((remote.stars || [])
+    .map(s => s && s.momentTs).filter(t => typeof t === 'number'));
+  const me = accountName();
+  const mirror = new Map();
+  for (const ts of serverStars) mirror.set(ts, false);
+  let changed = 0;
+
+  for (const clip of localClips) {
+    const ts = clip.momentTs;
+    if (typeof ts !== 'number') continue;
+    if (clip.starPending && !serverStars.has(ts)) {
+      mirror.set(ts, true);
+      const onServer = findLandedRecord(remote.uploads, clip.videoPath, me) ||
+        findPendingRecord(remote.uploads, clip.metadataPath, me);
+      if (!onServer) continue;                     // not uploaded yet: next Sync
+      putStar(code, ts).then((status) => {
+        const m = starredMoments.get(starKey(code));
+        if (status === 200) {
+          writeSidecarPatch(clip.metadataPath, { starred: true, starPending: undefined });
+          if (m) m.set(ts, false);
+        } else if ([400, 403, 404].includes(status)) {
+          console.log(`Stars: server refused an offline star for ${code} (${status}) — dropping it`);
+          writeSidecarPatch(clip.metadataPath, { starred: false, starPending: undefined });
+          if (m) m.delete(ts);
+        }
+      });
+      continue;
+    }
+    const want = serverStars.has(ts);
+    if ((clip.starred !== want || clip.starPending) &&
+        writeSidecarPatch(clip.metadataPath, { starred: want, starPending: undefined })) changed++;
+  }
+
+  starredMoments.set(starKey(code), mirror);
+  if (changed) console.log(`Stars: updated ${changed} clip sidecar(s) for ${code}`);
+}
+
+// ================================
+// CLIP FOLDERS (v0.1.87)
+//
+// New clips land in <clips>\<Game>\<YYYY-MM-DD> · <CODE>\ for a session and
+// <clips>\Solo\<YYYY-MM-DD>\ without one. File names are unchanged: Sync
+// matches server records by the ISO-timestamp name prefix.
+//
+// A sitting's folder is decided at its FIRST save (the game is definitely
+// running then) and locked, so alt-tabbing mid-session can't split it. A
+// sitting ends after SITTING_GAP_MS without a save on that code, and the
+// next save starts a new dated folder: a late-night session doesn't split
+// at midnight, and a code reused days later gets that day's folder.
+//
+// Game detection is async (PowerShell). If it hasn't answered by the time a
+// clip is cut, the clip is cut into the clips root and placeClip moves it
+// when it's finished. Unknown games fall back to the window title; the user
+// can rename from the session card, and the rename is remembered per
+// detected process/title (game-names.json), so that game keeps its folder.
+//
+// Everything that reads clips walks these folders: listClipSidecars().
+// ================================
+const SESSION_FOLDERS_PATH = path.join(app.getPath('userData'), 'session-folders.json');
+const GAME_NAMES_PATH = path.join(app.getPath('userData'), 'game-names.json');
+const SITTING_GAP_MS = 8 * 60 * 60 * 1000;
+const FOLDER_DETECT_TIMEOUT_MS = 8000;
+const UNSORTED_GAME = 'Unsorted';
+
+function readJsonFile(p, fallback) {
+  try {
+    if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8')) || fallback;
+  } catch (e) {
+    console.log(`Could not read ${path.basename(p)}:`, e.message);
+  }
+  return fallback;
+}
+
+function writeJsonFile(p, data) {
+  try {
+    const tmp = p + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+    fs.renameSync(tmp, p);   // atomic on the same volume
+  } catch (e) {
+    console.log(`Could not write ${path.basename(p)}:`, e.message);
+  }
+}
+
+let folderLocks = readJsonFile(SESSION_FOLDERS_PATH, {});  // 'CODE' | 'SOLO' -> { game, gameKey, date, lastUsedAt, known }
+const folderDetecting = new Map();                          // lock key -> detection promise
+const movedClipPaths = new Map();                           // old path -> new path (see moveClipPair)
+const deferredClipMoves = new Map();                        // video path -> { toDir, patch }, run when its upload finishes
+
+// Windows-safe folder name: no reserved characters or device names, no
+// leading/trailing dots or spaces, no way to climb out of the clips folder,
+// bounded length. null/'' in → fallback out.
+const WIN_RESERVED_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+function sanitizeFolderName(raw, fallback) {
+  let s = String(raw || '')
+    .replace(/[\u0000-\u001f\u007f<>:"/\\|?*]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60)
+    .replace(/^[.\s]+|[.\s]+$/g, '');
+  if (!s || WIN_RESERVED_NAMES.test(s.split('.')[0].trim())) return fallback;
+  if (/^(archives|solo)$/i.test(s)) s += ' (game)';   // our own folder names
+  return s;
+}
+
+function localDateStr(ms) {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function folderLockKey(code) { return code ? String(code).toUpperCase() : 'SOLO'; }
+
+function sittingDir(key, lock) {
+  return key === 'SOLO'
+    ? path.join(CLIPS_DIR, 'Solo', lock.date)
+    : path.join(CLIPS_DIR, lock.game, `${lock.date} · ${key}`);
+}
+
+function liveFolderLock(key) {
+  const lock = folderLocks[key];
+  return (lock && Date.now() - (lock.lastUsedAt || 0) <= SITTING_GAP_MS) ? lock : null;
+}
+
+function clipFolderInfo(key, lock) {
+  return { code: key, game: lock.game, folder: path.relative(CLIPS_DIR, sittingDir(key, lock)), known: !!lock.known };
+}
+
+// Best guess at the game being played (shared with the 'detect-game' IPC).
+async function detectGameNow() {
+  let wins = [];
+  try { wins = await enumerateWindowsPS(); } catch (e) { return null; }
+
+  // Known title wins outright
+  for (const w of wins) {
+    const g = lookupGame(w.processName);
+    if (g) {
+      return { name: g.name, genre: g.genre, process: w.processName, title: w.title, known: true };
+    }
+  }
+
+  // If they picked a specific window for WGC, trust that over a guess
+  if (wgcCaptureMode && wgcLastWindowTitle) {
+    const match = wins.find(w => w.title === wgcLastWindowTitle);
+    return {
+      name: wgcLastWindowTitle,
+      genre: 'shooter',
+      process: match ? match.processName : '',
+      title: wgcLastWindowTitle,
+      known: false
+    };
+  }
+
+  // Fall back to the first plausible non-shell window
+  const guess = wins.find(w => isLikelyGameProcess(w.processName, w.title));
+  if (guess) {
+    return { name: guess.title, genre: 'shooter', process: guess.processName, title: guess.title, known: false };
+  }
+  return null;
+}
+
+function lockClipFolder(key, detected) {
+  const names = readJsonFile(GAME_NAMES_PATH, {});
+  const gameKey = detected
+    ? (normalizeProcName(detected.process) || String(detected.title || '').trim().toLowerCase() || null)
+    : null;
+  const game = sanitizeFolderName((gameKey && names[gameKey]) || (detected && detected.name), UNSORTED_GAME);
+  const lock = { game, gameKey, date: localDateStr(Date.now()), lastUsedAt: Date.now(), known: !!(detected && detected.known) };
+  folderLocks[key] = lock;
+  writeJsonFile(SESSION_FOLDERS_PATH, folderLocks);
+  console.log(`Clip folder for ${key}: ${path.relative(CLIPS_DIR, sittingDir(key, lock))}${lock.known ? '' : ' (game guessed)'}`);
+  if (key !== 'SOLO' && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('clip-folder', clipFolderInfo(key, lock));
+  }
+  return lock;
+}
+
+// saveHighlight calls this at the press, when the game is surely running.
+// Starts detection for a new sitting; a no-op otherwise.
+function beginClipFolder(sessionCode) {
+  const key = folderLockKey(sessionCode);
+  if (liveFolderLock(key) || folderDetecting.has(key)) return;
+  const detection = Promise.race([
+    detectGameNow(),
+    new Promise(resolve => setTimeout(() => resolve(null), FOLDER_DETECT_TIMEOUT_MS))
+  ]).catch(() => null).then((detected) => {
+    folderDetecting.delete(key);
+    if (!liveFolderLock(key)) lockClipFolder(key, detected);
+  });
+  folderDetecting.set(key, detection);
+}
+
+// The folder a clip goes in. While a new sitting's detection is still
+// running that's the clips root (placeClip moves it later). `final` = the
+// clip is finished: lock with what we have rather than wait any longer.
+function clipDirFor(sessionCode, final) {
+  const key = folderLockKey(sessionCode);
+  let lock = liveFolderLock(key);
+  if (!lock) {
+    if (!final) return CLIPS_DIR;
+    lock = lockClipFolder(key, null);
+  }
+  if (final) {
+    lock.lastUsedAt = Date.now();
+    writeJsonFile(SESSION_FOLDERS_PATH, folderLocks);
+  }
+  const dir = sittingDir(key, lock);
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  } catch (e) {
+    console.log(`Could not create clip folder ${dir}:`, e.message);
+    return CLIPS_DIR;
+  }
+}
+
+// A finished clip whose folder wasn't known when it was cut moves in now.
+// The sidecar isn't written yet; only the video moves.
+function placeClip(videoPath, metadataPath, sessionCode) {
+  const dir = clipDirFor(sessionCode, true);
+  if (path.dirname(videoPath) === dir) return { videoPath, metadataPath };
+  const to = path.join(dir, path.basename(videoPath));
+  try {
+    fs.renameSync(videoPath, to);
+  } catch (e) {
+    console.log(`Could not move ${path.basename(videoPath)} into its folder:`, e.message);
+    return { videoPath, metadataPath };
+  }
+  return { videoPath: to, metadataPath: path.join(dir, path.basename(metadataPath)) };
+}
+
+// The game a clip's sidecar records: the sitting's game, unless nothing
+// could be detected.
+function clipGameFor(sessionCode) {
+  const lock = folderLocks[folderLockKey(sessionCode)];
+  return (lock && lock.game !== UNSORTED_GAME) ? lock.game : null;
+}
+
+// Every clip sidecar under the clips folder: the flat pre-0.1.87 layout and
+// the <Game>\<date> · <CODE>\ folders. Skips the full-session archive tree
+// and dot-folders. Clips are never more than two folders deep.
+function listClipSidecars() {
+  const out = [];
+  const walk = (dir, depth) => {
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+    for (const ent of entries) {
+      if (ent.name.startsWith('.')) continue;
+      const p = path.join(dir, ent.name);
+      if (ent.isDirectory()) {
+        if (depth < 2 && !(depth === 0 && ent.name.toLowerCase() === 'archives')) walk(p, depth + 1);
+      } else if (ent.isFile() && ent.name.toLowerCase().endsWith('.json')) {
+        out.push(p);
+      }
+    }
+  };
+  walk(CLIPS_DIR, 0);
+  return out;
+}
+
+// Moves one clip (.mp4 + .json) into toDir, then re-points everything that
+// remembers its path: the upload manifest, the live-star index, and an
+// upload that's about to start (movedClipPaths). The caller makes sure it
+// isn't mid-upload. Returns the new paths, or null if it couldn't move.
+function moveClipPair(videoPath, toDir, patch) {
+  const jsonFrom = videoPath.replace(/\.mp4$/i, '.json');
+  const videoTo = path.join(toDir, path.basename(videoPath));
+  const jsonTo = path.join(toDir, path.basename(jsonFrom));
+  if (videoTo === videoPath) return { videoPath, metadataPath: jsonFrom };
+  if (fs.existsSync(videoTo) || fs.existsSync(jsonTo)) {
+    console.log(`Not moving ${path.basename(videoPath)}: ${toDir} already has a clip with that name`);
+    return null;
+  }
+  try {
+    fs.mkdirSync(toDir, { recursive: true });
+    fs.renameSync(videoPath, videoTo);
+  } catch (e) {
+    console.log(`Could not move ${path.basename(videoPath)}:`, e.message);
+    return null;
+  }
+  if (fs.existsSync(jsonFrom)) {
+    try { fs.renameSync(jsonFrom, jsonTo); }
+    catch (e) {
+      // Keep the pair together: put the video back.
+      try { fs.renameSync(videoTo, videoPath); } catch (e2) {}
+      console.log(`Could not move ${path.basename(jsonFrom)}:`, e.message);
+      return null;
+    }
+    if (patch) writeSidecarPatch(jsonTo, patch);
+  }
+
+  movedClipPaths.set(videoPath, videoTo);
+  movedClipPaths.set(jsonFrom, jsonTo);
+  const key = path.basename(videoPath);
+  const manifest = readPendingManifest();
+  const entry = manifest[key];
+  if (entry && entry.videoPath === videoPath) {
+    entry.videoPath = videoTo;
+    if (entry.metadataPath === jsonFrom) entry.metadataPath = jsonTo;
+    writePendingManifest(manifest);
+    if (pendingUploads.has(key)) pendingUploads.set(key, entry);
+  }
+  for (const list of clipsSavedThisRun.values()) {
+    const i = list.indexOf(jsonFrom);
+    if (i !== -1) list[i] = jsonTo;
+  }
+  queueSizeCache.delete(videoPath);
+  return { videoPath: videoTo, metadataPath: jsonTo };
+}
+
+// A clip that was uploading when its folder was renamed moves once its
+// upload is done (markUploadDone calls this).
+function runDeferredClipMove(videoPath) {
+  const job = deferredClipMoves.get(videoPath);
+  if (!job) return;
+  deferredClipMoves.delete(videoPath);
+  if (!fs.existsSync(videoPath)) return;
+  const fromDir = path.dirname(videoPath);
+  if (moveClipPair(videoPath, job.toDir, job.patch)) removeEmptyClipDirs(fromDir);
+}
+
+// Removes a clip folder (and its game folder) once nothing is left in it.
+function removeEmptyClipDirs(dir) {
+  const root = path.resolve(CLIPS_DIR);
+  let d = path.resolve(dir);
+  for (let i = 0; i < 2 && d.startsWith(root + path.sep); i++) {
+    try { fs.rmdirSync(d); } catch (e) { return; }   // not empty (or gone): stop
+    d = path.dirname(d);
+  }
+}
+
+// Session card ✏: rename this sitting's game folder. Future clips of that
+// game use the name too (game-names.json). Clips already saved move now;
+// one that's uploading right now moves when its upload finishes.
+function renameClipFolder(code, rawName) {
+  const key = folderLockKey(code);
+  const lock = liveFolderLock(key);
+  if (key === 'SOLO' || !lock) return { ok: false, error: 'No clips saved for this session yet.' };
+  const game = sanitizeFolderName(rawName, null);
+  if (!game) return { ok: false, error: 'That name can\'t be used as a folder name.' };
+  if (game === lock.game) return Object.assign({ ok: true, moved: 0, waiting: 0 }, clipFolderInfo(key, lock));
+
+  const fromDir = sittingDir(key, lock);
+  lock.game = game;
+  lock.known = true;
+  writeJsonFile(SESSION_FOLDERS_PATH, folderLocks);
+  if (lock.gameKey) {
+    const names = readJsonFile(GAME_NAMES_PATH, {});
+    names[lock.gameKey] = game;
+    writeJsonFile(GAME_NAMES_PATH, names);
+  }
+  const toDir = sittingDir(key, lock);
+
+  let moved = 0, waiting = 0;
+  let files = [];
+  try { files = fs.readdirSync(fromDir).filter(f => f.toLowerCase().endsWith('.mp4')); } catch (e) {}
+  const manifest = readPendingManifest();
+  for (const f of files) {
+    const videoPath = path.join(fromDir, f);
+    const queued = pendingUploads.has(f) || !!manifest[f];
+    // Uploading now (or about to be, mid-sweep), or held open by the
+    // empty-clip probe: move it once its upload is done instead.
+    if (inFlightUploads.has(f) || (queued && uploadSweepRunning) || !moveClipPair(videoPath, toDir, { game })) {
+      deferredClipMoves.set(videoPath, { toDir, patch: { game } });
+      waiting++;
+      continue;
+    }
+    moved++;
+  }
+  removeEmptyClipDirs(fromDir);
+  console.log(`Clip folder for ${key} renamed to "${game}": ${moved} moved, ${waiting} waiting`);
+  return Object.assign({ ok: true, moved, waiting }, clipFolderInfo(key, lock));
+}
+
+// ================================
+// ORGANIZE CLIPS (v0.1.87) — sorts clips saved before 0.1.87 (flat in the
+// clips folder) into the layout above: organize-plan is the dry run,
+// organize-run moves with fs.rename (never copies), writes the game into
+// each sidecar, and logs every move to organize-log.json for organize-undo.
+//
+// The game for each session comes from the renderer (local session history,
+// then the server's /sessions/mine), then this PC's folder locks, else
+// Unsorted. Clips waiting to upload are skipped: the retry manifest holds
+// their absolute paths. It won't run while recording, saving or syncing.
+// Full-session archives aren't touched.
+// ================================
+const ORGANIZE_LOG_NAME = 'organize-log.json';
+let organizePlan = null;          // the last dry run: { id, groups }
+let organizeRunning = false;
+let syncUploadRunning = false;
+
+function organizeBlocker() {
+  if (ffmpegProcess || Object.keys(wgcFileStreams).length > 0) return 'Stop recording first.';
+  if (pipelineBusy || pendingSaveQueue.length) return 'Wait for the highlight that\'s saving to finish.';
+  if (syncCheckRunning || syncUploadRunning) return 'Wait for Sync to finish.';
+  if (organizeRunning) return 'Already organizing.';
+  return null;
+}
+
+// startTimeUTC, else the ISO time in the file name.
+function clipTimeOf(meta, name) {
+  if (typeof meta.startTimeUTC === 'number') return meta.startTimeUTC;
+  if (typeof meta.saveTimeUTC === 'number') return meta.saveTimeUTC;
+  const m = /(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z/.exec(name);
+  const t = m ? Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}.${m[5]}Z`) : NaN;
+  return Number.isFinite(t) ? t : null;
+}
+
+function buildOrganizePlan(sessionGames) {
+  const block = organizeBlocker();
+  if (block) return { ok: false, error: block };
+  const manifest = readPendingManifest();
+  let names = [];
+  try { names = fs.readdirSync(CLIPS_DIR).filter(f => f.toLowerCase().endsWith('.json')); } catch (e) {}
+
+  const clips = [];
+  let skippedUploading = 0;
+  for (const name of names) {
+    const jsonPath = path.join(CLIPS_DIR, name);
+    const videoPath = jsonPath.replace(/\.json$/i, '.mp4');
+    if (!fs.existsSync(videoPath)) continue;
+    let meta;
+    try { meta = JSON.parse(fs.readFileSync(jsonPath, 'utf8')); } catch (e) { continue; }
+    if (!meta || !meta.clipId) continue;
+    const key = path.basename(videoPath);
+    if (pendingUploads.has(key) || manifest[key]) { skippedUploading++; continue; }
+    const code = meta.sessionId ? String(meta.sessionId).toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
+    clips.push({ videoPath, jsonPath, code, t: clipTimeOf(meta, name) || 0 });
+  }
+
+  // Sittings per session code (or solo), split on gaps over SITTING_GAP_MS
+  // and dated by their first clip: the same rule new clips follow.
+  clips.sort((a, b) => a.t - b.t);
+  const groups = [];
+  const lastByKey = new Map();
+  for (const c of clips) {
+    const key = c.code || 'SOLO';
+    let g = lastByKey.get(key);
+    if (!g || (c.t && g.lastT && c.t - g.lastT > SITTING_GAP_MS)) {
+      const lock = c.code ? folderLocks[c.code] : null;
+      g = {
+        id: groups.length,
+        code: c.code || null,
+        date: c.t ? localDateStr(c.t) : 'undated',
+        game: c.code
+          ? (sanitizeFolderName(sessionGames && sessionGames[c.code], null) ||
+             (lock && lock.game !== UNSORTED_GAME ? lock.game : null))
+          : null,
+        lastT: c.t,
+        clips: []
+      };
+      groups.push(g);
+      lastByKey.set(key, g);
+    }
+    g.clips.push(c);
+    if (c.t) g.lastT = c.t;
+  }
+
+  organizePlan = { id: Date.now(), groups };
+  return {
+    ok: true,
+    planId: organizePlan.id,
+    total: clips.length,
+    skippedUploading,
+    groups: groups.map(g => ({ id: g.id, code: g.code, date: g.date, game: g.game, count: g.clips.length }))
+  };
+}
+
+// games: { groupId: name } from the preview (blank = Unsorted).
+async function runOrganize(planId, games) {
+  const block = organizeBlocker();
+  if (block) return { ok: false, error: block };
+  if (!organizePlan || organizePlan.id !== planId) return { ok: false, error: 'The preview is out of date. Open Organize again.' };
+  organizeRunning = true;
+
+  const logPath = path.join(CLIPS_DIR, ORGANIZE_LOG_NAME);
+  const log = readJsonFile(logPath, null) || { version: 1, runs: [] };
+  if (!Array.isArray(log.runs)) log.runs = [];
+  const run = { startedAt: Date.now(), moves: [] };
+  log.runs.push(run);
+
+  const total = organizePlan.groups.reduce((n, g) => n + g.clips.length, 0);
+  let done = 0, moved = 0, skipped = 0, failed = 0;
+  const progress = () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('organize-progress', { done, total });
+  };
+  try {
+    const manifest = readPendingManifest();
+    for (const g of organizePlan.groups) {
+      const game = g.code ? sanitizeFolderName(games && games[g.id], null) : null;
+      const toDir = g.code
+        ? path.join(CLIPS_DIR, game || UNSORTED_GAME, `${g.date} · ${g.code}`)
+        : path.join(CLIPS_DIR, 'Solo', g.date);
+      for (const c of g.clips) {
+        done++;
+        const key = path.basename(c.videoPath);
+        if (pendingUploads.has(key) || manifest[key] || !fs.existsSync(c.videoPath)) {
+          skipped++;
+        } else {
+          const r = moveClipPair(c.videoPath, toDir, game ? { game } : null);
+          if (r) {
+            moved++;
+            run.moves.push({ from: [c.videoPath, c.jsonPath], to: [r.videoPath, r.metadataPath] });
+          } else {
+            failed++;
+          }
+        }
+        // Log as we go, so a crash mid-run can still be undone.
+        if (done % 25 === 0) {
+          writeJsonFile(logPath, log);
+          progress();
+          await new Promise(resolve => setImmediate(resolve));
+        }
+      }
+    }
+  } finally {
+    run.finishedAt = Date.now();
+    if (run.moves.length) writeJsonFile(logPath, log);
+    organizeRunning = false;
+    organizePlan = null;
+    progress();
+  }
+  console.log(`Organize: ${moved} moved, ${skipped} skipped, ${failed} failed`);
+  return { ok: true, moved, skipped, failed };
+}
+
+async function undoOrganize() {
+  const block = organizeBlocker();
+  if (block) return { ok: false, error: block };
+  const logPath = path.join(CLIPS_DIR, ORGANIZE_LOG_NAME);
+  const log = readJsonFile(logPath, null);
+  if (!log || !Array.isArray(log.runs) || !log.runs.some(r => r.moves && r.moves.length)) {
+    return { ok: false, error: 'Nothing to undo.' };
+  }
+  organizeRunning = true;
+  let restored = 0, busy = 0, gone = 0, n = 0;
+  const leftDirs = new Set();
+  try {
+    for (const run of log.runs.slice().reverse()) {
+      const keep = [];
+      for (const m of (run.moves || []).slice().reverse()) {
+        const [videoTo] = m.to;
+        const [videoFrom] = m.from;
+        if (!fs.existsSync(videoTo) || fs.existsSync(videoFrom)) { gone++; continue; }
+        if (inFlightUploads.has(path.basename(videoTo))) { busy++; keep.unshift(m); continue; }
+        if (moveClipPair(videoTo, path.dirname(videoFrom), { game: undefined })) {
+          restored++;
+          leftDirs.add(path.dirname(videoTo));
+        } else {
+          busy++;
+          keep.unshift(m);
+        }
+        if (++n % 25 === 0) await new Promise(resolve => setImmediate(resolve));
+      }
+      run.moves = keep;
+    }
+    for (const d of leftDirs) removeEmptyClipDirs(d);
+    log.runs = log.runs.filter(r => r.moves.length);
+    if (log.runs.length) writeJsonFile(logPath, log);
+    else { try { fs.unlinkSync(logPath); } catch (e) {} }
+  } finally {
+    organizeRunning = false;
+  }
+  console.log(`Undo organize: ${restored} restored, ${busy} still to do, ${gone} already moved or deleted`);
+  return { ok: true, restored, busy, gone };
+}
+
+function organizeStatus() {
+  const log = readJsonFile(path.join(CLIPS_DIR, ORGANIZE_LOG_NAME), null);
+  return { canUndo: !!(log && Array.isArray(log.runs) && log.runs.some(r => r.moves && r.moves.length)) };
+}
+
 
 function saveHighlight(coordinatedTimestamp = null, clipDurationMs = null, triggerSource = null) {
   markFightSignal();   // a save means action — hold queued videos (Low Bandwidth Mode)
@@ -2143,6 +3132,8 @@ function saveHighlight(coordinatedTimestamp = null, clipDurationMs = null, trigg
   const duration = clipDurationMs || 30000;
   const clipChunks = Math.ceil(duration / (CHUNK_SECONDS * 1000));
   const saveTimeUTC = coordinatedTimestamp || getPreciseUTC();
+  noteSaveRequest(ctx, saveTimeUTC, duration, triggerSource);   // star key (see STARS)
+  beginClipFolder(ctx.sessionCode);                             // game detected at a sitting's first save (see CLIP FOLDERS)
   // Wait until the footage for the window END is on disk (see POST-ROLL
   // WAIT). doSaveHighlight checks again and waits more if it still isn't.
   const win = saveWindowLocal(saveTimeUTC, duration, triggerSource);
@@ -2238,8 +3229,9 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     }
 
     const timestamp = new Date(saveTimeUTC).toISOString().replace(/[:.]/g, '-');
-    const outputPath = path.join(CLIPS_DIR, `highlight-${timestamp}.mp4`);
-    const metadataPath = path.join(CLIPS_DIR, `highlight-${timestamp}.json`);
+    const clipDir = clipDirFor(ctx.sessionCode, false);
+    const outputPath = path.join(clipDir, `highlight-${timestamp}.mp4`);
+    const metadataPath = path.join(clipDir, `highlight-${timestamp}.json`);
 
     const wgcClipPeaks = peakLogBuffer
       .filter(p => p.t >= windowStartLocal && p.t <= windowEndLocal)
@@ -2615,8 +3607,9 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   }
 
   const timestamp = new Date(saveTimeUTC).toISOString().replace(/[:.]/g, '-');
-  const outputPath = path.join(CLIPS_DIR, `highlight-${timestamp}.mp4`);
-  const metadataPath = path.join(CLIPS_DIR, `highlight-${timestamp}.json`);
+  const clipDir = clipDirFor(ctx.sessionCode, false);
+  const outputPath = path.join(clipDir, `highlight-${timestamp}.mp4`);
+  const metadataPath = path.join(clipDir, `highlight-${timestamp}.json`);
 
   const tempId = Date.now();
   const videoListPath = path.join(BUFFER_DIR, `filelist_${tempId}.txt`);
@@ -2642,13 +3635,14 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   }
 
   function finishSuccess() {
-    fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
-    console.log('Highlight saved to', outputPath);
+    const placed = placeClip(outputPath, metadataPath, metadata.sessionId);   // see CLIP FOLDERS
+    writeClipSidecar(placed.metadataPath, metadata);
+    console.log('Highlight saved to', placed.videoPath);
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('highlight-saved', outputPath);
+      mainWindow.webContents.send('highlight-saved', placed.videoPath);
     }
     releaseSavePipeline();
-    uploadHighlight(outputPath, metadataPath, metadata.sessionId);
+    uploadHighlight(placed.videoPath, placed.metadataPath, metadata.sessionId);
   }
 
   function finishVideoOnly() {
@@ -2813,13 +3807,14 @@ function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVi
   const hasMic = !!(hlMicPath && hlMicChunkCount > 0 && !micMuted && fs.existsSync(hlMicPath));
 
   function finish(finalPath) {
-    fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
-    console.log('WGC highlight saved to', finalPath);
+    const placed = placeClip(finalPath, metadataPath, metadata.sessionId);   // see CLIP FOLDERS
+    writeClipSidecar(placed.metadataPath, metadata);
+    console.log('WGC highlight saved to', placed.videoPath);
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('highlight-saved', finalPath);
+      mainWindow.webContents.send('highlight-saved', placed.videoPath);
     }
     releaseSavePipeline();
-    uploadHighlight(finalPath, metadataPath, metadata.sessionId);
+    uploadHighlight(placed.videoPath, placed.metadataPath, metadata.sessionId);
   }
 
   if (!hasAudio) { finish(videoOnlyPath); return; }
@@ -3180,13 +4175,16 @@ function markUploadPending(uploadKey, entry) {
 }
 
 function markUploadDone(uploadKey) {
-  pendingUploads.delete(uploadKey);
   const manifest = readPendingManifest();
+  const done = pendingUploads.get(uploadKey) || manifest[uploadKey];
+  pendingUploads.delete(uploadKey);
   delete manifest[uploadKey];
   writePendingManifest(manifest);
   uploadProgress.delete(uploadKey);
   broadcastQueueState();
   maybeFinishQuit();
+  // Its folder was renamed while it uploaded (see renameClipFolder).
+  if (done && done.videoPath && deferredClipMoves.has(done.videoPath)) runDeferredClipMove(done.videoPath);
 }
 
 // Shared by the window 'close' handler (X button / Alt+F4) and before-quit
@@ -3500,6 +4498,9 @@ async function sweepPendingUploads() {
 function uploadHighlight(videoPath, metadataPath, sessionCode) {
   const code = sessionCode !== undefined ? sessionCode : (currentSession && currentSession.code);
   if (!code) { console.log('No session for this clip (solo save), skipping upload'); return; }
+  // Its folder may have been renamed since it was saved (see moveClipPair).
+  videoPath = movedClipPaths.get(videoPath) || videoPath;
+  metadataPath = movedClipPaths.get(metadataPath) || metadataPath;
 
   console.log('=== UPLOAD START ===', videoPath);
   if (!fs.existsSync(videoPath)) {
@@ -3876,6 +4877,9 @@ function performAttachVideo(uploadKey, entry, onDoneCaller) {
 function doUploadHighlight(videoPath, metadataPath, sessionCode) {
   const code = sessionCode || (currentSession && currentSession.code);
   if (!code) { console.log('No session for this clip — kept locally'); return; }
+  // Moved while the empty-clip probe ran (see moveClipPair).
+  videoPath = movedClipPaths.get(videoPath) || videoPath;
+  metadataPath = movedClipPaths.get(metadataPath) || metadataPath;
   const uploadKey = path.basename(videoPath);
   const deferred = lowBandwidthActive() && !!metadataPath && fs.existsSync(metadataPath);
   const entry = { videoPath, metadataPath, sessionCode: code, startedAt: Date.now(), deferred, uploadId: null };
@@ -3950,7 +4954,8 @@ function fetchSessionUploads(code) {
             uploads: parsed.uploads || [],
             closed: !!parsed.closed,
             createdBy: typeof parsed.createdBy === 'string' ? parsed.createdBy : null,
-            expiresAt: parsed.expiresAt || null
+            expiresAt: parsed.expiresAt || null,
+            stars: Array.isArray(parsed.stars) ? parsed.stars : []   // v0.1.87 server; [] before
           });
         } catch (e) {
           finish({ status: res.statusCode, error: 'unparseable_response' });
@@ -3973,13 +4978,10 @@ function fetchSessionUploads(code) {
 // doesn't need but the server's sync-restricted gap-fill check does.
 function scanLocalClipsForSession(code) {
   const wantSession = String(code || '').toUpperCase();
-  let entries = [];
-  try { entries = fs.readdirSync(CLIPS_DIR).filter(f => f.toLowerCase().endsWith('.json')); }
-  catch (e) { return []; }
+  const entries = listClipSidecars();   // the root and every clip folder (v0.1.87)
 
   const out = [];
-  for (const name of entries) {
-    const jsonPath = path.join(CLIPS_DIR, name);
+  for (const jsonPath of entries) {
     const videoPath = jsonPath.replace(/\.json$/i, '.mp4');
     if (!fs.existsSync(videoPath)) continue; // clip deleted, sidecar orphaned
     let meta;
@@ -4001,6 +5003,12 @@ function scanLocalClipsForSession(code) {
       startTimeUTC: typeof meta.startTimeUTC === 'number' ? meta.startTimeUTC : null,
       durationMs: typeof meta.durationMs === 'number' ? meta.durationMs : null,
       coordinatedTimestamp: typeof meta.coordinated_timestamp === 'number' ? meta.coordinated_timestamp : null,
+      // Star identity: the coordinated timestamp, or saveTimeUTC for a clip
+      // saved without the server (same fallback the web player groups by).
+      momentTs: typeof meta.coordinated_timestamp === 'number' ? meta.coordinated_timestamp
+        : (typeof meta.saveTimeUTC === 'number' ? meta.saveTimeUTC : null),
+      starred: meta.starred === true,
+      starPending: meta.starPending === true,
       sizeBytes
     });
   }
@@ -4015,13 +5023,10 @@ function scanLocalClipsForSession(code) {
 // coordinated_timestamp of their highlight, which ties them to exactly one
 // session: the one whose uploads contain that same timestamp.
 function scanOrphanClips() {
-  let entries = [];
-  try { entries = fs.readdirSync(CLIPS_DIR).filter(f => f.toLowerCase().endsWith('.json')); }
-  catch (e) { return []; }
+  const entries = listClipSidecars();   // the root and every clip folder (v0.1.87)
   const cutoff = Date.now() - SYNC_CHECK_MAX_AGE_MS;
   const out = [];
-  for (const name of entries) {
-    const jsonPath = path.join(CLIPS_DIR, name);
+  for (const jsonPath of entries) {
     if (!fs.existsSync(jsonPath.replace(/\.json$/i, '.mp4'))) continue;
     let meta;
     try { meta = JSON.parse(fs.readFileSync(jsonPath, 'utf8')); } catch (e) { continue; }
@@ -4076,6 +5081,9 @@ async function runSyncScan(code) {
   if (orphans.length && adoptOrphanClips(clean, remote.uploads, orphans) > 0) {
     local = scanLocalClipsForSession(clean);
   }
+
+  // Star flags in this session's sidecars follow the server (see STARS).
+  reconcileSidecarStars(clean, local, remote);
 
   // Syncable = none of THIS account's server records has this clip's
   // basename as a prefix (squadmates' clips of the same highlight share the
@@ -4149,13 +5157,10 @@ let syncCheckRunning = false;
 
 // Every session code with at least one surviving local clip, newest first.
 function listLocalSessionCodes() {
-  let entries = [];
-  try { entries = fs.readdirSync(CLIPS_DIR).filter(f => f.toLowerCase().endsWith('.json')); }
-  catch (e) { return []; }
+  const entries = listClipSidecars();   // the root and every clip folder (v0.1.87)
   const cutoff = Date.now() - SYNC_CHECK_MAX_AGE_MS;
   const byCode = new Map();
-  for (const name of entries) {
-    const jsonPath = path.join(CLIPS_DIR, name);
+  for (const jsonPath of entries) {
     if (!fs.existsSync(jsonPath.replace(/\.json$/i, '.mp4'))) continue;
     let meta;
     try { meta = JSON.parse(fs.readFileSync(jsonPath, 'utf8')); } catch (e) { continue; }
@@ -4208,7 +5213,14 @@ async function runSyncCheckAll() {
 // to protect in-game ping. Per-clip progress goes to the renderer over
 // 'sync-progress'; runSyncScan() runs again at the end so the client's list
 // reflects what the server actually has rather than an optimistic guess.
+// syncUploadRunning keeps Organize from moving clips while Sync sends them.
 async function runSyncUpload(code, clips) {
+  syncUploadRunning = true;
+  try { return await runSyncUploadClips(code, clips); }
+  finally { syncUploadRunning = false; }
+}
+
+async function runSyncUploadClips(code, clips) {
   const clean = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   const total = clips.length;
   for (let i = 0; i < clips.length; i++) {
@@ -4754,10 +5766,11 @@ function createWindow() {
       captureChanged = true;
     }
 
-    if (settings.hotkey && isValidHotkey(settings.hotkey) && settings.hotkey !== customHotkey) {
+    if (settings.hotkey && starHotkey && settings.hotkey === starHotkey) {
+      mainWindow.webContents.send('hotkey-error', `${settings.hotkey} is your star key.`);
+    } else if (settings.hotkey && isValidHotkey(settings.hotkey) && settings.hotkey !== customHotkey) {
       const previousHotkey = customHotkey;
-      if (previousHotkey) globalShortcut.unregister(previousHotkey);
-      const registered = globalShortcut.register(settings.hotkey, onHotkeyPressed);
+      const registered = bindHotkey('save', settings.hotkey, previousHotkey);   // see HOTKEYS THAT DON'T STEAL THE KEY
       if (registered) {
         customHotkey = settings.hotkey;
         const prefs = readPrefsRaw();
@@ -4766,8 +5779,40 @@ function createWindow() {
         console.log(`Hotkey set to: ${customHotkey}`);
         mainWindow.webContents.send('hotkey-updated', customHotkey);
       } else {
-        if (previousHotkey) globalShortcut.register(previousHotkey, onHotkeyPressed);
         mainWindow.webContents.send('hotkey-error', `Failed to register ${settings.hotkey}. Another app may be using it.`);
+      }
+    }
+
+    // Star key (v0.1.87). null clears it; it can't be the highlight key.
+    // Same register-or-roll-back as the highlight key above.
+    if ('starHotkey' in settings) {
+      const want = settings.starHotkey || null;
+      if (want === null) {
+        bindHotkey('star', null, starHotkey);
+        starHotkey = null;
+        starHotkeyRegistered = true;
+        const prefs = readPrefsRaw();
+        delete prefs.starHotkey;
+        saveUserPreferences(prefs);
+        console.log('Star key cleared');
+        mainWindow.webContents.send('star-hotkey-updated', null);
+      } else if (!isValidHotkey(want)) {
+        mainWindow.webContents.send('star-hotkey-error', `${want} can't be used as a key.`);
+      } else if (want === customHotkey) {
+        mainWindow.webContents.send('star-hotkey-error', `${want} is your highlight key — pick a different star key.`);
+      } else if (want !== starHotkey) {
+        const previous = starHotkey;
+        if (bindHotkey('star', want, previous)) {
+          starHotkey = want;
+          starHotkeyRegistered = true;
+          const prefs = readPrefsRaw();
+          prefs.starHotkey = starHotkey;
+          saveUserPreferences(prefs);
+          console.log(`Star key set to: ${starHotkey}`);
+          mainWindow.webContents.send('star-hotkey-updated', starHotkey);
+        } else {
+          mainWindow.webContents.send('star-hotkey-error', `Failed to register ${want}. Another app may be using it.`);
+        }
       }
     }
 
@@ -4986,7 +6031,33 @@ function createWindow() {
     return Math.max(10, Math.min(nominal, sinceStart));
   });
   ipcMain.handle('get-current-hotkey', () => customHotkey);
-  ipcMain.handle('get-hotkey-registered', () => startupHotkeyRegistered);
+  // A key another app has claimed still works through the key watcher.
+  ipcMain.handle('get-hotkey-registered', () => startupHotkeyRegistered || !!keyWatcher);
+  ipcMain.handle('get-star-hotkey', () => ({ key: starHotkey, registered: starHotkeyRegistered || !!keyWatcher }));
+
+  // Star key, not connected to a session's server (see STARS).
+  ipcMain.on('star-mark-local', (event, p) => {
+    localStarMark(p && p.pressTs, !!(p && p.canCapture));
+  });
+  // Clip folders + Organize clips (see CLIP FOLDERS / ORGANIZE CLIPS).
+  ipcMain.handle('get-clip-folder', (event, code) => {
+    const key = folderLockKey(code);
+    const lock = code ? liveFolderLock(key) : null;
+    return lock ? clipFolderInfo(key, lock) : null;
+  });
+  ipcMain.handle('rename-clip-folder', (event, p) => renameClipFolder(p && p.code, p && p.name));
+  ipcMain.handle('organize-plan', (event, p) => buildOrganizePlan(p && p.sessionGames));
+  ipcMain.handle('organize-run', (event, p) => runOrganize(p && p.planId, p && p.games));
+  ipcMain.handle('organize-undo', () => undoOrganize());
+  ipcMain.handle('organize-status', () => organizeStatus());
+
+  // A session's stars changed on the server (relayed by the renderer).
+  ipcMain.on('stars-changed', (event, p) => {
+    if (!p || !p.code || !Array.isArray(p.momentTs)) return;
+    for (const ts of p.momentTs) {
+      if (typeof ts === 'number' && isFinite(ts)) setMomentStarred(p.code, ts, !!p.starred, false);
+    }
+  });
 
   // ================================
   // CLEAN UNINSTALL
@@ -5197,37 +6268,7 @@ function createWindow() {
   // ================================
   // GAME DETECTION — best-effort label for session history
   // ================================
-  ipcMain.handle('detect-game', async () => {
-    let wins = [];
-    try { wins = await enumerateWindowsPS(); } catch (e) { return null; }
-
-    // Known title wins outright
-    for (const w of wins) {
-      const g = lookupGame(w.processName);
-      if (g) {
-        return { name: g.name, genre: g.genre, process: w.processName, title: w.title, known: true };
-      }
-    }
-
-    // If they picked a specific window for WGC, trust that over a guess
-    if (wgcCaptureMode && wgcLastWindowTitle) {
-      const match = wins.find(w => w.title === wgcLastWindowTitle);
-      return {
-        name: wgcLastWindowTitle,
-        genre: 'shooter',
-        process: match ? match.processName : '',
-        title: wgcLastWindowTitle,
-        known: false
-      };
-    }
-
-    // Fall back to the first plausible non-shell window
-        const guess = wins.find(w => isLikelyGameProcess(w.processName, w.title));
-    if (guess) {
-      return { name: guess.title, genre: 'shooter', process: guess.processName, title: guess.title, known: false };
-    }
-    return null;
-  });
+  ipcMain.handle('detect-game', () => detectGameNow());   // see CLIP FOLDERS
 
     // ================================
   // AI REEL — LOCAL CLIP DISCOVERY
@@ -5243,13 +6284,10 @@ function createWindow() {
 
   ipcMain.handle('aireel-list-local-clips', (event, opts) => {
     const wantSession = opts && opts.sessionId ? String(opts.sessionId).toUpperCase() : null;
-    let entries = [];
-    try { entries = fs.readdirSync(CLIPS_DIR).filter(f => f.toLowerCase().endsWith('.json')); }
-    catch (e) { return []; }
+    const entries = listClipSidecars();   // the root and every clip folder (v0.1.87)
 
     const out = [];
-    for (const name of entries) {
-      const jsonPath = path.join(CLIPS_DIR, name);
+    for (const jsonPath of entries) {
       const mp4Path = jsonPath.replace(/\.json$/i, '.mp4');
       if (!fs.existsSync(mp4Path)) continue;      // clip deleted, sidecar orphaned
       let meta;
@@ -5421,6 +6459,13 @@ app.whenReady().then(async () => {
   startupHotkeyRegistered = globalShortcut.register(customHotkey, onHotkeyPressed);
   if (startupHotkeyRegistered) console.log(`${customHotkey} hotkey registered successfully`);
   else console.log(`WARNING: ${customHotkey} hotkey registration FAILED - another app may be using it`);
+  if (starHotkey) {
+    starHotkeyRegistered = starHotkey !== customHotkey && globalShortcut.register(starHotkey, onStarHotkeyPressed);
+    console.log(starHotkeyRegistered ? `${starHotkey} star key registered` : `WARNING: star key ${starHotkey} registration FAILED`);
+  }
+  // Takes the keys over from globalShortcut once it's running, so they stop
+  // being blocked in other apps (see HOTKEYS THAT DON'T STEAL THE KEY).
+  startKeyWatcher();
   setTimeout(() => checkForUpdates(mainWindow), 3000);
 });
 
@@ -5463,6 +6508,7 @@ app.on('before-quit', async (event) => {
     stoppingIntentionally = true;
     stopBufferReadyWatcher();
     stopXInputPoll();
+    stopKeyWatcher();
     const dying = ffmpegProcess;
     ffmpegProcess = null;
     await killFFmpegTree(dying);
@@ -5472,6 +6518,7 @@ app.on('before-quit', async (event) => {
     if (wgcCaptureMode) wgcCleanupAll();
     stopBufferReadyWatcher();
     stopXInputPoll();
+    stopKeyWatcher();
     globalShortcut.unregisterAll();
   }
 });

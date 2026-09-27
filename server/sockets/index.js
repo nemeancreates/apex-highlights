@@ -11,6 +11,7 @@ const { checkSocketRate, removeSocketRate } = require('../ratelimit');
 const { socketAuth, getEffectiveTier } = require('../auth');
 const { registerHighlightHandlers } = require('./highlights');
 const { registerAutoCaptureHandlers } = require('./autocapture');
+const { registerStarHandlers } = require('./stars');
 const { createSessionForUser } = require('../routes/sessions');
 
 // Statuses a client may report over 'upload-status' (see the relay below).
@@ -544,6 +545,9 @@ function initSockets(io) {
 
     // Auto-capture state machine — server-authoritative ACTIVE/settle timing
     registerAutoCaptureHandlers(io, socket);
+
+    // Star key: attaches a star to a highlight, or captures one (v0.1.87)
+    registerStarHandlers(io, socket);
 
     socket.on('disconnect', () => {
       removeSocketRate(socket.id);

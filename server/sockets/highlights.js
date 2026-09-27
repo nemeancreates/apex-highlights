@@ -13,9 +13,26 @@ function weightedUsed(session) {
   return (session.uploads || []).reduce((sum, u) => sum + (u.clipWeight || 1), 0);
 }
 
+// The star arbiter (sockets/stars.js) has to hear about every NEW highlight
+// request: a press (fired or queued), the star key's own capture, or an
+// auto-capture window firing. A queued press finally firing is NOT new; its
+// clip is from before. A listener list rather than a require keeps this
+// module free of a cycle (stars.js calls requestHighlight below).
+//   { kind: 'request', ts, clipDuration, source }
+//   { kind: 'auto-none' }: an auto window ended without a highlight
+const requestListeners = [];
+function onHighlightRequest(fn) { requestListeners.push(fn); }
+function announceHighlightRequest(io, sessionCode, session, info) {
+  for (const fn of requestListeners) {
+    try { fn(io, sessionCode, session, info); }
+    catch (e) { log('warn', 'highlight_listener_failed', { session: sessionCode, error: e.message }); }
+  }
+}
+
 // Fires a coordinated save to all clients, locks the session, and on
 // expiry either drains the next queued trigger (with its original
-// timestamp) or emits highlight-unlocked.
+// timestamp) or emits highlight-unlocked. Returns false if the session's
+// highlight time is used up and nothing fired.
 function fireCoordinatedHighlight(io, sessionCode, session, username, coordinated_timestamp, clipDurationOverride, triggerSource) {
   // clipDurationOverride lets auto-capture (sockets/autocapture.js) pass its
   // own elapsed ACTIVE-window length instead of the session's fixed manual
@@ -39,7 +56,7 @@ function fireCoordinatedHighlight(io, sessionCode, session, username, coordinate
     // Re-emit so the host's usage bar and Migrate button update immediately
     io.to(sessionCode).emit('clip-count-update', { used: soFar, max: clipCap });
     session.pendingHighlights = [];
-    return;
+    return false;
   }
 
   const postCapture = Math.ceil(clipDuration * 0.1);
@@ -87,9 +104,70 @@ function fireCoordinatedHighlight(io, sessionCode, session, username, coordinate
     const next = (current.pendingHighlights || []).shift();
     if (next) {
       log('info', 'highlight_dequeued', { session: sessionCode, username: next.username, ts: next.ts, remaining: current.pendingHighlights.length });
-      fireCoordinatedHighlight(io, sessionCode, current, next.username, next.ts, next.clipDuration);
+      fireCoordinatedHighlight(io, sessionCode, current, next.username, next.ts, next.clipDuration, next.source);
     }
   }, lockDuration + 100);
+  return true;
+}
+
+// A new highlight request: a key press, or the star key's capture
+// (sockets/stars.js). Pre-checks the cap, queues behind an active lock with
+// its ORIGINAL timestamp, or fires. Returns 'fired' | 'queued' | 'blocked'.
+// Errors go to opts.replyTo (the pressing socket), or the whole room.
+//
+// opts.triggeredAt: when this request actually happened, if that differs
+// from pressTs (the clip's own anchor). Only the star key's own fill-in
+// capture needs this — pressTs there is T+STAR_WINDOW_MS (the clip's END),
+// but the decision that caused it happened at T. Listeners that track "did
+// something just happen" (sockets/stars.js) key off this, not pressTs;
+// everything else about the request (the saved clip, the queue) still uses
+// pressTs. Defaults to pressTs.
+function requestHighlight(io, sessionCode, session, username, pressTs, opts) {
+  const source = (opts && opts.source) || 'manual';
+  const reply = (opts && opts.replyTo) || io.to(sessionCode);
+  const triggeredAt = (opts && typeof opts.triggeredAt === 'number') ? opts.triggeredAt : pressTs;
+  const now = Date.now();
+  const pending = session.pendingHighlights = session.pendingHighlights || [];
+
+  // Pre-check so a doomed trigger never enters the queue. The real
+  // enforcement is in fireCoordinatedHighlight; this projects the whole
+  // queue depth ahead of it.
+  const clipCap = session.maxClips || MAX_HIGHLIGHTS_PER_SESSION;
+  const squadSize = Math.max(session.members.length, 1);
+  const perTriggerWeight = clipWeightForDuration(session.clipDuration || 30000);
+  const projected = weightedUsed(session) + (pending.length + 1) * squadSize * perTriggerWeight;
+  if (projected > clipCap) {
+    reply.emit('error-message', {
+      message: 'Session highlight time is used up (' + Math.round(clipCap / 3600) + 'h). Host can start a new session to keep going.'
+    });
+    io.to(sessionCode).emit('clip-count-update', { used: weightedUsed(session), max: clipCap });
+    return 'blocked';
+  }
+
+  // Locked: queue the trigger with its ORIGINAL timestamp instead of
+  // rejecting. It fires when the lock expires — clients cut the clip
+  // anchored to this moment, and their lastHighlightBoundary dedup
+  // guarantees zero footage overlap with the previous clip.
+  if (session.highlightLockedUntil && now < session.highlightLockedUntil) {
+    if (pending.length >= MAX_PENDING_HIGHLIGHTS) {
+      reply.emit('error-message', { message: 'Highlight queue full — wait for cooldown' });
+      return 'blocked';
+    }
+    // Keep the clip length it was pressed with — firing later with whatever
+    // the host has switched to since cut it at the wrong length.
+    const clipDuration = session.clipDuration || 30000;
+    pending.push({ username, ts: pressTs, clipDuration, source });
+    log('info', 'highlight_queued', { session: sessionCode, username, ts: pressTs, queueDepth: pending.length, source });
+    io.to(sessionCode).emit('highlight-queued', { username, queued: pending.length });
+    announceHighlightRequest(io, sessionCode, session, { kind: 'request', ts: pressTs, triggeredAt, clipDuration, source });
+    return 'queued';
+  }
+
+  if (!fireCoordinatedHighlight(io, sessionCode, session, username, pressTs, null, source)) return 'blocked';
+  announceHighlightRequest(io, sessionCode, session, {
+    kind: 'request', ts: pressTs, triggeredAt, clipDuration: session.clipDuration || 30000, source
+  });
+  return 'fired';
 }
 
 function registerHighlightHandlers(io, socket) {
@@ -111,42 +189,14 @@ function registerHighlightHandlers(io, socket) {
       ? payload.pressTs : now;
     if (pressTs > now + 1000 || pressTs < now - 3000) pressTs = now;
 
-    const pending = session.pendingHighlights = session.pendingHighlights || [];
-
-    // Pre-check so a doomed trigger never enters the queue. The real
-    // enforcement is in fireCoordinatedHighlight; this projects the whole
-    // queue depth ahead of it.
-    const clipCap = session.maxClips || MAX_HIGHLIGHTS_PER_SESSION;
-    const squadSize = Math.max(session.members.length, 1);
-    const perTriggerWeight = clipWeightForDuration(session.clipDuration || 30000);
-    const projected = weightedUsed(session) + (pending.length + 1) * squadSize * perTriggerWeight;
-    if (projected > clipCap) {
-      socket.emit('error-message', {
-        message: 'Session highlight time is used up (' + Math.round(clipCap / 3600) + 'h). Host can start a new session to keep going.'
-      });
-      io.to(sessionCode).emit('clip-count-update', { used: weightedUsed(session), max: clipCap });
-      return;
-    }
-
-    // Locked: queue the trigger with its ORIGINAL timestamp instead of
-    // rejecting. It fires when the lock expires — clients cut the clip
-    // anchored to this moment, and their lastHighlightBoundary dedup
-    // guarantees zero footage overlap with the previous clip.
-    if (session.highlightLockedUntil && now < session.highlightLockedUntil) {
-      if (pending.length >= MAX_PENDING_HIGHLIGHTS) {
-        socket.emit('error-message', { message: 'Highlight queue full — wait for cooldown' });
-        return;
-      }
-      // Keep the clip length it was pressed with — firing later with whatever
-      // the host has switched to since cut it at the wrong length.
-      pending.push({ username: socket.username, ts: pressTs, clipDuration: session.clipDuration || 30000 });
-      log('info', 'highlight_queued', { session: sessionCode, username: socket.username, ts: pressTs, queueDepth: pending.length });
-      io.to(sessionCode).emit('highlight-queued', { username: socket.username, queued: pending.length });
-      return;
-    }
-
-    fireCoordinatedHighlight(io, sessionCode, session, socket.username, pressTs);
+    requestHighlight(io, sessionCode, session, socket.username, pressTs, { replyTo: socket });
   });
 }
 
-module.exports = { registerHighlightHandlers, fireCoordinatedHighlight };
+module.exports = {
+  registerHighlightHandlers,
+  fireCoordinatedHighlight,
+  requestHighlight,
+  onHighlightRequest,
+  announceHighlightRequest
+};

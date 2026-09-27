@@ -119,6 +119,29 @@ db.exec(`
 `);
 
 // ================================
+// STARS — favorited highlight MOMENTS (v0.1.87).
+//
+// One row per moment, not per clip: every POV of a highlight carries the
+// same server-issued coordinated timestamp, so starring the moment stars
+// every POV of it. Standalone block and no foreign key for the same reasons
+// as comments above; routes/stars.js sweeps orphans hourly.
+// ================================
+db.exec(`
+  CREATE TABLE IF NOT EXISTS stars (
+    sessionCode TEXT NOT NULL,
+    momentTs    INTEGER NOT NULL,
+    starredBy   TEXT NOT NULL,
+    createdAt   INTEGER NOT NULL,
+    PRIMARY KEY (sessionCode, momentTs)
+  );
+
+  CREATE TABLE IF NOT EXISTS star_settings (
+    sessionCode  TEXT PRIMARY KEY,
+    squadCanStar INTEGER NOT NULL DEFAULT 1
+  );
+`);
+
+// ================================
 // MIGRATIONS — additive only, idempotent, safe to run on every boot.
 //
 // SQLite has no "ADD COLUMN IF NOT EXISTS", so we read the existing
