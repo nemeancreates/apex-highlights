@@ -188,16 +188,29 @@ function serverBaseName(filePath) {
   return base.replace(/[^a-zA-Z0-9_\-]/g, '_').substring(0, 100);
 }
 
-function findLandedRecord(uploads, videoPath) {
+// Clip file names come from the squad's SHARED highlight time, so every
+// squadmate's clip of a moment has the same name. Matching on the name alone
+// found a squadmate's upload and took it for this clip — the retry sweep then
+// cleared the clip as "already on the server" and Sync stopped offering it
+// (9F7PLX, 9/27: 25 of Skeatcherz's queued videos vanished the moment
+// Nemean's copies landed). Only records this account uploaded count.
+// Usernames are unique ignoring case (server/auth.js). No username known
+// (logged out) keeps the old name-only match.
+function isOwnRecord(u, username) {
+  if (!username) return true;
+  return String(u.username || '').toLowerCase() === String(username).toLowerCase();
+}
+
+function findLandedRecord(uploads, videoPath, username) {
   const base = serverBaseName(videoPath) + '_';
-  return (uploads || []).find(u => (u.videoFile || '').startsWith(base)) || null;
+  return (uploads || []).find(u => isOwnRecord(u, username) && (u.videoFile || '').startsWith(base)) || null;
 }
 
 // A pending record = metadata posted, video not attached yet.
-function findPendingRecord(uploads, metadataPath) {
+function findPendingRecord(uploads, metadataPath, username) {
   if (!metadataPath) return null;
   const base = serverBaseName(metadataPath) + '_';
-  return (uploads || []).find(u => !u.videoFile && (u.metadataFile || '').startsWith(base)) || null;
+  return (uploads || []).find(u => isOwnRecord(u, username) && !u.videoFile && (u.metadataFile || '').startsWith(base)) || null;
 }
 
 // --- Sweep decision --------------------------------------------------------
@@ -213,13 +226,15 @@ function findPendingRecord(uploads, metadataPath) {
 //   attach    — deferred, send the video to the pending record.
 //   upload    — normal combined upload.
 //   skip      — not now (server unreachable, or a fight in Low Bandwidth Mode).
+// ctx.username is the logged-in account — see isOwnRecord above.
 function decideSweepAction(entry, remote, ctx) {
   if (!remote || remote.status === 404) return { action: 'drop', reason: 'session-gone' };
   if (remote.status !== 200) return { action: 'skip', reason: 'unreachable' };
   const uploads = remote.uploads || [];
   const holdForFight = !!(ctx && ctx.lowBandwidth && ctx.fightActive);
+  const me = (ctx && ctx.username) || null;
 
-  if (findLandedRecord(uploads, entry.videoPath)) return { action: 'done', reason: 'landed' };
+  if (findLandedRecord(uploads, entry.videoPath, me)) return { action: 'done', reason: 'landed' };
 
   if (entry.deferred && entry.uploadId) {
     const rec = uploads.find(u => u.id === entry.uploadId);
@@ -229,7 +244,7 @@ function decideSweepAction(entry, remote, ctx) {
     return { action: 'attach' };
   }
 
-  const pend = findPendingRecord(uploads, entry.metadataPath);
+  const pend = findPendingRecord(uploads, entry.metadataPath, me);
   if (pend) return { action: 'adopt', uploadId: pend.id };
 
   if (entry.deferred) return { action: 'post-meta' };
@@ -242,5 +257,5 @@ module.exports = {
   LOW_BW_THRESHOLD_MBPS, SPEEDTEST_BYTES, SPEEDTEST_MAX_AGE_MS, FIGHT_QUIET_MS, UPLOAD_MODES,
   normalizeSettings, isLowBandwidth, speedTestIsStale, baseThrottleBps, currentThrottleBps,
   RateThrottleStream, runSpeedTest,
-  serverBaseName, findLandedRecord, findPendingRecord, decideSweepAction
+  serverBaseName, isOwnRecord, findLandedRecord, findPendingRecord, decideSweepAction
 };

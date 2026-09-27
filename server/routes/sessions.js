@@ -157,9 +157,13 @@ function initSessionRoutes(app) {
     // allowed, under the restricted rules in routes/uploads.js), and open =
     // normal operation. Without these, a client can only infer from the
     // status code and would show "expired" for a merely-closed session.
+    // createdBy lets the client apply that closed-session rule itself (the
+    // host is exempt) instead of uploading a whole clip just to be refused.
+    // Already public via GET /sessions/:code.
     res.json({
       uploads: session.uploads,
       closed: !!session.closed,
+      createdBy: session.createdBy,
       expiresAt: session.expiresAt || null
     });
   });

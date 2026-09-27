@@ -799,7 +799,7 @@
               <img src="assets/kickstarter.png" alt="kickstarter" />
             </button>
           </div>
-          <span class="version-tag">v0.1.85</span>
+          <span class="version-tag">v0.1.86</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="redeem-wrap">
@@ -3065,6 +3065,14 @@ REPLACE:
         return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
       }
 
+      // A clip's real length (e.g. 178000 ms → "2:58"). formatDuration is for
+      // the 30s/1min/3min picker and printed "2.9666666666666667min" here.
+      function formatClipLength(ms) {
+        var s = Math.round(ms / 1000);
+        if (s < 60) return s + 's';
+        return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+      }
+
       function renderSyncBanner(result) {
         var banner = document.getElementById('syncBanner');
         var title = document.getElementById('syncBannerTitle');
@@ -3114,7 +3122,7 @@ REPLACE:
           var right = document.createElement('span');
           right.className = 'clip-time';
           var parts = [];
-          if (clip.durationMs) parts.push(formatDuration(clip.durationMs));
+          if (clip.durationMs) parts.push(formatClipLength(clip.durationMs));
           if (clip.sizeBytes) parts.push(formatSyncBytes(clip.sizeBytes));
           right.textContent = parts.join(' · ');
 
@@ -3198,6 +3206,11 @@ REPLACE:
             ? ' · ' + s.failedSaves + ' highlight' + (s.failedSaves === 1 ? '' : 's') + ' never saved on this PC'
             : '';
           if (neverSaved) row.title = 'The save failed or fell too far behind, so there is no clip on this PC to upload. See the Activity tab for the reason.';
+          // Clips a closed session won't take (not from a highlight it recorded).
+          var closedOut = s.closedOut
+            ? ' · ' + s.closedOut + ' clip' + (s.closedOut === 1 ? '' : 's') + " can't be added — session closed (kept on this PC)"
+            : '';
+          if (closedOut && !neverSaved) row.title = "The session has closed, and the server only takes clips from highlights it already recorded. These are still saved on your PC.";
           if (s.state === 'expired') {
             text += 'expired (clips kept on this PC)';
           } else if (s.state === 'error') {
@@ -3210,6 +3223,7 @@ REPLACE:
             text += 'all uploaded ✓';
           }
           if (neverSaved) { text += neverSaved; row.classList.add('bad'); }
+          if (closedOut) text += closedOut;
           label.textContent = text;
           row.appendChild(label);
           if (s.state === 'ok' && s.syncable.length) {
@@ -3240,6 +3254,7 @@ REPLACE:
         s.status = result.status || null;
         s.syncable = result.syncable || [];
         if (typeof result.failedSaves === 'number') s.failedSaves = result.failedSaves;
+        if (typeof result.closedOut === 'number') s.closedOut = result.closedOut;
         renderSyncCheck(r);
       }
 

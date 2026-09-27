@@ -2942,6 +2942,22 @@ const uploadAttempts = new Map();    // uploadKey -> { count, nextAt }
 let uploadRetryTimer = null;
 let uploadSweepRunning = false;
 
+// The account these uploads go up as, read from the token's own payload so
+// it always matches what the server sees (the server verifies the token —
+// this only reads the name). Needed to tell this account's upload records
+// apart from squadmates' — every squadmate's clip of a highlight has the
+// same file name (see isOwnRecord in upload-queue.js).
+function accountName() {
+  try {
+    const part = String(authToken || '').split('.')[1];
+    if (!part) return null;
+    const payload = JSON.parse(Buffer.from(part, 'base64url').toString('utf8'));
+    return (payload && typeof payload.username === 'string' && payload.username) ? payload.username : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 // ================================
 // LOW BANDWIDTH MODE — STATE
 //
@@ -3431,7 +3447,7 @@ async function sweepPendingUploads() {
       for (const [uploadKey, entryIn] of items) {
         if (!authToken) return;              // logged out mid-sweep
         let entry = entryIn;
-        const ctx = () => ({ lowBandwidth: lowBandwidthActive(), fightActive: isFightActive() });
+        const ctx = () => ({ lowBandwidth: lowBandwidthActive(), fightActive: isFightActive(), username: accountName() });
         let decision = decideSweepAction(entry, remote, ctx());
 
         if (decision.action === 'adopt') {
@@ -3933,6 +3949,7 @@ function fetchSessionUploads(code) {
             status: res.statusCode,
             uploads: parsed.uploads || [],
             closed: !!parsed.closed,
+            createdBy: typeof parsed.createdBy === 'string' ? parsed.createdBy : null,
             expiresAt: parsed.expiresAt || null
           });
         } catch (e) {
@@ -4060,19 +4077,37 @@ async function runSyncScan(code) {
     local = scanLocalClipsForSession(clean);
   }
 
-  // Syncable = no server record's videoFile carries this clip's basename as
-  // a prefix, AND it isn't already mid-upload via the normal live path.
+  // Syncable = none of THIS account's server records has this clip's
+  // basename as a prefix (squadmates' clips of the same highlight share the
+  // name — see isOwnRecord in upload-queue.js), AND it isn't already
+  // mid-upload via the normal live path.
   //
   // A clip whose METADATA is on the server but whose video isn't (Low
   // Bandwidth Mode, queue entry lost) is not "missing" — re-uploading it in
   // full would create a second record and charge its weight twice. Instead
   // it goes back into the queue to have just its video attached.
+  //
+  // A closed session only takes new clips from its host, or clips of a
+  // highlight it already has (the gap-filling gate in routes/uploads.js).
+  // Anything else is mirrored here as closedOut rather than offered: Sync
+  // used to send the whole video, get refused at the very end, and list it
+  // as missing again (a 166 MB clip from 9/13, re-sent on every press —
+  // 9F7PLX, 9/27). Attaching video to an existing record isn't gated, so
+  // that check runs first. An older server without createdBy keeps the old
+  // behavior.
+  const me = accountName();
+  const gated = !!(remote.closed && remote.createdBy && me &&
+    remote.createdBy.toLowerCase() !== me.toLowerCase());
+  const knownMoments = new Set((remote.uploads || [])
+    .map(u => u.coordinatedTimestamp)
+    .filter(t => typeof t === 'number'));
   let adopted = 0;
+  let closedOut = 0;
   const syncable = local.filter(clip => {
     const key = path.basename(clip.videoPath);
     if (pendingUploads.has(key)) return false;
-    if (findLandedRecord(remote.uploads, clip.videoPath)) return false;
-    const pend = findPendingRecord(remote.uploads, clip.metadataPath);
+    if (findLandedRecord(remote.uploads, clip.videoPath, me)) return false;
+    const pend = findPendingRecord(remote.uploads, clip.metadataPath, me);
     if (pend) {
       markUploadPending(key, {
         videoPath: clip.videoPath, metadataPath: clip.metadataPath, sessionCode: clean,
@@ -4081,14 +4116,21 @@ async function runSyncScan(code) {
       adopted++;
       return false;
     }
+    if (gated && !(clip.coordinatedTimestamp !== null && knownMoments.has(clip.coordinatedTimestamp))) {
+      closedOut++;
+      return false;
+    }
     return true;
   });
   if (adopted > 0) {
     console.log(`Sync: ${adopted} clip(s) already have sync data on the server — queued to attach video only`);
     sweepPendingUploads();
   }
+  if (closedOut > 0) {
+    console.log(`Sync: ${closedOut} clip(s) for ${clean} can't be added — session closed and they aren't from a highlight it recorded (kept on this PC)`);
+  }
 
-  return { state: 'ok', code: clean, syncable, closed: remote.closed, failedSaves };
+  return { state: 'ok', code: clean, syncable, closedOut, closed: remote.closed, failedSaves };
 }
 
 // ================================
@@ -4148,7 +4190,8 @@ async function runSyncCheckAll() {
     sessions.push({
       code: c.code, lastAt: c.lastAt, localClips: c.localClips,
       state: r.state, status: r.status || null, closed: !!r.closed,
-      syncable: r.syncable || [], failedSaves: r.failedSaves || 0
+      syncable: r.syncable || [], failedSaves: r.failedSaves || 0,
+      closedOut: r.closedOut || 0
     });
   }
   console.log(`Sync check: ${sessions.length}/${codes.length} session(s) checked` +
