@@ -619,20 +619,142 @@ let wgcRolloverTimer = null;
 let wgcSaveInFlight = false;
 let pipelineBusy = false;
 const pendingSaveQueue = [];
+// The window-capture save currently cutting footage: its window start and
+// the buffer files it has open. Cleanup never deletes those files.
+let wgcActiveSave = null;
+// Work waiting for the save queue to empty — a Stop or a window-capture
+// fallback keeps the buffer (and audio) until every queued save has run.
+const saveQueueIdleCallbacks = [];
+
+// Footage the buffer must keep. A save waits after the press for its window
+// END to reach disk (POST-ROLL WAIT) — 26 s for a 3 min clip — and the
+// rolling buffer used to keep deleting the oldest chunks meanwhile, cutting
+// the START off long clips (163 of 180 s, 9-26-26). Saves waiting out their
+// post-roll hold their window start here; queued and running saves count too.
+const saveWindowsWaiting = new Set();
+let activeSaveWindowStart = null;
+
+// Earliest footage (local clock) a waiting, queued or running save still
+// needs. Infinity when none.
+function saveNeededFromLocal() {
+  let min = Infinity;
+  for (const h of saveWindowsWaiting) min = Math.min(min, h.start);
+  if (activeSaveWindowStart !== null) min = Math.min(min, activeSaveWindowStart);
+  for (const q of pendingSaveQueue) min = Math.min(min, saveWindowLocal(q.saveTimeUTC, q.durationMs, q.triggerSource).start);
+  return min;
+}
+
+// The session's clip length (set by the host, can change mid-session). The
+// buffer grows to fit it so a longer clip never needs a restart to fit.
+let sessionClipDurationMs = 0;
+function effectiveMaxChunks() {
+  const forClip = sessionClipDurationMs > 0 ? Math.ceil(sessionClipDurationMs / (CHUNK_SECONDS * 1000)) + 3 : 0;
+  return Math.max(maxChunks, forClip);
+}
 
 function releaseSavePipeline() {
   if (!pipelineBusy) return; // already released, avoid double-drain
   pipelineBusy = false;
   wgcSaveInFlight = false;
+  wgcActiveSave = null;
+  activeSaveWindowStart = null;
   markFightSignal();   // quiet period restarts from the end of the save
   if (pendingSaveQueue.length > 0) {
     const next = pendingSaveQueue.shift();
-    console.log(`Save pipeline free — starting queued ${next.triggerSource || 'manual'} save`);
-    doSaveHighlight(next.saveTimeUTC, next.clipChunks, next.durationMs, next.coordinatedTs, 0, next.triggerSource);
+    console.log(`Save pipeline free — starting queued ${next.triggerSource || 'manual'} save (${pendingSaveQueue.length} still queued)`);
+    broadcastQueueState();
+    doSaveHighlight(next.saveTimeUTC, next.clipChunks, next.durationMs, next.coordinatedTs, 0, next.triggerSource, next.ctx);
+    return;
   }
+  broadcastQueueState();
+  const waiting = saveQueueIdleCallbacks.splice(0);
+  for (const fn of waiting) {
+    try { fn(); } catch (e) { console.log('Save-queue idle task failed:', e.message); }
+  }
+  if (wgcFiles.length > 2) wgcCleanupOldFiles();
+}
+
+// Run fn once nothing is saving or queued (immediately if that's now).
+function onSaveQueueIdle(fn) {
+  if (!pipelineBusy && pendingSaveQueue.length === 0) { fn(); return; }
+  saveQueueIdleCallbacks.push(fn);
+}
+
+// ================================
+// SAVE FAILURE LEDGER
+// A highlight that fails to SAVE leaves no file behind, so Sync — which
+// works from the clips on disk — had nothing to report and said "all
+// uploaded ✓" while POVs were missing (Nemean, 9/25). Every failed or
+// dropped save during a session is recorded here, and Sync shows the count.
+// ================================
+const SAVE_FAILURES_PATH = path.join(app.getPath('userData'), 'save-failures.json');
+const SAVE_FAILURES_MAX = 300;
+
+function readSaveFailures() {
+  try {
+    if (fs.existsSync(SAVE_FAILURES_PATH)) {
+      const arr = JSON.parse(fs.readFileSync(SAVE_FAILURES_PATH, 'utf8'));
+      if (Array.isArray(arr)) return arr;
+    }
+  } catch (e) { console.log('Could not read save-failures ledger:', e.message); }
+  return [];
+}
+
+function recordSaveFailure(ctx, coordinatedTs, reason) {
+  const sessionCode = ctx && ctx.sessionCode;
+  if (!sessionCode) return; // solo saves have no session for Sync to report against
+  try {
+    const list = readSaveFailures();
+    list.push({ at: Date.now(), sessionCode, coordinatedTs: coordinatedTs || null, mode: (ctx && ctx.mode) || null, reason });
+    const tmp = SAVE_FAILURES_PATH + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(list.slice(-SAVE_FAILURES_MAX)));
+    fs.renameSync(tmp, SAVE_FAILURES_PATH);
+  } catch (e) { console.log('Could not write save-failures ledger:', e.message); }
+}
+
+function saveFailuresForSession(code) {
+  const want = String(code || '').toUpperCase();
+  return readSaveFailures().filter(f => String(f.sessionCode || '').toUpperCase() === want);
+}
+
+// Drops every queued (not yet started) save, records each, and tells the
+// user how many — never silently.
+function dropQueuedSaves(reason) {
+  if (pendingSaveQueue.length === 0) return 0;
+  const dropped = pendingSaveQueue.splice(0);
+  for (const q of dropped) recordSaveFailure(q.ctx, q.coordinatedTs, reason);
+  console.log(`Dropped ${dropped.length} queued save(s): ${reason}`);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('highlight-error',
+      `${dropped.length} queued highlight save${dropped.length === 1 ? ' was' : 's were'} dropped — ${reason}`);
+  }
+  broadcastQueueState();
+  return dropped.length;
+}
+
+// The footage window a save cuts, in local clock. Manual anchors a
+// point-in-time press (90% before, 10% after); auto's moment is already the
+// END of the detected span.
+function saveWindowLocal(saveTimeUTC, durationMs, triggerSource) {
+  const at = saveTimeUTC - clockOffset;
+  return triggerSource === 'auto'
+    ? { start: at - durationMs, end: at }
+    : { start: at - 0.9 * durationMs, end: at + 0.1 * durationMs };
 }
 let wgcMidSessionRestarts = 0;
 const WGC_MAX_RESTARTS = 3;
+// Bumped whenever a new window capture starts, so a cleanup deferred for an
+// old capture's queued saves can never delete a newer capture's files.
+let wgcGeneration = 0;
+// Start of the oldest footage still buffered once cleanup has deleted
+// anything — a save whose window begins before it can't be cut any more.
+let wgcTrimmedBeforeUTC = null;
+// Buffer files are kept past the 2 newest only while a running or queued
+// save still needs them; past this many, the oldest go anyway (disk).
+const WGC_MAX_FILES = 8;
+// A window may start up to this far before the first file of a fresh
+// capture (recorder start latency) and still be cut from its top.
+const WGC_START_SLACK_MS = 2000;
 
 const XINPUT_BUTTON_MAP = [
   0x1000, 0x2000, 0x4000, 0x8000,
@@ -1110,7 +1232,12 @@ function pruneOldChunks() {
     .map(f => ({ name: f, time: fs.statSync(path.join(BUFFER_DIR, f)).mtimeMs }))
     .sort((a, b) => a.time - b.time);
 
-  while (files.length > maxChunks) {
+  const keep = effectiveMaxChunks();
+  const neededFrom = saveNeededFromLocal();
+  while (files.length > keep) {
+    // A chunk that closed after the earliest footage a save still needs is
+    // kept (and so is everything newer) — see saveWindowsWaiting.
+    if (files[0].time >= neededFrom - 2000) break;
     const oldest = files.shift();
     try { fs.unlinkSync(path.join(BUFFER_DIR, oldest.name)); }
     catch (err) {
@@ -1174,6 +1301,186 @@ function stopPruneScheduler() {
   if (pruneTimer) { clearInterval(pruneTimer); pruneTimer = null; }
 }
 
+// ================================
+// LIVE CAPTURE SETTINGS
+// FPS, resolution, HDR, GPU adapter and monitor used to take effect only on
+// the next Start, so squads stopped and restarted mid-session to change them.
+// They now apply while recording. Monitor capture restarts FFmpeg with the
+// new settings once no save still needs the current buffer; the buffer starts
+// fresh, since footage in the old format can't be joined to the new one.
+// Window capture switches over at a recorder handoff and keeps its buffer.
+// Audio recording is never touched, and the session carries on.
+// ================================
+let captureEpoch = 0;          // bumped by Start/Stop; a live restart aborts if it changes
+let liveRestartTimer = null;
+
+function notifyCapture(msg) {
+  console.log(msg);
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('capture-engine', msg);
+}
+
+function savesHoldBuffer() {
+  return pipelineBusy || pendingSaveQueue.length > 0 || saveWindowsWaiting.size > 0 || autoCaptureLocked;
+}
+
+function scheduleLiveCaptureRestart(monitor) {
+  if (liveRestartTimer) clearTimeout(liveRestartTimer);
+  const epoch = captureEpoch;
+  let announced = false;
+  const attempt = () => {
+    liveRestartTimer = null;
+    if (epoch !== captureEpoch || !ffmpegProcess || wgcCaptureMode || stoppingIntentionally) return;
+    if (savesHoldBuffer()) {
+      if (!announced) {
+        announced = true;
+        notifyCapture('⚙ New capture settings will apply as soon as the current save finishes');
+      }
+      liveRestartTimer = setTimeout(attempt, 1000);
+      return;
+    }
+    restartCaptureLive(monitor, epoch);
+  };
+  // Short settle: several settings often change together.
+  liveRestartTimer = setTimeout(attempt, 800);
+}
+
+async function restartCaptureLive(monitor, epoch) {
+  const dying = ffmpegProcess;
+  if (!dying) return;
+  if (midRestartTimer) { clearTimeout(midRestartTimer); midRestartTimer = null; }
+  stoppingIntentionally = true;
+  ffmpegProcess = null;
+  await killFFmpegTree(dying);
+  // Start or Stop pressed while the old capture was closing: that wins.
+  if (epoch !== captureEpoch) return;
+  stoppingIntentionally = false;
+  midSessionRestarts = 0;
+  transientCaptureRetries = 0;
+  recordingSessionTag = Date.now();
+  engineLadder = buildEngineLadder();
+  engineIndex = 0;
+  startRecording(monitor);
+  notifyCapture(`⚙ New capture settings applied (${recordFps}fps, ${recordResolutionKey || 'native'}${captureHdr ? ', HDR fix' : ''}) — buffer restarted`);
+}
+
+// Window capture: hand the new settings to the renderer, then roll over now
+// so the next buffer file records with them (see wgc-rollover-request).
+function applyWgcSettingsLive() {
+  if (!wgcCaptureMode || Object.keys(wgcFileStreams).length === 0) return;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('wgc-update-cfg', {
+      fps: recordFps,
+      resolution: recordResolution,
+      bitrate: recordResolution ? (recordResolution.height <= 480 ? 3000000 : 5000000) : 8000000
+    });
+  }
+  wgcRolloverNow();
+}
+
+// ================================
+// CAPTURE CLOCK ANCHOR
+// A chunk's file birthtime is when the muxer opened it, which is AFTER its
+// first frame went through the encoder — so it trails the real capture time
+// by the encoder's delay. Measured 9-26-26 with a clock page: 0.1-0.9 s
+// depending on encoder, B-frames and fps, and it differs per PC. That is
+// what put one POV ~235 ms off the rest of the squad (60 vs 30 fps).
+//
+// The capture filter chain now starts with a no-op setpts that logs
+// "wall clock - stream time" (the wall time of stream time 0) every 5 s,
+// measured BEFORE the encoder, and FFmpeg writes a segment list with each
+// chunk's exact stream start. Anchor + list start = the real capture time
+// of every chunk's first frame. Birthtime stays as the fallback.
+// ================================
+let captureAnchor = { samples: [], lineBuf: '' };
+
+function resetCaptureAnchor() {
+  captureAnchor = { samples: [], lineBuf: '' };
+}
+
+function noteCaptureAnchor(text, spawnMs) {
+  const a = captureAnchor;
+  const lines = (a.lineBuf + text).split(/[\r\n]/);
+  a.lineBuf = lines.pop();
+  if (a.lineBuf.length > 200) a.lineBuf = '';
+  for (const line of lines) {
+    const m = /^\s*(\d{15,17})\.\d+\s*$/.exec(line);
+    if (!m) continue;
+    const w0 = Number(m[1]) / 1000;                   // wall-clock ms of stream time 0
+    if (!(Math.abs(w0 - spawnMs) < 20000)) continue;  // stream 0 is at capture start
+    a.samples.push({ w0, at: Date.now() });
+    if (a.samples.length > 400) a.samples.shift();    // ~33 min at one per 5 s
+  }
+}
+
+// Wall time of stream time 0, from the samples logged near `streamSec`. The
+// grabber clock drifts against the wall clock (~40 ppm measured), so nearby
+// samples beat one session-wide value; the minimum drops any sample that sat
+// in a queue before reaching the filter.
+function captureAnchorAt(streamSec) {
+  const s = captureAnchor.samples;
+  if (!s.length) return null;
+  const near = s.filter(x => Math.abs((x.at - x.w0) / 1000 - streamSec) <= 30);
+  const pool = near.length ? near : s.slice(-6);
+  return Math.min(...pool.map(x => x.w0));
+}
+
+// FFmpeg's segment list: one "file,start,end" row (stream seconds) per
+// FINISHED chunk. Returns Map(fileName -> { startSec, endSec }) or null.
+function readChunkTimeline(tag) {
+  let txt;
+  try { txt = fs.readFileSync(path.join(BUFFER_DIR, `chunklist_${tag}.csv`), 'utf8'); }
+  catch (e) { return null; }
+  const map = new Map();
+  for (const line of txt.split(/\r?\n/)) {
+    const p = line.split(',');
+    if (p.length < 3) continue;
+    const startSec = parseFloat(p[p.length - 2]);
+    const endSec = parseFloat(p[p.length - 1]);
+    if (Number.isFinite(startSec) && Number.isFinite(endSec) && endSec > startSec) {
+      map.set(path.basename(p.slice(0, -2).join(',')), { startSec, endSec });
+    }
+  }
+  return map;
+}
+
+// The keyframe a stream-copy trim will really start on: the last one at or
+// before the wanted offset, read from the concatenated file. Flooring to a
+// whole second assumed a keyframe sat there; when none did (scene-cut
+// keyframes, encoder GOP drift) FFmpeg silently started at an earlier one and
+// the clip's startTimeUTC was wrong by up to ~1 s. cb(null) on any failure.
+function probeCutKeyframe(filePath, offsetSec, cb) {
+  let out = '';
+  let done = false;
+  const finish = (r) => { if (!done) { done = true; cb(r); } };
+  let p;
+  try {
+    p = spawn(getFFmpegPath().replace(/ffmpeg(\.exe)?$/i, 'ffprobe$1'), [
+      '-v', 'error', '-select_streams', 'v:0',
+      '-show_entries', 'packet=pts_time,flags', '-of', 'csv=p=0', filePath
+    ], { windowsHide: true });
+  } catch (e) { finish(null); return; }
+  p.stdout.on('data', d => { out += d.toString(); });
+  p.on('error', () => finish(null));
+  p.on('close', (code) => {
+    if (code !== 0) { finish(null); return; }
+    let mediaStartSec = Infinity;
+    const keys = [];
+    for (const line of out.split(/\r?\n/)) {
+      const [ts, flags] = line.split(',');
+      const t = parseFloat(ts);
+      if (!Number.isFinite(t)) continue;
+      if (t < mediaStartSec) mediaStartSec = t;
+      if (flags && flags.includes('K')) keys.push(t);
+    }
+    if (!keys.length || !Number.isFinite(mediaStartSec)) { finish(null); return; }
+    const target = offsetSec + mediaStartSec + 0.0005;
+    let keySec = null;
+    for (const k of keys) if (k <= target && (keySec === null || k > keySec)) keySec = k;
+    if (keySec === null) keySec = Math.min(...keys);
+    finish({ keySec, mediaStartSec });
+  });
+}
+
 function buildCaptureArgs(engine, monitor) {
 const chunkPattern = path.join(BUFFER_DIR, `chunk_${recordingSessionTag}_%03d.mp4`);  const fpsStr = String(recordFps);
 
@@ -1191,14 +1498,25 @@ const chunkPattern = path.join(BUFFER_DIR, `chunk_${recordingSessionTag}_%03d.mp
     ? (recordResolution.height <= 480 ? '3M' : '5M')
     : '8M';
 
-  const nvencArgs = ['-c:v', 'h264_nvenc', '-preset', 'p4', '-tune', 'hq', '-b:v', bitrate];
-  const x264Args  = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23'];
+  // -bf 0: B-frames shift each chunk's timestamps (measured 2-3 frames) and
+  // add encoder delay. NVENC used them by default.
+  const nvencArgs = ['-c:v', 'h264_nvenc', '-preset', 'p4', '-tune', 'hq', '-b:v', bitrate, '-bf', '0'];
+  const x264Args  = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-bf', '0'];
+
+  // Capture clock anchor (see CAPTURE CLOCK ANCHOR): first filter in every
+  // chain, logs every 5 s, changes nothing in the picture. setpts drops the
+  // stream's frame rate in FFmpeg 7, so '-r' restates it below — without it
+  // the output falls back to 25 fps.
+  const anchorVf = `setpts='PTS+0*if(eq(mod(N\\,${recordFps * 5})\\,0)*gt(N\\,0)\\,print(RTCTIME-T*1000000\\,32)\\,0)'`;
+  const chunkListPath = path.join(BUFFER_DIR, `chunklist_${recordingSessionTag}.csv`);
 
   const segmentArgs = [
+    '-r', fpsStr,
     '-g', fpsStr, '-keyint_min', fpsStr,
     '-force_key_frames', `expr:gte(t,n_forced*${CHUNK_SECONDS})`,
     '-an',
     '-f', 'segment', '-segment_time', String(CHUNK_SECONDS),
+    '-segment_list', chunkListPath, '-segment_list_type', 'csv',
     '-reset_timestamps', '1', '-y', chunkPattern
   ];
 
@@ -1226,24 +1544,24 @@ const chunkPattern = path.join(BUFFER_DIR, `chunk_${recordingSessionTag}_%03d.mp
     '-offset_x', String(gx), '-offset_y', String(gy),
     '-video_size', `${gw}x${gh}`, '-i', 'desktop'
   ];
-  const gdiScale = recordResolution ? ['-vf', `scale=-2:${recordResolution.height}`] : [];
+  const gdiVf = ['-vf', anchorVf + (recordResolution ? `,scale=-2:${recordResolution.height}` : '')];
 
   switch (engine) {
     case 'dda-nvenc':
-      return [...ddaInput(false), ...nvencArgs, ...segmentArgs];
+      return [...ddaInput(false), '-vf', anchorVf, ...nvencArgs, ...segmentArgs];
     case 'dda-nvenc-vf':
-      return [...ddaInput(false), '-vf', ddaCpuVf, ...nvencArgs, ...segmentArgs];
+      return [...ddaInput(false), '-vf', `${anchorVf},${ddaCpuVf}`, ...nvencArgs, ...segmentArgs];
     case 'dda-hdr-nvenc':
-      return [...ddaInput(true), '-vf', hdrVf, ...nvencArgs, ...segmentArgs];
+      return [...ddaInput(true), '-vf', `${anchorVf},${hdrVf}`, ...nvencArgs, ...segmentArgs];
     case 'dda-hdr-x264':
-      return [...ddaInput(true), '-vf', hdrVf, ...x264Args, ...segmentArgs];
+      return [...ddaInput(true), '-vf', `${anchorVf},${hdrVf}`, ...x264Args, ...segmentArgs];
     case 'dda-x264':
-      return [...ddaInput(false), '-vf', ddaCpuVf, ...x264Args, ...segmentArgs];
+      return [...ddaInput(false), '-vf', `${anchorVf},${ddaCpuVf}`, ...x264Args, ...segmentArgs];
     case 'gdi-nvenc':
-      return [...gdiInput, ...gdiScale, ...nvencArgs, ...segmentArgs];
+      return [...gdiInput, ...gdiVf, ...nvencArgs, ...segmentArgs];
     case 'gdi-x264':
     default:
-      return [...gdiInput, ...gdiScale, ...x264Args, '-pix_fmt', 'yuv420p', ...segmentArgs];
+      return [...gdiInput, ...gdiVf, ...x264Args, '-pix_fmt', 'yuv420p', ...segmentArgs];
   }
 }
 
@@ -1261,7 +1579,7 @@ function getFreeBytes(dir) {
 // ================================
 
 function getWgcSpanSeconds() {
-  const clipDurationSec = maxChunks * CHUNK_SECONDS;
+  const clipDurationSec = effectiveMaxChunks() * CHUNK_SECONDS;
   return Math.max(45, Math.ceil(1.5 * clipDurationSec) + 15);
 }
 
@@ -1286,6 +1604,10 @@ function wgcAppendChunk(fileId, buffer) {
     return;
   }
   ws.write(Buffer.from(buffer));
+  // How far this file's footage reaches (local clock) — a save waits for
+  // the slice holding its window end (see POST-ROLL WAIT).
+  const entry = wgcFiles.find(f => f.fileId === fileId);
+  if (entry) entry.writtenUntilLocal = Date.now();
 }
 
 function wgcSetFileStartUTC(fileId, utc) {
@@ -1304,15 +1626,41 @@ function wgcFinalizeFile(fileId) {
   console.log(`WGC buffer file finalized: ${fileId}`);
 }
 
+// Earliest footage (local clock) that a running or queued window-capture
+// save still has to cut. Infinity when none.
+function wgcNeededFromUTC() {
+  let min = Infinity;
+  if (wgcActiveSave) min = Math.min(min, wgcActiveSave.windowStart);
+  for (const h of saveWindowsWaiting) if (h.mode === 'wgc') min = Math.min(min, h.start);
+  for (const q of pendingSaveQueue) {
+    if (!q.ctx || q.ctx.mode !== 'wgc') continue;
+    min = Math.min(min, saveWindowLocal(q.saveTimeUTC, q.durationMs, q.triggerSource).start);
+  }
+  return min;
+}
+
+// Used to delete down to the 2 newest files regardless of what was queued,
+// so a backlog's footage could be deleted before its saves ran. Now a file
+// goes only when no running or queued save needs it (it ends before the
+// earliest needed moment), and never while a save has it open.
 function wgcCleanupOldFiles() {
   if (autoCaptureLocked) return; // same reasoning as pruneOldChunks
+  const neededFrom = wgcNeededFromUTC();
   while (wgcFiles.length > 2) {
-    const old = wgcFiles.shift();
+    const old = wgcFiles[0];
+    const next = wgcFiles[1];
+    if (wgcActiveSave && wgcActiveSave.fileIds.includes(old.fileId)) break;
+    // `old` holds [old.startUTC, next.startUTC) — needed if anything queued starts before next.
+    const needed = !next.startUTC || next.startUTC > neededFrom;
+    if (needed && wgcFiles.length <= WGC_MAX_FILES) break;
+    if (needed) console.log(`WGC buffer over ${WGC_MAX_FILES} files — deleting ${old.fileId} although a queued save still needs it`);
+    wgcFiles.shift();
     if (wgcFileStreams[old.fileId]) {
       wgcFileStreams[old.fileId].end();
       delete wgcFileStreams[old.fileId];
     }
     try { fs.unlinkSync(old.path); } catch (e) {}
+    if (next.startUTC) wgcTrimmedBeforeUTC = next.startUTC;
     console.log(`WGC buffer file deleted: ${old.fileId}`);
   }
 }
@@ -1320,19 +1668,25 @@ function wgcCleanupOldFiles() {
 function wgcStartRolloverSchedule() {
   wgcStopRolloverSchedule();
   const spanMs = getWgcSpanSeconds() * 1000;
-  wgcRolloverTimer = setInterval(() => {
-    if (wgcSaveInFlight) {
-      console.log('WGC rollover deferred — save in flight');
-      return;
-    }
-    const newFileId = `${wgcFileTag()}_${Date.now() % 100000}`;
-    wgcStartNewFile(newFileId);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('wgc-rollover-request', { newFileId });
-    }
-    setTimeout(() => wgcCleanupOldFiles(), 2000);
-  }, spanMs - 1000);
+  // This used to skip the rollover whenever a save was running. With
+  // auto-capture firing every 30–60s a save almost always is, so the buffer
+  // file never rolled over and grew for the whole session — and every save
+  // had to decode further into it, making the next one later still (Cabbam
+  // 9/22: 30 min behind; Nemean 9/25). Rolling over mid-save is safe: the
+  // save reads its own file(s), and cleanup keeps any file a running or
+  // queued save still needs.
+  wgcRolloverTimer = setInterval(wgcRolloverNow, spanMs - 1000);
   console.log(`WGC rollover schedule started: every ${getWgcSpanSeconds()}s`);
+}
+
+// Start the next buffer file now (also used to switch capture settings live).
+function wgcRolloverNow() {
+  const newFileId = `${wgcFileTag()}_${Date.now() % 100000}`;
+  wgcStartNewFile(newFileId);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('wgc-rollover-request', { newFileId });
+  }
+  setTimeout(() => wgcCleanupOldFiles(), 2000);
 }
 
 function wgcStopRolloverSchedule() {
@@ -1353,37 +1707,65 @@ function wgcCleanupAll() {
   }
   wgcFiles = [];
   wgcSaveInFlight = false;
+  wgcActiveSave = null;
+  wgcTrimmedBeforeUTC = null;
   wgcMidSessionRestarts = 0;
   console.log('WGC buffer cleaned up');
 }
 
+// Stop writing window-capture files but keep them until every save queued
+// against them has run. Fallback and Stop used to clean up at once, which
+// deleted the footage under ~30 queued saves on Cabbam's PC (RAE8X9, 05:37
+// UTC 9/22); each then failed with "Buffer not ready" and no clip.
+function wgcRetire(reason) {
+  wgcStopRolloverSchedule();
+  for (const fileId of Object.keys(wgcFileStreams)) {
+    try { wgcFileStreams[fileId].end(); } catch (e) {}
+  }
+  wgcFileStreams = {};
+  wgcMidSessionRestarts = 0;
+  const waiting = pendingSaveQueue.length + (pipelineBusy ? 1 : 0);
+  if (waiting === 0) { wgcCleanupAll(); return; }
+  const gen = wgcGeneration;
+  console.log(`WGC capture ended (${reason}) — keeping buffer files for ${waiting} queued save(s)`);
+  onSaveQueueIdle(() => {
+    if (gen === wgcGeneration) wgcCleanupAll();
+  });
+}
+
 function wgcFindCoveringFiles(startUTC, endUTC) {
   const candidates = wgcFiles.filter(f => f.startUTC && fs.existsSync(f.path));
-  if (candidates.length === 0) return null;
+  return wgcPickCovering(candidates, startUTC, endUTC, wgcTrimmedBeforeUTC);
+}
 
-  // Oldest first
-  candidates.sort((a, b) => a.startUTC - b.startUTC);
-  const newest = candidates[candidates.length - 1];
+// Pure: which buffer file(s) hold [startUTC, endUTC]. Files are contiguous
+// (each one ends where the next begins). Returns null when there are no
+// files yet (the caller retries), or mode 'expired' when the footage was
+// already deleted — previously that fell through to a "best effort" cut
+// from the start of the NEWEST file: the wrong moment, uploaded as if right.
+function wgcPickCovering(candidates, startUTC, endUTC, trimmedBeforeUTC) {
+  if (!candidates || candidates.length === 0) return null;
+  const files = candidates.slice().sort((a, b) => a.startUTC - b.startUTC);
 
-  // Window fully inside the newest file → single extract from it.
-  // (Previously this walked oldest-first and always matched the OLD file,
-  // extracting at an offset past its content — frozen-frame/black clips
-  // on every save after the first rollover.)
-  if (newest.startUTC <= startUTC) {
-    return { mode: 'single', files: [newest] };
+  // Latest file that began at or before the window start.
+  let i = -1;
+  for (let k = 0; k < files.length; k++) {
+    if (files[k].startUTC <= startUTC) i = k;
   }
 
-  // Window starts before the newest file began → straddle: tail of the
-  // previous file + head of the newest.
-  if (candidates.length >= 2) {
-    const older = candidates[candidates.length - 2];
-    if (older.startUTC <= startUTC) {
-      return { mode: 'straddle', files: [older, newest] };
+  if (i === -1) {
+    // Starts before the oldest buffered footage. If nothing was ever
+    // deleted, that's just the start of the capture (or recorder start
+    // latency): cut from the top of the first file, as before.
+    if (!trimmedBeforeUTC || startUTC >= trimmedBeforeUTC - WGC_START_SLACK_MS) {
+      return { mode: 'single', files: [files[0]] };
     }
+    return { mode: 'expired', files: [] };
   }
 
-  // Best effort
-  return { mode: 'single', files: [newest] };
+  const next = files[i + 1];
+  if (!next || next.startUTC >= endUTC) return { mode: 'single', files: [files[i]] };
+  return { mode: 'straddle', files: [files[i], next] };
 }
 
 function startDiskWatcher() {
@@ -1503,6 +1885,9 @@ function startRecording(monitor) {
     wgcFileStreams = {};
     wgcMidSessionRestarts = 0;
     wgcSaveInFlight = false;
+    wgcActiveSave = null;
+    wgcTrimmedBeforeUTC = null;
+    wgcGeneration++;
 
     console.log(`Recording window via WGC — sourceId: ${wgcSourceId}`);
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1555,6 +1940,7 @@ function startRecording(monitor) {
     windowsHide: true,
     stdio: ['pipe', 'pipe', 'pipe']
   });
+  const thisCapture = ffmpegProcess;
 
   // Live capture must NOT run below normal — that helper is for extraction
   // work that should yield to capture. Under game load a below-normal
@@ -1585,6 +1971,7 @@ function startRecording(monitor) {
   const spawnStartTime = Date.now();
   videoStartTime = spawnStartTime;
   recordingStartTime = spawnStartTime;
+  resetCaptureAnchor();
   lastHighlightBoundary = 0;
   lastDropCount = 0;
   lastDupCount = 0;
@@ -1611,11 +1998,16 @@ function startRecording(monitor) {
     queueFFmpegLog(text);
     stderrTail = (stderrTail + text).slice(-3000);
     parseCaptureHealth(text, engine);
+    noteCaptureAnchor(text, spawnStartTime);
   });
 
   ffmpegProcess.on('close', (code) => {
     console.log(`FFmpeg [${engine}] stopped with code`, code);
     if (stoppingIntentionally) return;
+    // A replaced capture: killFFmpegTree resolves on 'exit', and 'close' can
+    // land after the new capture has started. Treating that as a crash
+    // spawned a second capture beside the new one.
+    if (ffmpegProcess && ffmpegProcess !== thisCapture) return;
 
     const ranForMs = Date.now() - spawnStartTime;
 
@@ -1691,97 +2083,105 @@ function startRecording(monitor) {
   });
 }
 
-// A manual save's window ends at saveTime + 10% of duration, which usually
-// lands inside the chunk FFmpeg is still writing — and the extractor can
-// only read CLOSED chunks. Waiting a flat 10% therefore drops that tail,
-// up to a full segment. Compute when the covering chunk actually closes,
-// off real birth times on disk rather than assumed boundaries.
-function computeManualPostDelay(saveTimeUTC, durationMs) {
-  const minPost = Math.ceil(durationMs * 0.1);
-  const maxPost = (CHUNK_SECONDS * 1000) + 1500;
+// ================================
+// POST-ROLL WAIT
+// A save can only cut footage that is already on disk: a monitor chunk must
+// be CLOSED and settled (1.2 s, see doSaveHighlight), and a window-capture
+// file must have received the recorder slice that holds the window end.
+// Waiting too little is what cut the ends off clips. Manual saves were capped
+// at CHUNK + 1.5 s, but pressing in the last seconds of a chunk needs up to
+// CHUNK + 10% of the clip + 1.5 s (~30% of presses for a 30 s clip lost up to
+// 3 s). Auto waited a flat CHUNK + 1.5 s that the encoder delay could overrun,
+// losing the whole last chunk. Window capture waited 10% of the clip, but the
+// recorder only delivers a slice every second. The wait now comes from the
+// real chunk boundaries on disk, and doSaveHighlight waits again if the end
+// still isn't there. (There were two identical computeManualPostDelay
+// definitions; both are replaced by this.)
+// ================================
+const WGC_FLUSH_MS = 1500;   // recorder slice (1000 ms) + IPC and write
+
+// ms until the monitor chunk holding local time `targetLocal` has closed and
+// settled, from real chunk birth times on disk. null when there are none yet.
+function msUntilChunkCovers(targetLocal) {
+  let births;
   try {
-    const births = fs.readdirSync(BUFFER_DIR)
+    births = fs.readdirSync(BUFFER_DIR)
       .filter(f => f.startsWith('chunk_' + recordingSessionTag + '_') && f.endsWith('.mp4'))
       .map(f => fs.statSync(path.join(BUFFER_DIR, f)).birthtimeMs)
       .sort((a, b) => a - b);
-    if (!births.length) return minPost;
-
-    const newestBirth = births[births.length - 1];
-    const windowEndLocal = (saveTimeUTC - clockOffset) + minPost;
-
-    let closeAt = newestBirth + (CHUNK_SECONDS * 1000);
-    while (closeAt < windowEndLocal) closeAt += CHUNK_SECONDS * 1000;
-
-    return Math.max(minPost, Math.min(maxPost, (closeAt - Date.now()) + 1500));
-  } catch (e) {
-    return minPost;
-  }
+  } catch (e) { return null; }
+  if (!births.length) return null;
+  // Birthtimes trail capture by the encoder delay (tens of ms since the
+  // capture-clock fix); the margin keeps a window end just before a boundary
+  // from being matched to the chunk before it.
+  let closeAt = births[births.length - 1] + CHUNK_SECONDS * 1000;
+  while (closeAt < targetLocal + 150) closeAt += CHUNK_SECONDS * 1000;
+  return closeAt - Date.now() + 1500;   // settle rule (1.2 s) + margin
 }
 
-// Computes how long a manual save must wait for the chunk covering its
-// window end to finish writing. Derived from real chunk birth times on
-// disk rather than recordingStartTime — FFmpeg's first segment doesn't
-// begin exactly at spawn, so assumed boundaries drift from actual ones.
-function computeManualPostDelay(saveTimeUTC, durationMs) {
-  const minPost = Math.ceil(durationMs * 0.1);
-  const maxPost = (CHUNK_SECONDS * 1000) + 1500;
-  try {
-    const births = fs.readdirSync(BUFFER_DIR)
-      .filter(f => f.startsWith('chunk_' + recordingSessionTag + '_') && f.endsWith('.mp4'))
-      .map(f => fs.statSync(path.join(BUFFER_DIR, f)).birthtimeMs)
-      .sort((a, b) => a - b);
-    if (!births.length) return minPost;
-
-    const newestBirth = births[births.length - 1];
-    const windowEndLocal = (saveTimeUTC - clockOffset) + minPost;
-
-    let closeAt = newestBirth + (CHUNK_SECONDS * 1000);
-    while (closeAt < windowEndLocal) closeAt += CHUNK_SECONDS * 1000;
-
-    return Math.max(minPost, Math.min(maxPost, (closeAt - Date.now()) + 1500));
-  } catch (e) {
-    return minPost;
-  }
+// How long to wait before cutting a clip whose window ends at windowEndLocal.
+function computePostDelay(windowEndLocal, mode) {
+  const untilEnd = Math.max(0, windowEndLocal - Date.now());
+  if (mode === 'wgc') return untilEnd + WGC_FLUSH_MS;
+  const ms = msUntilChunkCovers(windowEndLocal);
+  if (ms === null) return untilEnd + CHUNK_SECONDS * 1000 + 1500;
+  return Math.max(0, Math.min(untilEnd + CHUNK_SECONDS * 1000 + 3000, ms));
 }
 
 
 function saveHighlight(coordinatedTimestamp = null, clipDurationMs = null, triggerSource = null) {
   markFightSignal();   // a save means action — hold queued videos (Low Bandwidth Mode)
+  // Decided NOW, at the moment of the highlight, not when the save finally
+  // runs. A save that sat in the queue used to read currentSession at
+  // extract time — if the host had ended the session by then the clip was
+  // saved with sessionId null, never uploaded, and invisible to Sync
+  // (Nemean, 9/25). Same for capture mode across a window→monitor fallback.
+  const ctx = {
+    sessionCode: currentSession ? currentSession.code : null,
+    mode: wgcCaptureMode ? 'wgc' : 'monitor'
+  };
   const duration = clipDurationMs || 30000;
   const clipChunks = Math.ceil(duration / (CHUNK_SECONDS * 1000));
   const saveTimeUTC = coordinatedTimestamp || getPreciseUTC();
-  // Both paths wait for the chunk covering the window end to close — the
-  // extractor can only read CLOSED chunks, and a flat 10% post-roll almost
-  // always ends mid-segment, silently dropping that tail. Auto always waits
-  // a full segment; manual waits only as long as it actually needs to.
-  const postDelay = (triggerSource === 'auto')
-    ? (CHUNK_SECONDS * 1000) + 1500
-    : computeManualPostDelay(saveTimeUTC, duration);
+  // Wait until the footage for the window END is on disk (see POST-ROLL
+  // WAIT). doSaveHighlight checks again and waits more if it still isn't.
+  const win = saveWindowLocal(saveTimeUTC, duration, triggerSource);
+  const postDelay = computePostDelay(win.end, ctx.mode);
 
   if (postDelay > 500) {
     console.log(`Post-capture: waiting ${postDelay}ms for remaining footage (${(duration / 1000)}s clip, ${clipChunks} chunks)...`);
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('post-capture-started', { postDelay });
     }
-    setTimeout(() => doSaveHighlight(saveTimeUTC, clipChunks, duration, coordinatedTimestamp, 0, triggerSource), postDelay);
+    // Keep this clip's footage in the buffer while we wait (saveWindowsWaiting).
+    const hold = { start: win.start, mode: ctx.mode };
+    saveWindowsWaiting.add(hold);
+    setTimeout(() => {
+      saveWindowsWaiting.delete(hold);
+      doSaveHighlight(saveTimeUTC, clipChunks, duration, coordinatedTimestamp, 0, triggerSource, ctx);
+    }, postDelay);
   } else {
-    doSaveHighlight(saveTimeUTC, clipChunks, duration, coordinatedTimestamp, 0, triggerSource);
+    doSaveHighlight(saveTimeUTC, clipChunks, duration, coordinatedTimestamp, 0, triggerSource, ctx);
   }
 }
 
-function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = null, retryCount = 0, triggerSource = null) {
+function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = null, retryCount = 0, triggerSource = null, ctx = null) {
+  if (!ctx) ctx = { sessionCode: currentSession ? currentSession.code : null, mode: wgcCaptureMode ? 'wgc' : 'monitor' };
   if (retryCount === 0) {
     if (pipelineBusy) {
-      console.log(`Save pipeline busy — queuing ${triggerSource || 'manual'} save`);
-      pendingSaveQueue.push({ saveTimeUTC, clipChunks, durationMs, coordinatedTs, triggerSource });
+      pendingSaveQueue.push({ saveTimeUTC, clipChunks, durationMs, coordinatedTs, triggerSource, ctx });
+      console.log(`Save pipeline busy — queuing ${triggerSource || 'manual'} save (${pendingSaveQueue.length} queued)`);
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('save-queued', { triggerSource: triggerSource || 'manual' });
       }
+      broadcastQueueState();
       return;
     }
     pipelineBusy = true;
+    broadcastQueueState();
   }
-  if (wgcCaptureMode && wgcFiles.length > 0) {
+  activeSaveWindowStart = saveWindowLocal(saveTimeUTC, durationMs, triggerSource).start;
+  if (ctx.mode === 'wgc' && wgcFiles.length > 0) {
     wgcSaveInFlight = true;
 
     const durationSec = durationMs / 1000;
@@ -1789,28 +2189,52 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     // Auto's "moment" is already the END of a known start-to-end window —
     // running the same split computes a start 10% INTO the real action.
     // Auto gets its own math: anchor the exact detected span, no split.
-    const windowStartLocal = triggerSource === 'auto'
-      ? (saveTimeUTC - clockOffset) - durationMs
-      : (saveTimeUTC - clockOffset) - (0.9 * durationMs);
-    const windowEndLocal = triggerSource === 'auto'
-      ? (saveTimeUTC - clockOffset)
-      : (saveTimeUTC - clockOffset) + (0.1 * durationMs);
+    const win = saveWindowLocal(saveTimeUTC, durationMs, triggerSource);
+    const windowStartLocal = win.start;
+    const windowEndLocal = win.end;
 
     const covering = wgcFindCoveringFiles(windowStartLocal, windowEndLocal);
+    if (covering && covering.mode === 'expired') {
+      const lateSec = Math.round((Date.now() - windowEndLocal) / 1000);
+      console.log(`WGC save: footage for this window was already deleted (${lateSec}s after the moment) — skipping`);
+      recordSaveFailure(ctx, coordinatedTs, 'footage no longer buffered');
+      releaseSavePipeline();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('highlight-error', 'Highlight skipped — its footage had already left the window-capture buffer');
+      }
+      return;
+    }
     if (!covering) {
       console.log(`WGC save: no covering buffer files, retry=${retryCount}`);
       if (retryCount < 4) {
         if (retryCount === 0 && mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('post-capture-started', { postDelay: 3000 });
         }
-        setTimeout(() => doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs, retryCount + 1, triggerSource), 3000);
+        setTimeout(() => doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs, retryCount + 1, triggerSource, ctx), 3000);
         return;
       }
+      recordSaveFailure(ctx, coordinatedTs, 'window capture buffer not ready');
       releaseSavePipeline();
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('highlight-error', 'Window capture buffer not ready yet');
       }
       return;
+    }
+    wgcActiveSave = { windowStart: windowStartLocal, fileIds: covering.files.map(f => f.fileId) };
+
+    // End of the clip not delivered by the recorder yet? Wait for it (while
+    // that file is still being recorded) instead of cutting the clip short.
+    // wgcActiveSave above keeps these files through the wait.
+    const wgcLast = covering.files[covering.files.length - 1];
+    if (!wgcLast.finalized && wgcFileStreams[wgcLast.fileId] && (ctx.tailWaits || 0) < 3) {
+      const writtenTo = (wgcLast.writtenUntilLocal || wgcLast.startUTC || 0) - 250;
+      if (writtenTo < windowEndLocal) {
+        ctx.tailWaits = (ctx.tailWaits || 0) + 1;
+        const waitMs = Math.max(500, Math.min(6000, windowEndLocal - writtenTo + WGC_FLUSH_MS));
+        console.log(`WGC save: clip end not recorded yet (${((windowEndLocal - writtenTo) / 1000).toFixed(2)}s short) — waiting ${Math.round(waitMs)}ms (${ctx.tailWaits}/3)`);
+        setTimeout(() => doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs, retryCount + 1, triggerSource, ctx), waitMs);
+        return;
+      }
     }
 
     const timestamp = new Date(saveTimeUTC).toISOString().replace(/[:.]/g, '-');
@@ -1839,7 +2263,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
       syncUncertaintyMs: clockUncertaintyMs,
       captureEngine: 'wgc-window',
       userId: null,
-      sessionId: currentSession ? currentSession.code : null,
+      sessionId: ctx.sessionCode,
       coordinated_timestamp: coordinatedTs || null,
       audioPeaks: wgcClipPeaks
     };
@@ -1850,6 +2274,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
          recordResolution ? (recordResolution.height <= 480 ? '3M' : '5M') : '8M'];
 
     function wgcExtractFail(msg) {
+      recordSaveFailure(ctx, coordinatedTs, msg);
       releaseSavePipeline();
       console.log('WGC save failed:', msg);
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1863,10 +2288,16 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
 
       console.log(`WGC save: single file extract — ss=${ssOffset.toFixed(3)}s, t=${durationSec}s from ${file.fileId}`);
 
+      // -ss BEFORE -i (input seek). As an output option it pushed every
+      // frame from the top of the buffer file through scale/pad before
+      // discarding it, so each save got slower the longer the file was
+      // (measured: 11.7s vs 2.8s for a clip 160s into a buffer). Output is
+      // frame-identical. With the recorder's 2s keyframes (index.html) the
+      // seek also skips decoding most of the file.
       const extract = spawnFFmpegLow([
         '-fflags', '+genpts+igndts',
-        '-i', file.path,
         '-ss', ssOffset.toFixed(3),
+        '-i', file.path,
         '-t', durationSec.toFixed(3),
         '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1',
         ...encoderArgs,
@@ -1900,8 +2331,8 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
 
       const extractA = spawnFFmpegLow([
         '-fflags', '+genpts+igndts',
+        '-ss', olderSs.toFixed(3),   // input seek — see the single-file extract above
         '-i', older.path,
-        '-ss', olderSs.toFixed(3),
         '-t', splitPoint.toFixed(3),
         '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1',
         ...encoderArgs,
@@ -1983,6 +2414,9 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     ? (saveTimeUTC - clockOffset)
     : (saveTimeUTC - clockOffset) + (0.1 * durationMs);
 
+  // Real capture time of each chunk = segment-list start + capture anchor
+  // (see CAPTURE CLOCK ANCHOR). File birthtime is only the fallback.
+  const chunkTimeline = readChunkTimeline(recordingSessionTag);
   const allVideoFiles = fs.readdirSync(BUFFER_DIR)
     // Match the CURRENT session tag only. The birth-time filter below can't
     // separate two captures that started ~2s apart, which is how a chunk
@@ -1991,11 +2425,14 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     .filter(f => f.startsWith('chunk_' + recordingSessionTag + '_') && f.endsWith('.mp4'))
     .map(f => {
       const st = fs.statSync(path.join(BUFFER_DIR, f));
+      const seg = chunkTimeline ? chunkTimeline.get(f) : null;
+      const anchor = seg ? captureAnchorAt(seg.startSec) : null;
       return {
         name: f, path: path.join(BUFFER_DIR, f),
         time: st.mtimeMs,
         birth: st.birthtimeMs,
-        size: st.size
+        size: st.size,
+        exact: anchor !== null ? { start: anchor + seg.startSec * 1000, end: anchor + seg.endSec * 1000 } : null
       };
     })
     .filter(f => f.size > 100000)
@@ -2004,16 +2441,23 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   // Skip the chunk FFmpeg is still writing into (mtime within the last
   // ~1.2s). Everything older is closed and safe to read.
   const settledCutoff = Date.now() - 1200;
-  const readable = allVideoFiles.filter(f => f.time <= settledCutoff && f.birth >= recordingStartTime - 2000);
+  const settled = allVideoFiles.filter(f => f.time <= settledCutoff && f.birth >= recordingStartTime - 2000);
 
-  // A chunk covers [birth, birth + CHUNK_SECONDS]. Keep any that overlaps
-  // the requested window at all.
+  // One clock per save, never mixed. Exact timing when every settled chunk
+  // is in the segment list — the newest may be missing only because it is
+  // unfinished (a stalled capture), and is then left out rather than used.
+  const newestSettled = settled[settled.length - 1];
+  const exactTiming = settled.length > 0 &&
+    settled.every(f => f.exact || f === newestSettled) &&
+    settled.some(f => f.exact);
+  const readable = exactTiming ? settled.filter(f => f.exact) : settled;
+
+  // A chunk covers [start, end]. Keep any that overlaps the requested
+  // window at all.
   const chunkSpanMs = CHUNK_SECONDS * 1000;
-  const videoFiles = readable.filter(f => {
-    const chunkStart = f.birth;
-    const chunkEnd = Math.max(f.time, f.birth + chunkSpanMs);
-    return chunkEnd >= windowStartLocal && chunkStart <= windowEndLocal;
-  });
+  const chunkStartOf = f => exactTiming ? f.exact.start : f.birth;
+  const chunkEndOf = f => exactTiming ? f.exact.end : Math.max(f.time, f.birth + chunkSpanMs);
+  const videoFiles = readable.filter(f => chunkEndOf(f) >= windowStartLocal && chunkStartOf(f) <= windowEndLocal);
 
   if (videoFiles.length === 0) {
     const newest = allVideoFiles.length ? allVideoFiles[allVideoFiles.length - 1] : null;
@@ -2027,11 +2471,12 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
       if (retryCount === 0 && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('post-capture-started', { postDelay: 3000 });
       }
-      setTimeout(() => doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs, retryCount + 1, triggerSource), 3000);
+      setTimeout(() => doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs, retryCount + 1, triggerSource, ctx), 3000);
       return;
     }
 
     console.log('No covering chunks after retries');
+    recordSaveFailure(ctx, coordinatedTs, 'no buffered footage for this moment');
     releaseSavePipeline();
     if (mainWindow && !mainWindow.isDestroyed()) {
       const dead = !(ffmpegProcess && ffmpegProcess.exitCode === null);
@@ -2046,8 +2491,22 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   // index arithmetic — this is what makes arbitrary window lengths work.
   const firstChunk = videoFiles[0];
   const lastChunk = videoFiles[videoFiles.length - 1];
-  const availableStart = firstChunk.birth;
-  const availableEnd = Math.max(lastChunk.time, lastChunk.birth + chunkSpanMs);
+  const availableStart = chunkStartOf(firstChunk);
+  const availableEnd = chunkEndOf(lastChunk);
+
+  // The window end isn't on disk yet: the chunk holding it is still being
+  // written. Wait for it instead of cutting the clip short (what used to
+  // happen), as long as capture is running. Bounded so a stalled capture
+  // can't hold the save pipeline for long.
+  const tailShortMs = windowEndLocal - availableEnd;
+  if (tailShortMs > 1500 / recordFps && ffmpegProcess && ffmpegProcess.exitCode === null && (ctx.tailWaits || 0) < 3) {
+    ctx.tailWaits = (ctx.tailWaits || 0) + 1;
+    const until = msUntilChunkCovers(windowEndLocal);
+    const waitMs = Math.max(500, Math.min(CHUNK_SECONDS * 1000 + 3000, until === null ? 3000 : until));
+    console.log(`Clip end not on disk yet (${(tailShortMs / 1000).toFixed(2)}s short) — waiting ${Math.round(waitMs)}ms (${ctx.tailWaits}/3)`);
+    setTimeout(() => doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs, retryCount + 1, triggerSource, ctx), waitMs);
+    return;
+  }
 
   const effStart = Math.max(windowStartLocal, availableStart);
   const effEnd = Math.min(windowEndLocal, availableEnd);
@@ -2060,7 +2519,9 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   const clampedMs = Math.max(0, (windowEndLocal - windowStartLocal) - (effEnd - effStart));
   if (clampedMs > 1500) {
     console.log(`CLIP CLAMPED: requested ${((windowEndLocal - windowStartLocal) / 1000).toFixed(1)}s, ` +
-      `buffer held ${((effEnd - effStart) / 1000).toFixed(1)}s — lost ${(clampedMs / 1000).toFixed(1)}s off the start`);
+      `buffer held ${((effEnd - effStart) / 1000).toFixed(1)}s — lost ` +
+      `${(Math.max(0, effStart - windowStartLocal) / 1000).toFixed(1)}s off the start, ` +
+      `${(Math.max(0, windowEndLocal - effEnd) / 1000).toFixed(1)}s off the end`);
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('clip-clamped', {
           requestedSec: +((windowEndLocal - windowStartLocal) / 1000).toFixed(1),
@@ -2074,17 +2535,70 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   const trimOffsetSec = Math.max(0, (effStart - availableStart) / 1000);
   const trimDurationSec = Math.max(0.5, (effEnd - effStart) / 1000);
 
-  // Capture writes a keyframe every 1.000s (-g fps -keyint_min fps) and every
-  // chunk is exactly 10.000s, so flooring the offset lands dead on a keyframe
-  // in the concatenated file. That lets STEP 2 be a stream copy instead of a
-  // full NVENC re-encode — no second encoder session fighting live capture.
-  // Cost: up to 1s of extra footage on the head. The web player aligns POVs
-  // purely on metadata.startTimeUTC, so sync stays exact as long as we report
-  // the REAL first frame (realStart), not the requested one (effStart).
-  const alignedOffsetSec = Math.floor(trimOffsetSec);
-  const headExtraSec = trimOffsetSec - alignedOffsetSec;
-  const realStart = effStart - (headExtraSec * 1000);
-  const copyDurationSec = trimDurationSec + headExtraSec;
+  // STEP 2 is a stream copy (no second encoder session fighting live
+  // capture), so the clip must start on a keyframe: up to ~1s of extra
+  // footage on the head. The web player aligns POVs purely on
+  // metadata.startTimeUTC, so sync stays exact as long as we report the REAL
+  // first frame (realStart), not the requested one (effStart).
+  //
+  // Geometry starts from the whole-second assumption (keyframe every 1.000s)
+  // and is refined after concat from the file's real keyframes (STEP 1b).
+  // Everything that depends on realStart — metadata, audio offsets — is set
+  // here so both passes stay consistent.
+  const clipId = crypto.randomUUID();
+  let alignedOffsetSec, headExtraSec, realStart, copyDurationSec, realDurationMs;
+  let clipSpanSec, audioSkipSec, audioDelaySec, micSkipSec, micDelaySec, metadata;
+  const captureLagMs = exactTiming ? Math.round(firstChunk.birth - firstChunk.exact.start) : null;
+  function setTrimGeometry(cutSec, mediaStartSec) {
+    alignedOffsetSec = cutSec;
+    headExtraSec = (trimOffsetSec + mediaStartSec) - cutSec;
+    realStart = effStart - (headExtraSec * 1000);
+    copyDurationSec = trimDurationSec + headExtraSec;
+    realDurationMs = Math.round(copyDurationSec * 1000);
+
+    // Audio offsets key off the TRIMMED video start (realStart).
+    clipSpanSec = copyDurationSec + 1.0;
+    const audioDeltaSec = audioFirstChunkTime ? (realStart - audioFirstChunkTime) / 1000 : 0;
+    audioSkipSec = Math.max(0, audioDeltaSec);
+    audioDelaySec = Math.max(0, -audioDeltaSec);
+    const micDeltaSec = micFirstChunkTime ? (realStart - micFirstChunkTime) / 1000 : 0;
+    micSkipSec = Math.max(0, micDeltaSec);
+    micDelaySec = Math.max(0, -micDeltaSec);
+
+    // Peaks logged by the renderer's analyzer, filtered to the actual saved
+    // span and re-expressed as clip-relative ms (0 = first frame of the
+    // clip) — the same convention comments already use for timestampMs, so
+    // the web player can treat both the same way later.
+    const clipPeaks = peakLogBuffer
+      .filter(p => p.t >= realStart && p.t <= effEnd)
+      .map(p => {
+        const out = { tMs: Math.max(0, Math.round(p.t - realStart)), source: p.source };
+        if (p.intensity !== null) out.intensity = p.intensity;
+        if (p.event) out.event = p.event;
+        return out;
+      });
+
+    metadata = {
+      clipId,
+      version: 2,
+      saveTimeUTC,
+      startTimeUTC: Math.round(realStart + clockOffset),
+      endTimeUTC: Math.round(effEnd + clockOffset),
+      durationMs: realDurationMs,
+      clipDurationMs: durationMs,
+      frameRate: recordFps,
+      clockOffsetMs: clockOffset,
+      syncUncertaintyMs: clockUncertaintyMs,
+      clampedMs: Math.round(clampedMs),
+      timingSource: exactTiming ? 'capture-clock' : 'file-birth',
+      captureLagMs,
+      userId: null,
+      sessionId: ctx.sessionCode,
+      coordinated_timestamp: coordinatedTs || null,
+      audioPeaks: clipPeaks
+    };
+  }
+  setTrimGeometry(Math.floor(trimOffsetSec), 0);
 
   // Time-window dedup: remember where this clip ended so a later save can
   // tell if it's genuinely re-covering old ground. Chunks are NOT consumed.
@@ -2104,39 +2618,6 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   const outputPath = path.join(CLIPS_DIR, `highlight-${timestamp}.mp4`);
   const metadataPath = path.join(CLIPS_DIR, `highlight-${timestamp}.json`);
 
-  const realDurationMs = Math.round(copyDurationSec * 1000);
-
-  // Peaks logged by the renderer's analyzer, filtered to the actual saved
-  // span and re-expressed as clip-relative ms (0 = first frame of the
-  // clip) — the same convention comments already use for timestampMs, so
-  // the web player can treat both the same way later.
-  const clipPeaks = peakLogBuffer
-    .filter(p => p.t >= realStart && p.t <= effEnd)
-    .map(p => {
-      const out = { tMs: Math.max(0, Math.round(p.t - realStart)), source: p.source };
-      if (p.intensity !== null) out.intensity = p.intensity;
-      if (p.event) out.event = p.event;
-      return out;
-    });
-
-  const metadata = {
-    clipId: crypto.randomUUID(),
-    version: 2,
-    saveTimeUTC,
-    startTimeUTC: Math.round(realStart + clockOffset),
-    endTimeUTC: Math.round(effEnd + clockOffset),
-    durationMs: realDurationMs,
-    clipDurationMs: durationMs,
-    frameRate: recordFps,
-    clockOffsetMs: clockOffset,
-    syncUncertaintyMs: clockUncertaintyMs,
-    clampedMs: Math.round(clampedMs),
-    userId: null,
-    sessionId: currentSession ? currentSession.code : null,
-    coordinated_timestamp: coordinatedTs || null,
-    audioPeaks: clipPeaks
-  };
-
   const tempId = Date.now();
   const videoListPath = path.join(BUFFER_DIR, `filelist_${tempId}.txt`);
   const tempConcatPath = path.join(BUFFER_DIR, `temp_concat_${tempId}.mp4`);
@@ -2145,17 +2626,6 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   const tempMicPath = hasMic ? path.join(BUFFER_DIR, `temp_mic_${tempId}.m4a`) : null;
 
   fs.writeFileSync(videoListPath, videoFiles.map(f => `file '${f.path.replace(/\\/g, '/')}'`).join('\n'));
-
-  // Audio offsets now key off the TRIMMED video start (effStart), not chunk
-  // index math — the old `firstChunkNum * CHUNK_SECONDS` calculation assumed
-  // the clip began exactly on a chunk boundary, which trimming breaks.
-  const clipSpanSec = copyDurationSec + 1.0;
-  const audioDeltaSec = audioFirstChunkTime ? (realStart - audioFirstChunkTime) / 1000 : 0;
-  const audioSkipSec = Math.max(0, audioDeltaSec);
-  const audioDelaySec = Math.max(0, -audioDeltaSec);
-  const micDeltaSec = micFirstChunkTime ? (realStart - micFirstChunkTime) / 1000 : 0;
-  const micSkipSec = Math.max(0, micDeltaSec);
-  const micDelaySec = Math.max(0, -micDeltaSec);
 
   // p1 instead of p4/hq: this re-encodes already-encoded footage,
   // and every ms the trim holds an NVENC session is a ms the live
@@ -2178,7 +2648,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
       mainWindow.webContents.send('highlight-saved', outputPath);
     }
     releaseSavePipeline();
-    uploadHighlight(outputPath, metadataPath);
+    uploadHighlight(outputPath, metadataPath, metadata.sessionId);
   }
 
   function finishVideoOnly() {
@@ -2189,6 +2659,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
       finishSuccess();
     } catch (e) {
       cleanupTemps();
+      recordSaveFailure(ctx, coordinatedTs, 'failed to save highlight');
       releaseSavePipeline();
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('highlight-error', 'Failed to save highlight');
@@ -2207,6 +2678,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   concatVideo.on('close', (concatCode) => {
     if (concatCode !== 0 || !fs.existsSync(tempConcatPath)) {
       cleanupTemps();
+      recordSaveFailure(ctx, coordinatedTs, 'failed to concat video');
       releaseSavePipeline();
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('highlight-error', 'Failed to concat video');
@@ -2214,11 +2686,25 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
       return;
     }
 
+    // STEP 1b: cut on the file's real keyframe (see probeCutKeyframe). If the
+    // probe can't run, the whole-second geometry from above stands.
+    probeCutKeyframe(tempConcatPath, trimOffsetSec, (cut) => {
+      if (cut) setTrimGeometry(cut.keySec, cut.mediaStartSec);
+      console.log(`Trim cut: ${cut ? `keyframe ${cut.keySec.toFixed(3)}s` : 'probe failed, whole-second'} ` +
+        `for offset ${trimOffsetSec.toFixed(3)}s (head +${headExtraSec.toFixed(3)}s, timing ${metadata.timingSource}` +
+        `${captureLagMs !== null ? `, file lag ${captureLagMs}ms` : ''})`);
+      runTrim();
+    });
+  });
+
+  function runTrim() {
     // STEP 2: trim to the exact window. This is the step that lets clip
     // length match the real ACTIVE window instead of snapping to 10s.
+    // Seek rounds UP to the ms so FFmpeg lands on this keyframe, not the
+    // one before it.
     const trim = spawnFFmpegLow([
       '-threads', '2',
-      '-ss', alignedOffsetSec.toFixed(3),
+      '-ss', (Math.ceil(alignedOffsetSec * 1000) / 1000).toFixed(3),
       '-i', tempConcatPath,
       '-t', copyDurationSec.toFixed(3),
       '-c', 'copy', '-an',
@@ -2234,6 +2720,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
 
       if (trimCode !== 0 || !fs.existsSync(tempVideoPath)) {
         cleanupTemps();
+        recordSaveFailure(ctx, coordinatedTs, 'failed to trim highlight');
         releaseSavePipeline();
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('highlight-error', 'Failed to trim highlight to window');
@@ -2318,7 +2805,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
         });
       }
     });
-  });
+  }
 }
 
 function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVideoStartMs) {
@@ -2332,7 +2819,7 @@ function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVi
       mainWindow.webContents.send('highlight-saved', finalPath);
     }
     releaseSavePipeline();
-    uploadHighlight(finalPath, metadataPath);
+    uploadHighlight(finalPath, metadataPath, metadata.sessionId);
   }
 
   if (!hasAudio) { finish(videoOnlyPath); return; }
@@ -2546,6 +3033,8 @@ function queueItemStatus(key, entry) {
 // Snapshot for the renderer's 📤 tab.
 function getQueueState() {
   const items = [];
+  const savesQueued = pendingSaveQueue.length;
+  const saving = pipelineBusy;
   for (const [key, e] of pendingUploads) {
     if (!e) continue;
     const p = uploadProgress.get(key);
@@ -2572,6 +3061,10 @@ function getQueueState() {
     // null = unthrottled (Low Bandwidth Mode off) — the 📤 tab shows "full speed".
     throttleMbps: lowBandwidthActive() ? +(baseThrottleBps(uploadSettings) * 8 / 1e6).toFixed(1) : null,
     fightActive: lowBandwidthActive() && isFightActive(),
+    // Highlight SAVES (cutting the clip) — separate from uploads. A growing
+    // number here is the window-capture backlog showing itself.
+    savesQueued,
+    saving,
     items
   };
 }
@@ -2984,8 +3477,13 @@ async function sweepPendingUploads() {
   }
 }
 
-function uploadHighlight(videoPath, metadataPath) {
-  if (!currentSession) { console.log('No active session, skipping upload'); return; }
+// sessionCode is the session the highlight was TRIGGERED in (passed from the
+// save). Leaving the session while the save queue caught up used to skip
+// the upload outright. The server still accepts it from a former member
+// for a moment the session already has.
+function uploadHighlight(videoPath, metadataPath, sessionCode) {
+  const code = sessionCode !== undefined ? sessionCode : (currentSession && currentSession.code);
+  if (!code) { console.log('No session for this clip (solo save), skipping upload'); return; }
 
   console.log('=== UPLOAD START ===', videoPath);
   if (!fs.existsSync(videoPath)) {
@@ -3032,7 +3530,7 @@ function uploadHighlight(videoPath, metadataPath) {
   probe.on('error', (e) => {
     // ffprobe couldn't spawn at all — fail open, upload as before.
     console.log('ffprobe spawn failed, uploading without frame check:', e.message);
-    doUploadHighlight(videoPath, metadataPath);
+    doUploadHighlight(videoPath, metadataPath, code);
   });
 
   probe.on('close', (probeCode) => {
@@ -3052,7 +3550,7 @@ function uploadHighlight(videoPath, metadataPath) {
     } else {
       console.log(`ffprobe: ${frames} video packet(s) — clip OK`);
     }
-    doUploadHighlight(videoPath, metadataPath);
+    doUploadHighlight(videoPath, metadataPath, code);
   });
 }
 
@@ -3359,10 +3857,9 @@ function performAttachVideo(uploadKey, entry, onDoneCaller) {
   }
 }
 
-function doUploadHighlight(videoPath, metadataPath) {
-  // currentSession can clear between the save and here (ffprobe runs first).
-  const code = currentSession && currentSession.code;
-  if (!code) { console.log('Session ended before upload started — clip kept locally for Sync'); return; }
+function doUploadHighlight(videoPath, metadataPath, sessionCode) {
+  const code = sessionCode || (currentSession && currentSession.code);
+  if (!code) { console.log('No session for this clip — kept locally'); return; }
   const uploadKey = path.basename(videoPath);
   const deferred = lowBandwidthActive() && !!metadataPath && fs.existsSync(metadataPath);
   const entry = { videoPath, metadataPath, sessionCode: code, startedAt: Date.now(), deferred, uploadId: null };
@@ -3401,29 +3898,54 @@ function doUploadHighlight(videoPath, metadataPath) {
 // from main so the scan doesn't need the renderer to round-trip through
 // fetch(). Resolves rather than rejects on every outcome, including a
 // network failure, so callers can branch on `status` alone.
+//
+// It must ALWAYS settle. The retry sweep awaits this while holding
+// uploadSweepRunning, so a lookup that never answered blocked every later
+// sweep — Cabbam's retries sat 20–40 min on 9/22 (RAE8X9) — and the 📤 tab's
+// ⟲ Sync check would hang on "Checking…". A hard cap covers a server that
+// accepts the connection but never replies; 'aborted'/'error' on the
+// response cover a body cut off mid-stream, where 'end' never fires. A
+// timeout resolves as status 0, which every caller already treats as
+// "unreachable, try again later".
+const FETCH_UPLOADS_TIMEOUT_MS = 15 * 1000;
 function fetchSessionUploads(code) {
   return new Promise((resolve) => {
+    let settled = false;
+    let timer = null;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve(result);
+    };
     const req = https.request({
       protocol: 'https:', host: 'peakabu.app', port: 443,
       path: `/sessions/${code}/uploads`, method: 'GET'
     }, (res) => {
       let body = '';
       res.on('data', chunk => body += chunk);
+      res.on('aborted', () => finish({ status: 0, error: 'response aborted' }));
+      res.on('error', (e) => finish({ status: 0, error: e.message }));
       res.on('end', () => {
         try {
           const parsed = JSON.parse(body);
-          resolve({
+          finish({
             status: res.statusCode,
             uploads: parsed.uploads || [],
             closed: !!parsed.closed,
             expiresAt: parsed.expiresAt || null
           });
         } catch (e) {
-          resolve({ status: res.statusCode, error: 'unparseable_response' });
+          finish({ status: res.statusCode, error: 'unparseable_response' });
         }
       });
     });
-    req.on('error', (e) => resolve({ status: 0, error: e.message }));
+    timer = setTimeout(() => {
+      console.log(`Session lookup ${code} got no answer in ${FETCH_UPLOADS_TIMEOUT_MS / 1000}s — treating as unreachable`);
+      finish({ status: 0, error: 'timeout' });
+      req.destroy(new Error('session lookup timed out'));
+    }, FETCH_UPLOADS_TIMEOUT_MS);
+    req.on('error', (e) => finish({ status: 0, error: e.message }));
     req.end();
   });
 }
@@ -3470,21 +3992,73 @@ function scanLocalClipsForSession(code) {
   return out;
 }
 
+// Clips saved during a session but stamped sessionId null — a queued save
+// that ran after the session ended (fixed in saveHighlight, but clips from
+// before that fix are on disk this way). They still carry the server-issued
+// coordinated_timestamp of their highlight, which ties them to exactly one
+// session: the one whose uploads contain that same timestamp.
+function scanOrphanClips() {
+  let entries = [];
+  try { entries = fs.readdirSync(CLIPS_DIR).filter(f => f.toLowerCase().endsWith('.json')); }
+  catch (e) { return []; }
+  const cutoff = Date.now() - SYNC_CHECK_MAX_AGE_MS;
+  const out = [];
+  for (const name of entries) {
+    const jsonPath = path.join(CLIPS_DIR, name);
+    if (!fs.existsSync(jsonPath.replace(/\.json$/i, '.mp4'))) continue;
+    let meta;
+    try { meta = JSON.parse(fs.readFileSync(jsonPath, 'utf8')); } catch (e) { continue; }
+    if (!meta || !meta.clipId || meta.sessionId) continue;
+    if (typeof meta.coordinated_timestamp !== 'number') continue; // a solo save, not a session highlight
+    if (typeof meta.startTimeUTC === 'number' && meta.startTimeUTC < cutoff) continue;
+    out.push({ jsonPath, meta });
+  }
+  return out;
+}
+
+// Stamps orphans whose highlight belongs to `code` (per the server's upload
+// list) with that session, so the normal scan below picks them up.
+function adoptOrphanClips(code, remoteUploads, orphans) {
+  const known = new Set((remoteUploads || [])
+    .map(u => u.coordinatedTimestamp)
+    .filter(t => typeof t === 'number'));
+  let adopted = 0;
+  for (const o of orphans) {
+    if (!known.has(o.meta.coordinated_timestamp)) continue;
+    try {
+      const meta = Object.assign({}, o.meta, { sessionId: code, sessionIdRecoveredBy: 'sync' });
+      const tmp = o.jsonPath + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(meta, null, 2));
+      fs.renameSync(tmp, o.jsonPath);
+      adopted++;
+    } catch (e) { console.log(`Sync: couldn't re-stamp ${path.basename(o.jsonPath)}:`, e.message); }
+  }
+  if (adopted) console.log(`Sync: ${adopted} clip(s) saved after session ${code} ended were matched back to it`);
+  return adopted;
+}
+
 // Scan + diff for one session. Returns a plain object the renderer can
 // switch on directly — `state` is one of 'expired' | 'error' | 'ok'.
 async function runSyncScan(code) {
   const clean = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (clean.length < 4) return { state: 'error', code: clean, syncable: [] };
 
-  const local = scanLocalClipsForSession(clean);
-  if (local.length === 0) return { state: 'ok', code: clean, syncable: [] };
+  let local = scanLocalClipsForSession(clean);
+  const orphans = scanOrphanClips();
+  // Highlights that never produced a clip on this PC (see recordSaveFailure).
+  const failedSaves = saveFailuresForSession(clean).length;
+  if (local.length === 0 && orphans.length === 0) return { state: 'ok', code: clean, syncable: [], failedSaves };
 
   // `code` rides along on every result so the renderer can tell which
   // session a result belongs to (the 📤 tab checks several at once), and
   // `status` on errors so a rate limit (429) can be told apart from an outage.
   const remote = await fetchSessionUploads(clean);
-  if (remote.status === 404) return { state: 'expired', code: clean, syncable: [] };
-  if (remote.status !== 200) return { state: 'error', code: clean, status: remote.status, syncable: [] };
+  if (remote.status === 404) return { state: 'expired', code: clean, syncable: [], failedSaves };
+  if (remote.status !== 200) return { state: 'error', code: clean, status: remote.status, syncable: [], failedSaves };
+
+  if (orphans.length && adoptOrphanClips(clean, remote.uploads, orphans) > 0) {
+    local = scanLocalClipsForSession(clean);
+  }
 
   // Syncable = no server record's videoFile carries this clip's basename as
   // a prefix, AND it isn't already mid-upload via the normal live path.
@@ -3514,7 +4088,7 @@ async function runSyncScan(code) {
     sweepPendingUploads();
   }
 
-  return { state: 'ok', code: clean, syncable, closed: remote.closed };
+  return { state: 'ok', code: clean, syncable, closed: remote.closed, failedSaves };
 }
 
 // ================================
@@ -3562,21 +4136,26 @@ async function runSyncCheckAll() {
   const codes = listLocalSessionCodes();
   const sessions = [];
   let rateLimited = false;
+  let unreachable = false;
   for (const c of codes.slice(0, SYNC_CHECK_MAX_SESSIONS)) {
     let r;
     try { r = await runSyncScan(c.code); }
     catch (e) { r = { state: 'error', code: c.code, syncable: [] }; }
     if (r.state === 'error' && r.status === 429) { rateLimited = true; break; }
+    // Unreachable (offline, or no answer within FETCH_UPLOADS_TIMEOUT_MS):
+    // the rest would fail the same way, one timeout each — stop here.
+    if (r.state === 'error' && !r.status) { unreachable = true; break; }
     sessions.push({
       code: c.code, lastAt: c.lastAt, localClips: c.localClips,
       state: r.state, status: r.status || null, closed: !!r.closed,
-      syncable: r.syncable || []
+      syncable: r.syncable || [], failedSaves: r.failedSaves || 0
     });
   }
   console.log(`Sync check: ${sessions.length}/${codes.length} session(s) checked` +
-    (rateLimited ? ' (stopped — rate limited)' : '') + ', ' +
+    (rateLimited ? ' (stopped — rate limited)' : '') +
+    (unreachable ? ' (stopped — server unreachable)' : '') + ', ' +
     sessions.reduce((n, s) => n + s.syncable.length, 0) + ' clip(s) missing');
-  return { total: codes.length, checked: sessions.length, rateLimited, sessions };
+  return { total: codes.length, checked: sessions.length, rateLimited, unreachable, sessions };
 }
 
 // Sequential upload of a syncable list — one at a time, through the same
@@ -3896,7 +4475,7 @@ function createWindow() {
           reason: 'Window capture failed repeatedly — recording your monitor instead.'
         });
       }
-      wgcCleanupAll();
+      wgcRetire('fell back to monitor capture');   // queued saves still cut from the old files
       wgcCaptureMode = false;
       stoppingIntentionally = false;
       midSessionRestarts = 0;
@@ -3961,6 +4540,13 @@ function createWindow() {
   ipcMain.on('session-disconnected', () => { currentSession = null; });
 
   ipcMain.on('start-recording', async (event, { monitorIndex, windowTitle }) => {
+    captureEpoch++;
+    if (liveRestartTimer) { clearTimeout(liveRestartTimer); liveRestartTimer = null; }
+    // Saves still queued from the previous recording would cut against this
+    // recording's fresh buffer and audio — the wrong footage. Drop them
+    // (recorded, and the user is told how many); a save already running
+    // finishes on its own.
+    dropQueuedSaves('a new recording started before they ran');
     // A queued mid-session restart would spawn a SECOND capture ~1.5s after
     // this one. ffmpegProcess is already null during that window, so the
     // kill below sees nothing to kill.
@@ -3988,7 +4574,7 @@ function createWindow() {
 
     try {
       const stale = fs.readdirSync(BUFFER_DIR).filter(f =>
-        f.endsWith('.mp4') || f.startsWith('hl_audio_') || f.startsWith('hl_mic_')
+        f.endsWith('.mp4') || f.startsWith('hl_audio_') || f.startsWith('hl_mic_') || f.startsWith('chunklist_')
       );
       for (const f of stale) { try { fs.unlinkSync(path.join(BUFFER_DIR, f)); } catch (e) {} }
       console.log(`Buffer cleaned: removed ${stale.length} stale files`);
@@ -4013,6 +4599,8 @@ function createWindow() {
   });
 
   ipcMain.on('stop-recording', async () => {
+    captureEpoch++;
+    if (liveRestartTimer) { clearTimeout(liveRestartTimer); liveRestartTimer = null; }
     if (midRestartTimer) { clearTimeout(midRestartTimer); midRestartTimer = null; }
     if (transientRecoveryTimer) { clearTimeout(transientRecoveryTimer); transientRecoveryTimer = null; }
     stopBufferReadyWatcher();
@@ -4035,7 +4623,7 @@ function createWindow() {
         mainWindow.webContents.send('wgc-stop-capture');
         mainWindow.webContents.send('recording-stopped');
       }
-      setTimeout(() => wgcCleanupAll(), 1500);
+      setTimeout(() => wgcRetire('recording stopped'), 1500);
     }
 
     if (fullSessionMode) {
@@ -4043,21 +4631,33 @@ function createWindow() {
       return;
     }
 
-    hlAudioPath = null;
-    hlMicPath = null;
-    hlAudioChunkCount = 0;
-    hlMicChunkCount = 0;
-    try {
-      const stale = fs.readdirSync(BUFFER_DIR).filter(f =>
-        f.endsWith('.mp4') || f.startsWith('hl_audio_') || f.startsWith('hl_mic_')
-      );
-      for (const f of stale) { try { fs.unlinkSync(path.join(BUFFER_DIR, f)); } catch (e) {} }
-      console.log(`Buffer cleared on stop: removed ${stale.length} files`);
-    } catch (e) { console.log('Buffer clear on stop skipped:', e.message); }
+    // Highlight audio (and temp files) are torn down only once every queued
+    // save has run — tearing down at once left queued clips without game
+    // audio and deleted a running save's temp files. The tag check skips the
+    // teardown if a new recording started meanwhile (it has its own audio).
+    const stoppedTag = recordingSessionTag;
+    const waiting = pendingSaveQueue.length + (pipelineBusy ? 1 : 0);
+    if (waiting) console.log(`Recording stopped with ${waiting} save(s) still queued — finishing them first`);
+    onSaveQueueIdle(() => {
+      if (recordingSessionTag !== stoppedTag) return;
+      hlAudioPath = null;
+      hlMicPath = null;
+      hlAudioChunkCount = 0;
+      hlMicChunkCount = 0;
+      try {
+        const stale = fs.readdirSync(BUFFER_DIR).filter(f =>
+          f.endsWith('.mp4') || f.startsWith('hl_audio_') || f.startsWith('hl_mic_') || f.startsWith('chunklist_')
+        );
+        for (const f of stale) { try { fs.unlinkSync(path.join(BUFFER_DIR, f)); } catch (e) {} }
+        console.log(`Buffer cleared on stop: removed ${stale.length} files`);
+      } catch (e) { console.log('Buffer clear on stop skipped:', e.message); }
+    });
   });
    
 
   ipcMain.on('update-settings', (event, settings) => {
+    let captureChanged = false;   // needs a capture restart to take effect (LIVE CAPTURE SETTINGS)
+    let monitorChanged = false;
     const bufferMap = { '30': 3, '60': 6, '180': 18, '300': 30, '600': 60 };
     if (settings.bufferSeconds && bufferMap[settings.bufferSeconds]) {
       maxChunks = bufferMap[settings.bufferSeconds];
@@ -4069,6 +4669,7 @@ function createWindow() {
       prefs.fps = recordFps;
       saveUserPreferences(prefs);
       console.log(`FPS set to: ${recordFps}`);
+      captureChanged = true;
     }
 
     if (settings.resolution && settings.resolution in RESOLUTION_MAP && settings.resolution !== recordResolutionKey) {
@@ -4078,6 +4679,7 @@ function createWindow() {
       prefs.resolution = recordResolutionKey;
       saveUserPreferences(prefs);
       console.log(`Resolution set to: ${recordResolutionKey}`);
+      captureChanged = true;
     }
 
     if (typeof settings.monitor === 'number' && !Number.isNaN(settings.monitor) && settings.monitor !== savedMonitorIndex) {
@@ -4086,6 +4688,7 @@ function createWindow() {
       prefs.monitorIndex = savedMonitorIndex;
       saveUserPreferences(prefs);
       console.log(`Monitor preference set to index ${savedMonitorIndex}`);
+      monitorChanged = true;
     }
 
     if (typeof settings.hdr === 'boolean' && settings.hdr !== captureHdr) {
@@ -4094,6 +4697,7 @@ function createWindow() {
       prefs.captureHdr = captureHdr;
       saveUserPreferences(prefs);
       console.log(`HDR capture fix ${captureHdr ? 'ENABLED' : 'disabled'}`);
+      captureChanged = true;
     }
 
     if ('adapter' in settings) {
@@ -4104,6 +4708,7 @@ function createWindow() {
       prefs.captureAdapter = captureAdapter;
       saveUserPreferences(prefs);
       console.log(`Capture adapter set to: ${captureAdapter === null ? 'auto' : captureAdapter}`);
+      captureChanged = true;
     }
 
     if (settings.hotkey && isValidHotkey(settings.hotkey) && settings.hotkey !== customHotkey) {
@@ -4122,6 +4727,21 @@ function createWindow() {
         mainWindow.webContents.send('hotkey-error', `Failed to register ${settings.hotkey}. Another app may be using it.`);
       }
     }
+
+    // Apply capture changes while recording (LIVE CAPTURE SETTINGS).
+    if (wgcCaptureMode) {
+      if (captureChanged) applyWgcSettingsLive();
+    } else if (ffmpegProcess && (captureChanged || (monitorChanged && savedMonitorIndex !== currentMonitor))) {
+      scheduleLiveCaptureRestart(monitorChanged ? savedMonitorIndex : currentMonitor);
+    }
+  });
+
+  // The session's clip length, from the renderer on join and whenever the
+  // host changes it — sizes the buffer (effectiveMaxChunks).
+  ipcMain.on('session-clip-duration', (event, ms) => {
+    const v = Number(ms);
+    sessionClipDurationMs = Number.isFinite(v) && v > 0 && v <= 30 * 60 * 1000 ? v : 0;
+    console.log(`Session clip length: ${sessionClipDurationMs ? sessionClipDurationMs / 1000 + 's' : 'none'} — buffer ${effectiveMaxChunks() * CHUNK_SECONDS}s`);
   });
 
   ipcMain.on('audio-recording-started', (event, wallTime) => {
@@ -4311,7 +4931,7 @@ function createWindow() {
   // possibly fill, producing a short clip with a late startTimeUTC that
   // the web player faithfully renders as a desynced POV.
   ipcMain.handle('get-buffer-seconds', () => {
-    const nominal = maxChunks * CHUNK_SECONDS;
+    const nominal = effectiveMaxChunks() * CHUNK_SECONDS;
     if (wgcCaptureMode) {
       const usable = wgcFiles.filter(f => f.startUTC && fs.existsSync(f.path));
       if (!usable.length) return 10;
@@ -5060,6 +5680,8 @@ function archiveFullSession() {
   
 
 function stopRecordingInternal() {
+  captureEpoch++;
+  if (liveRestartTimer) { clearTimeout(liveRestartTimer); liveRestartTimer = null; }
   stopBufferReadyWatcher();
   stopPruneScheduler();
   stopDiskWatcher();

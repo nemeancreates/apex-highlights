@@ -87,7 +87,7 @@ function fireCoordinatedHighlight(io, sessionCode, session, username, coordinate
     const next = (current.pendingHighlights || []).shift();
     if (next) {
       log('info', 'highlight_dequeued', { session: sessionCode, username: next.username, ts: next.ts, remaining: current.pendingHighlights.length });
-      fireCoordinatedHighlight(io, sessionCode, current, next.username, next.ts);
+      fireCoordinatedHighlight(io, sessionCode, current, next.username, next.ts, next.clipDuration);
     }
   }, lockDuration + 100);
 }
@@ -101,6 +101,8 @@ function registerHighlightHandlers(io, socket) {
     if (!session) return;
 
     const now = Date.now();
+    // The host saving a highlight is host activity (inactivity watchdog).
+    if (socket.username === session.createdBy) session.hostLastActivityAt = now;
 
     // Client-stamped press time, already shifted into the server clock domain.
     // Trusted only inside a sane window (max 3s stale, max 1s ahead) so a bad
@@ -135,7 +137,9 @@ function registerHighlightHandlers(io, socket) {
         socket.emit('error-message', { message: 'Highlight queue full — wait for cooldown' });
         return;
       }
-      pending.push({ username: socket.username, ts: pressTs });
+      // Keep the clip length it was pressed with — firing later with whatever
+      // the host has switched to since cut it at the wrong length.
+      pending.push({ username: socket.username, ts: pressTs, clipDuration: session.clipDuration || 30000 });
       log('info', 'highlight_queued', { session: sessionCode, username: socket.username, ts: pressTs, queueDepth: pending.length });
       io.to(sessionCode).emit('highlight-queued', { username: socket.username, queued: pending.length });
       return;

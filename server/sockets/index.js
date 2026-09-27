@@ -106,7 +106,12 @@ function startHostInactivityWatchdog(io) {
         }
       } else {
         const idleSince = session.hostIdleSince || now;
-        if (now - idleSince > HOST_NOT_RECORDING_TIMEOUT_MS) {
+        // Host uploads and highlight triggers are activity even when the
+        // server has the host as "not recording" — clients before 0.1.85
+        // never re-sent recording-status after a reconnect, so a session
+        // clearly in use was closed after 10 min.
+        const recentActivity = session.hostLastActivityAt && now - session.hostLastActivityAt < HOST_NOT_RECORDING_TIMEOUT_MS;
+        if (!recentActivity && now - idleSince > HOST_NOT_RECORDING_TIMEOUT_MS) {
           closeSessionForInactivity(io, code, session,
             `Host not recording — session closed after ${Math.round(HOST_NOT_RECORDING_TIMEOUT_MS / 60000)}m`);
         }
@@ -325,22 +330,32 @@ function initSockets(io) {
     // ================================
     // CLIP DURATION — host only
     // ================================
-    socket.on('set-clip-duration', ({ duration }) => {
-      if (!checkSocketRate(socket.id)) return;
+    socket.on('set-clip-duration', (payload) => {
+      const duration = payload && payload.duration;
       const sessionCode = socket.sessionCode;
       if (!sessionCode) return;
 
       const session = sessions.get(sessionCode);
       if (!session) return;
 
+      // A dropped change (rate limit) used to leave the host's selector showing
+      // a length that wasn't in effect, so clips came out at the old length.
+      // Any rejection now puts the selector back to the real value.
+      const resync = () => socket.emit('clip-duration-changed', {
+        duration: session.clipDuration || 30000, setBy: session.createdBy, resync: true
+      });
+      if (!checkSocketRate(socket.id)) { resync(); return; }
+
       // Only the session creator can change clip duration
       if (session.createdBy !== socket.username) {
         socket.emit('error-message', { message: 'Only the session host can change clip duration' });
+        resync();
         return;
       }
 
       if (!ALLOWED_CLIP_DURATIONS.includes(duration)) {
         socket.emit('error-message', { message: 'Invalid clip duration' });
+        resync();
         return;
       }
 
@@ -362,7 +377,7 @@ function initSockets(io) {
     // members so every POV can produce the full span; without it, a
     // short-buffer client silently clamps its extraction and desyncs.
     // ================================
-    socket.on('buffer-capacity', ({ bufferSeconds }) => {
+    socket.on('buffer-capacity', ({ bufferSeconds, isRecording }) => {
       if (!checkSocketRate(socket.id)) return;
       const sessionCode = socket.sessionCode;
       if (!sessionCode) return;
@@ -373,6 +388,20 @@ function initSockets(io) {
       const clean = Math.min(3600, Math.max(10, Math.round(bufferSeconds)));
       const member = session.members.find(m => m.socketId === socket.id);
       if (member) member.bufferSeconds = clean;
+
+      // 0.1.85+ clients send these every 20 s while recording and say so.
+      // Self-corrects a missed recording-status: after a reconnect the server
+      // had a recording host as idle and the watchdog closed a live session.
+      if (isRecording === true) {
+        if (member && !member.isRecording) {
+          member.isRecording = true;
+          io.to(sessionCode).emit('member-recording-update', { username: socket.username, isRecording: true });
+        }
+        if (cleanIsHost(session, socket.username)) {
+          session.hostIdleSince = null;
+          session.hostLastActivityAt = Date.now();
+        }
+      }
 
       log('info', 'buffer_capacity', { session: sessionCode, username: socket.username, bufferSeconds: clean });
     });

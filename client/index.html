@@ -799,7 +799,7 @@
               <img src="assets/kickstarter.png" alt="kickstarter" />
             </button>
           </div>
-          <span class="version-tag">v0.1.83</span>
+          <span class="version-tag">v0.1.85</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="redeem-wrap">
@@ -2037,6 +2037,16 @@ REPLACE:
           state.textContent = 'Off — clips upload right away';
           state.className = 'uq-state';
         }
+        // Saves still being cut from the buffer — each becomes an upload
+        // once it's done. More than a couple means saving is falling behind.
+        var saveBacklog = (st.savesQueued || 0) + (st.saving ? 1 : 0);
+        if (saveBacklog > 1) {
+          var sv = document.createElement('div');
+          sv.textContent = '✂ Saving highlights: ' + saveBacklog + ' in line';
+          state.appendChild(document.createElement('br'));
+          state.appendChild(sv.firstChild);
+          if (saveBacklog > 3) state.className = 'uq-state hold';
+        }
 
         var mine = document.getElementById('uqMine');
         mine.innerHTML = '';
@@ -3161,20 +3171,33 @@ REPLACE:
         if (r.error === 'login') { syncCheckNote(box, 'Log in to check for missing clips.'); return; }
         if (r.error === 'busy') { syncCheckNote(box, 'Already checking…'); return; }
         if (!r.total) { syncCheckNote(box, 'No clips from recent sessions on this PC.'); return; }
+        if (r.unreachable && !r.checked) {
+          syncCheckNote(box, "Couldn't reach the server — check your connection and press ⟲ Sync again.");
+          return;
+        }
 
-        var missing = 0, withMissing = 0;
-        r.sessions.forEach(function(s) { if (s.syncable.length) { missing += s.syncable.length; withMissing++; } });
+        var missing = 0, withMissing = 0, neverSavedTotal = 0;
+        r.sessions.forEach(function(s) {
+          if (s.syncable.length) { missing += s.syncable.length; withMissing++; }
+          neverSavedTotal += s.failedSaves || 0;
+        });
         syncCheckNote(box, missing
           ? missing + ' clip' + (missing === 1 ? '' : 's') + ' missing across ' + withMissing + ' session' + (withMissing === 1 ? '' : 's')
-          : (r.checked < r.total
-            ? 'Nothing missing in the ' + r.checked + ' checked'
-            : '✓ All caught up — nothing missing'));
+          : (neverSavedTotal
+            ? 'Every saved clip is uploaded — but ' + neverSavedTotal + ' highlight' + (neverSavedTotal === 1 ? '' : 's') + ' never saved on this PC'
+            : (r.checked < r.total
+              ? 'Nothing missing in the ' + r.checked + ' checked'
+              : '✓ All caught up — nothing missing')));
 
         r.sessions.forEach(function(s) {
           var row = document.createElement('div');
           row.className = 'uq-sync-row';
           var label = document.createElement('span');
           var text = s.code + ' — ';
+          var neverSaved = s.failedSaves
+            ? ' · ' + s.failedSaves + ' highlight' + (s.failedSaves === 1 ? '' : 's') + ' never saved on this PC'
+            : '';
+          if (neverSaved) row.title = 'The save failed or fell too far behind, so there is no clip on this PC to upload. See the Activity tab for the reason.';
           if (s.state === 'expired') {
             text += 'expired (clips kept on this PC)';
           } else if (s.state === 'error') {
@@ -3186,6 +3209,7 @@ REPLACE:
           } else {
             text += 'all uploaded ✓';
           }
+          if (neverSaved) { text += neverSaved; row.classList.add('bad'); }
           label.textContent = text;
           row.appendChild(label);
           if (s.state === 'ok' && s.syncable.length) {
@@ -3198,7 +3222,9 @@ REPLACE:
           box.appendChild(row);
         });
 
-        if (r.rateLimited) {
+        if (r.unreachable) {
+          syncCheckNote(box, "Couldn't reach the server" + (r.checked ? ' after ' + r.checked + ' of ' + r.total : '') + ' — check your connection and press ⟲ Sync again.');
+        } else if (r.rateLimited) {
           syncCheckNote(box, 'Checked ' + r.checked + ' of ' + r.total + ' — server limit reached, press ⟲ Sync again in a minute.');
         } else if (r.total > r.checked) {
           syncCheckNote(box, 'Showing your ' + r.checked + ' most recent of ' + r.total + ' sessions.');
@@ -3213,6 +3239,7 @@ REPLACE:
         s.state = result.state;
         s.status = result.status || null;
         s.syncable = result.syncable || [];
+        if (typeof result.failedSaves === 'number') s.failedSaves = result.failedSaves;
         renderSyncCheck(r);
       }
 
@@ -4287,10 +4314,20 @@ REPLACE:
             else { ilBtn.classList.remove('invite-attn'); clearInviteAttnTimer(); }
           }
           updateClipDurationUI(data.clipDuration || 30000, window.isSessionHost);
+          // Main sizes its buffer to the session's clip length.
+          ipcRenderer.send('session-clip-duration', data.clipDuration || 30000);
           window.sessionMemberCount = (data.members || []).length;
           updateMemberList(data.members);
           hudLog('squad','Joined session ' + data.code,'success');
           reportBufferCapacity();
+          // The server starts every (re)joining member as "not recording", and
+          // this was only ever sent when Start was pressed. After a reconnect
+          // (network blip, server deploy) the host looked idle while recording
+          // and the inactivity watchdog closed the session after 10 min.
+          if (window.isRecordingActive) {
+            window.socket.emit('recording-status', { isRecording: true });
+            startBufferCapacityReports();
+          }
           ipcRenderer.send('session-connected', { code: data.code, username: username });
           addSessionToHistory(data.code, window.isSessionHost ? 'host' : 'member', data.expiresAt);
           updateClipCounter(data.clipsUsed, data.maxClips);
@@ -4380,7 +4417,11 @@ REPLACE:
         window.socket.on('clip-duration-changed', function(d) {
           window.sessionClipDuration = d.duration;
           updateClipDurationUI(d.duration, window.isSessionHost);
-          hudLog('squad', d.setBy + ' set clip to ' + formatDuration(d.duration), 'info');
+          ipcRenderer.send('session-clip-duration', d.duration);
+          // resync: the server didn't take a change (rate limit, not host) and
+          // is putting the selector back to the length actually in effect.
+          if (d.resync) hudLog('squad', 'Clip length is ' + formatDuration(d.duration) + ' — change didn\'t go through, try again', 'info');
+          else hudLog('squad', d.setBy + ' set clip to ' + formatDuration(d.duration), 'info');
         });
 
         window.socket.on('coordinated-save-highlight', function(d) {
@@ -4723,7 +4764,8 @@ REPLACE:
         if (!window.socket || !window.currentSessionCode) return;
         ipcRenderer.invoke('get-buffer-seconds').then(function(sec) {
           if (window.socket && typeof sec === 'number') {
-            window.socket.emit('buffer-capacity', { bufferSeconds: sec });
+            // isRecording lets the server self-correct a missed recording-status.
+            window.socket.emit('buffer-capacity', { bufferSeconds: sec, isRecording: !!window.isRecordingActive });
           }
         }).catch(function() {});
       }
@@ -5049,7 +5091,13 @@ REPLACE:
       function wgcCreateRecorder(fileId, cfg) {
         var rec = new MediaRecorder(window.wgcStream, {
           mimeType: wgcPickCodec(),
-          videoBitsPerSecond: cfg.bitrate || 8000000
+          videoBitsPerSecond: cfg.bitrate || 8000000,
+          // A keyframe every 2s. By default the recorder writes one at the
+          // start of each buffer file only, so every save had to decode from
+          // the top of the file up to its clip. With these the extract's
+          // input seek (main.js) jumps to within 2s of the clip instead.
+          // Browsers that don't know the option ignore it.
+          videoKeyFrameIntervalDuration: 2000
         });
         rec.ondataavailable = async function(ev) {
           if (ev.data && ev.data.size > 0) {
@@ -5069,25 +5117,33 @@ REPLACE:
         return rec;
       }
 
+      function wgcVideoConstraints(cfg) {
+        var videoConstraints = {
+          mandatory: {
+            chromeMediaSource: 'desktop',
+            chromeMediaSourceId: cfg.sourceId,
+            maxFrameRate: cfg.fps || 30
+          }
+        };
+        if (cfg.resolution && cfg.resolution.height) {
+          videoConstraints.mandatory.maxHeight = cfg.resolution.height;
+        }
+        return videoConstraints;
+      }
+
+      function wgcWatchTrack(stream) {
+        var track = stream.getVideoTracks()[0];
+        if (track) track.onended = function() {
+          ipcRenderer.send('wgc-capture-failed', { reason: 'Window closed' });
+        };
+      }
+
       async function wgcStartCapture(cfg) {
         window.wgcCfg = cfg;
+        window.wgcPendingCfg = null;
         try {
-          var videoConstraints = {
-            mandatory: {
-              chromeMediaSource: 'desktop',
-              chromeMediaSourceId: cfg.sourceId,
-              maxFrameRate: cfg.fps || 30
-            }
-          };
-          if (cfg.resolution && cfg.resolution.height) {
-            videoConstraints.mandatory.maxHeight = cfg.resolution.height;
-          }
-          window.wgcStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints });
-
-          var track = window.wgcStream.getVideoTracks()[0];
-          if (track) track.onended = function() {
-            ipcRenderer.send('wgc-capture-failed', { reason: 'Window closed' });
-          };
+          window.wgcStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: wgcVideoConstraints(cfg) });
+          wgcWatchTrack(window.wgcStream);
 
           var init = await ipcRenderer.invoke('wgc-init-buffer');
           wgcCreateRecorder(init.fileId, cfg);
@@ -5126,9 +5182,35 @@ REPLACE:
       ipcRenderer.on('wgc-start-capture', function(ev, cfg) { wgcStartCapture(cfg); });
       ipcRenderer.on('wgc-stop-capture', function() { wgcStopAll(); });
 
-      ipcRenderer.on('wgc-rollover-request', function(ev, d) {
+      // New FPS/resolution while recording (main.js LIVE CAPTURE SETTINGS):
+      // held here and switched to at the next rollover, which main triggers
+      // right away. The old recorder keeps running until the new one is going,
+      // so the buffer has no gap.
+      ipcRenderer.on('wgc-update-cfg', function(ev, cfg) {
+        if (!window.wgcCfg) return;
+        window.wgcPendingCfg = Object.assign({}, window.wgcCfg, cfg);
+      });
+
+      ipcRenderer.on('wgc-rollover-request', async function(ev, d) {
         if (!window.wgcStream || !window.wgcCfg) return;
         var oldIds = Object.keys(window.wgcRecorders);
+        var oldStream = null;
+        if (window.wgcPendingCfg) {
+          var nextCfg = window.wgcPendingCfg;
+          window.wgcPendingCfg = null;
+          try {
+            var s = await navigator.mediaDevices.getUserMedia({ audio: false, video: wgcVideoConstraints(nextCfg) });
+            if (!window.wgcStream) { s.getTracks().forEach(function(t){ t.stop(); }); return; }   // stopped meanwhile
+            oldStream = window.wgcStream;
+            oldStream.getVideoTracks().forEach(function(t){ t.onended = null; });
+            window.wgcStream = s;
+            window.wgcCfg = nextCfg;
+            wgcWatchTrack(s);
+            hudLog('system', '⚙ Window capture settings applied (' + (nextCfg.fps || 30) + 'fps)', 'info');
+          } catch (e) {
+            console.log('WGC settings switch failed — keeping current settings:', e.message);
+          }
+        }
         wgcCreateRecorder(d.newFileId, window.wgcCfg);
         setTimeout(function() {
           oldIds.forEach(function(fileId) {
@@ -5139,6 +5221,7 @@ REPLACE:
               setTimeout(function() { ipcRenderer.send('wgc-recorder-stopped', { fileId: fileId }); }, 500);
             }
           });
+          if (oldStream) setTimeout(function() { oldStream.getTracks().forEach(function(t){ t.stop(); }); }, 800);
         }, 1000);
       });
 

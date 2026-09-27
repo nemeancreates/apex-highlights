@@ -199,9 +199,9 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 const PRIVACY_POLICY_VERSION = '2026-09-07';
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.83',
-  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.83.exe',
-    releaseNotes: "Uploads now go out at full speed. The speed limit only applies when Low Bandwidth Mode is on. New ⟲ Sync button in the Upload Queue tab checks your recent sessions for clips that never uploaded and lets you send them, even after the host has left. Fixed the Privacy Policy update prompt that couldn't be closed: you can now accept it or log out."
+  version: '0.1.85',
+  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.85.exe',
+    releaseNotes: "Squad POVs line up much more tightly: monitor-capture clips are now timed from the moment each frame was captured, which could leave one player's footage a quarter to half a second behind the rest. Clips no longer lose their last few seconds, and 3-minute clips no longer lose their start. Change the clip length or your capture settings (FPS, resolution, HDR, monitor) mid-session and they apply right away, with no need to stop and restart recording. Sessions no longer close on a host who is still recording after a connection blip. Window capture saves stay quick for the whole session, clips saved after the host ends the session still upload to it, Sync can recover them and tells you about highlights that never saved on this PC, and Sync no longer hangs if the server doesn't answer."
 };
 
 
