@@ -4,7 +4,8 @@
  * WHAT IT DOES
  * ------------
  * Before a session, let the user prove their capture settings are right:
- * pick a mic and a video source, record 15 seconds, and play it back. While
+ * pick a mic and a video source, record 8 seconds, and play it back — with
+ * the game audio Peak-Abu records alongside, when the host provides it. While
  * recording they can A/B noise suppression live; after recording they can A/B
  * the two recorded takes against each other at the same instant.
  *
@@ -35,7 +36,7 @@
 (function (global) {
   'use strict';
 
-  var TEST_SECONDS = 15;
+  var TEST_SECONDS = 8;
   var LEARN_SECONDS = 2;     // quiet countdown so the DSP backend can profile
 
   // Meter scaling. -60dBFS is the bottom of the meter, 0dBFS the top.
@@ -59,6 +60,39 @@
     return (db > 0 ? '+' : '') + db.toFixed(1) + ' dB';
   }
 
+  // Windows lists each device up to three times (the device plus "Default -"
+  // and "Communications -" aliases) with its USB vendor:product id on the
+  // end. One entry per device, plain name; the "default" alias is kept only
+  // when it's all there is.
+  function cleanLabel(label) {
+    return String(label || '')
+      .replace(/^(Default|Communications)\s*-\s*/i, '')
+      .replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '')
+      .trim();
+  }
+
+  function uniqueDevices(devices, kind) {
+    var all = devices.filter(function (d) { return d.kind === kind; });
+    var out = [], seen = {};
+    all.forEach(function (d) {
+      if (d.deviceId === 'default' || d.deviceId === 'communications') return;
+      var label = cleanLabel(d.label);
+      var key = d.groupId + '|' + label;
+      if (seen[key]) return;
+      seen[key] = true;
+      out.push({ deviceId: d.deviceId, label: label, groupId: d.groupId, isDefault: false });
+    });
+    var def = all.find(function (d) { return d.deviceId === 'default'; });
+    if (def) {
+      var defLabel = cleanLabel(def.label);
+      var match = out.find(function (o) { return o.label === defLabel; }) ||
+                  out.find(function (o) { return o.groupId === def.groupId; });
+      if (match) match.isDefault = true;
+      else if (!out.length) out.push({ deviceId: def.deviceId, label: defLabel, groupId: def.groupId, isDefault: true });
+    }
+    return out;
+  }
+
   function PeakAbuAVCheck(options) {
     options = options || {};
     this.container = options.container;
@@ -69,6 +103,17 @@
     // Lets the host app supply Peak-Abu's real capture stream instead of the
     // demo's getDisplayMedia. Signature: () => Promise<MediaStream>.
     this.videoSourceProvider = options.videoSourceProvider || null;
+
+    // Game audio: the host's own capture of what Peak-Abu records as game
+    // sound. () => Promise<MediaStream>, plus an optional () => Promise<string>
+    // naming the device it comes from. Without a provider the panel tests
+    // mic and video only, as before.
+    this.desktopAudioProvider = options.desktopAudioProvider || null;
+    this.desktopAudioLabel = options.desktopAudioLabel || null;
+    this.gameStream = null;
+    this.gameRecorder = null;
+    this.gameChunks = [];
+    this.gameUrl = null;
 
     this.ns = null;
     this.nsAvailable = typeof global.PeakAbuNoiseSuppression === 'function';
@@ -105,8 +150,72 @@
       this.container.innerHTML = '';
       this._buildUI();
       return this._enumerateDevices().then(function () {
+        return self._startGame();
+      }).then(function () {
         return self;
       });
+    },
+
+    // =============================================================
+    // Game audio
+    // =============================================================
+
+    /** Opens the host's game audio capture and meters it. Never rejects. */
+    _startGame: function () {
+      var self = this;
+      var e = this._els;
+      if (!this.desktopAudioProvider) return Promise.resolve();
+      if (this.desktopAudioLabel) {
+        Promise.resolve(this.desktopAudioLabel()).then(function (label) {
+          if (label && e.gameSrc) e.gameSrc.textContent = label;
+        }).catch(function () {});
+      }
+      return Promise.resolve(this.desktopAudioProvider()).then(function (stream) {
+        self.gameStream = stream;
+        var Ctx = global.AudioContext || global.webkitAudioContext;
+        self._gameCtx = new Ctx();
+        var an = self._gameCtx.createAnalyser();
+        an.fftSize = 1024;
+        self._gameCtx.createMediaStreamSource(stream).connect(an);
+        var buf = new Float32Array(an.fftSize);
+        var tick = function () {
+          an.getFloatTimeDomainData(buf);
+          var s = 0;
+          for (var i = 0; i < buf.length; i++) s += buf[i] * buf[i];
+          self._onGameLevel(20 * Math.log10(Math.sqrt(s / buf.length) + 1e-9));
+          self._gameRaf = requestAnimationFrame(tick);
+        };
+        tick();
+      }).catch(function (err) {
+        self._gameError = err && err.message ? err.message : 'unknown error';
+        if (e.gameSrc) e.gameSrc.textContent = 'Could not open game audio: ' + self._gameError;
+      });
+    },
+
+    _onGameLevel: function (db) {
+      var m = this._els.meterGame;
+      if (m) {
+        m.fill.style.height = dbToPct(db) + '%';
+        m.val.textContent = fmtDb(db);
+        m.fill.className = 'pa-avc-meter-v-fill' + (db > -3 ? ' clip' : db > -12 ? ' hot' : '');
+      }
+      if (this.state === 'recording' && this._gameAcc) {
+        var g = this._gameAcc;
+        var rms = Math.pow(10, db / 20);
+        g.frames++;
+        g.sum += rms * rms;
+        if (db > g.peak) g.peak = db;
+        if (db > -45) g.heardFrames++;
+      }
+    },
+
+    _stopGame: function () {
+      if (this._gameRaf) { cancelAnimationFrame(this._gameRaf); this._gameRaf = null; }
+      if (this._gameCtx) { try { this._gameCtx.close(); } catch (e) {} this._gameCtx = null; }
+      if (this.gameStream) {
+        this.gameStream.getTracks().forEach(function (t) { t.stop(); });
+        this.gameStream = null;
+      }
     },
 
     _buildUI: function () {
@@ -129,6 +238,16 @@
       outRow.appendChild(e.outSelect);
       devSec.appendChild(outRow);
 
+      if (this.desktopAudioProvider) {
+        var gameRow = el('div', 'pa-avc-row');
+        gameRow.appendChild(el('label', null, 'Game audio'));
+        e.gameSrc = el('span', 'pa-avc-val', 'Windows default output');
+        e.gameSrc.style.flex = '1';
+        e.gameSrc.title = 'Peak-Abu records whatever plays on your Windows default output.';
+        gameRow.appendChild(e.gameSrc);
+        devSec.appendChild(gameRow);
+      }
+
       var vidRow = el('div', 'pa-avc-row');
       vidRow.appendChild(el('label', null, 'Video'));
       e.videoBtn = el('button', 'pa-avc-btn-secondary', 'Choose video source…');
@@ -145,6 +264,7 @@
       e.metersVert = el('div', 'pa-avc-meters-vert');
       e.meterIn = this._buildMeterVertical(e.metersVert, 'In');
       e.meterOut = this._buildMeterVertical(e.metersVert, 'Out');
+      if (this.desktopAudioProvider) e.meterGame = this._buildMeterVertical(e.metersVert, 'Game');
       avRow.appendChild(e.metersVert);
 
       e.videoWrap = el('div', 'pa-avc-video-wrap');
@@ -342,22 +462,26 @@
         .then(function (devices) {
           e.micSelect.innerHTML = '';
           e.outSelect.innerHTML = '';
-          var mics = 0, outs = 0;
-          devices.forEach(function (d) {
-            if (d.kind === 'audioinput') {
-              var o = el('option');
-              o.value = d.deviceId;
-              o.textContent = d.label || ('Microphone ' + (mics + 1));
-              e.micSelect.appendChild(o);
-              mics++;
-            } else if (d.kind === 'audiooutput') {
-              var p = el('option');
-              p.value = d.deviceId;
-              p.textContent = d.label || ('Output ' + (outs + 1));
-              e.outSelect.appendChild(p);
-              outs++;
-            }
+          var micList = uniqueDevices(devices, 'audioinput');
+          var outList = uniqueDevices(devices, 'audiooutput');
+          var mics = micList.length, outs = outList.length;
+          micList.forEach(function (d, i) {
+            var o = el('option');
+            o.value = d.deviceId;
+            o.textContent = d.label || ('Microphone ' + (i + 1));
+            e.micSelect.appendChild(o);
           });
+          outList.forEach(function (d, i) {
+            var p = el('option');
+            p.value = d.deviceId;
+            p.textContent = d.label || ('Output ' + (i + 1));
+            e.outSelect.appendChild(p);
+          });
+          // Start on the devices Windows is using by default.
+          var defMic = micList.find(function (d) { return d.isDefault; });
+          var defOut = outList.find(function (d) { return d.isDefault; });
+          if (defMic) e.micSelect.value = defMic.deviceId;
+          if (defOut) e.outSelect.value = defOut.deviceId;
           if (!mics) {
             var none = el('option');
             none.textContent = 'No microphone found';
@@ -689,6 +813,8 @@
       this.rawChunks = [];
       this.wetChunks = [];
       this.vidChunks = [];
+      this.gameChunks = [];
+      this._gameAcc = { frames: 0, sum: 0, peak: -Infinity, heardFrames: 0 };
       this._acc = {
         frames: 0, sumIn: 0, peakIn: -Infinity,
         speechFrames: 0, sumSpeech: 0,
@@ -719,8 +845,12 @@
       }
 
       this._startVideoRecorder();
+      this._startGameRecorder();
 
-      this._setStatus('Recording — speak normally.', 'recording');
+      var prompt = this.gameStream
+        ? 'Recording — speak normally and play some game audio.'
+        : 'Recording — speak normally.';
+      this._setStatus(prompt, 'recording');
       var total = this.testSeconds * 1000;
       var t0 = performance.now();
       var tick = function () {
@@ -730,7 +860,7 @@
         e.progressFill.style.width = pct + '%';
         var remain = Math.ceil((total - done) / 1000);
         if (remain >= 0) {
-          e.status.textContent = 'Recording — speak normally. ' + remain + 's left';
+          e.status.textContent = prompt + ' ' + remain + 's left';
         }
         if (done >= total) { self._stopRecording(); return; }
         self._raf2 = requestAnimationFrame(tick);
@@ -760,6 +890,21 @@
         this.vidRecorder = null;
         this._setStatus('Recording audio only — this browser could not ' +
                         'record the video source: ' + err.message, 'warn');
+      }
+    },
+
+    /** Game audio gets its own take too; losing it must not abort the test. */
+    _startGameRecorder: function () {
+      var self = this;
+      if (!this.gameStream) return;
+      try {
+        this.gameRecorder = new MediaRecorder(this.gameStream, { mimeType: this._pickMime() });
+        this.gameRecorder.ondataavailable = function (ev) {
+          if (ev.data && ev.data.size) self.gameChunks.push(ev.data);
+        };
+        this.gameRecorder.start();
+      } catch (err) {
+        this.gameRecorder = null;
       }
     },
 
@@ -805,11 +950,13 @@
       pending.push(close(this.rawRecorder));
       pending.push(close(this.wetRecorder));
       pending.push(close(this.vidRecorder));
+      pending.push(close(this.gameRecorder));
 
       Promise.all(pending).then(function () {
         self._buildPlayback();
         self._analyse();
         self._finishUI();
+        requestAnimationFrame(function () { self._revealPlayback(); });
       });
     },
 
@@ -820,6 +967,7 @@
         try { if (this.rawRecorder) this.rawRecorder.stop(); } catch (e) {}
         try { if (this.wetRecorder) this.wetRecorder.stop(); } catch (e) {}
         try { if (this.vidRecorder) this.vidRecorder.stop(); } catch (e) {}
+        try { if (this.gameRecorder) this.gameRecorder.stop(); } catch (e) {}
       }
       this.state = 'idle';
       this._els.progressFill.style.width = '0%';
@@ -836,6 +984,7 @@
 
     _resetResults: function () {
       this._revokeUrls();
+      this._unfitPlayback();
       if (this._els.pbVideo) {
         this._els.pbVideo.pause();
         this._els.pbVideo.removeAttribute('src');
@@ -851,6 +1000,7 @@
       if (this.rawUrl) { URL.revokeObjectURL(this.rawUrl); this.rawUrl = null; }
       if (this.wetUrl) { URL.revokeObjectURL(this.wetUrl); this.wetUrl = null; }
       if (this.vidUrl) { URL.revokeObjectURL(this.vidUrl); this.vidUrl = null; }
+      if (this.gameUrl) { URL.revokeObjectURL(this.gameUrl); this.gameUrl = null; }
     },
 
     // =============================================================
@@ -871,6 +1021,9 @@
         this.vidUrl = URL.createObjectURL(
           new Blob(this.vidChunks, { type: this._pickVideoMime() }));
       }
+      if (this.gameChunks.length) {
+        this.gameUrl = URL.createObjectURL(new Blob(this.gameChunks, { type: this._pickMime() }));
+      }
       if (!this.rawUrl && !this.wetUrl) {
         this._setStatus('Nothing was recorded.', 'bad');
         return;
@@ -887,6 +1040,11 @@
       }
       this._audioRaw.src = this.rawUrl || '';
       this._audioClean.src = this.wetUrl || this.rawUrl || '';
+      // Game audio plays underneath either take, like it does in a clip.
+      if (!this._audioGame) this._audioGame = new Audio();
+      this._audioGame.preload = 'auto';
+      if (this.gameUrl) this._audioGame.src = this.gameUrl;
+      else this._audioGame.removeAttribute('src');
       // Only one is audible; the other tracks position silently so switching
       // lands at the same instant.
       this._playbackSource = this.wetUrl ? 'clean' : 'raw';
@@ -909,11 +1067,62 @@
       e.resultSec.classList.remove('pa-avc-hidden');
     },
 
+    // The take lands below the meters and suppression controls, usually off
+    // screen. Scroll whatever box holds the panel so Playback (video, Play
+    // back, Compare) sits centred in view. If the window is too short for
+    // all of it, shrink the video (still 16:9) until it fits.
+    _revealPlayback: function () {
+      var e = this._els;
+      if (!e || e.resultSec.classList.contains('pa-avc-hidden')) return;
+      var PAD = 12;
+      var box = e.resultSec.parentNode;
+      while (box && box !== document.body && box !== document.documentElement) {
+        var oy = getComputedStyle(box).overflowY;
+        if ((oy === 'auto' || oy === 'scroll') && box.scrollHeight > box.clientHeight + 1) break;
+        box = box.parentNode;
+      }
+      var isPage = !box || box === document.body || box === document.documentElement;
+      var cr = isPage ? { top: 0, bottom: window.innerHeight } : box.getBoundingClientRect();
+      var visTop = Math.max(cr.top, 0) + PAD;
+      var visBottom = Math.min(cr.bottom, window.innerHeight) - PAD;
+      var room = visBottom - visTop;
+      if (room <= 0) return;
+
+      var cmp = e.pbAb.parentNode;
+      var last = cmp.classList.contains('pa-avc-hidden') ? e.playBtn.parentNode : cmp;
+      var span = function () {
+        return { top: e.resultSec.getBoundingClientRect().top, bottom: last.getBoundingClientRect().bottom };
+      };
+      var r = span();
+      if (r.bottom - r.top > room && this.vidUrl) {
+        var vh = e.pbVideoWrap.getBoundingClientRect().height;
+        var fitH = Math.max(120, vh - (r.bottom - r.top - room));
+        e.pbVideoWrap.style.width = Math.floor(fitH * 16 / 9) + 'px';
+        e.pbVideoWrap.style.marginLeft = 'auto';
+        e.pbVideoWrap.style.marginRight = 'auto';
+        r = span();
+      }
+      var delta = (r.bottom - r.top > room)
+        ? r.top - visTop                                    // still too tall: start at its top
+        : (r.top + r.bottom) / 2 - (visTop + visBottom) / 2;
+      if (Math.abs(delta) < 2) return;
+      if (isPage) window.scrollBy({ top: delta, behavior: 'smooth' });
+      else box.scrollBy({ top: delta, behavior: 'smooth' });
+    },
+
+    _unfitPlayback: function () {
+      var w = this._els && this._els.pbVideoWrap;
+      if (!w) return;
+      w.style.width = '';
+      w.style.marginLeft = '';
+      w.style.marginRight = '';
+    },
+
     _applySink: function () {
       var e = this._els;
       var id = e.outSelect ? e.outSelect.value : null;
       if (!id) return;
-      [this._audioRaw, this._audioClean].forEach(function (a) {
+      [this._audioRaw, this._audioClean, this._audioGame].forEach(function (a) {
         if (a && a.setSinkId) { a.setSinkId(id).catch(function () {}); }
       });
     },
@@ -947,6 +1156,7 @@
       if (this.state === 'playing') {
         this._audioRaw.pause();
         this._audioClean.pause();
+        if (this.gameUrl) this._audioGame.pause();
         if (this.vidUrl) e.pbVideo.pause();
         this.state = 'ready';
         e.playBtn.innerHTML = '▶ Play back';
@@ -963,6 +1173,10 @@
         e.pbVideo.currentTime = 0;
         starts.push(e.pbVideo.play().catch(function () {}));
       }
+      if (this.gameUrl) {
+        this._audioGame.currentTime = 0;
+        starts.push(this._audioGame.play().catch(function () {}));
+      }
       Promise.all(starts).then(function () {
         self.state = 'playing';
         e.playBtn.innerHTML = '⏸ Pause';
@@ -972,6 +1186,7 @@
     _onPlaybackEnd: function () {
       if (this.state !== 'playing') return;
       if (this.vidUrl) this._els.pbVideo.pause();
+      if (this.gameUrl && this._audioGame) this._audioGame.pause();
       this.state = 'ready';
       this._els.playBtn.innerHTML = '▶ Play back';
     },
@@ -1000,8 +1215,20 @@
         reductionDb: reduction,
         spokeAtAll: a.speechFrames > a.frames * 0.05,
         fps: this._measuredFps || 0,
-        hasVideo: !!this.videoStream
+        hasVideo: !!this.videoStream,
+        // Game audio (null = the host didn't ask for it)
+        gameTested: !!this.desktopAudioProvider,
+        gameOpen: !!this.gameStream,
+        gameAvgDb: null,
+        gamePeakDb: null,
+        gameHeard: false
       };
+      var g = this._gameAcc;
+      if (g && g.frames) {
+        this.analysis.gameAvgDb = toDb(g.sum / g.frames);
+        this.analysis.gamePeakDb = g.peak;
+        this.analysis.gameHeard = g.heardFrames > g.frames * 0.05;
+      }
       this._renderVerdict();
       if (this.onComplete) this.onComplete(this.analysis);
     },
@@ -1024,6 +1251,7 @@
       if (an.snrDb != null) e.stats.appendChild(stat('SNR', fmtDb(an.snrDb)));
       if (this.ns) e.stats.appendChild(stat('Removed', fmtDb(an.reductionDb)));
       if (an.hasVideo) e.stats.appendChild(stat('Video', Math.round(an.fps) + ' fps'));
+      if (an.gameAvgDb != null) e.stats.appendChild(stat('Game audio', fmtDb(an.gameAvgDb)));
 
       var items = [];
       var add = function (level, text, detail) {
@@ -1095,6 +1323,26 @@
         add('ok', 'Video source is live', Math.round(an.fps) + ' fps.');
       }
 
+      if (an.gameTested) {
+        var device = (e.gameSrc && e.gameSrc.textContent) || 'your Windows default output';
+        if (!an.gameOpen) {
+          add('bad', 'Game audio could not be captured',
+            (this._gameError ? this._gameError + '. ' : '') +
+            'Highlights will save without game sound. Restart Peak-Abu and try again.');
+        } else if (!an.gameHeard) {
+          add('warn', 'No game audio heard',
+            'Peak-Abu records whatever plays on ' + device + ', your Windows default output. ' +
+            'Play the game (or any sound) during the test. If your game sound goes to a headset or ' +
+            'audio software (Sonar, GameDAC, Voicemeeter), make that the default output in Windows sound settings.');
+        } else if (an.gamePeakDb > -1) {
+          add('warn', 'Game audio is clipping',
+            'Peaks hit ' + fmtDb(an.gamePeakDb) + '. Turn the game or Windows volume down a little.');
+        } else {
+          add('ok', 'Game audio is coming through',
+            'From ' + device + ', averaging ' + fmtDb(an.gameAvgDb) + '.');
+        }
+      }
+
       e.verdict.innerHTML = '';
       items.forEach(function (it) {
         var li = el('li');
@@ -1147,9 +1395,11 @@
       this.cancel();
       this._stopMic();
       this._stopVideo();
+      this._stopGame();
       this._revokeUrls();
       if (this._audioRaw) { this._audioRaw.pause(); this._audioRaw = null; }
       if (this._audioClean) { this._audioClean.pause(); this._audioClean = null; }
+      if (this._audioGame) { this._audioGame.pause(); this._audioGame = null; }
       if (this._els.pbVideo) { this._els.pbVideo.pause(); }
       if (this.container) this.container.innerHTML = '';
     }

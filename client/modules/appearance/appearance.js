@@ -416,11 +416,18 @@
     /** Called by the host app whenever the account's tier is known/changes. */
     setTier: function (tier) {
       this.currentTier = tier || 't1';
+      var s = this.state;
       // A free-tier account sitting on a locked theme (e.g. a subscription
       // that just lapsed) falls back to Peak Dark rather than staying on a
-      // theme it can no longer pick from the list.
-      if (this.currentTier === 't1' && this.isThemeLocked(this.state.themeId)) {
+      // theme it can no longer pick from the list. The pick itself is kept
+      // (lockedTheme), so it comes back when the tier does instead of being
+      // overwritten for good.
+      if (this.currentTier === 't1' && this.isThemeLocked(s.themeId)) {
+        s.lockedTheme = { themeId: s.themeId, theme: s.theme, tokens: s.tokens, bgColor: s.bgColor };
         this.applyTheme('peak-dark').then(function () {});
+      } else if (this.currentTier !== 't1' && s.lockedTheme && s.themeId === 'peak-dark') {
+        var t = s.lockedTheme;
+        this.set({ themeId: t.themeId, theme: t.theme, tokens: t.tokens || {}, bgColor: t.bgColor || null, lockedTheme: null });
       }
       if (this._panelContainer) this.renderPanel(this._panelContainer);
     },

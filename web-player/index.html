@@ -1777,10 +1777,7 @@
         if (u.isLocal && u.originalVideoSrc) {
           u.videoSrc = u.originalVideoSrc;
           u.isLocal = false;
-          if (u.loaded && u.element) {
-            u.element.src = '';
-            u.loaded = false;
-          }
+          unloadClip(u);
         }
       });
 
@@ -1825,10 +1822,7 @@
         u.isLocal = true;
 
         // If already loaded with CDN source, unload so next play uses local
-        if (u.loaded && u.element) {
-          u.element.src = '';
-          u.loaded = false;
-        }
+        unloadClip(u);
 
         matched++;
       }
@@ -2222,6 +2216,25 @@
     // HIGHLIGHT SWITCHING
     // ========================
 
+    // Fully detach a clip's video so the browser frees its decoder and stops
+    // downloading it. A <video> that leaves the grid keeps its src, so every
+    // highlight opened used to leave another 1440p60 player buffering in the
+    // background; a few highlights in, the visible clip was fighting all of
+    // them for bandwidth and GPU decode and started stuttering/freezing.
+    // removeAttribute + load() rather than src = '': an empty src resolves to
+    // the page URL and fires a bogus media request + error.
+    function unloadClip(u) {
+      const el = u && u.element;
+      if (!el) return;
+      u.loadToken = (u.loadToken || 0) + 1;   // cancels a loadPOV still waiting on it
+      u.loaded = false;
+      if (!el.getAttribute('src')) return;
+      el.pause();
+      el.playbackRate = 1.0;
+      el.removeAttribute('src');
+      el.load();
+    }
+
     function switchHighlight(index) {
       if (index < 0 || index >= highlights.length) return;
       pauseAll();
@@ -2229,6 +2242,14 @@
       currentHighlightIndex = index;
       videos = buildVideosForHighlight(index);
       focusedIndex = -1;
+
+      // Only this highlight's POVs stay loaded. buildVideosForHighlight hands
+      // back the same objects that live in allUploads (placeholders have no
+      // element), so the keep-set never unloads a clip being opened. Tile
+      // clicks still queued from the old highlight point at old indices.
+      const keep = new Set(videos);
+      allUploads.forEach(u => { if (!keep.has(u)) unloadClip(u); });
+      povLoadQueue = [];
 
       calculateOffsets();
 
@@ -2700,7 +2721,10 @@
             headers: { 'Authorization': 'Bearer ' + myAuthToken }
           });
           if (!res.ok) failed++;
-          else allUploads = allUploads.filter(u => u.uploadId !== id);
+          else {
+            unloadClip(allUploads.find(u => u.uploadId === id));
+            allUploads = allUploads.filter(u => u.uploadId !== id);
+          }
         } catch (e) { failed++; }
       }
 
@@ -2940,9 +2964,8 @@
           } else if (upload.videoUrl && !existing.isLocal && existing.videoSrc !== upload.videoUrl) {
             existing.videoSrc = upload.videoUrl;
             if (upload.thumbnailUrl) existing.thumbnailSrc = upload.thumbnailUrl;
-            if (existing.element && existing.element.src && existing.element.src !== upload.videoUrl) {
-              existing.element.src = '';
-              existing.loaded = false;
+            if (existing.element && existing.element.getAttribute('src') && existing.element.src !== upload.videoUrl) {
+              unloadClip(existing);
             }
             console.log('Updated to CDN URL:', upload.id);
           }
@@ -3068,6 +3091,7 @@
       const v = videos[index];
       if (!v || v.missing || v.processing || v.loaded) return;
       v.loaded = true;
+      const token = v.loadToken = (v.loadToken || 0) + 1;
 
       const container = document.getElementById('pov-container-' + index);
       if (container) {
@@ -3083,11 +3107,28 @@
       // loadedmetadata only confirms dimensions/duration are known — a frame
       // may not have decoded yet, which is the black-screen window. loadeddata
       // guarantees HAVE_CURRENT_DATA (readyState 2): a real frame exists.
+      // Also let go when unloadClip detaches it mid-load (switching away
+      // before it arrived): neither loadeddata nor error ever fires then, and
+      // a load waiting forever stalled the tile-click queue for good.
       await new Promise(resolve => {
-        if (v.element.readyState >= 2) { resolve(); return; }
-        v.element.addEventListener('loadeddata', resolve, { once: true });
-        v.element.addEventListener('error', resolve, { once: true });
+        const el = v.element;
+        if (el.readyState >= 2) { resolve(); return; }
+        const done = () => {
+          el.removeEventListener('loadeddata', done);
+          el.removeEventListener('error', done);
+          el.removeEventListener('emptied', onEmptied);
+          resolve();
+        };
+        const onEmptied = () => { if (v.loadToken !== token) done(); };
+        el.addEventListener('loadeddata', done);
+        el.addEventListener('error', done);
+        el.addEventListener('emptied', onEmptied);
       });
+      if (v.loadToken !== token) return;
+      // The highlight may have changed while this loaded; the clip can sit at
+      // a different tile (or none) now.
+      index = videos.indexOf(v);
+      if (index < 0) return;
 
       if (isFirst) {
         v.isMuted = false;
@@ -3111,6 +3152,9 @@
             // browser may fire nothing at all — don't hang forever.
             setTimeout(finish, 400);
           });
+          if (v.loadToken !== token) return;
+          index = videos.indexOf(v);
+          if (index < 0) return;
         }
         if (isPlaying) {
           v.element.play().catch(() => {});
@@ -3765,7 +3809,38 @@
       startProgressUpdate();
     }
 
+    // BUFFER HOLD. With 2+ POVs playing, one that ran out of downloaded
+    // video fell behind and the drift corrector hard-seeked it every 250 ms.
+    // Each seek restarted its buffering, so it never caught up and the whole
+    // grid stuttered (and if the clock POV stalled, every OTHER POV got
+    // yanked back instead). Now the group pauses while it fills, shows the
+    // loader on the starved tile, and resumes together.
+    const HOLD_AFTER_MS = 400;     // starved this long before the group waits
+    const HOLD_MAX_MS = 8000;      // give up waiting after this…
+    const HOLD_COOLDOWN_MS = 8000; // …and don't wait again for this long
+    let bufferHold = null;         // { since, paused: [el], tiles: [idx] } while held
+    let bufferStarvedSince = 0;
+    let bufferHoldCooldownUntil = 0;
+
+    function endBufferHold(resume) {
+      if (!bufferHold) return;
+      bufferHold.tiles.forEach(i => hidePOVLoader(i));
+      if (resume) bufferHold.paused.forEach(el => { el.play().catch(() => {}); });
+      bufferHold = null;
+      bufferStarvedSince = 0;
+    }
+
+    // Seconds of video downloaded past the playhead.
+    function bufferedAhead(el) {
+      const t = el.currentTime;
+      for (let i = 0; i < el.buffered.length; i++) {
+        if (el.buffered.start(i) <= t + 0.05 && el.buffered.end(i) > t) return el.buffered.end(i) - t;
+      }
+      return 0;
+    }
+
     function pauseAll() {
+      endBufferHold(false);
       videos.forEach(v => {
         if (!v.missing && !v.processing && v.loaded) {
           v.element.pause();
@@ -3775,6 +3850,65 @@
       isPlaying = false;
       document.getElementById('playPauseBtn').textContent = '\u25B6';
       if (animFrameId) cancelAnimationFrame(animFrameId);
+    }
+
+    // Runs on the drift-check cadence. True while the group is held (the
+    // caller then skips drift correction, which would restart the videos).
+    function checkBufferHold(loaded, masterTime, ts) {
+      // POVs that should be playing right now: inside their window, not done.
+      const active = loaded.filter(v => {
+        const el = v.element;
+        if (el.ended || el.error) return false;
+        const t = masterTime - (v.offset || 0);
+        return t >= 0 && !(t > el.duration);
+      });
+
+      if (bufferHold) {
+        const waiting = active.filter(v => {
+          const el = v.element;
+          const left = (el.duration || 0) - el.currentTime;
+          return el.readyState < 4 && bufferedAhead(el) < Math.min(2, Math.max(0.1, left - 0.1));
+        });
+        const timedOut = ts - bufferHold.since > HOLD_MAX_MS;
+        if (!waiting.length || active.length < 2 || timedOut) {
+          if (timedOut) bufferHoldCooldownUntil = ts + HOLD_COOLDOWN_MS;
+          endBufferHold(true);
+          return false;
+        }
+        // Anything restarted meanwhile (a timeline seek, a tile click) waits too.
+        active.forEach(v => {
+          if (!v.element.paused) { v.element.pause(); bufferHold.paused.push(v.element); }
+        });
+        waiting.forEach(v => {
+          const i = videos.indexOf(v);
+          if (i >= 0) { showPOVLoader(i); if (!bufferHold.tiles.includes(i)) bufferHold.tiles.push(i); }
+        });
+        return true;
+      }
+
+      // A single POV buffers on its own; the browser already handles that.
+      if (active.length < 2 || ts < bufferHoldCooldownUntil) { bufferStarvedSince = 0; return false; }
+      const starved = active.filter(v => v.element.readyState < 3);
+      if (!starved.length) { bufferStarvedSince = 0; return false; }
+      if (!bufferStarvedSince) { bufferStarvedSince = ts; return false; }
+      if (ts - bufferStarvedSince < HOLD_AFTER_MS) return false;
+
+      bufferHold = { since: ts, paused: [], tiles: [] };
+      // Line everyone up on the POV furthest behind (the one that ran dry).
+      // The others just played that stretch, so seeking them back lands in
+      // video they already have; they all resume from the same moment.
+      const behind = Math.min(...active.map(v => v.element.currentTime + (v.offset || 0)));
+      active.forEach(v => {
+        if (!v.element.paused) { v.element.pause(); bufferHold.paused.push(v.element); }
+        v.element.playbackRate = 1.0;
+        const t = behind - (v.offset || 0);
+        if (t >= 0 && Math.abs(v.element.currentTime - t) > 0.05) v.element.currentTime = t;
+      });
+      starved.forEach(v => {
+        const i = videos.indexOf(v);
+        if (i >= 0) { showPOVLoader(i); bufferHold.tiles.push(i); }
+      });
+      return true;
     }
 
     function startProgressUpdate() {
@@ -3807,6 +3941,10 @@
         // frame would stutter). Keep every POV locked to master time.
         if (!lastResyncCheck || ts - lastResyncCheck > 250) {
           lastResyncCheck = ts;
+          if (checkBufferHold(loaded, masterTime, ts)) {
+            animFrameId = requestAnimationFrame(update);
+            return;
+          }
           videos.forEach(v => {
             if (v.missing || v.processing || !v.loaded || v === clock) return;
             if (v.element.ended || v.element.seeking) return;
@@ -3826,6 +3964,9 @@
             if (v.element.paused && isPlaying && !v.element.ended) {
               v.element.play().catch(() => {});
             }
+            // Still buffering: seeking it now would throw away what it's
+            // fetching and start over. The buffer hold waits for it instead.
+            if (v.element.readyState < 3) return;
             const drift = v.element.currentTime - target;
             const absDrift = Math.abs(drift);
             if (absDrift > HARD_RESYNC) {
@@ -3842,7 +3983,8 @@
         }
 
         const allEnded = videos.filter(v => !v.missing && !v.processing && v.loaded).every(v => v.element.ended || v.element.paused);
-        if (allEnded && isPlaying) { pauseAll(); return; }
+        // A buffer hold pauses everyone on purpose; that isn't the end.
+        if (allEnded && isPlaying && !bufferHold) { pauseAll(); return; }
 
         animFrameId = requestAnimationFrame(update);
       }

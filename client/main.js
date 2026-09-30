@@ -102,6 +102,7 @@ app.on('open-url', (event, url) => {
 const DEFAULT_BUFFER_DIR = path.join(os.tmpdir(), 'apex-highlights-buffer');
 const DEFAULT_CLIPS_DIR = path.join(app.getPath('videos'), 'PeakAbu');
 const USER_PREFS_PATH = path.join(app.getPath('userData'), 'user-preferences.json');
+const USER_PREFS_BACKUP = USER_PREFS_PATH + '.bak';   // last good copy
 const CHUNK_SECONDS = 10;
 
 // ================================
@@ -574,17 +575,38 @@ let authToken = null;
 let useCpuEncoder = false;
 let currentMonitor = null;
 let videoStartTime = null;
-let audioFirstChunkTime = null;
 let bufferReadyWatcher = null;
 let recordingStartTime = null;
 let recordingSessionTag = Date.now();
 let lastHighlightBoundary = 0;
 let autoCaptureLocked = false; // true while a server-side auto-capture ACTIVE window is open — suspends chunk pruning so the whole window survives to save time
 
-let hlAudioPath = null;
 let hlMicPath = null;
-let hlAudioChunkCount = 0;
 let hlMicChunkCount = 0;
+
+// ================================
+// GAME AUDIO SEGMENTS
+// Game audio is a loopback of Windows' default output device. When that
+// device changes mid-recording (a headset connects, audio software switches
+// outputs) the old capture keeps listening to a device that went quiet —
+// clips lost their game audio until the next Start (9-28, Fortnite). The
+// renderer now opens a fresh capture when that happens, and each capture
+// writes its own file ("segment"): appending a second recorder's stream to
+// the first file would corrupt it. A save takes the segment that overlaps
+// its window most.
+// ================================
+let hlAudioSegs = [];   // { id, path, startedAt (local ms), endedAt, chunks }
+
+function pickAudioSegment(startLocal, endLocal) {
+  let best = null;
+  let bestOverlap = -Infinity;
+  for (const s of hlAudioSegs) {
+    if (!s.chunks || !fs.existsSync(s.path)) continue;
+    const overlap = Math.min(endLocal, s.endedAt || Infinity) - Math.max(startLocal, s.startedAt);
+    if (overlap > bestOverlap) { best = s; bestOverlap = overlap; }
+  }
+  return best;
+}
 
 // ================================
 // AUTO-CAPTURE PEAK LOG — rolling log of audio-peak events streamed from
@@ -602,7 +624,8 @@ let fullSessionMode = false;
 let fullSessionDir = null;
 let sessionArchiveActive = false;
 let diskWatchTimer = null;
-let fullSessionAudioChunks = [];
+let fullSessionAudioChunks = [];   // one file per game audio segment (see GAME AUDIO SEGMENTS)
+let fullSessionAudioStarts = [];   // local start time of each, same order
 let fullSessionMicChunks = [];
 let fullSessionAudioIndex = 0;
 
@@ -1248,14 +1271,37 @@ function ensureFolders() {
 // new value in memory silently reverts that value back to the old one
 // right before it gets saved — this was the root cause of settings (and
 // the hotkey) not persisting.
+//
+// Every save is read-modify-write, so a read that comes back empty would
+// rewrite the file with ONLY the one key being saved and silently drop every
+// other setting (theme, readability, hotkeys, login). On Windows the file
+// can be briefly locked right after a write (antivirus scanning it), so a
+// failed read is retried, then served from the last good copy, before
+// falling back to empty.
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
 function readPrefsRaw() {
-  try {
-    if (fs.existsSync(USER_PREFS_PATH)) {
-      return JSON.parse(fs.readFileSync(USER_PREFS_PATH, 'utf8'));
+  let lastErr = null;
+  if (fs.existsSync(USER_PREFS_PATH)) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        return JSON.parse(fs.readFileSync(USER_PREFS_PATH, 'utf8'));
+      } catch (err) {
+        lastErr = err;
+        sleepSync(25);
+      }
     }
-  } catch (err) {
-    console.log('Could not read user preferences:', err.message);
   }
+  if (fs.existsSync(USER_PREFS_BACKUP)) {
+    try {
+      const prefs = JSON.parse(fs.readFileSync(USER_PREFS_BACKUP, 'utf8'));
+      console.log('User preferences unreadable (' + (lastErr ? lastErr.message : 'missing') + ') — using the backup copy');
+      return prefs;
+    } catch (err) { /* backup unreadable too */ }
+  }
+  if (lastErr) console.log('Could not read user preferences:', lastErr.message);
   return {};
 }
 
@@ -1348,7 +1394,26 @@ function saveUserPreferences(prefs) {
   try {
     const tmp = USER_PREFS_PATH + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify(prefs, null, 2));
-    fs.renameSync(tmp, USER_PREFS_PATH);   // rename is atomic on the same volume
+    // Keep the outgoing file as the last good copy (readPrefsRaw falls back to it).
+    if (fs.existsSync(USER_PREFS_PATH)) {
+      try { fs.copyFileSync(USER_PREFS_PATH, USER_PREFS_BACKUP); } catch (e) {}
+    }
+    // rename is atomic on the same volume. Windows refuses it (EPERM/EBUSY)
+    // while another process briefly holds the old file, which used to drop
+    // the save outright — retry, then write in place as a last resort.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        fs.renameSync(tmp, USER_PREFS_PATH);
+        break;
+      } catch (err) {
+        if (!/^(EPERM|EBUSY|EACCES)$/.test(err.code) || attempt >= 8) {
+          fs.writeFileSync(USER_PREFS_PATH, fs.readFileSync(tmp));
+          try { fs.unlinkSync(tmp); } catch (e) {}
+          break;
+        }
+        sleepSync(30);
+      }
+    }
     console.log('User preferences saved');
   } catch (err) {
     console.log('Could not save user preferences:', err.message);
@@ -2208,7 +2273,7 @@ function startRecording(monitor) {
   lastDropCount = 0;
   lastDupCount = 0;
   lowSpeedStreak = 0;
-  // NOTE: audioFirstChunkTime / micFirstChunkTime are NOT reset here.
+  // NOTE: game audio segments / micFirstChunkTime are NOT reset here.
   // startRecording also runs on mid-session crash restarts, where the
   // renderer's audio recorders keep running and never re-send their start
   // timestamps — nulling them here made every post-restart save extract
@@ -3541,6 +3606,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   let alignedOffsetSec, headExtraSec, realStart, copyDurationSec, realDurationMs;
   let clipSpanSec, audioSkipSec, audioDelaySec, micSkipSec, micDelaySec, metadata;
   const captureLagMs = exactTiming ? Math.round(firstChunk.birth - firstChunk.exact.start) : null;
+  const deskAudio = pickAudioSegment(windowStartLocal, windowEndLocal);   // see GAME AUDIO SEGMENTS
   function setTrimGeometry(cutSec, mediaStartSec) {
     alignedOffsetSec = cutSec;
     headExtraSec = (trimOffsetSec + mediaStartSec) - cutSec;
@@ -3550,7 +3616,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
 
     // Audio offsets key off the TRIMMED video start (realStart).
     clipSpanSec = copyDurationSec + 1.0;
-    const audioDeltaSec = audioFirstChunkTime ? (realStart - audioFirstChunkTime) / 1000 : 0;
+    const audioDeltaSec = deskAudio ? (realStart - deskAudio.startedAt) / 1000 : 0;
     audioSkipSec = Math.max(0, audioDeltaSec);
     audioDelaySec = Math.max(0, -audioDeltaSec);
     const micDeltaSec = micFirstChunkTime ? (realStart - micFirstChunkTime) / 1000 : 0;
@@ -3596,11 +3662,11 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   // tell if it's genuinely re-covering old ground. Chunks are NOT consumed.
   lastHighlightBoundary = effEnd;
 
-  const hasAudio = !!(hlAudioPath && hlAudioChunkCount > 0 && fs.existsSync(hlAudioPath));
+  const hasAudio = !!deskAudio;
   const hasMic = !!(hlMicPath && hlMicChunkCount > 0 && !micMuted && fs.existsSync(hlMicPath));
   const saveDiag = `Saving highlight: ${videoFiles.length} chunk(s) covering window, ` +
     `trim ss=${trimOffsetSec.toFixed(3)}s t=${trimDurationSec.toFixed(3)}s ` +
-    `(requested ${(durationMs / 1000).toFixed(1)}s), audio=${hasAudio} (${hlAudioChunkCount}), mic=${hasMic} (${hlMicChunkCount})`;
+    `(requested ${(durationMs / 1000).toFixed(1)}s), audio=${hasAudio} (${deskAudio ? `seg ${deskAudio.id}, ${deskAudio.chunks}` : 0}), mic=${hasMic} (${hlMicChunkCount})`;
   console.log(saveDiag);
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('save-diagnostic', saveDiag);
@@ -3732,7 +3798,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
       const repairAudio = spawnFFmpegLow([
         '-hide_banner', '-nostats', '-loglevel', 'error',
         '-fflags', '+genpts+igndts', '-err_detect', 'ignore_err',
-        '-i', hlAudioPath,
+        '-i', deskAudio.path,
         '-af', 'aresample=async=1000:first_pts=0',
         '-ss', audioSkipSec.toFixed(3), '-t', clipSpanSec.toFixed(3),
         '-c:a', 'aac', '-b:a', '192k', '-y', tempAudioPath
@@ -3803,7 +3869,8 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
 }
 
 function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVideoStartMs) {
-  const hasAudio = !!(hlAudioPath && hlAudioChunkCount > 0 && fs.existsSync(hlAudioPath));
+  const deskAudio = pickAudioSegment(clipVideoStartMs, clipVideoStartMs + durationMs);   // see GAME AUDIO SEGMENTS
+  const hasAudio = !!deskAudio;
   const hasMic = !!(hlMicPath && hlMicChunkCount > 0 && !micMuted && fs.existsSync(hlMicPath));
 
   function finish(finalPath) {
@@ -3821,7 +3888,7 @@ function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVi
 
   const durationSec = durationMs / 1000;
   const clipSpanSec = durationSec + 2;
-  const audioDeltaSec = audioFirstChunkTime ? (clipVideoStartMs - audioFirstChunkTime) / 1000 : 0;
+  const audioDeltaSec = (clipVideoStartMs - deskAudio.startedAt) / 1000;
   const audioSkipSec = Math.max(0, audioDeltaSec);
   const audioDelaySec = Math.max(0, -audioDeltaSec);
   const micDeltaSec = micFirstChunkTime ? (clipVideoStartMs - micFirstChunkTime) / 1000 : 0;
@@ -3833,11 +3900,11 @@ function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVi
   const tempMicPath = hasMic ? path.join(BUFFER_DIR, `wgc_temp_mic_${tempId}.m4a`) : null;
   const tempMerged = path.join(BUFFER_DIR, `wgc_temp_merged_${tempId}.mp4`);
 
-  console.log(`WGC audio sync: skip=${audioSkipSec.toFixed(3)}s delay=${audioDelaySec.toFixed(3)}s span=${clipSpanSec.toFixed(1)}s`);
+  console.log(`WGC audio sync: seg ${deskAudio.id}, skip=${audioSkipSec.toFixed(3)}s delay=${audioDelaySec.toFixed(3)}s span=${clipSpanSec.toFixed(1)}s`);
 
   const repairAudio = spawn(getFFmpegPath(), [
     '-fflags', '+genpts+igndts', '-err_detect', 'ignore_err',
-    '-i', hlAudioPath,
+    '-i', deskAudio.path,
     '-af', 'aresample=async=1000:first_pts=0',
     '-ss', audioSkipSec.toFixed(3), '-t', clipSpanSec.toFixed(3),
     '-c:a', 'aac', '-b:a', '192k', '-y', tempAudioPath
@@ -5621,11 +5688,13 @@ function createWindow() {
     }
 
     fullSessionAudioChunks = [];
+    fullSessionAudioStarts = [];
     fullSessionMicChunks = [];
     fullSessionAudioIndex = 0;
-    ['fs_audio_full.webm', 'fs_mic_full.webm'].forEach(f => {
-      try { fs.unlinkSync(path.join(BUFFER_DIR, f)); } catch(e) {}
-    });
+    try {
+      fs.readdirSync(BUFFER_DIR).filter(f => f.startsWith('fs_audio_full') || f === 'fs_mic_full.webm')
+        .forEach(f => { try { fs.unlinkSync(path.join(BUFFER_DIR, f)); } catch(e) {} });
+    } catch(e) {}
 
     try {
       const stale = fs.readdirSync(BUFFER_DIR).filter(f =>
@@ -5640,11 +5709,9 @@ function createWindow() {
     transientCaptureRetries = 0;
     recordingSessionTag = Date.now();
 
-    hlAudioPath = path.join(BUFFER_DIR, `hl_audio_${recordingSessionTag}.webm`);
+    hlAudioSegs = [];     // the renderer opens segment files via 'audio-recording-started'
     hlMicPath = path.join(BUFFER_DIR, `hl_mic_${recordingSessionTag}.webm`);
-    hlAudioChunkCount = 0;
     hlMicChunkCount = 0;
-    audioFirstChunkTime = null;
     micFirstChunkTime = null;
     peakLogBuffer = [];
 
@@ -5695,9 +5762,8 @@ function createWindow() {
     if (waiting) console.log(`Recording stopped with ${waiting} save(s) still queued — finishing them first`);
     onSaveQueueIdle(() => {
       if (recordingSessionTag !== stoppedTag) return;
-      hlAudioPath = null;
+      hlAudioSegs = [];
       hlMicPath = null;
-      hlAudioChunkCount = 0;
       hlMicChunkCount = 0;
       try {
         const stale = fs.readdirSync(BUFFER_DIR).filter(f =>
@@ -5832,25 +5898,44 @@ function createWindow() {
     console.log(`Session clip length: ${sessionClipDurationMs ? sessionClipDurationMs / 1000 + 's' : 'none'} — buffer ${effectiveMaxChunks() * CHUNK_SECONDS}s`);
   });
 
-  ipcMain.on('audio-recording-started', (event, wallTime) => {
-    audioFirstChunkTime = wallTime;
+  // A new game audio capture = a new segment file (see GAME AUDIO SEGMENTS).
+  // segId is the renderer's capture number; a renderer that sends none is
+  // treated as one capture.
+  ipcMain.on('audio-recording-started', (event, wallTime, segId) => {
+    const id = (typeof segId === 'number') ? segId : 1;
+    if (hlAudioSegs.some(s => s.id === id)) return;
+    const prev = hlAudioSegs[hlAudioSegs.length - 1];
+    if (prev && !prev.endedAt) prev.endedAt = wallTime;
+    hlAudioSegs.push({
+      id, startedAt: wallTime, endedAt: null, chunks: 0,
+      path: path.join(BUFFER_DIR, `hl_audio_${recordingSessionTag}_${id}.webm`)
+    });
+    if (hlAudioSegs.length > 1) console.log(`Game audio: new capture (segment ${id})`);
   });
 
-  ipcMain.on('save-audio-chunk', (event, buffer) => {
+  ipcMain.on('save-audio-chunk', (event, buffer, segId) => {
     const buf = Buffer.from(buffer);
+    // The old capture's last chunk arrives after the new one started; it
+    // still goes to its own file.
+    const seg = (typeof segId === 'number')
+      ? hlAudioSegs.find(s => s.id === segId)
+      : hlAudioSegs[hlAudioSegs.length - 1];
 
-    if (hlAudioPath) {
+    if (seg) {
       try {
-        fs.appendFileSync(hlAudioPath, buf);
-        hlAudioChunkCount++;
+        fs.appendFileSync(seg.path, buf);
+        seg.chunks++;
       } catch (e) { console.log('Highlight audio append failed:', e.message); }
     }
 
-    if (fullSessionMode) {
-      const audioPath = path.join(BUFFER_DIR, 'fs_audio_full.webm');
+    if (fullSessionMode && seg) {
+      const audioPath = path.join(BUFFER_DIR, `fs_audio_full_${seg.id}.webm`);
       try {
         fs.appendFileSync(audioPath, buf);
-        if (fullSessionAudioChunks.length === 0) fullSessionAudioChunks.push(audioPath);
+        if (!fullSessionAudioChunks.includes(audioPath)) {
+          fullSessionAudioChunks.push(audioPath);
+          fullSessionAudioStarts.push(seg.startedAt);
+        }
       } catch(e) { console.log('Full session audio append failed:', e.message); }
     }
   });
@@ -5918,12 +6003,6 @@ function createWindow() {
     squadPending = { count, names: count > 0 ? names : [] };
   });
 
-  let audioOutputDeviceId = 'default';
-  ipcMain.on('update-audio-output', (event, { deviceId }) => {
-    audioOutputDeviceId = deviceId || 'default';
-    console.log(`Audio output capture device set to: ${audioOutputDeviceId}`);
-  });
-
   ipcMain.on('get-monitors', (event) => {
     const screen = require('electron').screen;
     const displays = screen.getAllDisplays();
@@ -5949,8 +6028,11 @@ function createWindow() {
 
   ipcMain.handle('get-full-session-mode', () => fullSessionMode);
 
+  // readPrefsRaw, not loadUserPreferences: the renderer-owned keys saved
+  // here aren't derived globals, and loadUserPreferences would re-apply
+  // every OTHER setting from disk mid-session (see readPrefsRaw).
   ipcMain.handle('set-user-pref', (event, key, value) => {
-    const prefs = loadUserPreferences();
+    const prefs = readPrefsRaw();
     prefs[key] = value;
     saveUserPreferences(prefs);
     if (key === 'gamepadButton') {
@@ -5964,7 +6046,7 @@ function createWindow() {
   });
 
   ipcMain.handle('get-user-pref', (event, key) => {
-    const prefs = loadUserPreferences();
+    const prefs = readPrefsRaw();
     return prefs[key] !== undefined ? prefs[key] : null;
   });
 
@@ -6641,16 +6723,28 @@ function archiveFullSession() {
 
     console.log(`Archive: concatenated video duration = ${videoDurationSec.toFixed(3)}s`);
 
-    const audioSrc = fullSessionAudioChunks[0];
     const tempAudioReenc = path.join(BUFFER_DIR, `fs_temp_audio_${Date.now()}.m4a`);
-    const concatAudio = spawn(getFFmpegPath(), [
-      '-fflags', '+genpts+igndts',
-      '-err_detect', 'ignore_err',
-      '-i', audioSrc,
-      '-af', 'aresample=async=1000:first_pts=0',
-      ...(videoDurationSec > 0 ? ['-t', videoDurationSec.toFixed(3)] : []),
-      '-c:a', 'aac', '-b:a', '192k', '-y', tempAudioReenc
-    ], { windowsHide: true });
+    // One game audio file per capture (see GAME AUDIO SEGMENTS). A single one
+    // is re-encoded as before; after a reconnect, each later one is delayed
+    // to where it started and mixed in (they don't overlap).
+    const audioArgs = ['-fflags', '+genpts+igndts', '-err_detect', 'ignore_err'];
+    fullSessionAudioChunks.forEach(p => audioArgs.push('-i', p));
+    if (fullSessionAudioChunks.length > 1) {
+      const t0 = fullSessionAudioStarts[0] || 0;
+      const legs = fullSessionAudioChunks.map((p, i) => {
+        const delayMs = Math.max(0, Math.round((fullSessionAudioStarts[i] || t0) - t0));
+        return `[${i}:a]aresample=async=1000:first_pts=0,adelay=${delayMs}:all=1[s${i}]`;
+      });
+      const mixIn = fullSessionAudioChunks.map((p, i) => `[s${i}]`).join('');
+      audioArgs.push('-filter_complex',
+        `${legs.join(';')};${mixIn}amix=inputs=${fullSessionAudioChunks.length}:normalize=0:duration=longest[aout]`,
+        '-map', '[aout]');
+    } else {
+      audioArgs.push('-af', 'aresample=async=1000:first_pts=0');
+    }
+    audioArgs.push(...(videoDurationSec > 0 ? ['-t', videoDurationSec.toFixed(3)] : []),
+      '-c:a', 'aac', '-b:a', '192k', '-y', tempAudioReenc);
+    const concatAudio = spawn(getFFmpegPath(), audioArgs, { windowsHide: true });
 
     let audioErr = '';
     concatAudio.stderr.on('data', d => { audioErr += d.toString(); });
@@ -6750,6 +6844,7 @@ function archiveFullSession() {
     if (micFiles) micFiles.forEach(p => { try { fs.unlinkSync(p); } catch(e) {} });
 
     fullSessionAudioChunks = [];
+    fullSessionAudioStarts = [];
     fullSessionMicChunks = [];
 
     if (mainWindow && !mainWindow.isDestroyed()) {

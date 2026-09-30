@@ -206,9 +206,9 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 const PRIVACY_POLICY_VERSION = '2026-09-07';
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.87',
-  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.87.exe',
-    releaseNotes: "Stars, chapters and game folders. Star a highlight with the new star key (set it with ★ next to your highlight key): it stars the highlight you just saved, or saves this moment starred if nothing was saved. In the web player, click ☆ on a highlight to star it for the whole squad, and use ★ Starred only to see just those. Long sessions are split into chapters at breaks longer than 4 minutes. New clips save into a folder per game and session, and Settings → Organize clips sorts your older clips the same way (with a preview first, and Undo). Also fixed: your highlight key no longer blocks that key in other apps — with Shift+R you can type a capital R again (it only saves while a game has focus, not while you're typing in Discord or a browser)."
+  version: '0.1.88',
+  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.88.exe',
+    releaseNotes: "Fixes game audio going missing partway through a recording: when Windows switched your default audio output (a headset connecting, audio software changing devices), Peak-Abu kept listening to the old device until you restarted. It now reconnects automatically and says so in the log. The microphone list no longer shows each mic twice or the extra numbers on the end, and the microphone menu has small live icons showing where your mic and game audio are coming from. Test Audio & Video is now 8 seconds instead of 15, scrolls straight to your playback when it finishes, and records and checks your game audio too, so you can confirm it works before a session. The session player no longer starts stuttering or freezing after the first few highlights, and when one player's clip is still downloading, everyone pauses together instead of skipping. Your theme, readability and other settings are now much harder to lose: a save that Windows briefly blocks is retried instead of dropped, and a theme hidden while your account read as Free comes back when your tier does."
 };
 
 

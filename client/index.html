@@ -420,6 +420,19 @@
       .mic-menu select { margin-bottom: 10px; }
       .mic-menu .vol-row { display: flex; align-items: center; gap: 9px; margin-bottom: 11px; }
       .mic-menu input[type="range"] { flex: 1; accent-color: #39d3a0; }
+      /* Live source indicator: three bars that rise with the level of the
+         mic / game audio Peak-Abu is actually hearing. Grey when silent. */
+      .audio-src-label { display: flex; align-items: center; gap: 6px; }
+      .audio-live { display: inline-flex; align-items: flex-end; gap: 2px; height: 11px; margin-left: auto; }
+      .audio-live i { width: 3px; border-radius: 1px; background: #2a4636; transition: background 0.08s; }
+      .audio-live i:nth-child(1) { height: 4px; }
+      .audio-live i:nth-child(2) { height: 7px; }
+      .audio-live i:nth-child(3) { height: 11px; }
+      .audio-live[data-level="1"] i:nth-child(1),
+      .audio-live[data-level="2"] i:nth-child(-n+2),
+      .audio-live[data-level="3"] i { background: #39d3a0; }
+      .audio-src-name { font-size: 12px; color: #c8d6cd; margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .audio-src-note { font-size: 10px; color: #5f7a6a; line-height: 1.35; }
       .mic-mute-btn { width: auto; flex-shrink: 0; padding: 6px 11px; font-size: 13px; background: #0c1c14; }
       .mic-mute-btn.muted { background: #3a1622; border-color: #7a3149; color: #f0a5bd; }
 
@@ -804,7 +817,7 @@
               <img src="assets/kickstarter.png" alt="kickstarter" />
             </button>
           </div>
-          <span class="version-tag">v0.1.87</span>
+          <span class="version-tag">v0.1.88</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="redeem-wrap">
@@ -1383,7 +1396,9 @@ REPLACE:
 
             <!-- MIC / AUDIO POPOVER -->
             <div class="mic-menu" id="micMenu">
-              <div class="uc-label">🎤 Microphone</div>
+              <div class="uc-label audio-src-label">🎤 Microphone
+                <span class="audio-live" id="micLive" title="Lights up when your mic is picking up sound"><i></i><i></i><i></i></span>
+              </div>
               <select id="micSelect" onchange="onMicDeviceChange()">
                 <option value="">None</option>
               </select>
@@ -1400,10 +1415,11 @@ REPLACE:
                 <option value="dsp">Spectral gating (no wasm)</option>
                 <option value="off">Off</option>
               </select>
-              <div class="uc-label">🔊 Desktop Audio Source</div>
-              <select id="audioOutputSelect" onchange="onAudioOutputChange()">
-                <option value="default">Default</option>
-              </select>
+              <div class="uc-label audio-src-label">🔊 Game audio from
+                <span class="audio-live" id="deskLive" title="Lights up when game audio is coming through"><i></i><i></i><i></i></span>
+              </div>
+              <div class="audio-src-name" id="deskSrcName">Windows default output</div>
+              <div class="audio-src-note">Peak-Abu records whatever plays on your Windows default output. Change it in Windows sound settings.</div>
             </div>
 
             <div class="collapse-body" id="collapse-recording">
@@ -3677,6 +3693,11 @@ REPLACE:
                  video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: screen.id } }
                });
              },
+             // The same game audio capture recording uses (Windows' default output).
+             desktopAudioProvider: function () { return window.openDesktopAudioStream(); },
+             desktopAudioLabel: async function () {
+               try { return (await currentDefaultOutput()).label; } catch (e) { return 'Windows default output'; }
+             },
              onComplete: function (analysis) {
                console.log('[av-check] analysis:', analysis);
              }
@@ -3861,22 +3882,56 @@ REPLACE:
       // =====================
       // MIC
       // =====================
+      // Windows lists each audio device up to three times (the device, plus
+      // "Default - …" and "Communications - …" aliases) and tacks the USB
+      // vendor:product id onto the name, e.g. "Microphone (Arctis 7 Chat)
+      // (1038:12ad)". Show each device once, by its plain name, and mark the
+      // one Windows is using by default.
+      function cleanDeviceLabel(label) {
+        return String(label || '')
+          .replace(/^(Default|Communications)\s*-\s*/i, '')
+          .replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '')
+          .trim();
+      }
+
+      function listAudioDevices(devices, kind) {
+        var all = devices.filter(function(d) { return d.kind === kind; });
+        var def = all.find(function(d) { return d.deviceId === 'default'; });
+        var out = [], seen = {};
+        all.forEach(function(d) {
+          if (d.deviceId === 'default' || d.deviceId === 'communications') return;
+          var label = cleanDeviceLabel(d.label) || ((kind === 'audioinput' ? 'Microphone ' : 'Output ') + (out.length + 1));
+          var key = d.groupId + '|' + label;
+          if (seen[key]) return;
+          seen[key] = true;
+          out.push({ deviceId: d.deviceId, label: label, groupId: d.groupId, isDefault: false });
+        });
+        if (def) {
+          var defLabel = cleanDeviceLabel(def.label);
+          var match = out.find(function(o) { return o.label === defLabel; }) ||
+                      out.find(function(o) { return o.groupId === def.groupId; });
+          if (match) match.isDefault = true;
+          else if (!out.length) out.push({ deviceId: 'default', label: defLabel || 'Default', groupId: def.groupId, isDefault: true });
+        }
+        return out;
+      }
+
       async function loadMicDevices() {
        try {
          var devices = await navigator.mediaDevices.enumerateDevices();
-         var mics = devices.filter(function(d){return d.kind==='audioinput';});
+         var mics = listAudioDevices(devices, 'audioinput');
          var sel = document.getElementById('micSelect');
          sel.innerHTML = '<option value="">None</option>';
          mics.forEach(function(m) {
            var opt = document.createElement('option');
            opt.value = m.deviceId;
-           opt.textContent = m.label || ('Mic ' + sel.children.length);
+           opt.textContent = m.label + (m.isDefault ? ' (Windows default)' : '');
            sel.appendChild(opt);
          });
 
-        // Auto-select default mic on first load if user hasn't explicitly chosen None
+        // Auto-select the Windows default mic until the user picks one
          if (!window.micHasBeenTouched && mics.length > 0) {
-           var defaultMic = mics.find(function(m) { return m.deviceId === 'default'; }) || mics[0];
+           var defaultMic = mics.find(function(m) { return m.isDefault; }) || mics[0];
            sel.value = defaultMic.deviceId;
            window.micDeviceId = defaultMic.deviceId;
            window.micEnabled = true;
@@ -3884,30 +3939,140 @@ REPLACE:
          } else if (!window.micDeviceId) {
            // No mic selected and user hasn't touched it — pulse
            sel.classList.add('mic-pulse');
+         } else {
+           // Rebuilding the list (a device was plugged in) must keep the pick.
+           sel.value = mics.some(function(m) { return m.deviceId === window.micDeviceId; }) ? window.micDeviceId : '';
          }
        } catch(e) {}
      }
 
-     async function loadAudioOutputDevices() {
-      try {
-        var devices = await navigator.mediaDevices.enumerateDevices();
-        var outputs = devices.filter(function(d) { return d.kind === 'audiooutput'; });
-        var sel = document.getElementById('audioOutputSelect');
-        sel.innerHTML = '<option value="default">Default</option>';
-        outputs.forEach(function(d) {
-          var opt = document.createElement('option');
-          opt.value = d.deviceId;
-          opt.textContent = d.label || ('Output ' + sel.children.length);
-          sel.appendChild(opt);
-        });
-      } catch(e) { console.log('Audio output enum failed:', e); }
-    }
+      // =====================
+      // GAME AUDIO SOURCE — game audio is a loopback of Windows' default
+      // output device; apps can't pick another one. The 🎤 popover shows
+      // which device that is. If it changes while recording, the capture
+      // would keep listening to the old, now-silent device, so it reconnects
+      // (see reconnectDesktopAudio / main.js GAME AUDIO SEGMENTS). Chromium
+      // reports default-device switches as 'devicechange'; a slow poll while
+      // recording covers any it misses.
+      // =====================
+      window._deskOutputKey = null;
+      window._deskOutputPoll = null;
 
-    window.onAudioOutputChange = function() {
-      var deviceId = document.getElementById('audioOutputSelect').value;
-      ipcRenderer.send('update-audio-output', { deviceId: deviceId });
-      hudLog('system', '🔊 Audio capture source changed', 'info');
-     };
+      async function currentDefaultOutput() {
+        var devices = await navigator.mediaDevices.enumerateDevices();
+        var outs = listAudioDevices(devices, 'audiooutput');
+        var def = outs.find(function(o) { return o.isDefault; }) || outs[0];
+        return def ? { key: def.groupId + '|' + def.label, label: def.label } : { key: 'none', label: 'Windows default output' };
+      }
+
+      async function refreshGameAudioSource() {
+        try {
+          var def = await currentDefaultOutput();
+          var nameEl = document.getElementById('deskSrcName');
+          if (nameEl) { nameEl.textContent = def.label; nameEl.title = def.label; }
+          if (window.isRecordingActive && window._deskOutputKey && def.key !== window._deskOutputKey) {
+            window._deskOutputKey = def.key;
+            reconnectDesktopAudio('Audio output changed to ' + def.label);
+          }
+        } catch (e) { console.log('Audio output check failed:', e); }
+      }
+
+      function startDeskOutputWatch() {
+        stopDeskOutputWatch();
+        window._deskOutputPoll = setInterval(refreshGameAudioSource, 5000);
+      }
+      function stopDeskOutputWatch() {
+        if (window._deskOutputPoll) { clearInterval(window._deskOutputPoll); window._deskOutputPoll = null; }
+      }
+
+      // =====================
+      // LIVE SOURCE ICONS — the bars next to 🎤 Microphone and 🔊 Game audio
+      // in the popover rise with the level Peak-Abu is hearing from each.
+      // They use the recording's own streams; with nothing recording, the
+      // popover opens short-lived preview streams, closed again with it.
+      // =====================
+      var liveMeter = { ctx: null, taps: {}, preview: {}, raf: null };
+
+      function liveTap(kind, stream) {
+        var old = liveMeter.taps[kind];
+        if (old && old.stream === stream) return;
+        if (old) { try { old.src.disconnect(); } catch (e) {} }
+        delete liveMeter.taps[kind];
+        if (!stream || !stream.getAudioTracks().length) return;
+        if (!liveMeter.ctx) liveMeter.ctx = new AudioContext();
+        var src = liveMeter.ctx.createMediaStreamSource(stream);
+        var an = liveMeter.ctx.createAnalyser();
+        an.fftSize = 1024;
+        src.connect(an);
+        liveMeter.taps[kind] = { stream: stream, src: src, an: an, buf: new Float32Array(an.fftSize) };
+      }
+
+      function liveLevel(tap) {
+        tap.an.getFloatTimeDomainData(tap.buf);
+        var s = 0;
+        for (var i = 0; i < tap.buf.length; i++) s += tap.buf[i] * tap.buf[i];
+        var db = 20 * Math.log10(Math.sqrt(s / tap.buf.length) + 1e-9);
+        return db > -25 ? 3 : db > -40 ? 2 : db > -55 ? 1 : 0;
+      }
+
+      function liveTick() {
+        [['mic', 'micLive'], ['desk', 'deskLive']].forEach(function(p) {
+          var elx = document.getElementById(p[1]);
+          if (!elx) return;
+          var tap = liveMeter.taps[p[0]];
+          elx.setAttribute('data-level', tap ? liveLevel(tap) : 0);
+        });
+        liveMeter.raf = requestAnimationFrame(liveTick);
+      }
+
+      function stopLivePreview(kind) {
+        var s = liveMeter.preview[kind];
+        if (s) { s.getTracks().forEach(function(t) { t.stop(); }); delete liveMeter.preview[kind]; }
+      }
+
+      async function syncLiveTaps() {
+        // Mic: the recording's mic, else a preview of the selected one.
+        if (window._rawMicStream) {
+          stopLivePreview('mic');
+          liveTap('mic', window._rawMicStream);
+        } else if (window.micDeviceId) {
+          if (!liveMeter.preview.mic || liveMeter.preview.micId !== window.micDeviceId) {
+            stopLivePreview('mic');
+            try {
+              liveMeter.preview.mic = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: window.micDeviceId } } });
+              liveMeter.preview.micId = window.micDeviceId;
+            } catch (e) {}
+          }
+          liveTap('mic', liveMeter.preview.mic);
+        } else {
+          stopLivePreview('mic');
+          liveTap('mic', null);
+        }
+        // Game audio: the recording's capture, else a preview loopback.
+        if (window._liveDesktopStream) {
+          stopLivePreview('desk');
+          liveTap('desk', window._liveDesktopStream);
+        } else {
+          if (!liveMeter.preview.desk) {
+            try { liveMeter.preview.desk = await openDesktopAudioStream(); } catch (e) {}
+          }
+          liveTap('desk', liveMeter.preview.desk);
+        }
+      }
+
+      window.startLiveSourceIcons = function() {
+        refreshGameAudioSource();
+        syncLiveTaps();
+        if (!liveMeter.raf) liveTick();
+      };
+
+      window.stopLiveSourceIcons = function() {
+        if (liveMeter.raf) { cancelAnimationFrame(liveMeter.raf); liveMeter.raf = null; }
+        Object.keys(liveMeter.taps).forEach(function(k) { liveTap(k, null); });
+        stopLivePreview('mic');
+        stopLivePreview('desk');
+        delete liveMeter.preview.micId;
+      };
 
       window.onMicDeviceChange = function() {
        window.micHasBeenTouched = true;
@@ -3915,6 +4080,7 @@ REPLACE:
        sel.classList.remove('mic-pulse');
        window.micDeviceId = sel.value || null;
        window.micEnabled = !!window.micDeviceId;
+       if (liveMeter.raf) syncLiveTaps();   // popover open: meter the newly picked mic
      };
       // Debounced so dragging the slider doesn't fire a set-user-pref write
       // on every tick — ipcRenderer.send (live volume) stays immediate,
@@ -4003,6 +4169,7 @@ REPLACE:
           window.micRecorder.start(1000);
           ipcRenderer.send('mic-recording-started', Date.now()+20);
           if (window.autoCaptureEnabled) window.acAttachMic(stream);
+          if (liveMeter.raf) syncLiveTaps();
 
           hudLog('system','🎤 Mic capture started','success');
         } catch(err) {
@@ -4021,10 +4188,10 @@ REPLACE:
       }
 
      loadMicDevices();
-     loadAudioOutputDevices();
+     refreshGameAudioSource();
      navigator.mediaDevices.addEventListener('devicechange', function() {
        loadMicDevices();
-       loadAudioOutputDevices();
+       refreshGameAudioSource();
      });
         
       // =====================
@@ -5113,30 +5280,73 @@ REPLACE:
         applySavedMonitorSelection();
       });
 
+      // Game audio: a loopback of Windows' default output device, as an
+      // audio-only stream. Shared by recording, the 🎤 popover's live icon
+      // and the A/V test.
+      async function openDesktopAudioStream() {
+        var sources = await ipcRenderer.invoke('get-desktop-sources');
+        var screen = sources[0];
+        var stream = await navigator.mediaDevices.getUserMedia({
+          audio: { mandatory: { chromeMediaSource:'desktop', chromeMediaSourceId:screen.id, minSampleRate:44100, echoCancellation:false, noiseSuppression:false, autoGainControl:false } },
+          video: { mandatory: { chromeMediaSource:'desktop', chromeMediaSourceId:screen.id, maxWidth:1, maxHeight:1 } }
+        });
+        stream.getVideoTracks().forEach(function(t){t.stop();});
+        var audioTrack = stream.getAudioTracks()[0];
+        if (!audioTrack) throw new Error('no game audio track');
+        return new MediaStream([audioTrack]);
+      }
+      window.openDesktopAudioStream = openDesktopAudioStream;
+
+      // Each capture is its own segment in main (its own file), so a
+      // reconnect never splices a second stream into the first file.
+      window._deskSeg = 0;
+
       async function startAudioCapture() {
         try {
-          var sources = await ipcRenderer.invoke('get-desktop-sources');
-          var screen = sources[0];
-          var stream = await navigator.mediaDevices.getUserMedia({
-            audio: { mandatory: { chromeMediaSource:'desktop', chromeMediaSourceId:screen.id, minSampleRate:44100, echoCancellation:false, noiseSuppression:false, autoGainControl:false } },
-            video: { mandatory: { chromeMediaSource:'desktop', chromeMediaSourceId:screen.id, maxWidth:1, maxHeight:1 } }
-          });
-          stream.getVideoTracks().forEach(function(t){t.stop();});
-          var audioTrack = stream.getAudioTracks()[0];
-          if (!audioTrack) return;
+          var audioOnlyStream = await openDesktopAudioStream();
+          var audioTrack = audioOnlyStream.getAudioTracks()[0];
           var settings = audioTrack.getSettings();
-          if (settings.sampleRate && settings.sampleRate < 44100) { stream.getTracks().forEach(function(t){t.stop();}); return; }
-          var audioOnlyStream = new MediaStream([audioTrack]);
+          if (settings.sampleRate && settings.sampleRate < 44100) { audioOnlyStream.getTracks().forEach(function(t){t.stop();}); return; }
+          var seg = ++window._deskSeg;
           window._liveDesktopStream = audioOnlyStream;
           window.mediaRecorder = new MediaRecorder(audioOnlyStream, { mimeType:'audio/webm;codecs=opus', audioBitsPerSecond:192000 });
           window.mediaRecorder.ondataavailable = async function(ev) {
-            if (ev.data && ev.data.size > 0) ipcRenderer.send('save-audio-chunk', await ev.data.arrayBuffer());
+            if (ev.data && ev.data.size > 0) ipcRenderer.send('save-audio-chunk', await ev.data.arrayBuffer(), seg);
           };
           window.mediaRecorder.onerror = function(e) { console.log('MediaRecorder error:', e); };
           window.mediaRecorder.start(1000);
-          ipcRenderer.send('audio-recording-started', Date.now()+20);
+          ipcRenderer.send('audio-recording-started', Date.now()+20, seg);
           if (window.autoCaptureEnabled) window.acAttachDesktop(audioOnlyStream);
+          // A capture that dies on its own (driver reset, device removed)
+          // reconnects too.
+          audioTrack.onended = function() {
+            if (window.isRecordingActive && window._liveDesktopStream === audioOnlyStream) reconnectDesktopAudio('Game audio stream stopped');
+          };
+          window._deskOutputKey = (await currentDefaultOutput()).key;
+          startDeskOutputWatch();
+          if (liveMeter.raf) syncLiveTaps();
         } catch(err) { console.log('Audio capture failed:', err.name, err.message); }
+      }
+
+      // Opens a fresh game audio capture (new segment), then retires the old
+      // one — the old recorder's last chunk still goes to its own file.
+      async function reconnectDesktopAudio(reason) {
+        if (!window.isRecordingActive || window._deskReconnecting) return;
+        window._deskReconnecting = true;
+        var oldRec = window.mediaRecorder;
+        var oldStream = window._liveDesktopStream;
+        try {
+          await startAudioCapture();
+          if (window.mediaRecorder === oldRec) {
+            hudLog('system', '⚠ ' + reason + ' — couldn\'t reconnect game audio', 'error');
+            return;
+          }
+          try { if (oldRec && oldRec.state !== 'inactive') oldRec.stop(); } catch (e) {}
+          setTimeout(function() { if (oldStream) oldStream.getTracks().forEach(function(t) { t.stop(); }); }, 1500);
+          hudLog('system', '🔊 ' + reason + ' — game audio reconnected', 'info');
+        } finally {
+          window._deskReconnecting = false;
+        }
       }
 
       // Tells the server how many seconds of history this client's ring
@@ -5338,8 +5548,10 @@ REPLACE:
       if (window.mediaRecorder && window.mediaRecorder.state !== 'inactive') { window.mediaRecorder.stop(); window.mediaRecorder = null; }
       wgcStopAll();
       stopMicCapture();
+      stopDeskOutputWatch();
       window.acDetachAll();
       window._liveDesktopStream = null;
+      if (liveMeter.raf) syncLiveTaps();   // popover open: fall back to previews
       window._liveMicStream = null;
       window.autoCaptureWindowActive = false;
       ipcRenderer.send('auto-capture-active', false);
@@ -6753,13 +6965,14 @@ REPLACE:
       window.toggleMicMenu = function() {
         var m = document.getElementById('micMenu');
         var btn = document.getElementById('micMenuBtn');
-        if (m.classList.contains('show')) { m.classList.remove('show'); return; }
+        if (m.classList.contains('show')) { m.classList.remove('show'); window.stopLiveSourceIcons(); return; }
         var rect = btn.getBoundingClientRect();
         m.style.position = 'fixed';
         m.style.top = (rect.bottom + 6) + 'px';
         m.style.right = (window.innerWidth - rect.right) + 'px';
         m.style.left = 'auto';
         m.classList.add('show');
+        window.startLiveSourceIcons();
       };
       document.addEventListener('click', function(e) {
         var menu = document.getElementById('micMenu');
@@ -6767,6 +6980,7 @@ REPLACE:
         if (!menu || !menu.classList.contains('show')) return;
         if (menu.contains(e.target) || btn.contains(e.target)) return;
         menu.classList.remove('show');
+        window.stopLiveSourceIcons();
       });
     </script>
   </body>
