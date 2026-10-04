@@ -19,10 +19,10 @@ const { buildReelLocally } = require('./aireel-client');
 // pending-upload manifest.
 // ================================
 const {
-  FIGHT_QUIET_MS, UPLOAD_MODES,
-  normalizeSettings, isLowBandwidth, speedTestIsStale, baseThrottleBps, currentThrottleBps,
+  FIGHT_QUIET_MS, LBM_MAX_HOLD_MS, UPLOAD_MODES,
+  normalizeSettings, isLowBandwidth, speedTestIsStale, measureUploadSpeed, baseThrottleBps, currentThrottleBps,
   RateThrottleStream, runSpeedTest,
-  findLandedRecord, findPendingRecord, decideSweepAction
+  findLandedRecord, findPendingRecord, isOverdue, decideSweepAction
 } = require('./upload-queue');
 const { init: sentryInit } = require('@sentry/electron/main');
 const { SENTRY_DSN } = require('./sentry-config');
@@ -4025,11 +4025,14 @@ function accountName() {
 //
 // Settings live in their own file (not user prefs) so this never touches
 // the prefs read-modify-write path. mode: 'auto' | 'on' | 'off'. Auto turns
-// Low Bandwidth on when the measured upload is under 10 Mbps.
+// Low Bandwidth on when the measured upload is under 5 Mbps (see
+// isLowBandwidth in upload-queue.js for why it isn't 10 any more).
 //
 // "Fight" = an auto-capture window is open, a save is extracting, or either
 // ended less than FIGHT_QUIET_MS ago. In Low Bandwidth Mode no video starts
-// during a fight, and one already sending drops to a keep-alive trickle.
+// during a fight, and one already sending drops to a keep-alive trickle —
+// until the clip has waited LBM_MAX_HOLD_MS (isOverdue). Then it sends at
+// the normal Low Bandwidth rate, fight or not.
 // Metadata posts are never held — they're a few KB and they're what locks
 // the POV into the squad's timeline.
 // ================================
@@ -4066,7 +4069,12 @@ function saveUploadSettings() {
 
 function lowBandwidthActive() { return isLowBandwidth(uploadSettings); }
 function isFightActive() { return autoCaptureLocked || pipelineBusy || Date.now() < fightQuietUntil; }
-function uploadRateNow() { return currentThrottleBps(uploadSettings, isFightActive()); }
+// Rate for one upload right now. An overdue clip keeps the normal Low
+// Bandwidth rate through a fight instead of dropping to the trickle.
+function uploadRateFor(uploadKey) {
+  const held = isFightActive() && !isOverdue(pendingUploads.get(uploadKey), Date.now());
+  return currentThrottleBps(uploadSettings, held);
+}
 
 // Every fight-ish signal (auto-capture window open/close, save start/end)
 // pushes the quiet deadline out and schedules one sweep for the moment
@@ -4104,7 +4112,7 @@ function queueItemStatus(key, entry) {
   if (entry.deferred && !entry.uploadId) return 'syncing';
   const att = uploadAttempts.get(key);
   if (att && att.nextAt > Date.now()) return 'retrying';
-  if (lowBandwidthActive() && isFightActive()) return 'paused-fight';
+  if (lowBandwidthActive() && isFightActive() && !isOverdue(entry, Date.now())) return 'paused-fight';
   return 'waiting';
 }
 
@@ -4166,6 +4174,7 @@ function noteUploadBytes(uploadKey, sent) {
 
 // Runs at login when the cached result is stale (>24h), or on demand from
 // the 📤 tab. Skipped while a clip is sending — it would measure half a line.
+// A reading under the Auto line is checked once more (measureUploadSpeed).
 // A failed or skipped test used to fail silently, so Retest looked like it
 // did nothing. Every exit now leaves a reason the 📤 tab can show.
 function speedTestFailureText(r) {
@@ -4191,13 +4200,14 @@ async function runUploadSpeedTest(force) {
   speedTestRunning = true;
   broadcastQueueState();
   try {
-    const r = await runSpeedTest({ token: authToken });
+    const r = await measureUploadSpeed(() => runSpeedTest({ token: authToken }));
     if (r.ok && r.mbps > 0) {
       uploadSettings.measuredMbps = r.mbps;
       uploadSettings.testedAt = Date.now();
       saveUploadSettings();
       speedTestError = null;
-      console.log(`Upload speed test: ${r.mbps} Mbps${r.timedOut ? ' (timed out — upper bound)' : ''} → ` +
+      console.log(`Upload speed test: ${r.mbps} Mbps${r.timedOut ? ' (timed out — upper bound)' : ''}` +
+        `${r.retested ? ` (first reading ${r.firstMbps} Mbps, checked twice)` : ''} → ` +
         `${lowBandwidthActive() ? `throttle ${(baseThrottleBps(uploadSettings) * 8 / 1e6).toFixed(1)} Mbps` : 'unthrottled'}, Low Bandwidth ${lowBandwidthActive() ? 'ON' : 'off'} (mode ${uploadSettings.mode})`);
     } else {
       speedTestError = speedTestFailureText(r);
@@ -4512,7 +4522,7 @@ async function sweepPendingUploads() {
       for (const [uploadKey, entryIn] of items) {
         if (!authToken) return;              // logged out mid-sweep
         let entry = entryIn;
-        const ctx = () => ({ lowBandwidth: lowBandwidthActive(), fightActive: isFightActive(), username: accountName() });
+        const ctx = () => ({ lowBandwidth: lowBandwidthActive(), fightActive: isFightActive(), username: accountName(), now: Date.now() });
         let decision = decideSweepAction(entry, remote, ctx());
 
         if (decision.action === 'adopt') {
@@ -4682,7 +4692,7 @@ function performUpload(sessionCode, videoPath, metadataPath, uploadKey, onDoneCa
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('upload-progress', 0);
 
   const form = new FormData();
-  form.append('video', fs.createReadStream(videoPath).pipe(new RateThrottleStream(uploadRateNow, (sent) => noteUploadBytes(uploadKey, sent))), {
+  form.append('video', fs.createReadStream(videoPath).pipe(new RateThrottleStream(() => uploadRateFor(uploadKey), (sent) => noteUploadBytes(uploadKey, sent))), {
     filename: path.basename(videoPath), contentType: 'video/mp4'
   });
   if (metadataPath && fs.existsSync(metadataPath)) {
@@ -4876,7 +4886,7 @@ function performAttachVideo(uploadKey, entry, onDoneCaller) {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('upload-progress', 0);
 
   const form = new FormData();
-  form.append('video', fs.createReadStream(entry.videoPath).pipe(new RateThrottleStream(uploadRateNow, (sent) => noteUploadBytes(uploadKey, sent))), {
+  form.append('video', fs.createReadStream(entry.videoPath).pipe(new RateThrottleStream(() => uploadRateFor(uploadKey), (sent) => noteUploadBytes(uploadKey, sent))), {
     filename: path.basename(entry.videoPath), contentType: 'video/mp4'
   });
 
@@ -4953,10 +4963,14 @@ function doUploadHighlight(videoPath, metadataPath, sessionCode) {
   markUploadPending(uploadKey, entry);
 
   if (deferred) {
-    // Low Bandwidth Mode: sync data now, video once the fight is over.
+    // Low Bandwidth Mode: sync data now, video once the fight is over — or
+    // once it's overdue, whichever comes first. The timed sweep starts it if
+    // the action never lets up (if a sweep is busy then, the once-a-minute
+    // retry sweep picks it up).
     performPostMeta(uploadKey, entry, (r) => {
       if (r && r.ok && !isFightActive()) sweepPendingUploads();
     });
+    setTimeout(() => sweepPendingUploads(), LBM_MAX_HOLD_MS + 1000);
     return;
   }
   performUpload(code, videoPath, metadataPath, uploadKey);

@@ -817,7 +817,7 @@
               <img src="assets/kickstarter.png" alt="kickstarter" />
             </button>
           </div>
-          <span class="version-tag">v0.1.88</span>
+          <span class="version-tag">v0.1.89</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="redeem-wrap">
@@ -1263,8 +1263,8 @@ REPLACE:
                     <div class="uq-head">
                       <div class="uq-label">Low Bandwidth Mode</div>
                       <div class="uq-mode" id="uqMode">
-                        <button data-mode="auto" onclick="setUploadMode('auto')" title="On automatically when your measured upload is under 10 Mbps">Auto</button>
-                        <button data-mode="on" onclick="setUploadMode('on')" title="Always send videos during downtime">On</button>
+                        <button data-mode="auto" onclick="setUploadMode('auto')" title="On automatically when your measured upload is under 5 Mbps">Auto</button>
+                        <button data-mode="on" onclick="setUploadMode('on')" title="Always send videos during downtime (each waits 2 min at most)">On</button>
                         <button data-mode="off" onclick="setUploadMode('off')" title="Always upload right away">Off</button>
                         <button class="uq-sync-btn" id="uqSyncCheckBtn" onclick="checkMissingClips()" title="Check your recent sessions for clips that never uploaded">⟲ Sync</button>
                       </div>
@@ -2083,10 +2083,10 @@ REPLACE:
 
         var state = document.getElementById('uqState');
         if (st.lowBandwidth && st.fightActive) {
-          state.textContent = '⏸ Holding videos until the fight ends';
+          state.textContent = '⏸ Holding videos until the fight ends (2 min at most)';
           state.className = 'uq-state hold';
         } else if (st.lowBandwidth) {
-          state.textContent = '🐢 On — videos upload during downtime';
+          state.textContent = '🐢 On — videos upload during downtime, or after 2 min';
           state.className = 'uq-state';
         } else {
           state.textContent = 'Off — clips upload right away';

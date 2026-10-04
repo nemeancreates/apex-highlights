@@ -206,9 +206,9 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 const PRIVACY_POLICY_VERSION = '2026-09-07';
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.88',
-  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.88.exe',
-    releaseNotes: "Fixes game audio going missing partway through a recording: when Windows switched your default audio output (a headset connecting, audio software changing devices), Peak-Abu kept listening to the old device until you restarted. It now reconnects automatically and says so in the log. The microphone list no longer shows each mic twice or the extra numbers on the end, and the microphone menu has small live icons showing where your mic and game audio are coming from. Test Audio & Video is now 8 seconds instead of 15, scrolls straight to your playback when it finishes, and records and checks your game audio too, so you can confirm it works before a session. The session player no longer starts stuttering or freezing after the first few highlights, and when one player's clip is still downloading, everyone pauses together instead of skipping. Your theme, readability and other settings are now much harder to lose: a save that Windows briefly blocks is retried instead of dropped, and a theme hidden while your account read as Free comes back when your tier does."
+  version: '0.1.89',
+  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.89.exe',
+    releaseNotes: "Low Bandwidth Mode no longer holds your videos back on an ordinary slower connection. Auto now only switches it on when your measured upload is under 5 Mbps (it was 10), and a slow speed test is checked a second time before it counts, so one bad moment can't hold your videos for a whole day. When Low Bandwidth Mode is on, each video waits at most 2 minutes for a quiet moment and then uploads anyway, so clips from a busy session no longer pile up until you turn the mode off."
 };
 
 

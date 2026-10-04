@@ -12,7 +12,8 @@
 //   1. Throttle to a share of the player's MEASURED uplink instead of one
 //      static cap (the old 6 Mbps cap never engaged for anyone below 6 Mbps).
 //   2. In Low Bandwidth Mode, the clip's metadata goes up immediately (locks
-//      the POV into the sync timeline) and the video waits for downtime.
+//      the POV into the sync timeline) and the video waits for downtime,
+//      LBM_MAX_HOLD_MS at most.
 // ================================
 const https = require('https');
 const crypto = require('crypto');
@@ -24,11 +25,13 @@ const UPLOAD_THROTTLE_FLOOR_BPS = 32 * 1024;  // never slower than this outside 
 const UPLOAD_TRICKLE_BPS = 16 * 1024;         // mid-fight: keeps the socket alive (nginx body timeout) at ~0.13 Mbps
 const THROTTLE_SHARE = 0.6;                   // use 60% of measured uplink, leave the rest for the game
 const THROTTLE_SLICE_BYTES = 16 * 1024;       // pace in small pieces so a trickle is smooth, not 4s bursts
-const LOW_BW_THRESHOLD_MBPS = 10;             // Auto mode: Low Bandwidth below this measured upload
+const LOW_BW_THRESHOLD_MBPS = 5;              // Auto mode: Low Bandwidth below this measured upload (see isLowBandwidth)
 const SPEEDTEST_BYTES = 3 * 1024 * 1024;      // server refuses > 4MB
 const SPEEDTEST_TIMEOUT_MS = 60 * 1000;
 const SPEEDTEST_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const SPEEDTEST_RETRY_PAUSE_MS = 3000;        // pause before re-checking a slow reading
 const FIGHT_QUIET_MS = 20 * 1000;             // downtime must last this long before a video starts
+const LBM_MAX_HOLD_MS = 2 * 60 * 1000;        // ...but no video waits longer than this for it
 
 const UPLOAD_MODES = ['auto', 'on', 'off'];
 
@@ -43,6 +46,14 @@ function normalizeSettings(raw) {
   };
 }
 
+// Auto mode's line was 10 Mbps. That put ordinary slower connections in Low
+// Bandwidth Mode, where a busy session's videos then waited for downtime
+// that never came (FWMPS7, 10/3: a highlight every ~40s; the player had to
+// switch the mode off before anything uploaded). A busy session makes about
+// 5.4 Mbps of video per player at the default 8 Mbps clip bitrate, so it's
+// a line under ~5 Mbps that can't keep up and would sit full all session —
+// those are the players holding videos protects. The single 3MB test also
+// reads 10-15% low on a high-latency line (TCP slow start).
 function isLowBandwidth(settings) {
   if (settings.mode === 'on') return true;
   if (settings.mode === 'off') return false;
@@ -54,6 +65,20 @@ function speedTestIsStale(settings, now) {
   return (now - settings.testedAt) > SPEEDTEST_MAX_AGE_MS;
 }
 
+// One reading can land on a bad few seconds: a dropout, another app's
+// upload, slow start on a high-latency line. A reading under the Auto line
+// (a timed-out test included) gets one more try and the better result is
+// kept, so one bad moment doesn't hold a player's videos for 24h.
+// runOnce resolves like runSpeedTest (never rejects).
+async function measureUploadSpeed(runOnce, pauseMs) {
+  const first = await runOnce();
+  if (!first || !first.ok || first.mbps >= LOW_BW_THRESHOLD_MBPS) return first;
+  await new Promise((resolve) => setTimeout(resolve, pauseMs === undefined ? SPEEDTEST_RETRY_PAUSE_MS : pauseMs));
+  const second = await runOnce();
+  const best = (second && second.ok && second.mbps > first.mbps) ? second : first;
+  return Object.assign({}, best, { retested: true, firstMbps: first.mbps });
+}
+
 // Normal sending rate: 60% of measured uplink, clamped to [floor, cap].
 // Unmeasured (test failed / never ran) falls back to the old static cap.
 function baseThrottleBps(settings) {
@@ -63,7 +88,8 @@ function baseThrottleBps(settings) {
 }
 
 // Rate right now. Throttling is a Low Bandwidth Mode feature only:
-//   LBM on, fight active -> trickle (UPLOAD_TRICKLE_BPS)
+//   LBM on, fight active -> trickle (UPLOAD_TRICKLE_BPS); main.js passes
+//     fightActive false for an overdue clip (see isOverdue)
 //   LBM on, no fight     -> measured throttle (baseThrottleBps)
 //   LBM off              -> unthrottled (Infinity) — RateThrottleStream
 //     passes data straight through.
@@ -214,6 +240,16 @@ function findPendingRecord(uploads, metadataPath, username) {
 }
 
 // --- Sweep decision --------------------------------------------------------
+// Low Bandwidth Mode holds a video while there's action and starts it after
+// FIGHT_QUIET_MS of quiet. A busy session never gives that quiet, so held
+// videos sat until the player switched the mode off (FWMPS7, 10/3). Once a
+// clip has been queued LBM_MAX_HOLD_MS it stops waiting: it goes up at the
+// normal Low Bandwidth rate, fight or not (no trickle).
+function isOverdue(entry, now) {
+  return !!(entry && typeof entry.startedAt === 'number' && entry.startedAt > 0 &&
+    now - entry.startedAt >= LBM_MAX_HOLD_MS);
+}
+
 // One manifest entry + the server's current view of its session → what to
 // do next. Pure, so every branch is testable.
 //
@@ -225,13 +261,16 @@ function findPendingRecord(uploads, metadataPath, username) {
 //   post-meta — deferred, metadata not sent yet. Allowed mid-fight: it's KBs.
 //   attach    — deferred, send the video to the pending record.
 //   upload    — normal combined upload.
-//   skip      — not now (server unreachable, or a fight in Low Bandwidth Mode).
-// ctx.username is the logged-in account — see isOwnRecord above.
+//   skip      — not now (server unreachable, or a fight in Low Bandwidth Mode
+//               while the clip isn't overdue).
+// ctx.username is the logged-in account — see isOwnRecord above. ctx.now
+// (defaults to the clock) decides overdue.
 function decideSweepAction(entry, remote, ctx) {
   if (!remote || remote.status === 404) return { action: 'drop', reason: 'session-gone' };
   if (remote.status !== 200) return { action: 'skip', reason: 'unreachable' };
   const uploads = remote.uploads || [];
-  const holdForFight = !!(ctx && ctx.lowBandwidth && ctx.fightActive);
+  const now = (ctx && typeof ctx.now === 'number') ? ctx.now : Date.now();
+  const holdForFight = !!(ctx && ctx.lowBandwidth && ctx.fightActive) && !isOverdue(entry, now);
   const me = (ctx && ctx.username) || null;
 
   if (findLandedRecord(uploads, entry.videoPath, me)) return { action: 'done', reason: 'landed' };
@@ -254,8 +293,8 @@ function decideSweepAction(entry, remote, ctx) {
 
 module.exports = {
   UPLOAD_THROTTLE_CAP_BPS, UPLOAD_THROTTLE_FLOOR_BPS, UPLOAD_TRICKLE_BPS,
-  LOW_BW_THRESHOLD_MBPS, SPEEDTEST_BYTES, SPEEDTEST_MAX_AGE_MS, FIGHT_QUIET_MS, UPLOAD_MODES,
-  normalizeSettings, isLowBandwidth, speedTestIsStale, baseThrottleBps, currentThrottleBps,
+  LOW_BW_THRESHOLD_MBPS, SPEEDTEST_BYTES, SPEEDTEST_MAX_AGE_MS, FIGHT_QUIET_MS, LBM_MAX_HOLD_MS, UPLOAD_MODES,
+  normalizeSettings, isLowBandwidth, speedTestIsStale, measureUploadSpeed, baseThrottleBps, currentThrottleBps,
   RateThrottleStream, runSpeedTest,
-  serverBaseName, isOwnRecord, findLandedRecord, findPendingRecord, decideSweepAction
+  serverBaseName, isOwnRecord, findLandedRecord, findPendingRecord, isOverdue, decideSweepAction
 };
