@@ -342,6 +342,10 @@ function initUploadRoutes(app, io) {
       if (uploaderName === session.createdBy) {
         session.hostLastActivityAt = Date.now();
       }
+      // This video's own sync-data placeholder, if it sent one first (see
+      // PLACEHOLDERS): the new record replaces it.
+      placeholdersFor(session, uploaderName, parsedCoordinatedTs)
+        .forEach(p => dropPlaceholder(session, code, p, 'replaced_by_upload'));
       saveSessionsToDisk();
 
       trackBandwidth(uploaderName, videoFile.size, users, saveUsersToDisk);
@@ -760,7 +764,66 @@ function initUploadRoutes(app, io) {
   });
 
   // ================================
-  // DELETE — host-only, and only within a 4-hour window of upload. This is
+  // PLACEHOLDERS — a record with no videoFile is a clip whose sync data
+  // landed (upload-pending) and whose video hasn't yet. Every app counts it
+  // as "still uploading" until it gets its video or goes away, so one that
+  // never will has to be removed. Before 0.1.90 they were left behind three
+  // ways (FWMPS7 on 10-3: RecycledDonut's first 5 clips):
+  //   - the video went up as a normal upload instead of attaching (Low
+  //     Bandwidth Mode switched off mid-queue), next to the placeholder
+  //   - the host deleted the clip that had the video, not the placeholder
+  //   - past the 4-hour window, nobody could delete it at all
+  // dropPlaceholder removes one and tells the session, like a host delete.
+  // ================================
+  function dropPlaceholder(session, code, rec, reason) {
+    const idx = session.uploads.indexOf(rec);
+    if (idx === -1 || rec.videoFile) return false;
+    if (rec.metadataKey) Promise.resolve().then(() => deleteFromSpaces(rec.metadataKey)).catch(() => {});
+    if (rec.metadataFile) {
+      try {
+        const p = path.join(UPLOADS_DIR, code, rec.metadataFile);
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+      } catch (e) {}
+    }
+    session.uploads.splice(idx, 1);
+    log('info', 'placeholder_dropped', { session: code, uploadId: rec.id, username: rec.username, reason });
+    io.to(code).emit('highlight-deleted', { uploadId: rec.id });
+    return true;
+  }
+
+  // One player's placeholders for one moment (coordinatedTimestamp).
+  function placeholdersFor(session, username, coordinatedTs) {
+    if (coordinatedTs === null || coordinatedTs === undefined) return [];
+    return session.uploads.filter(u => !u.videoFile && u.username === username &&
+      u.coordinatedTimestamp === coordinatedTs);
+  }
+
+  // Placeholders over 3 days old whose player has landed a newer clip in the
+  // same session since: their app moved on, so the video isn't coming.
+  // Hourly, and once a minute after start.
+  const ORPHAN_PLACEHOLDER_AGE_MS = 3 * 24 * 60 * 60 * 1000;
+  function sweepOrphanPlaceholders() {
+    const now = Date.now();
+    const t = u => new Date(u.uploadedAt).getTime();
+    let dropped = 0;
+    for (const [code, session] of sessions) {
+      const stale = session.uploads.filter(p => !p.videoFile && now - t(p) > ORPHAN_PLACEHOLDER_AGE_MS &&
+        session.uploads.some(u => u.videoFile && u.username === p.username && t(u) > t(p)));
+      if (!stale.length) continue;
+      stale.forEach(p => { if (dropPlaceholder(session, code, p, 'orphaned')) dropped++; });
+      io.to(code).emit('clip-count-update', {
+        used: session.uploads.reduce((sum, u) => sum + (u.clipWeight || 1), 0),
+        max: session.maxClips || MAX_HIGHLIGHTS_PER_SESSION
+      });
+    }
+    if (dropped > 0) { saveSessionsToDisk(); log('info', 'orphan_placeholders_swept', { dropped }); }
+  }
+  setTimeout(sweepOrphanPlaceholders, 60 * 1000);
+  setInterval(sweepOrphanPlaceholders, 60 * 60 * 1000);
+
+  // ================================
+  // DELETE — host-only (plus a player withdrawing their own placeholder),
+  // and only within a 4-hour window of upload (placeholders any time). This is
   // deliberately NOT tied to tier retention (1-14 days) — it's a short
   // false-positive cleanup window, not a way to endlessly reuse one session.
   // Server-enforced: the client can hide the button after 4h, but the real
@@ -777,16 +840,19 @@ function initUploadRoutes(app, io) {
     if (!session) return safeError(res, 404, 'Session not found');
 
     const requesterName = sanitizeUsername(req.user.username);
-    if (session.createdBy !== requesterName) {
+    const idx = session.uploads.findIndex(u => u.id === req.params.uploadId);
+    const rec = idx === -1 ? null : session.uploads[idx];
+    // A player may withdraw their own placeholder (its local clip is gone).
+    const ownPlaceholder = !!rec && !rec.videoFile && rec.username === requesterName;
+    if (session.createdBy !== requesterName && !ownPlaceholder) {
       return safeError(res, 403, 'Only the session host can delete clips');
     }
+    if (!rec) return safeError(res, 404, 'Clip not found');
 
-    const idx = session.uploads.findIndex(u => u.id === req.params.uploadId);
-    if (idx === -1) return safeError(res, 404, 'Clip not found');
-
-    const rec = session.uploads[idx];
+    // The window protects delivered clips. A placeholder has nothing to
+    // protect, and one past the window is stuck by definition.
     const ageMs = Date.now() - new Date(rec.uploadedAt).getTime();
-    if (ageMs > DELETE_WINDOW_MS) {
+    if (ageMs > DELETE_WINDOW_MS && rec.videoFile) {
       return safeError(res, 403, 'This clip is past the 4-hour delete window and can no longer be removed.');
     }
 
@@ -802,6 +868,11 @@ function initUploadRoutes(app, io) {
     });
 
     session.uploads.splice(idx, 1);
+    // That player's leftover placeholder for the same moment goes with it.
+    if (rec.videoFile) {
+      placeholdersFor(session, rec.username, rec.coordinatedTimestamp)
+        .forEach(p => dropPlaceholder(session, code, p, 'clip_deleted'));
+    }
     saveSessionsToDisk();
 
     const weightedUsed = session.uploads.reduce((sum, u) => sum + (u.clipWeight || 1), 0);

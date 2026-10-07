@@ -4186,6 +4186,10 @@ function getQueueState() {
   const saving = pipelineBusy;
   for (const [key, e] of pendingUploads) {
     if (!e) continue;
+    // Deleted from disk: nothing left to upload. The next sweep drops it from
+    // the queue and withdraws its placeholder; until then it isn't shown or
+    // counted.
+    if (e.videoPath && !fs.existsSync(e.videoPath)) continue;
     const p = uploadProgress.get(key);
     items.push({
       key,
@@ -4540,6 +4544,26 @@ function startUploadRetryLoop() {
   sweepPendingUploads();
 }
 
+// Removes our own placeholder (sync data sent, video never will be) so the
+// session stops counting it as uploading. Best effort: if this fails, the
+// server's orphan sweep removes it later.
+function withdrawPlaceholder(code, uploadId) {
+  if (!authToken) return;
+  try {
+    const req = https.request({
+      protocol: 'https:', host: 'peakabu.app', port: 443, method: 'DELETE',
+      path: `/sessions/${encodeURIComponent(code)}/uploads/${encodeURIComponent(uploadId)}`,
+      headers: { 'Authorization': 'Bearer ' + authToken }
+    }, (res) => {
+      res.resume();
+      console.log(`Withdrew placeholder ${uploadId} in ${code} (${res.statusCode})`);
+    });
+    req.on('error', (e) => console.log('Placeholder withdraw failed:', e.message));
+    req.setTimeout(15000, () => req.destroy(new Error('timeout')));
+    req.end();
+  } catch (e) { console.log('Placeholder withdraw failed:', e.message); }
+}
+
 // One pass over the manifest. Clips are retried ONE AT A TIME — uploads are
 // throttled to protect the user's connection while they play, and a burst of
 // parallel retries would undo that.
@@ -4564,6 +4588,9 @@ async function sweepPendingUploads() {
     for (const [uploadKey, entry] of Object.entries(manifest)) {
       if (!entry || !entry.videoPath || !fs.existsSync(entry.videoPath)) {
         console.log(`Pending upload ${uploadKey} — local file missing, dropping from retry queue`);
+        // Its placeholder would otherwise show as "still uploading" to the
+        // whole session for good.
+        if (entry && entry.deferred && entry.uploadId && entry.sessionCode) withdrawPlaceholder(entry.sessionCode, entry.uploadId);
         markUploadDone(uploadKey);
         continue;
       }
@@ -6075,6 +6102,19 @@ function createWindow() {
   });
   // Host only: squadmates' clips that are synced but still uploading video.
   // Feeds the close-app notice. Renderer-supplied, display-only.
+  // A clip of ours still in the upload queue was deleted on the server (by
+  // the host, or swept as a stale placeholder). Stop sending and counting it
+  // now; the local copy stays. Only entries that have a server record match.
+  ipcMain.on('upload-deleted-on-server', (event, uploadId) => {
+    if (!uploadId || typeof uploadId !== 'string') return;
+    for (const [key, entry] of pendingUploads) {
+      if (entry && entry.uploadId === uploadId) {
+        console.log(`Queued upload ${key} — deleted on the server, removing from queue (local copy kept)`);
+        markUploadDone(key);
+      }
+    }
+  });
+
   ipcMain.on('squad-pending-uploads', (event, payload) => {
     const count = payload && Number.isFinite(payload.count) ? Math.max(0, Math.min(999, Math.floor(payload.count))) : 0;
     const names = (payload && Array.isArray(payload.names) ? payload.names : [])

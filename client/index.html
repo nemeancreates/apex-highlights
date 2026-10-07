@@ -832,7 +832,7 @@
               <img src="assets/kickstarter.png" alt="kickstarter" />
             </button>
           </div>
-          <span class="version-tag">v0.1.90</span>
+          <span class="version-tag">v0.1.91</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="redeem-wrap">
@@ -5085,10 +5085,14 @@
           hudLog('activity','⏳ '+d.username+'\'s clip is synced — video uploads after the fight','info');
         });
         window.socket.on('highlight-deleted', function(d) {
-          if (d && window.squadPendingUploads[d.uploadId]) {
+          if (!d) return;
+          if (window.squadPendingUploads[d.uploadId]) {
             delete window.squadPendingUploads[d.uploadId];
             updateSquadPending();
           }
+          // One of ours still in the queue: main drops it now, instead of
+          // whenever the queue next gets to it.
+          ipcRenderer.send('upload-deleted-on-server', d.uploadId);
         });
         // Squadmates' queue summaries (relayed by the server).
         window.socket.on('squad-upload-status', function(d) {

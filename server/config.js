@@ -206,9 +206,9 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 const PRIVACY_POLICY_VERSION = '2026-09-07';
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.90',
-  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.90.exe',
-    releaseNotes: "Choppy clips now come with an explanation. When a game uses all of your graphics card (usually because its frame rate is set to unlimited), Peak-Abu notices the dropped frames and says so in the Activity tab, and if you record at 60 FPS it switches to 30 (you can change it back under Framerate). A tip at launch explains capping your game's frame rate, with a “Don't show this again” box. Creating an account is clearer: Log In and Create Account are separate tabs, each field shows its rules as you type, and the button lights up once everything is filled in. The “Before you start recording” notice no longer comes back after every restart, Reset to defaults in Appearance works, and the AI Reel can pick clips by game and session folder."
+  version: '0.1.91',
+  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.91.exe',
+    releaseNotes: "Deleted clips no longer show as still uploading. When the host deletes a clip that's waiting in your upload queue, it leaves your 📤 Upload Queue right away, and if you delete a clip file from your PC before it uploads, it disappears from the queue and your squad stops seeing it as uploading too. Clips that were stuck as “still uploading” in older sessions have been cleared."
 };
 
 
