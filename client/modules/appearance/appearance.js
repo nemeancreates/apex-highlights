@@ -801,6 +801,25 @@
       return this.set({ wallpaper: null });
     },
 
+    /**
+     * "Reset to defaults" in the Appearance panel. The button has always
+     * called this, but it was never written, so the click threw and did
+     * nothing. Back to DEFAULT_STATE: theme, accent, wallpaper, sliders and
+     * toggles. The recent theme/colour lists are history, not settings, so
+     * they stay.
+     */
+    reset: function () {
+      if (this._objectUrl) { URL.revokeObjectURL(this._objectUrl); this._objectUrl = null; }
+      if (global.indexedDB) idbDelete(this.storageKey).catch(function () {});
+      this.state = Object.assign({}, DEFAULT_STATE, {
+        tokens: {},
+        recentThemeIds: this.state.recentThemeIds || [],
+        recentColorIds: this.state.recentColorIds || []
+      });
+      this.apply();
+      return this.save();
+    },
+
     applyTheme: function (themeId) {
       var t = PRESET_THEMES.filter(function (x) { return x.id === themeId; })[0];
       if (!t) return Promise.resolve();

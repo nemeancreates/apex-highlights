@@ -206,9 +206,9 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 const PRIVACY_POLICY_VERSION = '2026-09-07';
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.89',
-  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.89.exe',
-    releaseNotes: "Low Bandwidth Mode no longer holds your videos back on an ordinary slower connection. Auto now only switches it on when your measured upload is under 5 Mbps (it was 10), and a slow speed test is checked a second time before it counts, so one bad moment can't hold your videos for a whole day. When Low Bandwidth Mode is on, each video waits at most 2 minutes for a quiet moment and then uploads anyway, so clips from a busy session no longer pile up until you turn the mode off."
+  version: '0.1.90',
+  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.90.exe',
+    releaseNotes: "Choppy clips now come with an explanation. When a game uses all of your graphics card (usually because its frame rate is set to unlimited), Peak-Abu notices the dropped frames and says so in the Activity tab, and if you record at 60 FPS it switches to 30 (you can change it back under Framerate). A tip at launch explains capping your game's frame rate, with a “Don't show this again” box. Creating an account is clearer: Log In and Create Account are separate tabs, each field shows its rules as you type, and the button lights up once everything is filled in. The “Before you start recording” notice no longer comes back after every restart, Reset to defaults in Appearance works, and the AI Reel can pick clips by game and session folder."
 };
 
 

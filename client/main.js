@@ -2102,6 +2102,34 @@ function stopDiskWatcher() {
 let lastDropCount = 0;
 let lastDupCount = 0;
 let lowSpeedStreak = 0;
+let fillBaseFrames = 0;
+let fillBaseDups = 0;
+let fillStreak = 0;
+let captureWarnedThisSession = false;   // one "dropping frames" line per session
+let autoFpsDroppedThisSession = false;  // one automatic 60 -> 30 switch per session
+
+// AUTO 30 FPS: a 60 fps Monitor capture that keeps starving switches itself
+// to 30 once per session, through the same live restart as changing
+// Framerate by hand (waits for saves, fresh buffer). Saved like a manual
+// change so the dropdown, which every settings change sends, stays at 30.
+function autoDropTo30(engine) {
+  if (autoFpsDroppedThisSession || recordFps !== 60 || wgcCaptureMode || !ffmpegProcess) return false;
+  autoFpsDroppedThisSession = true;
+  recordFps = 30;
+  const prefs = readPrefsRaw();
+  prefs.fps = 30;
+  saveUserPreferences(prefs);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('fps-auto-changed', 30);
+    mainWindow.webContents.send('capture-health', {
+      status: 'auto-30', engine,
+      message: '⚠️ Recording was dropping frames at 60 FPS, so Peak-Abu switched to 30 FPS (you can change it back under Framerate). ' +
+               'For smoother clips, cap your game\'s frame rate (60 works for most games).'
+    });
+  }
+  scheduleLiveCaptureRestart(currentMonitor);
+  return true;
+}
 
 function parseCaptureHealth(text, engine) {
   const speedMatch = text.match(/speed=\s*([\d.]+)x/);
@@ -2121,6 +2149,36 @@ function parseCaptureHealth(text, engine) {
     }
   }
 
+  // Share of frames the recorder had to fill in because the capture didn't
+  // hand it a new one in time. Healthy runs sit at 0-9%; when a game holds
+  // the GPU at ~99% (usually an uncapped frame rate) it jumps to 30-100% and
+  // clips play back choppy, even while speed= still reads 1.00x. Measured over
+  // at least 2 s of frames; two bad windows in a row (~10 s) switch a 60 fps
+  // capture to 30 (autoDropTo30), or else warn. Each happens once per session.
+  const frameAll = [...text.matchAll(/frame=\s*(\d+)/g)];
+  const dupAll = [...text.matchAll(/dup=\s*(\d+)/g)];
+  if (frameAll.length && dupAll.length) {
+    const frames = parseInt(frameAll[frameAll.length - 1][1], 10);
+    const dups = parseInt(dupAll[dupAll.length - 1][1], 10);
+    if (frames < fillBaseFrames) { fillBaseFrames = 0; fillBaseDups = 0; }
+    const span = frames - fillBaseFrames;
+    if (span >= recordFps * 2) {
+      const filled = (dups - fillBaseDups) / span;
+      fillBaseFrames = frames;
+      fillBaseDups = dups;
+      fillStreak = filled >= 0.25 ? fillStreak + 1 : 0;
+      if (fillStreak === 2 && !autoDropTo30(engine) && !captureWarnedThisSession &&
+          mainWindow && !mainWindow.isDestroyed()) {
+        captureWarnedThisSession = true;
+        mainWindow.webContents.send('capture-health', {
+          status: 'dropping', engine,
+          message: '⚠️ Recording is dropping frames: your game is using all of your graphics card. ' +
+                   'Cap its frame rate in the game\'s settings (60 works for most games).'
+        });
+      }
+    }
+  }
+
   const speed = speedMatch ? parseFloat(speedMatch[1]) : null;
   const drop  = dropMatch ? parseInt(dropMatch[1], 10) : null;
   const fps   = fpsMatch ? parseFloat(fpsMatch[1]) : null;
@@ -2134,11 +2192,13 @@ function parseCaptureHealth(text, engine) {
   if (speed !== null) {
     if (speed < 0.95) {
       lowSpeedStreak++;
-      if (lowSpeedStreak === 3 && mainWindow && !mainWindow.isDestroyed()) {
+      if (lowSpeedStreak === 3 && !autoDropTo30(engine) && !captureWarnedThisSession &&
+          mainWindow && !mainWindow.isDestroyed()) {
+        captureWarnedThisSession = true;
         mainWindow.webContents.send('capture-health', {
           status: 'behind', engine, speed, drop, fps,
-          message: `Capture is falling behind (${speed.toFixed(2)}x) on ${ENGINE_LABELS[engine] || engine}. ` +
-                   `This can drop game FPS. Try a lighter engine, lower FPS, or check for other recorders (Shadowplay/OBS).`
+          message: '⚠️ Recording can\'t keep up: your game is using all of your graphics card, so highlights may not save. ' +
+                   'Cap the game\'s frame rate (60 works for most games) or record at 30 FPS.'
         });
       }
     } else {
@@ -2273,6 +2333,9 @@ function startRecording(monitor) {
   lastDropCount = 0;
   lastDupCount = 0;
   lowSpeedStreak = 0;
+  fillBaseFrames = 0;
+  fillBaseDups = 0;
+  fillStreak = 0;
   // NOTE: game audio segments / micFirstChunkTime are NOT reset here.
   // startRecording also runs on mid-session crash restarts, where the
   // renderer's audio recorders keep running and never re-send their start
@@ -5677,6 +5740,8 @@ function createWindow() {
 
   ipcMain.on('start-recording', async (event, { monitorIndex, windowTitle }) => {
     captureEpoch++;
+    captureWarnedThisSession = false;
+    autoFpsDroppedThisSession = false;
     if (liveRestartTimer) { clearTimeout(liveRestartTimer); liveRestartTimer = null; }
     // Saves still queued from the previous recording would cut against this
     // recording's fresh buffer and audio — the wrong footage. Drop them
@@ -6393,6 +6458,10 @@ function createWindow() {
 
       let sizeBytes = 0;
       try { sizeBytes = fs.statSync(mp4Path).size; } catch (e) {}
+      // <Game>\<date> · <CODE>\ since v0.1.87. Clips saved before that sit in
+      // the clips folder itself, so both stay null.
+      const rel = path.relative(CLIPS_DIR, path.dirname(mp4Path));
+      const parts = rel ? rel.split(path.sep) : [];
 
       out.push({
         id: meta.clipId,
@@ -6402,7 +6471,9 @@ function createWindow() {
         durationMs: typeof meta.durationMs === 'number' ? meta.durationMs : null,
         sessionId: meta.sessionId || null,
         savedAt: typeof meta.saveTimeUTC === 'number' ? meta.saveTimeUTC : null,
-        sizeBytes
+        sizeBytes,
+        folderGame: parts[0] || null,
+        folderSitting: parts[1] || null
       });
     }
 

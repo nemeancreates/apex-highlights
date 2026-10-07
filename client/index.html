@@ -306,6 +306,21 @@
       /* Delay only on reveal — hiding stays instant so it doesn't linger */
       .cm-wrap:hover .cm-tip { opacity: 1; visibility: visible; transition-delay: 1.1s; }
 
+      /* ===== Account form: Log In / Create Account =====
+         #authLoggedOut on the tab rules: the global button:not(...) chain
+         outranks any class-only selector. */
+      .auth-mode-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+      #authLoggedOut .auth-mode-tabs button {
+        flex: 1; padding: 7px 0; font-size: 13px; border-radius: 6px; cursor: pointer;
+        background: transparent; border: 1px solid #1e3527; color: #5f7a6a; font-weight: 600;
+      }
+      #authLoggedOut .auth-mode-tabs button:hover { border-color: #39d3a0; color: #8fbfa3; }
+      #authLoggedOut .auth-mode-tabs button.active { background: #12251a; border-color: #39d3a0; color: #39d3a0; }
+      #authLoggedOut a { color: #39d3a0; }
+      .auth-hint { font-size: 11px; color: #5f7a6a; margin: -6px 0 9px; }
+      .auth-hint.ok { color: #39d3a0; }
+      .auth-hint.bad { color: #f0857a; }
+
       /* ===== Members ===== */
       .member-list {
         overflow-y: auto; min-height: 0; max-height: 248px;
@@ -817,7 +832,7 @@
               <img src="assets/kickstarter.png" alt="kickstarter" />
             </button>
           </div>
-          <span class="version-tag">v0.1.89</span>
+          <span class="version-tag">v0.1.90</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="redeem-wrap">
@@ -1111,6 +1126,35 @@
         </div>
       </div>
 
+      <!-- FRAME-CAP TIP — shown at every launch (after first-launch setup)
+           until "Don't show this again" is ticked. An uncapped game holds the
+           GPU at ~99% and starves the recorder; see parseCaptureHealth in
+           main.js for the live warning. -->
+      <div id="frameCapTipModal" class="modal">
+        <div class="modal-content" style="max-width:440px;">
+          <div class="modal-header">
+            <h2>🎯 For smooth clips, cap your game's frame rate</h2>
+            <button class="modal-close" onclick="closeFrameCapTip()">×</button>
+          </div>
+          <p style="font-size:13px;line-height:1.5;color:#c8d6cd;margin-bottom:10px;">
+            Peak-Abu records your screen through your graphics card. If a game's frame rate is set to
+            unlimited, it uses 100% of the card, and the recorder has to wait its turn. Clips come out
+            choppy, or like a slideshow in heavy games, whatever your graphics settings are. Lower
+            settings just make the game draw even more frames.
+          </p>
+          <p style="font-size:13px;line-height:1.5;color:#c8d6cd;margin-bottom:14px;">
+            <strong>Fix:</strong> cap the game's frame rate in its own settings or your graphics
+            driver's control panel, at a level it holds even in busy areas (60 works for most games).
+            For very demanding games, also record at 30 FPS.
+          </p>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#8fbfa3;text-transform:none;letter-spacing:normal;margin-bottom:12px;cursor:pointer;">
+            <input type="checkbox" id="frameCapTipHide" style="accent-color:#39d3a0;margin:0;">
+            Don't show this again
+          </label>
+          <button class="btn-save" onclick="closeFrameCapTip()" style="width:100%;">Got it</button>
+        </div>
+      </div>
+
       <!-- UPDATE BANNER -->
       <div class="update-banner" id="updateBanner">
         <div class="update-msg">
@@ -1130,37 +1174,35 @@
       <div class="card" id="authPanel" style="margin-bottom:13px;">
         <h3>Account</h3>
         <div id="authLoggedOut">
+          <div class="auth-mode-tabs">
+            <button type="button" id="authModeLogin" class="active" onclick="setAuthMode('login')">I have an account</button>
+            <button type="button" id="authModeRegister" onclick="setAuthMode('register')">I'm new here</button>
+          </div>
           <label>Username</label>
-          <input type="text" id="authUsernameInput" placeholder="Enter username" />
+          <input type="text" id="authUsernameInput" placeholder="Enter username" autocomplete="username" />
+          <div class="auth-hint" id="authUsernameHint" style="display:none;">2–24 characters: letters, numbers, _ or -</div>
           <label>Password</label>
-          <input type="password" id="authPasswordInput" placeholder="Enter password" />
+          <input type="password" id="authPasswordInput" placeholder="Enter password" autocomplete="current-password" />
+          <div class="auth-hint" id="authPasswordHint" style="display:none;">At least 8 characters</div>
           <div id="authConfirmWrap" style="display:none;">
             <label>Confirm Password</label>
-            <input type="password" id="authConfirmInput" placeholder="Re-enter password" />
+            <input type="password" id="authConfirmInput" placeholder="Re-enter password" autocomplete="new-password" />
+            <div class="auth-hint" id="authConfirmHint"></div>
           </div>
-          <div id="authPrivacyWrap" style="display:none;margin-bottom:10px;">
-            <label style="display:flex;align-items:flex-start;gap:8px;font-size:12px;color:#8fbfa3;text-transform:none;letter-spacing:normal;">
-              <input type="checkbox" id="authPrivacyCheck" style="margin-top:2px;">
-              <span>I agree to the <a href="#" onclick="shell.openExternal('https://peakabu.app/privacy');return false;" style="color:#39d3a0;">Privacy Policy</a> and Terms of Service.</span>
-            </label>
-          </div>
-          <div id="authError" style="color:#f0857a;font-size:12px;margin-top:-4px;margin-bottom:6px;display:none;"></div>
-          <div id="authTermsWrap" style="display:flex;align-items:flex-start;gap:6px;margin-bottom:10px;font-size:12px;color:#a9bdae;">
+          <div id="authTermsWrap" style="display:none;align-items:flex-start;gap:6px;margin-bottom:10px;font-size:12px;color:#a9bdae;">
             <input type="checkbox" id="authTermsCheckbox" style="margin-top:2px;">
-            <label for="authTermsCheckbox">
+            <label for="authTermsCheckbox" style="font-size:12px;color:#a9bdae;text-transform:none;letter-spacing:normal;margin:0;">
               I agree to the
-REPLACE:
               <a href="#" onclick="shell.openExternal('https://peakabu.app/terms.html'); return false;">Terms of Service</a>
               and
               <a href="#" onclick="shell.openExternal('https://peakabu.app/privacy.html'); return false;">Privacy Policy</a>
             </label>
           </div>
-          <div class="row">
-            <button class="btn-save" style="padding:10px 18px;font-size:15px;" onclick="loginUser()">Log In</button>
-            <button class="btn-secondary" style="padding:10px 18px;font-size:15px;" onclick="registerUser()">Register</button>
-          </div>
-          <p style="font-size:11px;color:#3a5244;text-align:center;margin-top:6px;">New? Click Register to create an account.</p>
-          <p style="text-align:center;margin-top:8px;">
+          <div id="authError" style="color:#f0857a;font-size:12px;margin-top:-4px;margin-bottom:6px;display:none;"></div>
+          <button class="btn-save" id="authSubmitBtn" style="width:100%;padding:10px 18px;font-size:15px;" onclick="submitAuth()" disabled>Log In</button>
+          <div class="auth-hint" id="authNeedHint" style="text-align:center;margin:6px 0 0;"></div>
+          <p id="authSwitchHint" style="font-size:11px;color:#5f7a6a;text-align:center;margin-top:8px;"></p>
+          <p id="authForgotWrap" style="text-align:center;margin-top:4px;">
             <a href="#" onclick="openForgotPassword(event)" style="font-size:11px;color:#5f7a6a;text-decoration:none;display:inline-flex;align-items:center;gap:4px;">
               🔒 Forgot password?
             </a>
@@ -1438,6 +1480,7 @@ REPLACE:
               <div class="cm-tip">
                 Works with borderless/windowed games. Exclusive fullscreen isn't capturable — use Monitor mode.
                 Windows 10 draws a yellow border around captured windows.
+                In either mode, cap your game's frame rate: an unlimited frame rate leaves no graphics power for recording.
               </div>
             </div>
 
@@ -1472,12 +1515,17 @@ REPLACE:
             <div class="monitor-active" id="monitorActive" style="display:none;">Recording: <span id="monitorActiveName">—</span></div>
 
             <div class="row" style="margin-top:11px;">
-              <div>
+              <div class="cm-wrap">
                 <label>Framerate</label>
                 <select id="fpsSelect" onchange="updateSettings()">
                   <option value="30" selected>30 FPS</option>
                   <option value="60">60 FPS</option>
                 </select>
+                <div class="cm-tip" style="right:auto;width:260px;margin-top:4px;">
+                  Cap your game's frame rate at a level it holds even in busy areas (60 works for most games).
+                  An unlimited frame rate uses all of your graphics card and recordings stutter.
+                  30 FPS recording is smoother in demanding games.
+                </div>
               </div>
               <div>
                 <label>Quality</label>
@@ -3618,6 +3666,7 @@ REPLACE:
       async function checkFirstLaunch() {
         var isFirst = await ipcRenderer.invoke('is-first-launch');
         if (isFirst) {
+          if (window.setAuthMode) setAuthMode('register');   // new installs start on Create Account
           document.getElementById('installPathDisplay').textContent = await ipcRenderer.invoke('get-install-path') || 'Unknown';
           document.getElementById('firstLaunchStorageDisplay').textContent = await ipcRenderer.invoke('get-storage-directory');
           document.getElementById('firstLaunchModal').classList.add('show');
@@ -3632,7 +3681,26 @@ REPLACE:
         document.getElementById('firstLaunchModal').classList.remove('show');
         hudLog('system','Setup complete — ready to record!','success');
       };
-      checkFirstLaunch();
+
+      // FRAME-CAP TIP (#frameCapTipModal): every launch until "Don't show
+      // this again" is ticked. Waits for any other modal (first-launch
+      // setup, privacy re-consent) to close so two never stack.
+      function maybeShowFrameCapTip() {
+        ipcRenderer.invoke('get-user-pref', 'frameCapTipHidden').then(function(hidden) {
+          if (hidden) return;
+          (function waitForClearScreen() {
+            if (document.querySelector('.modal.show')) { setTimeout(waitForClearScreen, 1000); return; }
+            document.getElementById('frameCapTipModal').classList.add('show');
+          })();
+        }).catch(function() {});
+      }
+      window.closeFrameCapTip = function() {
+        if (document.getElementById('frameCapTipHide').checked) {
+          ipcRenderer.invoke('set-user-pref', 'frameCapTipHidden', true);
+        }
+        document.getElementById('frameCapTipModal').classList.remove('show');
+      };
+      checkFirstLaunch().catch(function() {}).then(function() { setTimeout(maybeShowFrameCapTip, 1500); });
       renderSessionHistory();
 
      // =====================
@@ -6352,6 +6420,12 @@ REPLACE:
       });
       ipcRenderer.on('post-capture-started', function(ev, d) { hudLog('activity','📹 Capturing post-highlight footage ('+((d.postDelay)/1000).toFixed(1)+'s)...','info'); });
       ipcRenderer.on('encoder-fallback', function(ev, enc) { hudLog('system','⚙ GPU unavailable — switched to '+enc+' encoding','info'); });
+      ipcRenderer.on('capture-health', function(ev, d) {
+        if (d && d.message && d.status !== 'ok') hudLog('activity', d.message, 'error');
+      });
+      ipcRenderer.on('fps-auto-changed', function(ev, fps) {
+        document.getElementById('fpsSelect').value = String(fps);
+      });
       ipcRenderer.on('capture-engine', function(ev, label) {
        hudLog('system', '🎥 Capture: ' + label, 'info');
       });
@@ -6499,7 +6573,9 @@ REPLACE:
         
        try {
          var res = await fetch('https://peakabu.app/auth/me', { headers: { 'Authorization':'Bearer '+window.authToken } });
-         if (res.ok) { var d = await res.json(); updateTierBadge(d.tier, d.tierExpiresAt); renderDiscordStatus(!!d.discordLinked, d.discordUsername); checkPrivacyConsent(d); showAuthLoggedIn(d.username); }
+         // recordingConsentSeen: the auto-login path never read it, so the
+         // "Before you start recording" notice came back after every restart.
+         if (res.ok) { var d = await res.json(); updateTierBadge(d.tier, d.tierExpiresAt); renderDiscordStatus(!!d.discordLinked, d.discordUsername); window.recordingConsentSeen = !!d.recordingConsentSeen; checkPrivacyConsent(d); showAuthLoggedIn(d.username); }
          else if (res.status === 401) { clearAuthState(); showAuthLoggedOut(); }
          else { if (window.authUsername) showAuthLoggedIn(window.authUsername); else showAuthLoggedOut(); }
        } catch(e) {
@@ -6558,19 +6634,92 @@ REPLACE:
         } catch (e) { /* offline or server error — local history still shows */ }
       }
 
-      window.registerUser = async function() {
-      var confirmWrap = document.getElementById('authConfirmWrap');
-      if (confirmWrap.style.display === 'none' || confirmWrap.style.display === '') {
-        confirmWrap.style.display = 'block';
-        document.getElementById('authPrivacyWrap').style.display = 'block';
-        document.getElementById('authConfirmInput').focus();
-        showAuthError('Re-enter your password to confirm, then click Register again');
-        return;
+      // ACCOUNT FORM — two clear modes. Log In needs a username and a
+      // password. Create Account also shows the rules, a confirm box and the
+      // Terms checkbox. One button, which only enables once that mode's fields
+      // are filled in correctly, and a line under it saying what's still
+      // missing. The rules mirror /auth/register (username 2-24 of letters,
+      // numbers, _ or -; password 8-128), which otherwise silently strips
+      // characters from a username.
+      var AUTH_USERNAME_RE = /^[A-Za-z0-9_-]{2,24}$/;
+      window.authMode = 'login';
+      window.setAuthMode = function(mode) {
+        window.authMode = mode === 'register' ? 'register' : 'login';
+        var reg = window.authMode === 'register';
+        document.getElementById('authModeLogin').classList.toggle('active', !reg);
+        document.getElementById('authModeRegister').classList.toggle('active', reg);
+        document.getElementById('authConfirmWrap').style.display = reg ? 'block' : 'none';
+        document.getElementById('authTermsWrap').style.display = reg ? 'flex' : 'none';
+        document.getElementById('authUsernameHint').style.display = reg ? 'block' : 'none';
+        document.getElementById('authPasswordHint').style.display = reg ? 'block' : 'none';
+        document.getElementById('authForgotWrap').style.display = reg ? 'none' : 'block';
+        document.getElementById('authUsernameInput').placeholder = reg ? 'Choose a username' : 'Enter username';
+        document.getElementById('authPasswordInput').placeholder = reg ? 'Choose a password' : 'Enter password';
+        document.getElementById('authPasswordInput').setAttribute('autocomplete', reg ? 'new-password' : 'current-password');
+        document.getElementById('authSwitchHint').innerHTML = reg
+          ? 'Already have an account? <a href="#" onclick="setAuthMode(\'login\'); return false;">Log in instead</a>'
+          : 'New to Peak-Abu? <a href="#" onclick="setAuthMode(\'register\'); return false;">Create an account</a>';
+        document.getElementById('authError').style.display = 'none';
+        validateAuthForm();
+      };
+      function setAuthHint(id, text, state) {
+        var el = document.getElementById(id);
+        el.textContent = (state === 'ok' ? '✓ ' : '') + text;
+        el.className = 'auth-hint' + (state ? ' ' + state : '');
       }
+      function validateAuthForm() {
+        var u = document.getElementById('authUsernameInput').value.trim();
+        var p = document.getElementById('authPasswordInput').value;
+        var btn = document.getElementById('authSubmitBtn');
+        if (window.authMode !== 'register') {
+          btn.textContent = 'Log In';
+          btn.disabled = !(u && p);
+          setAuthHint('authNeedHint', (u && p) ? '' : 'Enter your username and password', '');
+          return;
+        }
+        var c = document.getElementById('authConfirmInput').value;
+        var terms = document.getElementById('authTermsCheckbox').checked;
+        var uOk = AUTH_USERNAME_RE.test(u);
+        var pOk = p.length >= 8 && p.length <= 128;
+        var cOk = pOk && c === p;
+        setAuthHint('authUsernameHint', '2–24 characters: letters, numbers, _ or -', u ? (uOk ? 'ok' : 'bad') : '');
+        setAuthHint('authPasswordHint', p.length > 128 ? 'At most 128 characters'
+          : (p && !pOk ? 'At least 8 characters (' + p.length + ' so far)' : 'At least 8 characters'), p ? (pOk ? 'ok' : 'bad') : '');
+        setAuthHint('authConfirmHint', c ? (cOk ? 'Passwords match' : 'Passwords don\'t match yet') : '', c ? (cOk ? 'ok' : 'bad') : '');
+        var need = [];
+        if (!uOk) need.push('a username');
+        if (!pOk) need.push('a password');
+        else if (!cOk) need.push('the same password again');
+        if (!terms) need.push('agree to the Terms');
+        setAuthHint('authNeedHint', need.length ? 'Still needed: ' + need.join(', ') : '', '');
+        btn.textContent = 'Create Account';
+        btn.disabled = need.length > 0;
+      }
+      window.submitAuth = async function() {
+        var btn = document.getElementById('authSubmitBtn');
+        if (btn.disabled) return;
+        btn.disabled = true;
+        btn.textContent = window.authMode === 'register' ? 'Creating account…' : 'Logging in…';
+        try {
+          if (window.authMode === 'register') await registerUser(); else await loginUser();
+        } finally {
+          validateAuthForm();
+        }
+      };
+      ['authUsernameInput', 'authPasswordInput', 'authConfirmInput'].forEach(function(id) {
+        var el = document.getElementById(id);
+        el.addEventListener('input', validateAuthForm);
+        el.addEventListener('keydown', function(e) { if (e.key === 'Enter') submitAuth(); });
+      });
+      document.getElementById('authTermsCheckbox').addEventListener('change', validateAuthForm);
+      setAuthMode('login');
+
+      window.registerUser = async function() {
       var username = document.getElementById('authUsernameInput').value.trim();
       var password = document.getElementById('authPasswordInput').value;
       var confirm = document.getElementById('authConfirmInput').value;
-      if (!username || !password) { showAuthError('Fill in all fields'); return; }
+      if (!AUTH_USERNAME_RE.test(username)) { showAuthError('Username must be 2–24 characters: letters, numbers, _ or -'); return; }
+      if (password.length < 8 || password.length > 128) { showAuthError('Password must be 8–128 characters'); return; }
       if (password !== confirm) { showAuthError('Passwords do not match'); return; }
       if (!document.getElementById('authTermsCheckbox').checked) {
         showAuthError('You must agree to the Terms of Service and Privacy Policy to create an account');
@@ -6626,7 +6775,9 @@ REPLACE:
         document.getElementById('memberList').innerHTML = '';
         ipcRenderer.send('auth-token-updated', null);
         ipcRenderer.send('session-disconnected');
-        document.getElementById('authConfirmWrap').style.display = 'none';
+        document.getElementById('authPasswordInput').value = '';
+        document.getElementById('authConfirmInput').value = '';
+        setAuthMode('login');
         // The player view is a separate page holding its own copy of the
         // token/username baked into its URL at open time — logging out here
         // doesn't reach it. Close it rather than leave it able to post

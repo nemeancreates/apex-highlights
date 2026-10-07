@@ -296,7 +296,7 @@
           const meta = document.createElement('span');
           meta.className = 'clip-meta' + (c.startTimeUTC == null ? ' nosync' : '');
           meta.textContent = fmtDuration(c.durationMs) + ' · ' + fmtDate(c.savedAt) +
-            (c.startTimeUTC == null ? ' · no sync' : '');
+            (c.startTimeUTC == null ? ' · no sync' : '') + folderLabel(c);
 
           info.appendChild(name);
           info.appendChild(meta);
@@ -437,6 +437,54 @@
         document.getElementById('buildBtn').disabled = busy || chosen.length === 0;
       }
 
+      // CLIP FOLDERS (v0.1.87): <Game>\<date> · <CODE>. The Clips list offers
+      // each game and each of its session folders, built from the scan, so a
+      // reel can be made from one game or one night's session.
+      function folderKey(c) { return c.folderGame ? c.folderGame + '/' + (c.folderSitting || '') : ''; }
+      function inFolderScope(c, scope) {
+        if (scope.startsWith('game:')) return c.folderGame === scope.slice(5);
+        if (scope.startsWith('folder:')) return folderKey(c) === scope.slice(7);
+        if (scope === 'unsorted') return !c.folderGame;
+        return true;
+      }
+      function buildFolderOptions(list) {
+        const sel = document.getElementById('scope');
+        const current = sel.value;
+        sel.querySelectorAll('optgroup').forEach(g => g.remove());
+        const games = new Map();   // game -> Map(session folder -> clip count)
+        let unsorted = 0;
+        list.forEach(c => {
+          if (!c.folderGame) { unsorted++; return; }
+          if (!games.has(c.folderGame)) games.set(c.folderGame, new Map());
+          const s = games.get(c.folderGame), k = c.folderSitting || '';
+          s.set(k, (s.get(k) || 0) + 1);
+        });
+        [...games.keys()].sort((a, b) => a.localeCompare(b)).forEach(game => {
+          const sittings = games.get(game);
+          const total = [...sittings.values()].reduce((a, b) => a + b, 0);
+          const group = document.createElement('optgroup');
+          group.label = '📁 ' + game;
+          group.appendChild(new Option('All ' + game + ' clips (' + total + ')', 'game:' + game));
+          [...sittings.keys()].filter(Boolean).sort().reverse().forEach(sitting => {   // newest first
+            group.appendChild(new Option(sitting + ' (' + sittings.get(sitting) + ')', 'folder:' + game + '/' + sitting));
+          });
+          sel.appendChild(group);
+        });
+        if (unsorted) {
+          const group = document.createElement('optgroup');
+          group.label = '📁 Other';
+          group.appendChild(new Option('Not in a game folder (' + unsorted + ')', 'unsorted'));
+          sel.appendChild(group);
+        }
+        sel.value = current;
+        if (sel.value !== current) sel.value = 'all';   // that folder is gone now
+      }
+      // Each row names its folder unless the list is already one session folder.
+      function folderLabel(c) {
+        if (!c.folderGame || document.getElementById('scope').value.startsWith('folder:')) return '';
+        return ' · 📁 ' + c.folderGame + (c.folderSitting ? ' / ' + c.folderSitting : '');
+      }
+
       async function refresh() {
         const scope = document.getElementById('scope').value;
         const listEl = document.getElementById('clipList');
@@ -457,6 +505,11 @@
           });
         } catch (e) {
           allClips = [];
+        }
+        if (scope !== 'session') {
+          buildFolderOptions(allClips);
+          const chosen = document.getElementById('scope').value;
+          allClips = allClips.filter(c => inFolderScope(c, chosen));
         }
         selected = new Set();
         // Seed the preview with the most recently saved clips so the window
