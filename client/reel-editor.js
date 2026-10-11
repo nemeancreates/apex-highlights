@@ -504,7 +504,8 @@ function buildPlan(ctx, choice) {
     const ov = overrides.get(sp.id) || {};
     const pin = sp.pins[0] || null;
     let mode = notes.mode;
-    if (ov.layout === 'solo' || ov.layout === 'grid') mode = ov.layout;
+    // A style the user chose (all POVs / solo) outranks the AI's per-moment layout.
+    if (notes.mode === 'auto' && (ov.layout === 'solo' || ov.layout === 'grid')) mode = ov.layout;
     const wantsZoom = notes.zoom && pin && pin.zoom;
     if (wantsZoom) mode = 'solo';
     const parts = [];

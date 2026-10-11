@@ -734,6 +734,13 @@ async function runJob(job) {
   // Guard: measured from the cut itself, independently of the editor. All
   // three should be zero; a non-zero value here is a bug worth a log line.
   const check = editor.checkEdl(edl, analyzable.map(c => ({ id: c.id, player: c.username, duration: c.duration, startTimeUTC: c.startTimeUTC })));
+  // Per-clip facts behind the cut: which clips had a start time (needed to
+  // line POVs up) and sound.
+  D.log('info', 'aireel_clips', { jobId: job.id, clips: clips.map(c => ({
+    player: c.username, timed: c.startTimeUTC != null, fps: c.fps || 0,
+    durSec: Math.round((c.duration || 0) * 10) / 10, hasAudio: !!c.hasAudio, loudPoints: (c.loudness || []).length
+  })) });
+
   D.log(check.repeatedSec > 0.5 || check.samePlayerTwice > 0 || check.maxSyncErrSec > 0.05 ? 'warn' : 'info', 'aireel_edl_built', {
     jobId: job.id, engine, shots: edl.length, moments: plan.stats.moments, outSec: check.outSec,
     targetSec: job.targetSec, uniqueSec: Math.round(ctx.uniqueSec), level: plan.stats.level,

@@ -1430,8 +1430,15 @@
        <input type="text" id="aireelGame" placeholder="e.g. Apex Legends" style="background:#0c1c14;color:#c8d6cd;border:1px solid #24402e;border-radius:4px;padding:4px 8px;width:160px;" />
      </div>
      <div style="flex:1;min-width:220px;">
-       <label style="font-size:11px;color:#7a9686;display:block;">Style notes for the AI editor (saved per game)</label>
-       <input type="text" id="aireelStyle" placeholder="e.g. solo only, no slow motion, tight cuts, more of a player's name" style="background:#0c1c14;color:#c8d6cd;border:1px solid #24402e;border-radius:4px;padding:4px 8px;width:100%;" />
+       <label style="font-size:11px;color:#7a9686;display:block;">Style</label>
+       <select id="aireelStyle" style="background:#0c1c14;color:#c8d6cd;border:1px solid #24402e;border-radius:4px;padding:4px 8px;width:100%;">
+         <option value="">Balanced (editor decides)</option>
+         <option value="all povs">Multi-POV: every POV on screen</option>
+         <option value="solo only">Solo: one POV at a time</option>
+         <option value="tight cuts">Fast, tight cuts</option>
+         <option value="longer holds">Longer holds</option>
+         <option value="no effects">Plain: no slow-mo, zoom or speed-ups</option>
+       </select>
      </div>
      <button class="btn btn-small" id="aireelBtn" onclick="startAiReel()">🤖 Generate AI Reel</button>
      <button class="btn btn-small btn-secondary" id="aireelCancelBtn" onclick="cancelAiReel()" style="display:none;">Stop Reel</button>
