@@ -1,22 +1,29 @@
 // ================================================================
-// server/aireel.js — Peak-Abu AI Highlight Reel engine (v0.1.13)
+// server/aireel.js — Peak-Abu AI Highlight Reel engine (v0.1.14)
 // ================================================================
-// v0.1.13: per-tier reel length caps (t3 15min / t4 30min), segment length
-//          scaled to target so long reels stay tractable, tier-priority
+// v0.1.14 (10-10-26): the cut is built by reel-editor.js on the session's
+//          real timeline (see that file for what was wrong before). Here:
+//          analysis is audio-only and cached per clip, clips are fetched
+//          only when needed, the AI editor chooses among moments the code
+//          found instead of writing timestamps, and stars, comments and
+//          style notes steer the cut.
+// v0.1.13: per-tier reel length caps (t3 15min / t4 30min), tier-priority
 //          queue, target clamped to available source footage.
 // v0.1.12: optional comment overlay via ASS subtitles per segment.
 //
 // Pipeline:
-//   1. PREPARE — ensure selected clips exist locally (pull from CDN if purged)
-//   2. ANALYZE — FFmpeg extracts loudness (ebur128) + scene-change density
-//                per clip -> per-second "intensity" scores
-//   3. EDIT    — Anthropic API (or heuristic fallback) → Edit Decision List
-//   4. RENDER  — FFmpeg renders each EDL segment (solo/side/grid), with
-//                optional comment overlay, concatenates, serves download
+//   1. PREPARE — read each selected clip's sync data (start time, frame rate)
+//   2. ANALYZE — FFmpeg measures loudness (ebur128) per clip; cached, so a
+//                second reel from the same clips skips this
+//   3. EDIT    — reel-editor.js finds the moments and builds the cut; on
+//                AI tiers the Anthropic API picks among those moments
+//   4. RENDER  — clips the cut uses are fetched, FFmpeg renders each shot
+//                (solo/side/grid, speed, punch-in, optional comments),
+//                the shots are joined, the reel is served for download
 //
-// aireel-edit route added: client sends pre-analyzed clip features and
-// gets back just the EDL + report, for client-side rendering (no job
-// queue, no upload, no server render).
+// aireel-edit route: an older client-side-render path (client sends
+// pre-analyzed clip features, gets an EDL back). No shipped client calls
+// it; it keeps its own prompt, now with a no-repeat guard.
 // ================================================================
 
 const fs = require('fs');
@@ -33,6 +40,8 @@ const { TIERS, tiersWithCapability } = require('./config');
 const { getCommentsForSession } = require('./routes/comments');
 const { generateASS, checkAssFilter, escapeFilterPath } = require('./comment-overlay');
 const { initGenerationUsage, checkAndIncrement, getUsage, pruneOldMonths } = require('./generation-usage');
+const { listStars } = require('./routes/stars');
+const editor = require('./reel-editor');
 
 const AIREEL_TIERS = tiersWithCapability('hasAiReel');
 
@@ -41,10 +50,11 @@ const PROFILE_FILE = path.join(__dirname, 'aiprofiles.json');
 
 const ALLOWED_TARGETS = [15, 30, 60, 90, 120, 180, 300, 600, 900, 1800, 1800];
 const MAX_CLIPS = 50;
-const OVERLAP_WINDOW_MS = 5000;
-const MAX_TILES = 4;
+const MAX_TILES = editor.MAX_TILES;
 const JOB_TTL_MS = 3 * 60 * 60 * 1000;      // was 1h — a 45min reel can outlive that
-const SESSION_COOLDOWN_MS = 2 * 60 * 1000;
+// Long enough to swallow a double click, short enough to try again with
+// different notes straight away (analysis is cached, so a retry is cheap).
+const SESSION_COOLDOWN_MS = 20 * 1000;
 const ANALYZE_TIMEOUT_MS = 3 * 60 * 1000;
 const RENDER_TIMEOUT_MS = 20 * 60 * 1000;   // was 5min — long segments + concat of a long reel
 
@@ -193,7 +203,7 @@ function registerRoutes() {
 
     const last = lastRunPerSession.get(code) || 0;
     if (Date.now() - last < SESSION_COOLDOWN_MS) {
-      return D.safeError(res, 429, 'A reel was just generated for this session. Wait 2 minutes.');
+      return D.safeError(res, 429, 'A reel was just started for this session. Try again in a few seconds.');
     }
     if (jobQueue.length >= 3) {
       return D.safeError(res, 503, 'Reel queue is full. Try again in a few minutes.');
@@ -239,7 +249,8 @@ function registerRoutes() {
       uploads: selected.map(u => ({
         id: u.id, username: u.username,
         videoFile: u.videoFile, videoUrl: u.videoUrl || null,
-        metadataFile: u.metadataFile || null, metadataUrl: u.metadataUrl || null
+        metadataFile: u.metadataFile || null, metadataUrl: u.metadataUrl || null,
+        durationMs: u.durationMs || null, coordinatedTimestamp: u.coordinatedTimestamp || null
       })),
       outputPath: path.join(AIREEL_DIR, `reel_${jobId}.mp4`),
       workDir: path.join(AIREEL_DIR, `job_${jobId}`),
@@ -477,6 +488,9 @@ function cleanupJobs() {
       jobs.delete(id);
     }
   }
+  for (const [key, a] of analysisCache) {
+    if (now - a.at > JOB_TTL_MS) analysisCache.delete(key);
+  }
 }
 
 // Runs once at boot. A crash mid-render (OOM, etc.) skips pumpQueue()'s
@@ -553,36 +567,62 @@ function dirSize(dir) {
 }
 
 // ---------- Pipeline ----------
+
+// Loudness analysis per clip, kept between reels. A second reel from the
+// same session (different length, different notes) skips analysis, and so
+// skips downloading every clip the new cut doesn't use.
+const analysisCache = new Map();   // `${code}:${uploadId}` -> { at, duration, fps, hasAudio, loudness }
+const ANALYSIS_CACHE_MAX = 600;
+
+function cacheAnalysis(job, clip) {
+  if (analysisCache.size >= ANALYSIS_CACHE_MAX) {
+    const oldest = analysisCache.keys().next().value;
+    analysisCache.delete(oldest);
+  }
+  analysisCache.set(`${job.code}:${clip.id}`, {
+    at: Date.now(), duration: clip.duration, fps: clip.fps, hasAudio: clip.hasAudio, loudness: clip.loudness
+  });
+}
+
+// Makes sure a clip's video is on this disk: the session's own copy if it is
+// still here, otherwise pulled from the CDN into the job's work folder.
+async function ensureLocal(job, clip) {
+  if (clip.path && fs.existsSync(clip.path)) return true;
+  const local = path.join(D.UPLOADS_DIR, job.code, clip.videoFile);
+  if (fs.existsSync(local)) { clip.path = local; return true; }
+  if (!clip.videoUrl) { D.log('warn', 'aireel_clip_missing', { jobId: job.id, file: clip.videoFile }); return false; }
+  const tmp = path.join(job.workDir, `src_${clip.id}.mp4`);
+  try {
+    // Explicit bounds: reels tolerate a slower pull than a composite does,
+    // but a stalled socket must still fail rather than hold the worker.
+    await D.downloadToFile(clip.videoUrl, tmp, { idleMs: 30000, totalMs: 10 * 60 * 1000 });
+    clip.path = tmp;
+    return true;
+  } catch (e) {
+    D.log('warn', 'aireel_download_failed', { jobId: job.id, error: e.message });
+    return false;
+  }
+}
+
 async function runJob(job) {
   fs.mkdirSync(job.workDir, { recursive: true });
   const sessionDir = path.join(D.UPLOADS_DIR, job.code);
 
-  // Progress bands: prepare 0-5, analyze 5-35, edit 35-40, render 40-95,
-  // stitch 95-99, done 100. Each checkpoint() lets a cancel or a watchdog
-  // abort unwind the pipeline without overwriting the status it already set.
+  // Progress bands: prepare 0-3, analyze 3-30, edit 30-35, fetch 35-40,
+  // render 40-95, stitch 95-99, done 100. Each checkpoint() lets a cancel or
+  // a watchdog abort unwind the pipeline without overwriting the status it
+  // already set.
 
-  // 1. PREPARE
+  // 1. PREPARE — sync data only. No video is fetched yet.
   job.status = 'preparing';
-  job.progress = 'Fetching clips';
+  job.progress = 'Reading clips';
+  let starTs = [];
+  try { starTs = listStars(job.code).map(s => s.momentTs).filter(t => typeof t === 'number'); } catch (e) {}
   const clips = [];
   for (let ui = 0; ui < job.uploads.length; ui++) {
     checkpoint(job);
-    setPct(job, 5 * ui / job.uploads.length);
+    setPct(job, 3 * ui / job.uploads.length);
     const up = job.uploads[ui];
-    let localPath = path.join(sessionDir, up.videoFile);
-    if (!fs.existsSync(localPath)) {
-      if (!up.videoUrl) { D.log('warn', 'aireel_clip_missing', { jobId: job.id, file: up.videoFile }); continue; }
-      const tmp = path.join(job.workDir, `src_${up.id}.mp4`);
-      try {
-        // Explicit bounds: reels tolerate a slower pull than a composite does,
-        // but a stalled socket must still fail rather than hold the worker.
-        await D.downloadToFile(up.videoUrl, tmp, { idleMs: 30000, totalMs: 10 * 60 * 1000 });
-        localPath = tmp;
-      } catch (e) {
-        D.log('warn', 'aireel_download_failed', { jobId: job.id, error: e.message });
-        continue;
-      }
-    }
 
     let meta = null;
     const metaLocal = up.metadataFile ? path.join(sessionDir, up.metadataFile) : null;
@@ -591,122 +631,137 @@ async function runJob(job) {
     } else if (up.metadataUrl) {
       try { meta = JSON.parse(await fetchText(up.metadataUrl)); } catch (e) {}
     }
+    meta = meta || {};
+    const momentTs = Number(meta.coordinated_timestamp) || Number(meta.saveTimeUTC) || Number(up.coordinatedTimestamp) || 0;
 
     clips.push({
-      id: up.id, username: up.username, path: localPath,
-      startTimeUTC: meta && typeof meta.startTimeUTC === 'number' ? meta.startTimeUTC : null,
-      duration: 0, hasAudio: false,
-      loudness: [], scenes: [], moments: []
+      id: up.id, username: up.username, videoFile: up.videoFile, videoUrl: up.videoUrl, path: null,
+      startTimeUTC: typeof meta.startTimeUTC === 'number' ? meta.startTimeUTC : null,
+      fps: Number(meta.frameRate) || 0,
+      // Starred in the web player: the highlight this clip belongs to.
+      starred: momentTs > 0 && starTs.some(t => Math.abs(t - momentTs) <= 5000),
+      duration: 0, hasAudio: false, loudness: []
     });
   }
-
   checkpoint(job);
-  if (clips.length === 0) {
-    job.status = 'failed';
-    job.progress = 'No usable clips (files missing locally and on CDN)';
-    return;
-  }
 
-  // Fetch comments for overlay (before analysis, which takes time)
-  if (job.includeComments) {
-    const canAss = await checkAssFilter();
-    if (canAss) {
-      job.sessionComments = getCommentsForSession(job.code);
-      if (job.sessionComments.length > 0) {
-        D.log('info', 'aireel_comments_loaded', { jobId: job.id, count: job.sessionComments.length });
-      } else {
-        job.sessionComments = null;
-      }
+  // Comments steer the cut whether or not they are drawn on the reel.
+  let comments = [];
+  try { comments = getCommentsForSession(job.code) || []; } catch (e) {}
+  job.sessionComments = null;
+  if (job.includeComments && comments.length > 0) {
+    if (await checkAssFilter()) {
+      job.sessionComments = comments;
+      D.log('info', 'aireel_comments_loaded', { jobId: job.id, count: comments.length });
     } else {
       D.log('warn', 'aireel_no_libass', { jobId: job.id });
     }
   }
 
-  // 2. ANALYZE
+  // 2. ANALYZE — loudness only (the audio track), so no video is decoded.
   job.status = 'analyzing';
+  let analyzed = 0, reused = 0;
   for (let i = 0; i < clips.length; i++) {
     checkpoint(job);
-    setPct(job, 5 + 30 * i / clips.length);
+    setPct(job, 3 + 27 * i / clips.length);
     job.progress = `Analyzing clip ${i + 1}/${clips.length} (${clips[i].username})`;
+    const cached = analysisCache.get(`${job.code}:${clips[i].id}`);
+    if (cached) {
+      Object.assign(clips[i], { duration: cached.duration, hasAudio: cached.hasAudio, loudness: cached.loudness });
+      if (!clips[i].fps) clips[i].fps = cached.fps;
+      reused++;
+      continue;
+    }
+    if (!(await ensureLocal(job, clips[i]))) continue;
     await analyzeClip(clips[i], job);
+    if (clips[i].duration > 0) { cacheAnalysis(job, clips[i]); analyzed++; }
   }
   checkpoint(job);
 
   const analyzable = clips.filter(c => c.duration > 2);
   if (analyzable.length === 0) {
     job.status = 'failed';
-    job.progress = 'Clips could not be analyzed';
+    job.progress = clips.some(c => c.path) ? 'Clips could not be analyzed' : 'No usable clips (files missing locally and on CDN)';
     return;
   }
-
-  // A reel can't be longer than the footage it's cut from. Rather than fail a
-  // 45-minute request made against 6 minutes of clips, clamp the target and
-  // say so in the report.
-  const totalSource = analyzable.reduce((sum, c) => sum + c.duration, 0);
-  const maxClipDur = Math.max(...analyzable.map(c => c.duration));
-  job.effectiveTarget = Math.min(job.targetSec, Math.floor(totalSource * 0.9));
-  job.clamped = job.effectiveTarget < job.targetSec;
-  job.seg = segmentBounds(job.effectiveTarget, maxClipDur);
-
-  if (job.effectiveTarget < job.seg.min) {
-    job.status = 'failed';
-    job.progress = 'Not enough usable footage to build a reel — select more clips';
-    return;
-  }
-
-  // Scoring depends on segment spacing, so it has to come after the bounds.
-  const maxMoments = Math.min(60, Math.max(18, Math.ceil(job.effectiveTarget / job.seg.def) + 5));
-  for (const c of analyzable) scoreClip(c, job.seg.max, maxMoments);
-
-  D.log('info', 'aireel_plan', {
-    jobId: job.id, targetSec: job.targetSec, effectiveTarget: job.effectiveTarget,
-    clamped: job.clamped, seg: job.seg, totalSource: Math.round(totalSource)
-  });
 
   // 3. EDIT
   job.status = 'editing';
-  job.progress = 'AI editor building the cut';
-  setPct(job, 35);
-  let edl, report, engine;
+  job.progress = 'Building the cut';
+  setPct(job, 30);
+  const ctx = editor.prepare({
+    targetSec: job.targetSec, game: job.game, styleNotes: job.styleNotes, comments,
+    clips: analyzable.map(c => ({
+      id: c.id, player: c.username, duration: c.duration, startTimeUTC: c.startTimeUTC,
+      hasAudio: c.hasAudio, fps: c.fps, starred: c.starred, loudness: c.loudness
+    }))
+  });
+  // A reel can't be longer than the play it's cut from; the report says so.
+  job.effectiveTarget = Math.min(job.targetSec, Math.floor(ctx.uniqueSec));
+  job.clamped = job.effectiveTarget < job.targetSec;
+
+  let plan = editor.buildPlan(ctx);
+  let engine = 'heuristic';
+  let aiNote = '';
   const jobTierCfg = TIERS[job.tier] || TIERS.t1;
-  let aiResult = null;
-  if (jobTierCfg.hasAiReelPro) {
+  if (plan.edl.length > 0 && jobTierCfg.hasAiReelPro && process.env.ANTHROPIC_API_KEY) {
     const usageCheck = checkAndIncrement(job.userId, 'fresh', jobTierCfg.aiReelProMonthlyCap);
     if (usageCheck.ok) {
-      aiResult = await tryAnthropicEdl(job, analyzable);
+      job.progress = 'AI editor choosing the moments';
+      const ai = await aiDirect(ctx, job);
+      const aiPlan = ai ? editor.buildPlan(ctx, ai.choice) : null;
+      if (aiPlan && aiPlan.edl.length > 0 && aiPlan.report.startsWith('AI editor')) {
+        plan = aiPlan; engine = 'ai'; aiNote = ai.report;
+        D.log('info', 'aireel_ai_edl_ok', { jobId: job.id, moments: aiPlan.stats.moments });
+      } else {
+        D.log('warn', 'aireel_ai_fallback', { jobId: job.id });
+      }
     } else {
       D.log('info', 'aireel_cap_reached', { jobId: job.id, userId: job.userId, usage: usageCheck.usage });
     }
   }
-  if (aiResult) { edl = aiResult.edl; report = aiResult.report; engine = 'ai'; }
-  else {
-    const h = heuristicEdl(job, analyzable);
-    edl = h.edl; report = h.report; engine = 'heuristic';
-  }
   checkpoint(job);   // the AI call can take up to a minute; honour a cancel made during it
-  setPct(job, 40);
+  setPct(job, 35);
 
+  const edl = plan.edl;
   if (edl.length === 0) {
     job.status = 'failed';
-    job.progress = 'No high-action moments found in the selected clips';
+    job.progress = 'No usable moments found in the selected clips';
     return;
   }
+  const report = aiNote ? aiNote + '\n\n' + plan.report : plan.report;
 
-  const tileHist = {};
-  edl.forEach(s => { const n = (s.members || []).length || 1; tileHist[n] = (tileHist[n] || 0) + 1; });
-  D.log('info', 'aireel_edl_built', { jobId: job.id, engine, segments: edl.length, tiles: tileHist });
+  // Guard: measured from the cut itself, independently of the editor. All
+  // three should be zero; a non-zero value here is a bug worth a log line.
+  const check = editor.checkEdl(edl, analyzable.map(c => ({ id: c.id, player: c.username, duration: c.duration, startTimeUTC: c.startTimeUTC })));
+  D.log(check.repeatedSec > 0.5 || check.samePlayerTwice > 0 || check.maxSyncErrSec > 0.05 ? 'warn' : 'info', 'aireel_edl_built', {
+    jobId: job.id, engine, shots: edl.length, moments: plan.stats.moments, outSec: check.outSec,
+    targetSec: job.targetSec, uniqueSec: Math.round(ctx.uniqueSec), level: plan.stats.level,
+    grids: plan.stats.grids, slow: plan.stats.slow, bridges: plan.stats.bridges,
+    repeatedSec: check.repeatedSec, samePlayerTwice: check.samePlayerTwice, maxSyncErrSec: check.maxSyncErrSec,
+    analyzed, reused
+  });
 
-  // 4. RENDER
+  // 4. RENDER — fetch only what the cut uses.
   job.status = 'rendering';
+  const byId = new Map(clips.map(c => [c.id, c]));
+  const needed = Array.from(new Set(edl.flatMap(s => s.members.map(m => m.clipId)))).map(id => byId.get(id)).filter(Boolean);
+  for (let i = 0; i < needed.length; i++) {
+    checkpoint(job);
+    setPct(job, 35 + 5 * i / needed.length);
+    job.progress = `Fetching clips (${i + 1}/${needed.length})`;
+    await ensureLocal(job, needed[i]);
+  }
+
   const segFiles = [];
   for (let i = 0; i < edl.length; i++) {
     checkpoint(job);
     setPct(job, 40 + 55 * i / edl.length);
-    job.progress = `Rendering segment ${i + 1}/${edl.length}`;
-    const segPath = path.join(job.workDir, `seg_${String(i).padStart(2, '0')}.mp4`);
-    const ok = await renderSegment(edl[i], clips, segPath, job);
+    job.progress = `Rendering shot ${i + 1}/${edl.length}`;
+    const segPath = path.join(job.workDir, `seg_${String(i).padStart(3, '0')}.mp4`);
+    const ok = await renderSegment(edl[i], byId, segPath, job);
     if (ok) segFiles.push(segPath);
-    else D.log('warn', 'aireel_segment_failed', { jobId: job.id, seg: i, layout: edl[i].layout });
+    else D.log('warn', 'aireel_segment_failed', { jobId: job.id, seg: i, layout: edl[i].layout, kind: edl[i].kind });
   }
 
   checkpoint(job);
@@ -747,7 +802,7 @@ async function runJob(job) {
 }
 
 // ---------- Analysis ----------
-// Every ffmpeg the pipeline starts goes through here. Two changes from v0.1.13:
+// Every ffmpeg the pipeline starts goes through here.
 //
 //  - -nostdin with stdin ignored. Default stdio hands ffmpeg an open stdin
 //    it reads for interactive keys; that is a known way to get a process
@@ -791,10 +846,16 @@ function killJobChildren(job) {
   return n;
 }
 
+// Loudness over time, plus the clip's length and frame rate from ffmpeg's
+// own description of the file. Only the audio track is read: the old second
+// pass decoded every video frame at full size to look for scene changes,
+// which was most of the wait and added little to the cut.
 async function analyzeClip(clip, job) {
   const loud = await runFFCollect(['-i', clip.path, '-map', '0:a:0', '-filter:a', 'ebur128', '-f', 'null', '-'], ANALYZE_TIMEOUT_MS, job);
   const durMatch = loud.stderr.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
   if (durMatch) clip.duration = (+durMatch[1]) * 3600 + (+durMatch[2]) * 60 + (+durMatch[3]);
+  const fpsMatch = loud.stderr.match(/Video:.*?([\d.]+)\s*fps/);
+  if (fpsMatch && !clip.fps) clip.fps = parseFloat(fpsMatch[1]) || 0;
   const loudRe = /t:\s*([\d.]+)\s+.*?M:\s*(-?[\d.]+)/g;
   let m;
   while ((m = loudRe.exec(loud.stderr)) !== null) {
@@ -802,161 +863,75 @@ async function analyzeClip(clip, job) {
     if (isFinite(val)) clip.loudness.push({ t: parseFloat(m[1]), m: val });
   }
   clip.hasAudio = clip.loudness.length > 0;
-
-  const scene = await runFFCollect(['-i', clip.path, '-vf', "select='gt(scene,0.30)',showinfo", '-f', 'null', '-'], ANALYZE_TIMEOUT_MS, job);
-  if (!clip.duration) {
-    const d2 = scene.stderr.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
-    if (d2) clip.duration = (+d2[1]) * 3600 + (+d2[2]) * 60 + (+d2[3]);
-  }
-  const sceneRe = /pts_time:([\d.]+)/g;
-  while ((m = sceneRe.exec(scene.stderr)) !== null) clip.scenes.push(parseFloat(m[1]));
-}
-
-function scoreClip(clip, segMax, maxMoments) {
-  const secs = Math.max(1, Math.ceil(clip.duration));
-  const score = new Array(secs).fill(0);
-
-  for (const s of clip.loudness) {
-    const idx = Math.min(secs - 1, Math.floor(s.t));
-    const norm = Math.max(0, Math.min(1, (s.m + 45) / 30));
-    if (norm > score[idx]) score[idx] = norm;
-  }
-  for (const t of clip.scenes) {
-    const idx = Math.min(secs - 1, Math.floor(t));
-    score[idx] = Math.min(1, score[idx] + 0.35);
-  }
-  const smooth = score.map((v, i) => {
-    const a = score[i - 1] || 0, b = score[i + 1] || 0;
-    return v * 0.6 + a * 0.2 + b * 0.2;
-  });
-
-  const order = smooth.map((v, i) => ({ t: i, score: v })).sort((a, b) => b.score - a.score);
-  const picked = [];
-  for (const cand of order) {
-    if (cand.score < 0.15) break;
-    if (picked.some(p => Math.abs(p.t - cand.t) < segMax)) continue;
-    picked.push(cand);
-    if (picked.length >= maxMoments) break;
-  }
-  clip.moments = picked.sort((a, b) => a.t - b.t);
 }
 
 // ---------- Shared helpers ----------
 function round2(n) { return Math.round(n * 100) / 100; }
 function layoutFor(n) { return n >= 3 ? 'grid' : n === 2 ? 'side' : 'solo'; }
 
-function absTime(clip, t) {
-  return clip.startTimeUTC != null ? clip.startTimeUTC + t * 1000 : null;
-}
-
-// ---------- Heuristic editor ----------
-function heuristicEdl(job, clips) {
-  const target = job.effectiveTarget || job.targetSec;
-  const SEG = job.seg || { min: 4, max: 12, def: 8 };
-  const pool = [];
-  clips.forEach(c => c.moments.forEach(mm => pool.push({ clip: c, t: mm.t, score: mm.score, abs: absTime(c, mm.t) })));
-  pool.sort((a, b) => b.score - a.score);
-
-  const chosen = [];
-  let total = 0;
-  for (const cand of pool) {
-    if (total >= target) break;
-    if (chosen.some(ch => ch.clip.id === cand.clip.id && Math.abs(ch.t - cand.t) < SEG.max)) continue;
-    const dur = Math.min(SEG.def, Math.max(SEG.min, target - total));
-    const start = Math.max(0, Math.min(cand.t - dur * 0.6, cand.clip.duration - dur));
-    if (start < 0 || cand.clip.duration < SEG.min) continue;
-    chosen.push({ clip: cand.clip, t: cand.t, start, duration: dur, score: cand.score, abs: cand.abs });
-    total += dur;
-  }
-
-  chosen.sort((a, b) => (a.abs == null ? 1 : b.abs == null ? -1 : a.abs - b.abs));
-
-  const edl = [];
-  const used = new Set();
-
-  for (let i = 0; i < chosen.length; i++) {
-    if (used.has(i)) continue;
-    const group = [chosen[i]];
-    used.add(i);
-
-    for (let j = i + 1; j < chosen.length && group.length < MAX_TILES; j++) {
-      if (used.has(j)) continue;
-      const b = chosen[j];
-      if (group[0].abs == null || b.abs == null) break;
-      if (Math.abs(b.abs - group[0].abs) > OVERLAP_WINDOW_MS) break;
-      if (group.some(g => g.clip.id === b.clip.id)) continue;
-      group.push(b);
-      used.add(j);
-    }
-
-    group.sort((a, b) => b.score - a.score);
-    const primary = group[0];
-    const dur = Math.min(SEG.max, Math.max(...group.map(g => g.duration)));
-
-    const members = group.map(g => {
-      let s = g.start;
-      if (g !== primary && g.clip.startTimeUTC != null && primary.clip.startTimeUTC != null) {
-        s = (primary.clip.startTimeUTC + primary.start * 1000 - g.clip.startTimeUTC) / 1000;
-      }
-      s = Math.max(0, Math.min(s, Math.max(0, g.clip.duration - dur)));
-      return { clipId: g.clip.id, start: round2(s) };
-    });
-
-    edl.push({
-      layout: layoutFor(members.length),
-      duration: round2(dur),
-      clipId: primary.clip.id,
-      start: members[0].start,
-      members
-    });
-  }
-
-  const counts = { solo: 0, side: 0, grid: 0 };
-  edl.forEach(s => counts[s.layout]++);
-  const clampNote = job.clamped
-    ? `Your ${job.targetSec}s request was trimmed to ${target}s — that's all the footage the selected clips hold. `
-    : '';
-  const report =
-    `Heuristic editor report (${job.game || 'unknown game'}):\n` + clampNote +
-    `Scanned ${clips.length} POV(s) for loudness spikes and on-screen chaos. ` +
-    `Selected ${chosen.length} moments totaling ~${Math.round(total)}s against your ${target}s target ` +
-    `at ~${SEG.def}s per cut. ` +
-    `${counts.grid} moment(s) had 3-4 squad members recording the same real-world instant and were cut as a grid; ` +
-    `${counts.side} were cut side-by-side; ${counts.solo} played solo full-frame. ` +
-    `The most intense POV leads each multi-view shot and carries the audio. Segments are ordered chronologically. ` +
-    `Tip: add style notes ("prefer 3-up", "hold on clutches longer") — they're saved per game and shape future edits.`;
-
-  return { edl, report };
-}
-
 // ---------- AI editor (Anthropic) ----------
+// The model is shown the moments reel-editor.js found (length, intensity,
+// who recorded each, stars, comments) and chooses which make the reel, who
+// to feature and where a slow-motion replay goes. It never writes a
+// timestamp: the editor cuts each chosen moment, keeps tiles in sync and
+// never repeats time. Returns { choice, report } or null (-> standard cut).
+async function aiDirect(ctx, job) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
 
-// Job-pipeline wrapper: adapts the internal `job`/`clips` (loudness+scene
-// analysis objects) shape into the plain params buildEdl expects, so the
-// existing server-render pipeline (runJob) keeps working unchanged.
-async function tryAnthropicEdl(job, clips) {
-  const result = await buildEdl({
-    game: job.game,
-    targetSec: job.effectiveTarget || job.targetSec,
-    seg: job.seg,
-    styleNotes: job.styleNotes,
-    clips: clips.map(c => ({
-      clipId: c.id, player: c.username,
-      durationSec: round2(c.duration),
-      startTimeUTC: c.startTimeUTC,
-      hasAudio: c.hasAudio,
-      topMoments: c.moments.slice(0, 10).map(m => ({ t: round2(m.t), intensity: round2(m.score) })),
-      id: c.id, duration: c.duration // validateEdl needs these two field names
-    }))
+  const moments = editor.describeMoments(ctx);
+  const profile = getProfileContext(job.game);
+  const target = job.effectiveTarget || job.targetSec;
+
+  const systemPrompt =
+    'You are the editor of a Peak-Abu highlight reel (multi-POV gameplay recorded by a squad). ' +
+    'The footage has already been analysed. You are given MOMENTS: stretches of action on the session timeline, each with its ' +
+    'length in seconds, an intensity score (0-100, from loudness), which players recorded it and how involved each was, ' +
+    'whether the squad starred it, and any comments players left on it. Choose which moments make the reel. ' +
+    'You do not set timestamps: the app cuts each chosen moment exactly as listed, in time order, keeps every POV in sync, ' +
+    'and never shows the same moment twice. ' +
+    'Respond with ONLY a JSON object, no markdown fences, no prose, in this exact shape: ' +
+    '{"use":[{"id":"M3","layout":"auto","feature":"PlayerName","slow":false}],"report":"..."} ' +
+    'Rules: every id must come from the list and appear at most once. ' +
+    'The seconds of the moments you use should add up to between 90% and 105% of targetSec; if the whole list holds less than that, use all of it. ' +
+    'Always include commented moments and starred moments, unless they alone exceed the target. ' +
+    'Otherwise prefer intense moments, and variety across stretchOfPlay and across players. ' +
+    'layout is "auto" (opens on every POV that recorded it, then cuts to the featured player), "grid" (all POVs throughout) or "solo". ' +
+    'feature is optional: a name from that moment\'s players list; leave it out to let the app feature the most involved player. ' +
+    'slow is optional: true on at most two moments, the biggest ones, for a short slow-motion replay of the peak. ' +
+    'Follow userStyleNotes and the comments where they apply. ' +
+    'report: 2-4 plain sentences to the user saying what you chose and why. No hype.';
+
+  const userPrompt = JSON.stringify({
+    game: job.game || 'unknown',
+    targetSec: target,
+    userStyleNotes: job.styleNotes || null,
+    gameProfile: profile ? {
+      priorRuns: profile.runs,
+      accumulatedUserFeedback: profile.notes.slice(-10).map(n => n.text)
+    } : null,
+    moments
   });
-  if (result) D.log('info', 'aireel_ai_edl_ok', { jobId: job.id, segments: result.edl.length });
-  else D.log('warn', 'aireel_ai_fallback', { jobId: job.id });
-  return result;
+
+  try {
+    const raw = await anthropicMessage(apiKey, systemPrompt, userPrompt);
+    const a = raw.indexOf('{'), b = raw.lastIndexOf('}');
+    if (a < 0 || b <= a) throw new Error('no JSON in reply');
+    const parsed = JSON.parse(raw.slice(a, b + 1));
+    if (!Array.isArray(parsed.use) || parsed.use.length === 0) throw new Error('empty choice');
+    return {
+      choice: { use: parsed.use.slice(0, 300) },
+      report: typeof parsed.report === 'string' ? parsed.report.trim().slice(0, 1500) : ''
+    };
+  } catch (e) {
+    D.log('warn', 'aireel_ai_direct_failed', { jobId: job.id, error: e.message });
+    return null;
+  }
 }
 
-// Parameterized EDL builder. Used directly by the /aireel-edit route
-// (client sends pre-analyzed features, no job object exists) and
-// indirectly by tryAnthropicEdl above (server-render job pipeline).
+// ---------- Older edit-only route (/aireel-edit) ----------
+// Parameterized EDL builder for a client that sends pre-analyzed features.
+// The job pipeline above no longer uses it.
 async function buildEdl({ game, targetSec, seg, styleNotes, clips }) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
@@ -1028,6 +1003,7 @@ function validateEdl(segments, clips, targetSec, SEG) {
   const byId = new Map(clips.map(c => [c.id, c]));
   const out = [];
   let total = 0;
+  const usedSpans = new Map();   // clipId -> [[start, end]] already in the cut
 
   for (const s of segments) {
     if (!s || typeof s !== 'object') continue;
@@ -1052,6 +1028,13 @@ function validateEdl(segments, clips, targetSec, SEG) {
       let st = Number(starts[i]);
       if (!isFinite(st)) st = 0;
       st = Math.max(0, Math.min(st, Math.max(0, clip.duration - dur)));
+      // Never the same footage twice: skip a member that mostly repeats an
+      // earlier use of the same clip.
+      const prior = usedSpans.get(clip.id) || [];
+      const overlap = prior.reduce((n, [a, b]) => n + Math.max(0, Math.min(b, st + dur) - Math.max(a, st)), 0);
+      if (overlap > dur * 0.5) continue;
+      prior.push([st, st + dur]);
+      usedSpans.set(clip.id, prior);
       seen.add(clip.id);
       members.push({ clipId: clip.id, start: round2(st) });
     }
@@ -1107,123 +1090,38 @@ function anthropicMessage(apiKey, system, user) {
 }
 
 // ---------- Render ----------
-const ENC = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+const ENC = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p',
              '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-ac', '2'];
 
-const TILE_W = 640, TILE_H = 360;
-const GRID_POS = {
-  2: [[0, 180], [640, 180]],
-  3: [[0, 0], [640, 0], [320, 360]],
-  4: [[0, 0], [640, 0], [0, 360], [640, 360]]
-};
-
-async function renderSegment(seg, clips, outPath, job) {
-  const byId = new Map(clips.map(c => [c.id, c]));
-
-  let rawMembers = seg.members;
-  if (!Array.isArray(rawMembers) || rawMembers.length === 0) {
-    rawMembers = [{ clipId: seg.clipId, start: seg.start }];
-  }
-
-  const members = rawMembers
-    .map(m => ({ start: Number(m.start) || 0, clip: byId.get(m.clipId) }))
-    .filter(m => m.clip)
-    .slice(0, MAX_TILES);
-  if (members.length === 0) return false;
-
-  const d = String(seg.duration);
-  const primary = members[0];
-
-  // --- Comment overlay ASS for this segment ---
-  let assPath = null;
-  if (job && job.sessionComments && job.sessionComments.length > 0) {
-    const canvasW = 1280, canvasH = 720;
+// One shot of the cut. The ffmpeg command comes from reel-editor.js (the
+// same builder the in-app reel uses); this adds the comment overlay.
+async function renderSegment(seg, byId, outPath, job) {
+  let assFilter = null;
+  if (job && job.sessionComments && seg.kind !== 'bridge') {
+    const places = editor.commentPlacement(seg);
     const tileMap = {};
-
-    if (members.length === 1) {
-      // Solo: full frame
-      tileMap[primary.clip.id] = {
-        x: 0, y: 0, w: canvasW, h: canvasH,
-        offsetSec: -primary.start // shift so comment timestampMs/1000 - clip.start = segment time
-      };
-    } else {
-      // Multi-tile
-      const pos = GRID_POS[members.length];
-      members.forEach((m, i) => {
-        tileMap[m.clip.id] = {
-          x: pos[i][0], y: pos[i][1],
-          w: TILE_W, h: TILE_H,
-          offsetSec: -m.start
-        };
-      });
-    }
-
-    // Filter session comments to just the ones visible in this segment
     const segComments = [];
     for (const c of job.sessionComments) {
-      const tile = tileMap[c.uploadId];
-      if (!tile) continue;
-      const tInSeg = (tile.offsetSec || 0) + c.timestampMs / 1000;
-      if (tInSeg >= -0.5 && tInSeg < seg.duration + 0.5) {
-        segComments.push(c);
-      }
+      const place = places.find(p => p.clipId === String(c.uploadId));
+      if (!place) continue;
+      // Where this comment falls in the shot, allowing for speed changes.
+      const t = place.toShotSec(c.timestampMs / 1000);
+      if (t < -0.5 || t >= seg.outDuration + 0.5) continue;
+      segComments.push(Object.assign({}, c, { timestampMs: Math.max(0, t) * 1000 }));
+      tileMap[c.uploadId] = Object.assign({ offsetSec: 0 }, place.tile);
     }
-
     if (segComments.length > 0) {
-      const result = generateASS(segComments, tileMap, 1280, 720);
+      const result = generateASS(segComments, tileMap, editor.CANVAS_W, editor.CANVAS_H);
       if (result.count > 0) {
-        assPath = path.join(job.workDir, `cmt_seg_${path.basename(outPath, '.mp4')}.ass`);
+        const assPath = path.join(job.workDir, `cmt_${path.basename(outPath, '.mp4')}.ass`);
         fs.writeFileSync(assPath, result.ass, 'utf8');
+        assFilter = `ass=${escapeFilterPath(assPath)}`;
       }
     }
   }
 
-  const assChain = assPath ? `,ass=${escapeFilterPath(assPath)}` : '';
-
-  // --- Single POV: full frame ---
-  if (members.length === 1) {
-    const args = [
-      '-ss', String(primary.start), '-t', d, '-i', primary.clip.path,
-      '-f', 'lavfi', '-t', d, '-i', 'anullsrc=r=48000:cl=stereo',
-      '-filter_complex',
-      `[0:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p${assChain}[v]`,
-      '-map', '[v]',
-      '-map', primary.clip.hasAudio ? '0:a:0' : '1:a:0',
-      '-af', 'aresample=async=1000',
-      ...ENC, '-shortest', '-y', outPath
-    ];
-    return runFF(args, RENDER_TIMEOUT_MS, job);
-  }
-
-  // --- 2-4 POVs: composite ---
-  const pos = GRID_POS[members.length];
-  const baseIdx = members.length;
-  const silentIdx = members.length + 1;
-
-  const args = [];
-  members.forEach(m => args.push('-ss', String(m.start), '-t', d, '-i', m.clip.path));
-  args.push('-f', 'lavfi', '-t', d, '-i', 'color=c=black:s=1280x720:r=30');
-  args.push('-f', 'lavfi', '-t', d, '-i', 'anullsrc=r=48000:cl=stereo');
-
-  const cell = `scale=${TILE_W}:${TILE_H}:force_original_aspect_ratio=decrease,` +
-               `pad=${TILE_W}:${TILE_H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30`;
-
-  const chain = members.map((m, i) => `[${i}:v]${cell}[t${i}]`);
-  let prev = `[${baseIdx}:v]`;
-  members.forEach((m, i) => {
-    const last = i === members.length - 1;
-    const outLabel = last ? '[v]' : `[b${i}]`;
-    chain.push(`${prev}[t${i}]overlay=${pos[i][0]}:${pos[i][1]}${last ? ',format=yuv420p' + assChain : ''}${outLabel}`);
-    prev = `[b${i}]`;
-  });
-
-  args.push(
-    '-filter_complex', chain.join(';'),
-    '-map', '[v]',
-    '-map', primary.clip.hasAudio ? '0:a:0' : `${silentIdx}:a:0`,
-    '-af', 'aresample=async=1000',
-    ...ENC, '-shortest', '-y', outPath
-  );
+  const args = editor.segmentArgs(seg, (id) => byId.get(id), { encoder: ENC, outPath, assFilter });
+  if (!args) return false;
   return runFF(args, RENDER_TIMEOUT_MS, job);
 }
 

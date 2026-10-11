@@ -5,6 +5,7 @@
     <title>Peak-Abu</title>
     <link rel="stylesheet" href="modules/appearance/appearance.css">
     <link rel="stylesheet" href="modules/av-check/av-check.css">
+    <link rel="stylesheet" href="modules/tutorial/tutorial.css">
     <style>
       * { box-sizing: border-box; }
       body {
@@ -787,6 +788,10 @@
       .settings-tab.active { color: var(--pa-accent, #39d3a0); border-bottom-color: var(--pa-accent, #39d3a0); }
       .settings-tab-pane { display: none; }
       .settings-tab-pane.active { display: block; }
+      /* Keep the tab row fixed: anchor the modal to the top instead of centering it,
+         so switching to a taller/shorter tab doesn't slide the tabs up and down. */
+      #settingsModal { align-items: flex-start; }
+      #settingsModal .modal-content { margin-top: 6vh; max-height: 88vh; overflow-y: auto; scrollbar-gutter: stable; }
       .storage-path { background: #0c1c14; padding: 10px; border-radius: 6px; margin: 8px 0; font-size: 12px; word-break: break-all; border: 1px solid #24402e; font-family: 'Consolas', monospace; }
       .welcome-icon { font-size: 40px; text-align: center; margin-bottom: 8px; }
       .welcome-title { text-align: center; color: #39d3a0; font-size: 20px; font-weight: 600; margin-bottom: 4px; }
@@ -845,7 +850,7 @@
               <div class="redeem-msg" id="redeemMsg"></div>
             </div>
           </div>
-          <button class="btn-secondary btn-sm" onclick="openSettings()">⚙ Settings</button>
+          <button class="btn-secondary btn-sm" id="settingsBtn" onclick="openSettings()">⚙ Settings</button>
         </div>
       </div>
 
@@ -909,6 +914,19 @@
               </label>
             </div>
             <p style="font-size:11px;color:#3a5244;margin:0 0 16px;">Off: the player docks inside Peak-Abu and closes with it.</p>
+
+            <hr style="border:1px solid #1e3527;margin:16px 0;">
+
+            <div class="ac-toggle-row">
+              <div class="fs-toggle-label">
+                <span style="font-size:13px;color:var(--pa-text-dim, #8fbfa3);">🌿 Tutorial button</span>
+              </div>
+              <label class="switch" style="margin:0;">
+                <input type="checkbox" id="tutorialBtnToggle" checked onchange="window.paTutorial && window.paTutorial.setButtonEnabled(this.checked)" />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <p style="font-size:11px;color:#3a5244;margin:0 0 16px;">Shows the Tutorial button next to your name at the top.</p>
 
             <hr style="border:1px solid #1e3527;margin:16px 0;">
 
@@ -1215,6 +1233,7 @@
        <span class="user-label">Logged in as <strong id="authBarName"></strong>
         <span class="tier-badge t1" id="tierBadge" style="margin-left:8px;">Free</span>
         <span class="tier-days" id="tierDays" style="display:none;"></span>
+        <button type="button" id="tutorialBtn" style="display:none;" onclick="window.paTutorial && window.paTutorial.start()" title="Take the tour" aria-label="Start the Peak-Abu tour"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20.5 3.5C11 3.6 4.4 8.2 3.6 16.2c-.1 1 .3 1.9 1 2.6l-1.9 1.9 1.1 1.1 2-2c.6.4 1.4.6 2.2.5 8-.9 12.4-7.5 12.5-16.8Z"/></svg>Tutorial<span class="pa-tut-new">NEW</span></button>
        </span>
        <button class="btn-secondary btn-sm" onclick="logoutUser()">Log Out</button>
       </div>
@@ -1581,6 +1600,7 @@
     <script src="modules/noise-suppression/noise-suppression.js"></script>
     <script src="modules/appearance/appearance.js"></script>
     <script src="modules/av-check/av-check.js"></script>
+    <script src="modules/tutorial/tutorial.js"></script>
     <script>
       const { ipcRenderer, clipboard, shell } = require('electron');
       const io = require('socket.io-client');
@@ -6809,6 +6829,7 @@
         document.getElementById('sessionPanel').style.display = 'flex';
         if (window.consumePendingDeepLink) window.consumePendingDeepLink();
         syncServerSessionHistory().then(renderRejoinLastHosted).catch(renderRejoinLastHosted);
+        if (window.paTutorial) { try { window.paTutorial.onLogin(); } catch (e) { console.warn('[tutorial]', e); } }
       }
       function showAuthLoggedOut() {
         document.getElementById('authPanel').style.display = 'block';

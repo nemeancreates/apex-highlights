@@ -1,0 +1,77 @@
+/*
+ * tutorial.css — Jungle tour overlay + Tutorial button.
+ * Everything is namespaced (#tutorialBtn, .pa-tut-*) so it can't collide
+ * with the app's own rules. Colours follow the appearance theme where it
+ * has a matching variable, with Peak-Abu's palette as the fallback.
+ */
+
+/* ===== Tutorial button (Glow pill) =====
+   ID selector so it beats the global `button {width:100%; padding:12px 18px}` rule. */
+#tutorialBtn {
+  width: auto; display: inline-flex; align-items: center; gap: 6px;
+  margin: 0 0 0 8px; padding: 4px 12px 4px 9px; position: relative; vertical-align: middle;
+  font: 700 13px/1 'Segoe UI', Arial, sans-serif; letter-spacing: .02em;
+  background: linear-gradient(135deg, #c6f36b, #39d3a0); color: #0a1f12;
+  border: none; border-radius: 999px;
+  box-shadow: 0 0 0 0 rgba(198, 243, 107, .55);
+  animation: paTutPulse 2.2s ease-out infinite;
+}
+#tutorialBtn:hover { background: linear-gradient(135deg, #d6ff86, #4fe0b0); border: none; }
+#tutorialBtn:focus-visible { outline: 2px solid #c6f36b; outline-offset: 2px; }
+#tutorialBtn svg { width: 15px; height: 15px; flex: none; }
+#tutorialBtn .pa-tut-new {
+  position: absolute; top: -7px; right: -8px;
+  font: 700 9px/1 Consolas, monospace; padding: 3px 4px; border-radius: 5px;
+  background: #ffd23f; color: #1a1300;
+}
+#tutorialBtn.seen { animation: none; }
+#tutorialBtn.seen .pa-tut-new { display: none; }
+@keyframes paTutPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(198, 243, 107, .55); }
+  70%  { box-shadow: 0 0 0 10px rgba(198, 243, 107, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(198, 243, 107, 0); }
+}
+
+/* ===== Overlay =====
+   Fixed over the app window. When the web player is docked it only covers
+   the client side, the same way #wgcPickerModal does. */
+.pa-tut-overlay { position: fixed; top: 0; left: 0; bottom: 0; width: 100%; z-index: 9000; }
+body.player-docked .pa-tut-overlay { width: var(--dock-client-width, 100%); }
+.pa-tut-overlay[hidden] { display: none; }
+.pa-tut-overlay canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* ===== Step card ===== */
+.pa-tut-card {
+  position: absolute; z-index: 2; width: min(310px, calc(100% - 24px));
+  background: #0b1d12; border: 1px solid #2f5a3c; border-radius: 14px; padding: 14px 16px 12px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .55), 0 0 0 1px rgba(198, 243, 107, .15);
+  color: #c8d6cd; font-family: 'Segoe UI', Arial, sans-serif;
+  opacity: 0; transform: translateY(10px) scale(.98); pointer-events: none;
+  transition: opacity .28s ease, transform .32s cubic-bezier(.2, .9, .25, 1.2);
+}
+.pa-tut-card.show { opacity: 1; transform: none; pointer-events: auto; }
+.pa-tut-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.pa-tut-dots { display: flex; gap: 3px; flex-wrap: wrap; }
+.pa-tut-dots svg { width: 11px; height: 11px; fill: #24412e; }
+.pa-tut-dots svg.done { fill: #3f7a52; }
+.pa-tut-dots svg.now { fill: #c6f36b; }
+.pa-tut-count { font: 600 11px/1 Consolas, monospace; color: #5f7a6a; letter-spacing: .06em; white-space: nowrap; }
+.pa-tut-card h4 { margin: 0 0 4px; font-size: 18px; line-height: 1.2; font-weight: 700; color: #eaffd0; }
+.pa-tut-card p { margin: 0 0 12px; font-size: 14px; line-height: 1.45; color: #b6c9bb; }
+.pa-tut-actions { display: flex; align-items: center; gap: 8px; }
+.pa-tut-card button {
+  width: auto; margin: 0; padding: 7px 12px; border-radius: 8px; cursor: pointer;
+  font: 600 13px 'Segoe UI', Arial, sans-serif;
+  border: 1px solid #2a4636; background: #14291d; color: #8fbfa3;
+}
+.pa-tut-card button:hover { border-color: #c6f36b; background: #1a3323; }
+.pa-tut-card button.pa-tut-next { background: #c6f36b; border-color: #c6f36b; color: #0a1f12; }
+.pa-tut-card button.pa-tut-next:hover { background: #d6ff86; }
+.pa-tut-card button.pa-tut-skip { margin-right: auto; text-align: center; color: #6f8c7a; }
+.pa-tut-card button.pa-tut-skip:hover { color: #c8d6cd; }
+.pa-tut-card button:focus-visible { outline: 2px solid #c6f36b; outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  #tutorialBtn { animation: none; }
+  .pa-tut-card { transition: none; }
+}

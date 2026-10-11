@@ -1,36 +1,34 @@
 // ================================
-// COMPOSITE — server-side multi-POV grid rendering (FFmpeg xstack)
-// plus the three HTTP endpoints that drive it.
+// COMPOSITE — server-side Combined View export, plus the three HTTP
+// endpoints that drive it.
 //
-// v2: optional comment overlay via ASS subtitles when includeComments
-// is true (the default). Requires libass in FFmpeg.
+// v4 (10-10-26): ONE GRID PER HIGHLIGHT, PLAYED IN ORDER.
 //
-// v3 (Stage 1a): the job can no longer get stuck in 'processing'.
-// Every path out of runComposite() now writes a terminal status. See
-// FAILURE MODES below for what was actually wrong.
+// v3 put every selected clip into a single grid and delayed each one by
+// its real start time. Marking clips from several highlights therefore
+// gave one frame with all of them on screen at once, most tiles waiting
+// their turn, and an output as long as the gap between the first and last
+// highlight. The canvas was also just "grid size", so 2 clips came out
+// 32:9 and 5-6 clips 8:3.
 //
-// FAILURE MODES THIS FIXES
-// ------------------------
-// 1. runComposite() was called as a floating promise with no .catch().
-//    Anything that threw before the ffmpeg Promise — a download error, a
-//    missing job record, checkAssFilter(), the ASS writeFileSync — became
-//    an unhandled rejection and left status === 'processing' FOREVER,
-//    with no ffmpeg process running at all. This is the "stitching for 15
-//    minutes" case where nothing is actually stitching.
-// 2. compositeJobs.get(jobId).status = 'failed' (old line 93) threw if
-//    the job had already been cleaned up — turning a handled failure into
-//    cause #1.
-// 3. downloadToFile() had no timeout and ran serially per clip. A stalled
-//    CDN socket blocked the whole job before ffmpeg was spawned. Now
-//    bounded (see utils.js) and run with bounded concurrency.
-// 4. spawn() used default stdio, handing ffmpeg an open stdin it reads
-//    for interactive commands — a classic never-exits hang. Now -nostdin
-//    with stdin explicitly ignored.
-// 5. No watchdog. A genuinely hung ffmpeg ran until the heat death of the
-//    droplet. Now a hard wall-clock cap plus an idle-progress guard.
-// 6. No real progress. The client could not distinguish "slow" from
-//    "hung", and neither could the logs. Now -progress pipe:1 is parsed
-//    into a true percentage against known clip durations.
+// Now:
+//   1. Selected clips are grouped into highlights the same way the web
+//      player groups them (clusterHighlights: moment timestamps within
+//      HIGHLIGHT_GAP_MS).
+//   2. Each highlight is rendered as its own synced grid on a fixed 16:9
+//      canvas.
+//   3. The grids are joined back to back, oldest highlight first.
+//
+// Each clip is first shrunk to its tile on its own (one full-size decode
+// at a time), then the small tiles are stacked. Memory no longer grows
+// with the number of POVs: measured on six 1440p60 clips, one-pass
+// stacking peaked at 342 MB and took 84 s on one core; shrink-then-stack
+// peaked at 242 MB and took 64 s. Source downloads are deleted as soon as
+// their tile exists, so disk use is bounded too.
+//
+// Still true from v3: every path out of a job writes a terminal status
+// (no floating promises, -nostdin, bounded downloads, a hard cap and an
+// idle guard on every ffmpeg run, real progress from -progress pipe:1).
 // ================================
 const fs = require('fs');
 const os = require('os');
@@ -55,19 +53,29 @@ if (!fs.existsSync(COMPOSITE_DIR)) fs.mkdirSync(COMPOSITE_DIR, { recursive: true
 // --- Bounds. Every one of these exists to guarantee a terminal status. ---
 const DOWNLOAD_IDLE_MS = 30 * 1000;       // no bytes for this long => abort that clip
 const DOWNLOAD_TOTAL_MS = 180 * 1000;     // whole-clip transfer cap
-const DOWNLOAD_CONCURRENCY = 3;           // parallel CDN pulls
+const META_CONCURRENCY = 3;               // parallel sidecar reads
 const ENCODE_HARD_CAP_MS = 15 * 60 * 1000;// absolute ceiling on one ffmpeg run
 const ENCODE_IDLE_MS = 90 * 1000;         // no progress line for this long => hung
 const PROGRESS_POLL_MS = 15 * 1000;       // how often the idle guard checks
+// Whole-job ceiling. The web player waits one minute longer than this
+// (COMPOSITE_CLIENT_DEADLINE_MS in web-player/index.html); keep them together.
+const JOB_HARD_CAP_MS = 45 * 60 * 1000;
 
-// THE BIG ONE. This route used to composite session.uploads — EVERY clip in
-// the session — while the button that calls it is labelled with the current
-// highlight's POV count. A session with 88 uploads therefore built a
-// 4x22 grid: a 2560x7920 canvas, 88 simultaneous ffmpeg inputs, an 88-input
-// xstack and an 88-input amix. That OOMs the box, which is why the symptom
-// was a 502 and a job that never finished — the process was dying, not
-// stitching. A combined view is one synced moment, not a whole session.
-const MAX_COMPOSITE_CLIPS = 9;            // 3x3 => 1920x1080 canvas ceiling
+// --- What one export may contain. ---
+// A grid holds up to 9 POVs (3x3). A highlight with more plays as several
+// grids of that moment, one after another.
+const MAX_POVS_PER_GRID = 9;
+// Across all the highlights in one export.
+const MAX_COMPOSITE_CLIPS = 30;
+// Total footage to process: the sum of every selected clip's length. This is
+// what the render time follows (each clip is decoded once at full size).
+const MAX_TOTAL_CLIP_SEC = 20 * 60;
+// Clips whose moment timestamps are within this of the highlight's first
+// clip are the same highlight. Same rule and value as clusterHighlights()
+// in web-player/index.html; keep them together.
+const HIGHLIGHT_GAP_MS = 5000;
+
+const OUT_FPS = 30;
 
 // Refuse new renders below this much free space. A full disk does not just
 // fail one export — it stops SQLite writing, stops uploads landing, and
@@ -84,19 +92,18 @@ const MIN_FREE_BYTES = 3 * 1024 * 1024 * 1024;  // 3GB
 // downloaded, permanently. That is how 18GB accumulated in this directory
 // and took the whole box down with a full disk.
 //
-// Neither rule below consults compositeJobs:
-//
 //   - On boot, everything here is dead by definition. No job can be running
 //     in a process that has only just started, so it all goes.
-//   - On a timer, decide by FILE AGE. The threshold is derived from the hard
-//     render cap, so it cannot drift out of sync with anything.
+//   - On a timer, decide by FILE AGE. A running job's own files are left
+//     alone whatever their age (a long export keeps its early segments for
+//     the final join); every file name carries its job id.
 //
 // Deleting an output while someone is downloading it is safe: res.download
 // holds an open file descriptor, and unlinking a file with an open handle
 // keeps the bytes readable until that transfer finishes. The directory entry
 // goes; the in-flight download does not break.
 // ================================
-const SRC_MAX_AGE_MS = 30 * 60 * 1000;     // 2x ENCODE_HARD_CAP_MS
+const SRC_MAX_AGE_MS = 30 * 60 * 1000;
 const OUTPUT_MAX_AGE_MS = 60 * 60 * 1000;  // the retention this already promised
 const SWEEP_INTERVAL_MS = 10 * 60 * 1000;
 
@@ -109,15 +116,21 @@ function sweepScratch(opts = {}) {
   try { names = fs.readdirSync(COMPOSITE_DIR); }
   catch (e) { return { removed, bytes }; }
 
+  const running = [];
+  for (const [jobId, job] of compositeJobs) {
+    if (job.status === 'processing') running.push(jobId);
+  }
+
   const now = Date.now();
   for (const name of names) {
+    if (!all && running.some(id => name.includes(id))) continue;
     const full = path.join(COMPOSITE_DIR, name);
     let st;
     try { st = fs.statSync(full); } catch (e) { continue; }
     if (!st.isFile()) continue;
 
-    // Sources and subtitle files are only needed while a render runs.
-    // Outputs are needed until the user downloads them.
+    // Sources, tiles, segments and subtitle files are only needed while a
+    // render runs. Outputs are needed until the user downloads them.
     const isSource = name.startsWith('src_') || name.startsWith('comments_');
     const maxAge = isSource ? SRC_MAX_AGE_MS : OUTPUT_MAX_AGE_MS;
 
@@ -130,19 +143,14 @@ function sweepScratch(opts = {}) {
 
 // ================================
 // CLIP SYNC DATA
-// A clip's start time lives in its metadata JSON. This used to be read ONLY
-// from the local copy — but uploadToSpaces (spaces.js) deletes the local
-// file once it's safely in R2, which is every clip in production. The read
-// quietly failed, every startTimeUTC came back null, every offset fell to 0,
-// and Combined View stacked all POVs from their first frame instead of
-// lining them up on the moment.
-//
-// Local copy first (dev, or a clip whose R2 push hasn't finished), then the
-// R2 copy via metadataUrl. The fetch goes through downloadToFile, so it gets
-// the same idle/total timeouts and redirect cap as the video pulls, and a
-// stalled CDN can't hang the job. The temp file is named src_* so the
-// scratch sweeper treats it as a render input if anything goes wrong.
-// Returns the raw JSON text, or null.
+// A clip's start time and moment live in its metadata JSON. Local copy
+// first (dev, or a clip whose R2 push hasn't finished), then the R2 copy via
+// metadataUrl — uploadToSpaces (spaces.js) deletes the local file once it's
+// safely in R2, which is every clip in production. The fetch goes through
+// downloadToFile, so it gets the same idle/total timeouts and redirect cap
+// as the video pulls, and a stalled CDN can't hang the job. The temp file is
+// named src_* so the scratch sweeper treats it as a render input if anything
+// goes wrong. Returns the raw JSON text, or null.
 // ================================
 const META_MAX_BYTES = 256 * 1024;   // real sidecars are a few KB
 
@@ -200,7 +208,7 @@ function startCompositeCleanup() {
     }
     const now = Date.now();
     for (const [jobId, job] of compositeJobs) {
-      if (now - job.createdAt > OUTPUT_MAX_AGE_MS) compositeJobs.delete(jobId);
+      if (job.status !== 'processing' && now - job.createdAt > OUTPUT_MAX_AGE_MS) compositeJobs.delete(jobId);
     }
   }, SWEEP_INTERVAL_MS);
 }
@@ -210,34 +218,39 @@ function startCompositeCleanup() {
 
 function patchJob(jobId, patch) {
   const job = compositeJobs.get(jobId);
-  if (!job) return null;                      // fix for failure mode #2
+  if (!job) return null;
   Object.assign(job, patch, { updatedAt: Date.now() });
   return job;
 }
 
+// A job that was cancelled, timed out or cleaned up is no longer live; the
+// render loop checks this between steps and stops quietly. Also where a
+// job that has run past its deadline is failed.
+function isLive(jobId) {
+  const job = compositeJobs.get(jobId);
+  if (job && job.status === 'processing' && job.deadlineAt && Date.now() > job.deadlineAt) {
+    failJob(jobId, 'timeout_job', 'Export took too long and was stopped. Try fewer clips.');
+  }
+  return !!job && job.status === 'processing';
+}
+
+// First terminal status wins: a cancel isn't overwritten by the "ffmpeg
+// exited" failure its own kill causes.
 function failJob(jobId, errorCode, message) {
+  const existing = compositeJobs.get(jobId);
+  if (existing && existing.status !== 'processing') return existing;
   const job = patchJob(jobId, {
     status: 'failed',
     phase: 'done',
     errorCode,
+    pid: null,
     progress: message || 'Compositing failed'
   });
   log('warn', 'composite_failed', { jobId, errorCode, message: message || null });
   return job;
 }
 
-function getGridDimensions(count) {
-  if (count === 1) return { cols: 1, rows: 1 };
-  if (count === 2) return { cols: 2, rows: 1 };
-  if (count <= 4) return { cols: 2, rows: 2 };
-  if (count <= 6) return { cols: 3, rows: 2 };
-  if (count <= 9) return { cols: 3, rows: 3 };
-  return { cols: 4, rows: Math.ceil(count / 4) };
-}
-
-// Bounded-concurrency map. Serial downloads were a large part of why two
-// clips could take many minutes; three at a time saturates the droplet's
-// downlink without thrashing it.
+// Bounded-concurrency map.
 async function mapLimit(items, limit, fn) {
   const results = new Array(items.length);
   let cursor = 0;
@@ -252,225 +265,115 @@ async function mapLimit(items, limit, fn) {
   return results;
 }
 
-async function runComposite(uploads, code, outputPath, jobId, includeComments) {
-  const sessionDir = path.join(UPLOADS_DIR, code);
+// ================================
+// LAYOUT
+// Every export is 16:9. The canvas is 1280x720 while no grid needs more
+// than 2 columns, 1920x1080 otherwise, so a tile is never under 640x360.
+// Tiles are 16:9 too; a clip of another shape is fitted inside its tile
+// with black bars. A grid that doesn't fill the canvas (2 POVs, 5-6 POVs)
+// is centred, and a short last row is centred under the rows above it.
+// ================================
+function getGridDimensions(count) {
+  if (count <= 1) return { cols: 1, rows: 1 };
+  if (count === 2) return { cols: 2, rows: 1 };
+  if (count <= 4) return { cols: 2, rows: 2 };
+  if (count <= 6) return { cols: 3, rows: 2 };
+  return { cols: 3, rows: 3 };
+}
 
-  patchJob(jobId, { phase: 'downloading', progress: 'Fetching clips…', pct: 0 });
+function canvasFor(maxPovs) {
+  return maxPovs <= 4 ? { w: 1280, h: 720 } : { w: 1920, h: 1080 };
+}
 
-  const tempDownloads = [];
-
-  // Resolve every clip to a local path first, in parallel. A clip that
-  // cannot be fetched is skipped, exactly as before — but a stalled fetch
-  // now fails fast instead of hanging the job.
-  const resolved = await mapLimit(uploads, DOWNLOAD_CONCURRENCY, async (upload) => {
-    if (!upload.videoFile) return null; // pending deferred upload — skipped like an unfetchable clip
-    const localPath = path.join(sessionDir, upload.videoFile);
-    if (fs.existsSync(localPath)) return { upload, videoPath: localPath };
-
-    if (!upload.videoUrl) return null;
-
-    const tempPath = path.join(COMPOSITE_DIR, `src_${jobId}_${upload.videoFile}`);
-    try {
-      await downloadToFile(upload.videoUrl, tempPath, {
-        idleMs: DOWNLOAD_IDLE_MS,
-        totalMs: DOWNLOAD_TOTAL_MS
-      });
-      tempDownloads.push(tempPath);
-      return { upload, videoPath: tempPath };
-    } catch (e) {
-      log('warn', 'composite_download_failed', {
-        jobId, file: upload.videoFile, error: e.message
-      });
-      return null;
-    }
-  });
-
-  const cleanupTemps = () => {
-    tempDownloads.forEach(p => { try { fs.unlinkSync(p); } catch (e) {} });
-  };
-
-  // Read metadata for sync offsets.
-  const clipData = [];
-  let earliestStart = Infinity;
-
-  for (const entry of resolved) {
-    if (!entry) continue;
-    const { upload, videoPath } = entry;
-
-    let startTimeUTC = null;
-    if (upload.metadataFile || upload.metadataUrl) {
-      try {
-        const metaRaw = await readClipMetadata(upload, sessionDir, jobId);
-        if (metaRaw) {
-          const meta = JSON.parse(metaRaw);
-          startTimeUTC = meta.startTimeUTC || null;
-          if (startTimeUTC) earliestStart = Math.min(earliestStart, startTimeUTC);
-        }
-      } catch (e) {}
-      if (!startTimeUTC) {
-        log('warn', 'composite_no_sync_data', { jobId, uploadId: upload.id, username: upload.username });
-      }
-    }
-
-    clipData.push({
-      videoPath,
-      startTimeUTC,
-      username: upload.username,
-      uploadId: upload.id,
-      durationSec: upload.durationMs ? upload.durationMs / 1000 : 0
-    });
+// -> { cols, tileW, tileH, slots: [{ x, y }] } for `count` POVs on the
+// canvas. Passing `cols` keeps a planned grid's tile size while placing a
+// different number of tiles (see the render: a clip that can't be read
+// leaves no hole, the rest close up around it).
+function gridLayout(count, canvas, cols) {
+  if (!cols) cols = getGridDimensions(count).cols;
+  const rows = Math.ceil(count / cols);
+  const tileW = canvas.w / cols;
+  const tileH = tileW * 9 / 16;
+  const top = Math.round((canvas.h - rows * tileH) / 2);
+  const slots = [];
+  for (let i = 0; i < count; i++) {
+    const row = Math.floor(i / cols);
+    const inRow = Math.min(cols, count - row * cols);
+    const left = Math.round((canvas.w - inRow * tileW) / 2);
+    slots.push({ x: left + (i % cols) * tileW, y: top + row * tileH });
   }
+  return { cols, tileW, tileH, slots };
+}
 
-  if (clipData.length === 0) {
-    cleanupTemps();
-    failJob(jobId, 'no_clips', 'No clips could be fetched for this session');
-    return;
-  }
+// ================================
+// GROUPING
+// clips: [{ upload, momentTs, startTimeUTC, durationSec }] -> an array of
+// grids, oldest highlight first, each an array of clips in upload order.
+// Same clustering as the web player's clusterHighlights(), so a grid here
+// is exactly a highlight there. A clip with no timestamp at all (momentTs
+// 0) lands in one leading group, as it does in the player.
+// ================================
+function groupIntoGrids(clips) {
+  const sorted = clips
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => (a.c.momentTs - b.c.momentTs) || (a.i - b.i))
+    .map(e => e.c);
 
-  clipData.forEach(c => {
-    c.offsetSec = (earliestStart !== Infinity && c.startTimeUTC)
-      ? (c.startTimeUTC - earliestStart) / 1000
-      : 0;
-  });
-
-  // Expected output length, used to turn ffmpeg's out_time into a real
-  // percentage. Zero when durations are unknown — pct then stays null
-  // rather than lying.
-  const totalDurationSec = clipData.reduce(
-    (max, c) => Math.max(max, (c.offsetSec || 0) + (c.durationSec || 0)), 0
-  );
-
-  const count = clipData.length;
-  const { cols, rows } = getGridDimensions(count);
-  const cellW = 640;
-  const cellH = 360;
-  const canvasW = cols * cellW;
-  const canvasH = rows * cellH;
-
-  // --- Comment overlay (ASS subtitle file) ---
-  let assPath = null;
-  if (includeComments) {
-    const canAss = await checkAssFilter();
-    if (canAss) {
-      const comments = getCommentsForSession(code);
-      if (comments.length > 0) {
-        const tileMap = {};
-        clipData.forEach((c, i) => {
-          const col = i % cols;
-          const row = Math.floor(i / cols);
-          tileMap[c.uploadId] = {
-            x: col * cellW, y: row * cellH,
-            w: cellW, h: cellH,
-            offsetSec: c.offsetSec
-          };
-        });
-        const result = generateASS(comments, tileMap, canvasW, canvasH);
-        if (result.count > 0) {
-          assPath = path.join(COMPOSITE_DIR, `comments_${jobId}.ass`);
-          fs.writeFileSync(assPath, result.ass, 'utf8');
-          log('info', 'composite_comments_overlay', { jobId, comments: result.count });
-        }
-      }
+  const highlights = [];
+  let current = null;
+  for (const c of sorted) {
+    if (!current || c.momentTs - current.timestamp > HIGHLIGHT_GAP_MS) {
+      current = { timestamp: c.momentTs, clips: [c] };
+      highlights.push(current);
     } else {
-      log('warn', 'composite_no_libass', { jobId });
+      current.clips.push(c);
     }
   }
 
-  patchJob(jobId, { assPath, phase: 'encoding', progress: 'Stitching…', pct: 0 });
-
-  const ffmpegArgs = [
-    // Failure mode #4: without this ffmpeg keeps reading stdin for
-    // interactive keys and can sit there indefinitely.
-    '-nostdin',
-    '-hide_banner',
-    '-loglevel', 'error'
-  ];
-
-  clipData.forEach(c => {
-    if (c.offsetSec > 0) ffmpegArgs.push('-itsoffset', String(c.offsetSec.toFixed(3)));
-    ffmpegArgs.push('-i', c.videoPath);
-  });
-
-  let filterComplex = '';
-
-  clipData.forEach((_, i) => {
-    filterComplex += `[${i}:v]scale=${cellW}:${cellH}:force_original_aspect_ratio=decrease,pad=${cellW}:${cellH}:(ow-iw)/2:(oh-ih)/2[v${i}];`;
-  });
-
-  // Video label before optional ASS pass
-  const preLabel = assPath ? '[xraw]' : '[out]';
-
-  if (count === 1) {
-    // 'null' instead of 'copy' so ASS can chain onto it (copy is bitstream, not filterable)
-    filterComplex += `[v0]null${preLabel}`;
-  } else {
-    const layoutPositions = [];
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        if (r * cols + c >= count) break;
-        layoutPositions.push(`${c * cellW}_${r * cellH}`);
-      }
+  const grids = [];
+  for (const h of highlights) {
+    for (let i = 0; i < h.clips.length; i += MAX_POVS_PER_GRID) {
+      grids.push(h.clips.slice(i, i + MAX_POVS_PER_GRID));
     }
-    const scaledRefs = clipData.map((_, i) => `[v${i}]`).join('');
-    filterComplex += `${scaledRefs}xstack=inputs=${count}:layout=${layoutPositions.join('|')}${preLabel}`;
   }
+  return grids;
+}
 
-  if (assPath) {
-    filterComplex += `;[xraw]ass=${escapeFilterPath(assPath)}[out]`;
-  }
+// ================================
+// FFMPEG / FFPROBE
+// ================================
 
-  const audioRefs = clipData.map((_, i) => `[${i}:a]`).join('');
-  filterComplex += `;${audioRefs}amix=inputs=${count}:duration=longest:normalize=0[aout]`;
-
-  ffmpegArgs.push(
-    '-filter_complex', filterComplex,
-    '-map', '[out]',
-    '-map', '[aout]',
-    '-c:v', 'libx264',
-    '-preset', 'veryfast',
-    '-crf', '23',
-    '-pix_fmt', 'yuv420p',
-    '-r', '30',
-    '-threads', '0',
-    '-movflags', '+faststart',
-    '-c:a', 'aac',
-    '-b:a', '128k',
-    '-progress', 'pipe:1',   // machine-readable progress on stdout
-    '-y',
-    outputPath
-  );
-
+// Runs one ffmpeg to completion under the hard cap, the idle guard and the
+// job's own deadline. Resolves { ok, code }; never rejects, never hangs.
+// onSeconds(sec) reports how much output has been written.
+function runFfmpeg(jobId, args, onSeconds) {
   return new Promise((resolve) => {
     let finished = false;
     let lastProgressAt = Date.now();
     let hardTimer = null;
     let idleTimer = null;
 
-    // stdin explicitly ignored (belt to -nostdin's braces); stdout carries
-    // -progress output; stderr carries real errors only at -loglevel error.
-    const ffmpeg = spawn('ffmpeg', ffmpegArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+    // -nostdin + stdin ignored: an open stdin is a classic never-exits hang.
+    // stdout carries -progress output; stderr real errors only.
+    const ffmpeg = spawn('ffmpeg',
+      ['-nostdin', '-hide_banner', '-loglevel', 'error'].concat(args, ['-progress', 'pipe:1']),
+      { stdio: ['ignore', 'pipe', 'pipe'] });
 
     patchJob(jobId, { pid: ffmpeg.pid });
 
-    const clearTimers = () => {
-      if (hardTimer) clearTimeout(hardTimer);
-      if (idleTimer) clearInterval(idleTimer);
-    };
-
-    const finish = (fn) => {
+    const finish = (result) => {
       if (finished) return;
       finished = true;
-      clearTimers();
-      cleanupTemps();
-      if (assPath) { try { fs.unlinkSync(assPath); } catch (e) {} }
-      fn();
-      resolve();
+      if (hardTimer) clearTimeout(hardTimer);
+      if (idleTimer) clearInterval(idleTimer);
+      patchJob(jobId, { pid: null });
+      resolve(result);
     };
 
     const kill = (errorCode, message) => {
       if (finished) return;
+      failJob(jobId, errorCode, message);
       try { ffmpeg.kill('SIGKILL'); } catch (e) {}
-      finish(() => failJob(jobId, errorCode, message));
     };
 
     hardTimer = setTimeout(
@@ -481,6 +384,8 @@ async function runComposite(uploads, code, outputPath, jobId, includeComments) {
     idleTimer = setInterval(() => {
       if (Date.now() - lastProgressAt > ENCODE_IDLE_MS) {
         kill('timeout_idle', 'Render stopped responding and was stopped');
+      } else if (!isLive(jobId)) {
+        try { ffmpeg.kill('SIGKILL'); } catch (e) {}   // cancelled, or past the job deadline
       }
     }, PROGRESS_POLL_MS);
 
@@ -494,12 +399,9 @@ async function runComposite(uploads, code, outputPath, jobId, includeComments) {
       stdoutBuf = lines.pop();
       for (const line of lines) {
         const [key, value] = line.trim().split('=');
-        if (key === 'out_time_ms' && totalDurationSec > 0) {
+        if (key === 'out_time_ms' && onSeconds) {
           const doneSec = Number(value) / 1e6;
-          if (Number.isFinite(doneSec)) {
-            const pct = Math.max(0, Math.min(99, Math.round((doneSec / totalDurationSec) * 100)));
-            patchJob(jobId, { pct, progress: `Stitching… ${pct}%` });
-          }
+          if (Number.isFinite(doneSec) && doneSec >= 0) onSeconds(doneSec);
         }
       }
     });
@@ -510,27 +412,317 @@ async function runComposite(uploads, code, outputPath, jobId, includeComments) {
       if (line) log('warn', 'composite_ffmpeg_stderr', { jobId, line: line.slice(0, 500) });
     });
 
-    ffmpeg.on('close', (exitCode) => {
-      finish(() => {
-        if (exitCode === 0 && fs.existsSync(outputPath)) {
-          const fileSize = fs.statSync(outputPath).size;
-          patchJob(jobId, {
-            status: 'done', phase: 'done', pct: 100,
-            progress: 'Ready', fileSize
-          });
-          log('info', 'composite_done', {
-            jobId, sizeMB: (fileSize / 1024 / 1024).toFixed(1)
-          });
-        } else {
-          failJob(jobId, 'ffmpeg_exit_' + exitCode, 'Compositing failed — try again');
-        }
-      });
-    });
-
+    ffmpeg.on('close', (code) => finish({ ok: code === 0, code }));
     ffmpeg.on('error', (err) => {
-      finish(() => failJob(jobId, 'ffmpeg_spawn_failed', err.message));
+      log('warn', 'composite_ffmpeg_spawn_failed', { jobId, error: err.message });
+      finish({ ok: false, code: 'spawn' });
     });
   });
+}
+
+// -> { durationSec, hasAudio } for a media file, or null if it can't be read.
+function probeMedia(filePath) {
+  return new Promise((resolve) => {
+    let out = '';
+    let done = false;
+    const end = (v) => { if (!done) { done = true; clearTimeout(timer); resolve(v); } };
+    let p;
+    try {
+      p = spawn('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type',
+        '-of', 'json', filePath], { stdio: ['ignore', 'pipe', 'ignore'] });
+    } catch (e) { resolve(null); return; }
+    const timer = setTimeout(() => { try { p.kill('SIGKILL'); } catch (e) {} end(null); }, 20000);
+    p.stdout.on('data', d => { out += d; });
+    p.on('error', () => end(null));
+    p.on('close', () => {
+      try {
+        const j = JSON.parse(out);
+        const durationSec = Number(j.format && j.format.duration);
+        const streams = Array.isArray(j.streams) ? j.streams : [];
+        if (!streams.some(s => s.codec_type === 'video')) return end(null);
+        end({
+          durationSec: Number.isFinite(durationSec) && durationSec > 0 ? durationSec : 0,
+          hasAudio: streams.some(s => s.codec_type === 'audio')
+        });
+      } catch (e) { end(null); }
+    });
+  });
+}
+
+// ================================
+// THE RENDER
+// ================================
+async function runComposite(uploads, code, outputPath, jobId, includeComments) {
+  const sessionDir = path.join(UPLOADS_DIR, code);
+  const scratch = new Set();   // every temp file this job makes
+  const tmp = (name) => {
+    const p = path.join(COMPOSITE_DIR, name);
+    scratch.add(p);
+    return p;
+  };
+  const drop = (p) => { scratch.delete(p); try { fs.unlinkSync(p); } catch (e) {} };
+
+  try {
+    patchJob(jobId, { phase: 'preparing', progress: 'Reading clips…', pct: 0 });
+
+    // --- 1. Sync data for every clip, then group into highlights. ---
+    const usable = uploads.filter(u => u.videoFile);   // pending deferred uploads have no video yet
+    const clips = await mapLimit(usable, META_CONCURRENCY, async (upload) => {
+      let meta = null;
+      if (upload.metadataFile || upload.metadataUrl) {
+        try {
+          const raw = await readClipMetadata(upload, sessionDir, jobId);
+          if (raw) meta = JSON.parse(raw);
+        } catch (e) {}
+      }
+      const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0) ? v : 0;
+      const startTimeUTC = meta ? num(meta.startTimeUTC) : 0;
+      if (!startTimeUTC) {
+        log('warn', 'composite_no_sync_data', { jobId, uploadId: upload.id, username: upload.username });
+      }
+      return {
+        upload,
+        startTimeUTC,
+        // The moment this clip belongs to: what the web player clusters on.
+        momentTs: (meta && (num(meta.coordinated_timestamp) || num(meta.saveTimeUTC))) ||
+          num(upload.coordinatedTimestamp),
+        durationSec: num(upload.durationMs) / 1000 || (meta ? num(meta.durationMs) / 1000 : 0)
+      };
+    });
+    if (!isLive(jobId)) return;
+
+    if (clips.length === 0) {
+      failJob(jobId, 'no_clips', 'None of those clips have finished uploading yet');
+      return;
+    }
+
+    const grids = groupIntoGrids(clips);
+    const canvas = canvasFor(Math.max(...grids.map(g => g.length)));
+    const totalClips = clips.length;
+
+    // Progress: every clip is shrunk once (its length), every grid stacked
+    // once (about its length again, but on small tiles: weighted lighter).
+    const STACK_WEIGHT = 0.6;
+    const estGridSec = (g) => Math.max(...g.map(c => c.durationSec || 30));
+    const workTotal = clips.reduce((n, c) => n + (c.durationSec || 30), 0) +
+      grids.reduce((n, g) => n + estGridSec(g) * STACK_WEIGHT, 0);
+    let workDone = 0;
+    const report = (text, partial) => {
+      const pct = Math.max(0, Math.min(99, Math.round(((workDone + (partial || 0)) / workTotal) * 100)));
+      patchJob(jobId, { pct, progress: `${text} ${pct}%` });
+    };
+
+    const canAss = includeComments ? await checkAssFilter() : false;
+    if (includeComments && !canAss) log('warn', 'composite_no_libass', { jobId });
+    const comments = canAss ? getCommentsForSession(code) : [];
+
+    log('info', 'composite_plan', {
+      jobId, clips: totalClips, grids: grids.length,
+      sizes: grids.map(g => g.length).join(','), canvas: `${canvas.w}x${canvas.h}`
+    });
+
+    const segments = [];   // finished grid videos, in play order
+    let clipNo = 0;
+
+    for (let g = 0; g < grids.length; g++) {
+      const grid = grids[g];
+      const layout = gridLayout(grid.length, canvas);
+      const tiles = [];    // { clip, path, durationSec, hasAudio }, then slot + offsetSec
+
+      // --- 2. Shrink each clip of this highlight to its tile. ---
+      patchJob(jobId, { phase: 'preparing' });
+      for (let i = 0; i < grid.length; i++) {
+        const clip = grid[i];
+        const upload = clip.upload;
+        const clipWork = clip.durationSec || 30;
+        clipNo++;
+        if (!isLive(jobId)) return;
+        report(`Preparing clip ${clipNo} of ${totalClips}…`);
+
+        let srcPath = path.join(sessionDir, upload.videoFile);
+        let downloaded = null;
+        if (!fs.existsSync(srcPath)) {
+          if (!upload.videoUrl) { workDone += clipWork; continue; }
+          downloaded = tmp(`src_${jobId}_dl_${g}_${i}.mp4`);
+          try {
+            await downloadToFile(upload.videoUrl, downloaded, {
+              idleMs: DOWNLOAD_IDLE_MS, totalMs: DOWNLOAD_TOTAL_MS
+            });
+          } catch (e) {
+            log('warn', 'composite_download_failed', { jobId, file: upload.videoFile, error: e.message });
+            drop(downloaded);
+            workDone += clipWork;
+            continue;
+          }
+          srcPath = downloaded;
+        }
+        if (!isLive(jobId)) return;
+
+        const tilePath = tmp(`src_${jobId}_tile_${g}_${i}.mp4`);
+        const { tileW, tileH } = layout;
+        const shrink = await runFfmpeg(jobId, [
+          '-i', srcPath,
+          '-map', '0:v:0', '-map', '0:a:0?',
+          // fps first: a 60 fps clip drops to 30 before the (costly) resize.
+          '-vf', `fps=${OUT_FPS},scale=${tileW}:${tileH}:force_original_aspect_ratio=decrease:flags=bilinear,` +
+                 `pad=${tileW}:${tileH}:(ow-iw)/2:(oh-ih)/2,setsar=1`,
+          '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '16', '-pix_fmt', 'yuv420p',
+          '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-ac', '2',
+          '-y', tilePath
+        ], (sec) => report(`Preparing clip ${clipNo} of ${totalClips}…`, Math.min(sec, clipWork)));
+        if (downloaded) drop(downloaded);
+        workDone += clipWork;
+        if (!isLive(jobId)) return;
+
+        const info = shrink.ok ? await probeMedia(tilePath) : null;
+        if (!info || !info.durationSec) {
+          // One unreadable clip costs its own tile, not the whole export.
+          log('warn', 'composite_clip_skipped', {
+            jobId, uploadId: upload.id, username: upload.username, code: shrink.code
+          });
+          drop(tilePath);
+          continue;
+        }
+        tiles.push({ clip, path: tilePath, durationSec: info.durationSec, hasAudio: info.hasAudio });
+      }
+
+      if (tiles.length === 0) {
+        log('warn', 'composite_grid_empty', { jobId, grid: g + 1 });
+        workDone += estGridSec(grid) * STACK_WEIGHT;
+        continue;
+      }
+
+      // --- 3. Stack this highlight's tiles, lined up on the moment. ---
+      // Placed now, not before: tiles keep their planned size, and the ones
+      // that made it fill the grid in order with no gap.
+      const placed = gridLayout(tiles.length, canvas, layout.cols);
+      tiles.forEach((t, i) => { t.slot = placed.slots[i]; });
+      const timed = tiles.filter(t => t.clip.startTimeUTC);
+      const earliest = timed.length ? Math.min(...timed.map(t => t.clip.startTimeUTC)) : 0;
+      tiles.forEach(t => {
+        t.offsetSec = t.clip.startTimeUTC ? (t.clip.startTimeUTC - earliest) / 1000 : 0;
+      });
+      const gridSec = Math.max(...tiles.map(t => t.offsetSec + t.durationSec));
+      const gridDur = gridSec.toFixed(3);
+
+      let assPath = null;
+      if (comments.length > 0) {
+        const tileMap = {};
+        tiles.forEach(t => {
+          tileMap[t.clip.upload.id] = {
+            x: t.slot.x, y: t.slot.y, w: layout.tileW, h: layout.tileH, offsetSec: t.offsetSec
+          };
+        });
+        const result = generateASS(comments, tileMap, canvas.w, canvas.h);
+        if (result.count > 0) {
+          assPath = tmp(`comments_${jobId}_${g}.ass`);
+          fs.writeFileSync(assPath, result.ass, 'utf8');
+          log('info', 'composite_comments_overlay', { jobId, grid: g + 1, comments: result.count });
+        }
+      }
+
+      const args = [];
+      tiles.forEach(t => {
+        if (t.offsetSec > 0) args.push('-itsoffset', t.offsetSec.toFixed(3));
+        args.push('-i', t.path);
+      });
+      // The canvas: black, exactly as long as this highlight. A tile shows
+      // from its own start to its own end and is black outside that.
+      const base = tiles.length;
+      args.push('-f', 'lavfi', '-i', `color=c=black:s=${canvas.w}x${canvas.h}:r=${OUT_FPS}:d=${gridDur}`);
+
+      let filter = '';
+      let last = `[${base}:v]`;
+      tiles.forEach((t, i) => {
+        filter += `${last}[${i}:v]overlay=${t.slot.x}:${t.slot.y}:eof_action=pass[b${i}];`;
+        last = `[b${i}]`;
+      });
+      filter += `${last}${assPath ? `ass=${escapeFilterPath(assPath)},` : ''}format=yuv420p[out]`;
+
+      // first_pts=0 pads each POV's sound with silence up to its start, so
+      // the mix stays lined up with the pictures.
+      const voiced = tiles.map((t, i) => (t.hasAudio ? i : -1)).filter(i => i >= 0);
+      if (voiced.length === 0) {
+        args.push('-f', 'lavfi', '-t', gridDur, '-i', 'anullsrc=r=48000:cl=stereo');
+        filter += `;[${base + 1}:a]anull[aout]`;
+      } else {
+        voiced.forEach(i => { filter += `;[${i}:a]aresample=48000:async=1:first_pts=0[a${i}]`; });
+        const refs = voiced.map(i => `[a${i}]`).join('');
+        // whole_dur, not a bare apad: endless padding after amix never lets
+        // ffmpeg finish (it stalled the first test render here).
+        filter += voiced.length === 1
+          ? `;${refs}apad=whole_dur=${gridDur}[aout]`
+          : `;${refs}amix=inputs=${voiced.length}:duration=longest:normalize=0,apad=whole_dur=${gridDur}[aout]`;
+      }
+
+      const segPath = tmp(`src_${jobId}_seg_${g}.mp4`);
+      args.push(
+        '-filter_complex', filter,
+        '-map', '[out]', '-map', '[aout]',
+        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p',
+        '-r', String(OUT_FPS), '-threads', '0',
+        '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-ac', '2',
+        '-t', gridDur,
+        '-movflags', '+faststart',
+        '-y', segPath
+      );
+
+      const label = grids.length > 1 ? `Stitching highlight ${g + 1} of ${grids.length}…` : 'Stitching…';
+      patchJob(jobId, { phase: 'encoding' });
+      report(label);
+      const gridWork = estGridSec(grid) * STACK_WEIGHT;
+      const stack = await runFfmpeg(jobId, args,
+        (sec) => report(label, Math.min(1, sec / gridSec) * gridWork));
+      workDone += gridWork;
+
+      tiles.forEach(t => drop(t.path));
+      if (assPath) drop(assPath);
+      if (!isLive(jobId)) return;
+      if (!stack.ok || !fs.existsSync(segPath)) {
+        failJob(jobId, 'ffmpeg_exit_' + stack.code, 'Compositing failed — try again');
+        return;
+      }
+      segments.push(segPath);
+    }
+
+    if (segments.length === 0) {
+      failJob(jobId, 'no_clips', 'No clips could be fetched for this export');
+      return;
+    }
+
+    // --- 4. Join the highlights in order. Same encoder settings and frame
+    // size in every segment, so this is a copy, not another encode. ---
+    if (segments.length === 1) {
+      fs.renameSync(segments[0], outputPath);
+      scratch.delete(segments[0]);
+    } else {
+      patchJob(jobId, { phase: 'encoding', progress: 'Joining highlights… 99%', pct: 99 });
+      const listPath = tmp(`src_${jobId}_list.txt`);
+      fs.writeFileSync(listPath, segments.map(p => `file '${p.replace(/\\/g, '/')}'`).join('\n') + '\n', 'utf8');
+      const joined = await runFfmpeg(jobId, [
+        '-f', 'concat', '-safe', '0', '-i', listPath,
+        '-c', 'copy', '-movflags', '+faststart',
+        '-y', outputPath
+      ]);
+      if (!isLive(jobId)) return;
+      if (!joined.ok || !fs.existsSync(outputPath)) {
+        failJob(jobId, 'ffmpeg_exit_' + joined.code, 'Compositing failed — try again');
+        return;
+      }
+    }
+
+    const fileSize = fs.statSync(outputPath).size;
+    patchJob(jobId, { status: 'done', phase: 'done', pct: 100, progress: 'Ready', fileSize, pid: null });
+    log('info', 'composite_done', {
+      jobId, grids: segments.length, sizeMB: (fileSize / 1024 / 1024).toFixed(1)
+    });
+  } finally {
+    // Whatever happened, this job's temp files go now. A job that didn't
+    // finish doesn't keep a half-written output either.
+    for (const p of scratch) { try { fs.unlinkSync(p); } catch (e) {} }
+    const job = compositeJobs.get(jobId);
+    if (!job || job.status !== 'done') { try { fs.unlinkSync(outputPath); } catch (e) {} }
+  }
 }
 
 // --- Routes ---
@@ -543,10 +735,9 @@ function initCompositeRoutes(app) {
     if (!session) return res.status(404).json({ error: 'Session not found' });
     if (session.uploads.length === 0) return res.status(400).json({ error: 'No uploads yet' });
 
-    // Which clips? The client sends the uploadIds of the highlight currently
-    // on screen. Older clients send nothing — for those, fall back to the
-    // whole session but ONLY if it is within the cap, so a legacy client can
-    // never again ask for an 88-input render.
+    // Which clips? The client sends the uploadIds marked with + (or, with
+    // nothing marked, the highlight on screen). Older clients send nothing —
+    // for those, fall back to the whole session, under the same limits.
     const body = req.body || {};
     let selected;
 
@@ -562,8 +753,17 @@ function initCompositeRoutes(app) {
 
     if (selected.length > MAX_COMPOSITE_CLIPS) {
       return res.status(400).json({
-        error: `Combined View supports up to ${MAX_COMPOSITE_CLIPS} clips at once ` +
-               `(you selected ${selected.length}). Pick a single highlight, or use an AI Reel for a whole session.`
+        error: `Combined View supports up to ${MAX_COMPOSITE_CLIPS} clips in one export ` +
+               `(you selected ${selected.length}). Pick fewer highlights, or use an AI Reel for a whole session.`
+      });
+    }
+
+    const totalSec = selected.reduce((n, u) =>
+      n + (typeof u.durationMs === 'number' && u.durationMs > 0 ? u.durationMs / 1000 : 0), 0);
+    if (totalSec > MAX_TOTAL_CLIP_SEC) {
+      return res.status(400).json({
+        error: `Combined View supports up to ${Math.round(MAX_TOTAL_CLIP_SEC / 60)} minutes of clips in one export ` +
+               `(you selected about ${Math.ceil(totalSec / 60)}). Pick fewer highlights, or use an AI Reel for a whole session.`
       });
     }
 
@@ -599,18 +799,17 @@ function initCompositeRoutes(app) {
       errorCode: null,
       pid: null,
       outputPath,
-      assPath: null,
       owner: req.user && req.user.username ? req.user.username : null,
       clipCount: selected.length,
       createdAt: Date.now(),
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      deadlineAt: Date.now() + JOB_HARD_CAP_MS
     });
 
     log('info', 'composite_started', { jobId, code, clips: selected.length });
     res.status(202).json({ jobId, clipCount: selected.length });
 
-    // Failure mode #1: this was a floating promise. Any throw before the
-    // ffmpeg Promise left the job 'processing' forever. It cannot now.
+    // Never a floating promise: any throw still ends in a terminal status.
     runComposite(selected, code, outputPath, jobId, includeComments)
       .catch((err) => {
         log('error', 'composite_crashed', { jobId, error: err && err.message });
@@ -620,9 +819,8 @@ function initCompositeRoutes(app) {
 
   app.get('/sessions/:code/composite/:jobId', (req, res) => {
     const job = compositeJobs.get(req.params.jobId);
-    // 404 is still correct, but it is now an expected terminal answer the
-    // client must handle (job expired, or server restarted), not a state
-    // the client can poll its way out of.
+    // 404 is an expected terminal answer the client must handle (job
+    // expired, or server restarted), not a state it can poll its way out of.
     if (!job) return res.status(404).json({ error: 'Job not found', status: 'lost' });
 
     res.json({
@@ -646,10 +844,13 @@ function initCompositeRoutes(app) {
     if (job.status !== 'processing') {
       return res.json({ status: job.status, message: 'Already finished' });
     }
-    if (job.pid) { try { process.kill(job.pid, 'SIGKILL'); } catch (e) {} }
+    const pid = job.pid;
+    // Status first: the render loop sees the job is no longer live and
+    // stops before starting its next step.
     patchJob(req.params.jobId, {
       status: 'failed', phase: 'done', errorCode: 'cancelled', progress: 'Cancelled'
     });
+    if (pid) { try { process.kill(pid, 'SIGKILL'); } catch (e) {} }
     log('info', 'composite_cancelled', { jobId: req.params.jobId });
     res.json({ status: 'cancelled' });
   });

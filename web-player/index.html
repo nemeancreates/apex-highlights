@@ -1388,9 +1388,9 @@
     <div class="composite-section" id="compositeSection" style="display:none;">
       <div style="padding:10px 16px 2px;font-size:11.5px;line-height:1.55;color:#7a9686;">
         <strong style="color:#c8d6cd;">Every angle, nothing cut.</strong>
-        Your selected clips are synced by timestamp and tiled into one video that runs their full
-        length &mdash; the whole fight, from every POV at once. Best for working out what actually
-        happened. Up to 9 clips.
+        Each highlight you select becomes one synced grid of its POVs at full length, and the
+        highlights play one after another, oldest first. Best for working out what actually
+        happened. Up to 30 clips or 20 minutes of footage.
       </div>
       <div class="composite-status" id="compositeStatus"></div>
       <div class="progress-bar" id="compositeProgressBar" style="display:none;">
@@ -1427,7 +1427,7 @@
      </div>
      <div style="flex:1;min-width:220px;">
        <label style="font-size:11px;color:#7a9686;display:block;">Style notes for the AI editor (saved per game)</label>
-       <input type="text" id="aireelStyle" placeholder="e.g. keep clutches long, cut fast on kills" style="background:#0c1c14;color:#c8d6cd;border:1px solid #24402e;border-radius:4px;padding:4px 8px;width:100%;" />
+       <input type="text" id="aireelStyle" placeholder="e.g. solo only, no slow motion, tight cuts, more of a player's name" style="background:#0c1c14;color:#c8d6cd;border:1px solid #24402e;border-radius:4px;padding:4px 8px;width:100%;" />
      </div>
      <button class="btn btn-small" id="aireelBtn" onclick="startAiReel()">🤖 Generate AI Reel</button>
      <button class="btn btn-small btn-secondary" id="aireelCancelBtn" onclick="cancelAiReel()" style="display:none;">Stop Reel</button>
@@ -4112,10 +4112,11 @@
           : '\u{1F3AC} Combined View';
     }
 
-    // Absolute client-side deadline. The server's own hard cap is 15 min,
-    // so anything past 16 is the server having stopped answering about this
+    // Absolute client-side deadline. The server's own cap on a whole export
+    // is 45 min (JOB_HARD_CAP_MS in server/composite.js; keep them together),
+    // so anything past 46 is the server having stopped answering about this
     // job \u2014 we stop waiting rather than spin forever.
-    const COMPOSITE_CLIENT_DEADLINE_MS = 16 * 60 * 1000;
+    const COMPOSITE_CLIENT_DEADLINE_MS = 46 * 60 * 1000;
     const COMPOSITE_MAX_SERVER_ERRORS = 5;   // ~15s of 5xx before giving up
     let compositeDeadlineAt = 0;
     let compositeServerErrors = 0;
