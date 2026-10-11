@@ -206,9 +206,9 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 const PRIVACY_POLICY_VERSION = '2026-09-07';
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.91',
-  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.91.exe',
-    releaseNotes: "Deleted clips no longer show as still uploading. When the host deletes a clip that's waiting in your upload queue, it leaves your 📤 Upload Queue right away, and if you delete a clip file from your PC before it uploads, it disappears from the queue and your squad stops seeing it as uploading too. Clips that were stuck as “still uploading” in older sessions have been cleared."
+  version: '0.1.92',
+  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.92.exe',
+    releaseNotes: "Combined View now makes one grid per highlight instead of layering everything at once, so each export keeps a steady aspect ratio and handles up to 30 clips. AI Reel was rebuilt as a timeline editor: no more repeated or needlessly split clips, with tighter cuts, grid-then-solo moments, slow-mo and punch-ins, and your stars and comments guiding the edit. New in-app tutorial (Settings has a toggle for its button)."
 };
 
 
