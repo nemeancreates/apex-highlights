@@ -4124,6 +4124,16 @@
     // ONE place where the composite UI returns to rest. Every exit path \u2014
     // success, failure, 404, server down, timeout, cancel \u2014 goes through
     // here, so the button can never be left stuck disabled again.
+    // A finished export or reel un-selects its clips so the next one starts
+    // clean. The export panel stays open (updateSelectionBar would close it)
+    // so the Ready message and the reel's editor report stay readable.
+    function clearSelectionAfterExport() {
+      selectedExportClips.clear();
+      try { renderVideoGrid(); } catch (e) {}
+      const bar = document.getElementById('selectionBar');
+      if (bar) bar.style.display = 'none';
+    }
+
     function finishComposite(state, message, data) {
       if (compositePollInterval) { clearInterval(compositePollInterval); compositePollInterval = null; }
       compositeJobId = null;
@@ -4152,6 +4162,7 @@
         link.href = data.downloadUrl + '?token=' + encodeURIComponent(myAuthToken);
         link.download = 'peak-abu-composite.mp4';
         document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        clearSelectionAfterExport();
       } else {
         status.className = 'composite-status failed';
         status.textContent = '\u274C ' + message;
@@ -4366,6 +4377,7 @@
         link.href = data.downloadUrl + '?token=' + encodeURIComponent(myAuthToken);
         link.download = 'peak-abu-ai-reel.mp4';
         document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        clearSelectionAfterExport();
       } else {
         status.textContent = '❌ ' + message;
       }

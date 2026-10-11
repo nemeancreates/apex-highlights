@@ -572,6 +572,8 @@
               (result.usedCpuFallback ? ' · CPU encode' : '') +
               (result.clamped ? ' · trimmed to available footage' : '');
             document.getElementById('openBtn').style.display = 'block';
+            selected = new Set();   // reel done: start the next pick clean
+            renderList();
             if (result.report) {
               const rep = document.getElementById('report');
               rep.textContent = result.report;
