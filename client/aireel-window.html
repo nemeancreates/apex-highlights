@@ -141,6 +141,7 @@
           <span>
             <button onclick="selectAll(true)">Select all</button> ·
             <button onclick="selectAll(false)">Select none</button>
+            <button id="reselectBtn" onclick="reselectLast()" style="display:none;" title="Re-pick the clips from your last reel">↩ Last reel's clips</button>
           </span>
         </div>
         <div id="clipList"></div>
@@ -191,6 +192,7 @@
 
       let allClips = [];
       let selected = new Set();
+      let lastReelSelection = [];   // ids picked for the last finished reel
       let previewOrder = []; // clip ids, newest-clicked first — the MRU queue
       let busy = false;
       let lastOutput = null;
@@ -423,6 +425,15 @@
         }
       }
 
+      // Brings back the clips the last reel used, for another try with
+      // different length or style notes. Skips any that are gone now.
+      window.reselectLast = function() {
+        const ids = new Set(allClips.map(c => c.id));
+        selected = new Set(lastReelSelection.filter(id => ids.has(id)));
+        renderList();
+        updateSummary();
+      };
+
       window.selectAll = function(on) {
         selected = on ? new Set(allClips.map(c => c.id)) : new Set();
         renderList();
@@ -572,6 +583,8 @@
               (result.usedCpuFallback ? ' · CPU encode' : '') +
               (result.clamped ? ' · trimmed to available footage' : '');
             document.getElementById('openBtn').style.display = 'block';
+            lastReelSelection = chosen.map(c => c.id);
+            document.getElementById('reselectBtn').style.display = '';
             selected = new Set();   // reel done: start the next pick clean
             renderList();
             if (result.report) {

@@ -1354,6 +1354,10 @@
           <button class="btn-clear-selection" onclick="deselectAllClips()" title="Clear selection">&#x2715;</button>
         </div>
       </div>
+      <!-- Shown only when nothing is selected and a Combined View / AI Reel just finished -->
+      <div id="reselectStrip" style="display:none;padding:6px 16px;">
+        <button class="btn btn-small btn-secondary" onclick="reselectLastExport()" title="Re-pick the clips from your last export">&#8617; Reselect last <span id="reselectCount"></span></button>
+      </div>
     </div>
 
     <div class="right-panel" id="rightPanel" style="display:none;">
@@ -1513,6 +1517,7 @@
     let animFrameId = null;
     let focusedIndex = -1;
     let selectedExportClips = new Set();
+    let lastExportSelection = [];   // clips of the last finished Combined View / AI Reel
     let expectedClips = 0;
     let currentSessionCode = null;
     let compositeJobId = null;
@@ -2788,6 +2793,7 @@
         allUploads = [];
         focusedIndex = -1;
         selectedExportClips.clear();
+        lastExportSelection = [];
         currentSessionCode = code;
         currentHighlightIndex = 0;
         expectedClips = session.members ? session.members.length : 0;
@@ -3663,6 +3669,7 @@
       if (!bar) return;
 
       const count = selectedExportClips.size;
+      updateReselectStrip();
       if (count === 0) {
         bar.style.display = 'none';
         // Auto-close export panel when selection empties
@@ -4128,10 +4135,32 @@
     // clean. The export panel stays open (updateSelectionBar would close it)
     // so the Ready message and the reel's editor report stay readable.
     function clearSelectionAfterExport() {
+      lastExportSelection = Array.from(selectedExportClips);
       selectedExportClips.clear();
       try { renderVideoGrid(); } catch (e) {}
       const bar = document.getElementById('selectionBar');
       if (bar) bar.style.display = 'none';
+      updateReselectStrip();
+    }
+
+    // The "Reselect last" chip: only while nothing is selected and the last
+    // export's clips still exist in this session.
+    function updateReselectStrip() {
+      const strip = document.getElementById('reselectStrip');
+      if (!strip) return;
+      const valid = new Set(allUploads.map(u => u.uploadId));
+      const ids = lastExportSelection.filter(id => valid.has(id));
+      const show = selectedExportClips.size === 0 && ids.length > 0;
+      strip.style.display = show ? '' : 'none';
+      const c = document.getElementById('reselectCount');
+      if (c) c.textContent = show ? '(' + ids.length + ')' : '';
+    }
+
+    function reselectLastExport() {
+      const valid = new Set(allUploads.map(u => u.uploadId));
+      lastExportSelection.forEach(id => { if (valid.has(id)) selectedExportClips.add(id); });
+      try { renderVideoGrid(); } catch (e) {}
+      updateSelectionBar();
     }
 
     function finishComposite(state, message, data) {
