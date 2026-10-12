@@ -397,6 +397,26 @@ function sections(isl, s, e) {
   return cuts.slice(1).map((c, i) => [cuts[i], c]);
 }
 
+// Splits [s, e] wherever the set of POVs on file changes (a clip starts or
+// ends inside it). Friends' saves never line up to the frame, so asking for
+// "every POV" has to follow who actually has footage. A sliver under
+// MIN_PIECE at the very start or end of the moment is trimmed off, not shown
+// as a flash of fewer tiles.
+const MIN_PIECE = 1.2;
+function splitByCoverage(isl, s, e) {
+  const xs = [s, e];
+  for (const c of isl.clips) {
+    if (c.a > s + 0.05 && c.a < e - 0.05) xs.push(c.a);
+    if (c.b > s + 0.05 && c.b < e - 0.05) xs.push(c.b);
+  }
+  xs.sort((x, y) => x - y);
+  const out = [];
+  for (let i = 0; i + 1 < xs.length; i++) {
+    if (xs[i + 1] - xs[i] > 0.05) out.push([xs[i], xs[i + 1]]);
+  }
+  return out;
+}
+
 // Follows [s, e] from file to file. `order` is the players to prefer, best
 // first. -> [{ clip, s, e }], touching, each at least ~1.5 s where it can be.
 function chain(isl, s, e, order) {
@@ -513,7 +533,11 @@ function buildPlan(ctx, choice) {
 
     // A long moment is taken in sections (split at its quietest points), so
     // the POV can change with the action while time runs on unbroken.
-    for (const [a, b] of sections(isl, sp.s, sp.e)) {
+    const pieces = [];
+    for (const [sa, sb] of sections(isl, sp.s, sp.e)) splitByCoverage(isl, sa, sb).forEach(x => pieces.push(x));
+    while (pieces.length > 1 && pieces[0][1] - pieces[0][0] < MIN_PIECE) pieces.shift();
+    while (pieces.length > 1 && pieces[pieces.length - 1][1] - pieces[pieces.length - 1][0] < MIN_PIECE) pieces.pop();
+    for (const [a, b] of pieces) {
       const hasPeak = sp.peakT >= a && sp.peakT <= b;
       const peakT = hasPeak ? sp.peakT : peakTime(isl, a, b);
       const level = {};
