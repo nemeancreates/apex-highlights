@@ -1561,6 +1561,25 @@
     let myUsername = null;
     let isHost = false;
     let selectedForDelete = new Set();
+    // Last pill whose select-check was clicked: the far end for a Shift+click range.
+    let deleteAnchor = -1;
+
+    // Plain click toggles one pill and makes it the anchor. Shift+click
+    // applies the clicked pill's new state to every deletable pill between
+    // it and the anchor (collapsed chapters included); locked pills are skipped.
+    function toggleDeleteSelection(i, shift) {
+      const select = !selectedForDelete.has(i);
+      if (shift && deleteAnchor >= 0 && deleteAnchor < highlights.length) {
+        const lo = Math.min(deleteAnchor, i), hi = Math.max(deleteAnchor, i);
+        for (let j = lo; j <= hi; j++) {
+          if (clusterAgeMs(highlights[j]) >= DELETE_WINDOW_MS) continue;
+          if (select) selectedForDelete.add(j); else selectedForDelete.delete(j);
+        }
+      } else if (select) selectedForDelete.add(i);
+      else selectedForDelete.delete(i);
+      deleteAnchor = i;
+      renderHighlightsColumn();
+    }
     const DELETE_WINDOW_MS = 4 * 60 * 60 * 1000;
 
     (function readCredentialsFromUrl() {
@@ -2685,17 +2704,23 @@
           const check = document.createElement('div');
           check.className = 'hl-select-check';
           check.textContent = selectedForDelete.has(i) ? '✓' : '';
-          check.title = selectedForDelete.has(i) ? 'Remove from selection' : 'Select for deletion';
+          check.title = (selectedForDelete.has(i) ? 'Remove from selection' : 'Select for deletion') +
+            ' (Shift+click to select a range)';
           check.addEventListener('click', function(e) {
             e.stopPropagation();
-            if (selectedForDelete.has(i)) selectedForDelete.delete(i);
-            else selectedForDelete.add(i);
-            renderHighlightsColumn();
+            toggleDeleteSelection(i, e.shiftKey);
           });
           pill.appendChild(check);
         }
 
-        pill.addEventListener('click', function() { switchHighlight(i); });
+        // Host Shift+click on a deletable pill extends the delete selection
+        // instead of switching to it (mousedown: no text selection on shift).
+        const rangeable = isHost && !locked;
+        if (rangeable) pill.addEventListener('mousedown', function(e) { if (e.shiftKey) e.preventDefault(); });
+        pill.addEventListener('click', function(e) {
+          if (rangeable && e.shiftKey) { toggleDeleteSelection(i, true); return; }
+          switchHighlight(i);
+        });
         return pill;
     }
 
@@ -2741,6 +2766,7 @@
       }
 
       selectedForDelete.clear();
+      deleteAnchor = -1;
 
       allUsers = deriveAllUsers();
       highlights = clusterHighlights();
@@ -2857,6 +2883,7 @@
         isHost = !!(myUsername && session.createdBy &&
         myUsername.toLowerCase() === session.createdBy.toLowerCase());
         selectedForDelete.clear();
+        deleteAnchor = -1;
 
         hideSessionLoading();
         renderVideoGrid();
