@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Public Sessions — Peak-Abu</title>
+<meta name="description" content="Browse public Peak-Abu sessions — every angle of the play, from PC squads and mobile events.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&family=Work+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a1611; --card:#0f2318; --card-soft:#0c1c14; --border:#1e3527; --border-soft:#24402e;
+    --teal:#39d3a0; --teal-dim:#1d9e75; --teal-dark:#146a4d; --pupil:#0b1a13;
+    --violet:#6c4fd8; --amber:#d8a838; --rose:#f0a5bd;
+    --text:#e8f5ec; --text-soft:#c8d6cd; --text-dim:#8fbfa3; --text-muted:#5f7a6a;
+    --display:'Jost',sans-serif; --body:'Work Sans',sans-serif; --mono:'JetBrains Mono',monospace;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  body{
+    background:
+      radial-gradient(ellipse 900px 500px at 15% -10%, rgba(57,211,160,0.08), transparent 60%),
+      radial-gradient(ellipse 700px 500px at 90% 15%, rgba(108,79,216,0.07), transparent 60%),
+      var(--bg);
+    color:var(--text-soft); font-family:var(--body); line-height:1.5; min-height:100vh;
+  }
+  a{ color:inherit; text-decoration:none; }
+  button{ font:inherit; color:inherit; background:none; border:0; cursor:pointer; }
+  .wrap{ max-width:1180px; margin:0 auto; padding:0 16px; }
+  @media(min-width:640px){ .wrap{ padding:0 24px; } }
+
+  header.nav{ position:sticky; top:0; z-index:50; background:rgba(10,22,17,0.85); backdrop-filter:blur(10px); border-bottom:1px solid var(--border); }
+  .nav-inner{ display:flex; align-items:center; justify-content:space-between; padding:12px 16px; max-width:1180px; margin:0 auto; gap:12px; }
+  .brand{ display:flex; align-items:center; gap:10px; font-family:var(--display); font-weight:700; font-size:18px; color:var(--text); }
+  .brand svg{ width:34px; height:34px; }
+  .nav-links{ display:flex; gap:22px; font-size:14px; color:var(--text-dim); }
+  .nav-links a:hover, .nav-links a[aria-current]{ color:var(--teal); }
+
+  .hero{ padding:40px 0 22px; display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:20px; }
+  h1{ font-family:var(--display); color:var(--text); font-weight:600; font-size:clamp(28px,4.4vw,42px); line-height:1.08; letter-spacing:-0.01em; }
+  h1 .accent{ color:var(--teal); }
+  .lead{ color:var(--text-dim); margin-top:8px; max-width:520px; }
+
+  .roulette{
+    display:inline-flex; align-items:center; gap:10px; padding:14px 22px; border-radius:12px;
+    font-family:var(--display); font-weight:600; font-size:17px; color:#04140d;
+    background:linear-gradient(135deg, var(--teal), #7be7c3); box-shadow:0 0 0 1px var(--teal), 0 8px 28px rgba(57,211,160,0.22);
+    transition:transform .1s, box-shadow .15s;
+  }
+  .roulette:hover{ box-shadow:0 0 0 1px #4fe0b0, 0 10px 34px rgba(57,211,160,0.35); }
+  .roulette:active{ transform:translateY(1px); }
+  .roulette small{ font-family:var(--body); font-weight:500; font-size:12px; opacity:.75; display:block; }
+
+  .filters{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:14px 0 18px; border-bottom:1px solid var(--border); margin-bottom:22px; }
+  .seg{ display:inline-flex; background:var(--card-soft); border:1px solid var(--border-soft); border-radius:9px; padding:3px; }
+  .seg button{ padding:7px 13px; border-radius:7px; font-size:14px; color:var(--text-dim); }
+  .seg button[aria-pressed="true"]{ background:var(--card); color:var(--teal); box-shadow:inset 0 0 0 1px var(--border-soft); }
+  select{
+    font:inherit; font-size:14px; color:var(--text-soft); background:var(--card-soft);
+    border:1px solid var(--border-soft); border-radius:9px; padding:8px 12px; max-width:200px;
+  }
+  .count{ margin-left:auto; font-family:var(--mono); font-size:12px; color:var(--text-muted); }
+
+  .grid{ display:grid; gap:18px; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); padding-bottom:40px; }
+  .card{
+    position:relative; background:var(--card); border:1px solid var(--border); border-radius:14px; overflow:hidden;
+    transition:border-color .15s, transform .15s;
+  }
+  .card:hover{ border-color:var(--teal-dim); transform:translateY(-2px); }
+  .card a.hit{ display:block; }
+  .thumb{ position:relative; aspect-ratio:16/9; background:var(--card-soft); overflow:hidden; }
+  .thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .thumb .noimg{ position:absolute; inset:0; display:grid; place-items:center; color:var(--text-muted); font-size:13px; }
+  .badge{
+    position:absolute; top:10px; left:10px; font-family:var(--mono); font-size:11px; font-weight:600; letter-spacing:.04em;
+    padding:3px 8px; border-radius:6px; background:rgba(6,16,12,0.82); color:var(--teal); border:1px solid var(--teal-dark);
+  }
+  .badge.mobile{ color:var(--rose); border-color:#6b3b4b; }
+  .povs{ position:absolute; bottom:10px; right:10px; font-family:var(--mono); font-size:11px; padding:3px 8px; border-radius:6px; background:rgba(6,16,12,0.82); color:var(--text); }
+  .body{ padding:12px 14px 14px; }
+  .title{ font-family:var(--display); font-weight:600; color:var(--text); font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-right:28px; }
+  .meta{ font-size:13px; color:var(--text-dim); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .stats{ display:flex; gap:12px; margin-top:10px; font-family:var(--mono); font-size:11.5px; color:var(--text-muted); }
+  .stats .exp.soon{ color:var(--amber); }
+  .more{ position:absolute; right:8px; bottom:46px; width:30px; height:30px; border-radius:8px; color:var(--text-muted); font-size:18px; line-height:1; }
+  .more:hover{ background:var(--card-soft); color:var(--text); }
+
+  .empty{ text-align:center; padding:70px 16px; color:var(--text-dim); }
+  .empty .icon{ font-size:44px; margin-bottom:12px; }
+  .loadmore{ display:block; margin:0 auto 50px; padding:11px 22px; border-radius:9px; background:var(--card); border:1px solid var(--border-soft); color:var(--text-dim); }
+  .loadmore[hidden]{ display:none; }
+  .loadmore:hover{ border-color:var(--teal); color:var(--teal); }
+
+  dialog{
+    margin:auto; background:var(--card); color:var(--text-soft); border:1px solid var(--border-soft); border-radius:14px;
+    padding:20px; width:min(92vw, 380px);
+  }
+  dialog::backdrop{ background:rgba(0,0,0,0.6); }
+  dialog h2{ font-family:var(--display); color:var(--text); font-size:19px; margin-bottom:6px; }
+  dialog p{ font-size:14px; color:var(--text-dim); margin-bottom:12px; }
+  dialog label{ display:flex; gap:8px; align-items:center; font-size:14px; padding:5px 0; }
+  .dlg-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:14px; }
+  .btn{ padding:9px 16px; border-radius:9px; font-weight:600; font-size:14px; }
+  .btn-ghost{ background:var(--card-soft); border:1px solid var(--border-soft); color:var(--text-dim); }
+  .btn-danger{ background:#5a2430; color:#ffd8e1; border:1px solid #7a3242; }
+
+  @media(max-width:560px){
+    .nav-links{ gap:14px; font-size:13px; }
+    .count{ width:100%; margin-left:0; }
+    .roulette{ width:100%; justify-content:center; }
+  }
+  @media (prefers-reduced-motion: reduce){ .card, .roulette{ transition:none; } }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="/">
+      <svg viewBox="0 0 64 64" aria-hidden="true">
+        <circle cx="32" cy="32" r="29" fill="var(--card-soft)" stroke="var(--teal)" stroke-width="1.4" opacity="0.9"/>
+        <circle cx="18.5" cy="27.5" r="7" fill="var(--teal)"/>
+        <circle cx="45.5" cy="27.5" r="7" fill="var(--teal)"/>
+        <circle cx="32" cy="36" r="15.5" fill="var(--teal)"/>
+        <ellipse cx="26" cy="33" rx="6.1" ry="5.5" fill="var(--teal-dark)"/>
+        <ellipse cx="38" cy="33" rx="6.1" ry="5.5" fill="var(--teal-dark)"/>
+      </svg>
+      Peak-Abu
+    </a>
+    <nav class="nav-links">
+      <a href="/">Home</a>
+      <a href="/browse" aria-current="page">Browse</a>
+      <a href="/player">Player</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <div>
+      <h1>Public <span class="accent">sessions</span></h1>
+      <p class="lead">Every angle of the play, shared by hosts who chose to go public. Pick a session, or let roulette drop you into someone's best moment.</p>
+    </div>
+    <a class="roulette" id="rouletteBtn" href="/player?roulette=1">
+      <span aria-hidden="true">🎲</span>
+      <span>Peak Roulette<small>Random POV action, any session</small></span>
+    </a>
+  </section>
+
+  <div class="filters" role="toolbar" aria-label="Filter sessions">
+    <div class="seg" id="platformSeg">
+      <button type="button" data-v="" aria-pressed="true">All</button>
+      <button type="button" data-v="pc" aria-pressed="false">PC</button>
+      <button type="button" data-v="mobile" aria-pressed="false">Mobile</button>
+    </div>
+    <select id="gameSel" aria-label="Game or event">
+      <option value="">All games &amp; events</option>
+    </select>
+    <div class="seg" id="sortSeg">
+      <button type="button" data-v="new" aria-pressed="true">Newest</button>
+      <button type="button" data-v="popular" aria-pressed="false">Popular</button>
+    </div>
+    <span class="count" id="count"></span>
+  </div>
+
+  <div class="grid" id="grid" aria-live="polite"></div>
+  <button class="loadmore" id="loadMore" type="button" hidden>Load more</button>
+</main>
+
+<dialog id="reportDlg">
+  <form method="dialog" id="reportForm">
+    <h2>Report this session</h2>
+    <p>Reports are anonymous. Sessions with several reports are hidden until reviewed.</p>
+    <label><input type="radio" name="reason" value="privacy" checked> Someone didn't agree to be shown</label>
+    <label><input type="radio" name="reason" value="inappropriate"> Inappropriate content</label>
+    <label><input type="radio" name="reason" value="spam"> Spam or misleading</label>
+    <label><input type="radio" name="reason" value="other"> Something else</label>
+    <div class="dlg-actions">
+      <button class="btn btn-ghost" value="cancel" type="submit">Cancel</button>
+      <button class="btn btn-danger" value="send" type="submit">Send report</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(function () {
+  const state = { platform: '', game: '', sort: 'new', offset: 0, total: 0, reportCode: null };
+  const grid = document.getElementById('grid');
+  const gameSel = document.getElementById('gameSel');
+  const loadMore = document.getElementById('loadMore');
+  const rouletteBtn = document.getElementById('rouletteBtn');
+
+  // Remember the platform filter per viewer — light convenience only.
+  try { const p = localStorage.getItem('pa_browse_platform'); if (p === 'pc' || p === 'mobile') state.platform = p; } catch (e) {}
+
+  function el(tag, cls, text) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;   // never innerHTML for user-supplied text
+    return n;
+  }
+
+  function timeAgo(iso) {
+    const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
+    if (s < 3600) return Math.max(1, Math.round(s / 60)) + 'm ago';
+    if (s < 86400) return Math.round(s / 3600) + 'h ago';
+    return Math.round(s / 86400) + 'd ago';
+  }
+
+  function timeLeft(ms) {
+    const h = Math.max(0, (ms - Date.now()) / 3600000);
+    if (h < 24) return { text: Math.max(1, Math.round(h)) + 'h left', soon: true };
+    return { text: Math.round(h / 24) + 'd left', soon: h < 48 };
+  }
+
+  function safeImgUrl(u) {
+    return typeof u === 'string' && (u.startsWith('https://') || u.startsWith('/media/')) ? u : null;
+  }
+
+  function buildCard(s) {
+    const card = el('article', 'card');
+    const hit = el('a', 'hit');
+    hit.href = '/player?code=' + encodeURIComponent(s.code) + '&from=browse';
+
+    const thumb = el('div', 'thumb');
+    const src = safeImgUrl(s.thumbnailUrl);
+    if (src) {
+      const img = document.createElement('img');
+      img.loading = 'lazy'; img.decoding = 'async'; img.alt = '';
+      img.src = src;
+      img.onerror = function () { img.remove(); thumb.appendChild(el('div', 'noimg', 'No preview')); };
+      thumb.appendChild(img);
+    } else {
+      thumb.appendChild(el('div', 'noimg', 'No preview'));
+    }
+    const mobile = s.platform === 'mobile';
+    thumb.appendChild(el('span', 'badge' + (mobile ? ' mobile' : ''), mobile ? 'MOBILE' : 'PC'));
+    thumb.appendChild(el('span', 'povs', s.povCount + ' POV' + (s.povCount === 1 ? '' : 's')));
+    hit.appendChild(thumb);
+
+    const body = el('div', 'body');
+    body.appendChild(el('div', 'title', s.title || s.game || (mobile ? 'Event session' : 'Squad session')));
+    body.appendChild(el('div', 'meta', [s.title ? s.game : null, 'hosted by ' + s.host].filter(Boolean).join(' · ')));
+    const stats = el('div', 'stats');
+    stats.appendChild(el('span', null, s.peakCount + ' peak' + (s.peakCount === 1 ? '' : 's')));
+    stats.appendChild(el('span', null, timeAgo(s.createdAt)));
+    if (s.expiresAt) {
+      const t = timeLeft(s.expiresAt);
+      stats.appendChild(el('span', 'exp' + (t.soon ? ' soon' : ''), t.text));
+    }
+    body.appendChild(stats);
+    hit.appendChild(body);
+    card.appendChild(hit);
+
+    const more = el('button', 'more', '⋯');
+    more.type = 'button';
+    more.title = 'Report';
+    more.setAttribute('aria-label', 'Report this session');
+    more.addEventListener('click', function () { openReport(s.code); });
+    card.appendChild(more);
+    return card;
+  }
+
+  function renderEmpty(msg) {
+    const box = el('div', 'empty');
+    box.style.gridColumn = '1 / -1';
+    box.appendChild(el('div', 'icon', '🙈'));
+    box.appendChild(el('div', null, msg));
+    grid.appendChild(box);
+  }
+
+  function fillGames(games) {
+    const keep = state.game;
+    while (gameSel.options.length > 1) gameSel.remove(1);
+    (games || []).forEach(function (g) {
+      const o = document.createElement('option');
+      o.value = g.toLowerCase(); o.textContent = g;
+      gameSel.appendChild(o);
+    });
+    gameSel.value = keep;
+    if (gameSel.value !== keep) state.game = '';
+  }
+
+  async function load(append) {
+    if (!append) { state.offset = 0; grid.textContent = ''; }
+    const q = new URLSearchParams({ sort: state.sort, offset: String(state.offset) });
+    if (state.platform) q.set('platform', state.platform);
+    if (state.game) q.set('game', state.game);
+    try {
+      const res = await fetch('/api/public/sessions?' + q);
+      if (!res.ok) throw new Error(res.status);
+      const data = await res.json();
+      if (!append) fillGames(data.games);
+      state.total = data.total;
+      state.offset += data.sessions.length;
+      data.sessions.forEach(function (s) { grid.appendChild(buildCard(s)); });
+      if (!state.total) renderEmpty(state.platform || state.game
+        ? 'Nothing public matches that filter yet.'
+        : 'No public sessions yet. Hosts can go public from their session\'s share menu.');
+      document.getElementById('count').textContent = state.total ? state.total + ' session' + (state.total === 1 ? '' : 's') : '';
+      loadMore.hidden = state.offset >= state.total;
+    } catch (e) {
+      if (!append) renderEmpty('Couldn\'t load sessions. Try again in a moment.');
+    }
+  }
+
+  function bindSeg(id, key) {
+    const seg = document.getElementById(id);
+    seg.querySelectorAll('button').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.dataset.v === state[key]));
+      b.addEventListener('click', function () {
+        state[key] = b.dataset.v;
+        seg.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+        if (key === 'platform') {
+          try { localStorage.setItem('pa_browse_platform', state.platform); } catch (e) {}
+          syncRoulette();
+        }
+        load(false);
+      });
+    });
+  }
+
+  // Roulette respects the platform filter, so a viewer who only wants
+  // party footage (or only gaming) keeps that inside the surprise.
+  function syncRoulette() {
+    rouletteBtn.href = '/player?roulette=1' + (state.platform ? '&platform=' + state.platform : '');
+  }
+
+  const dlg = document.getElementById('reportDlg');
+  function openReport(code) {
+    state.reportCode = code;
+    if (typeof dlg.showModal === 'function') dlg.showModal();
+  }
+  dlg.addEventListener('close', async function () {
+    if (dlg.returnValue !== 'send' || !state.reportCode) return;
+    const reason = (dlg.querySelector('input[name="reason"]:checked') || {}).value || 'other';
+    try {
+      await fetch('/api/public/sessions/' + encodeURIComponent(state.reportCode) + '/report', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: reason })
+      });
+    } catch (e) {}
+    state.reportCode = null;
+  });
+
+  bindSeg('platformSeg', 'platform');
+  bindSeg('sortSeg', 'sort');
+  gameSel.addEventListener('change', function () { state.game = gameSel.value; load(false); });
+  loadMore.addEventListener('click', function () { load(true); });
+  syncRoulette();
+  load(false);
+})();
+</script>
+</body>
+</html>

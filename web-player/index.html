@@ -133,6 +133,29 @@
     .grid-5, .grid-6 { grid-template-columns: 1fr 1fr 1fr; }
     .grid-7, .grid-8, .grid-9 { grid-template-columns: 1fr 1fr 1fr; }
     .grid-10plus { grid-template-columns: 1fr 1fr 1fr 1fr; }
+    /* POV cap (4 phone / 8 tablet+PC): 7-8 tiles go 4x2 landscape, 2x4 portrait */
+    .video-grid { position: relative; }
+    .video-grid.pov-wide { grid-template-columns: repeat(4, 1fr); }
+    .video-grid.pov-tall { grid-template-columns: 1fr 1fr; }
+    /* POV paging arrows sit on the grid's side edges, clear of tile labels and comment icons */
+    .pov-pager-btn { position: absolute; top: 50%; transform: translateY(-50%); z-index: 6;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+      width: 38px; height: 58px; border-radius: 10px; border: 1px solid #2a4636;
+      background: rgba(4,20,13,0.82); color: #c8d6cd; cursor: pointer; font-size: 20px; line-height: 1; }
+    .pov-pager-btn small { font: 600 10px/1 'JetBrains Mono', monospace; color: #8fbfa3; }
+    .pov-pager-btn:hover { color: #39d3a0; border-color: #1d9e75; }
+    .pov-pager-btn.prev { left: 6px; }
+    .pov-pager-btn.next { right: 6px; }
+    /* Public toggle + roulette bar */
+    #publicBtn.on { color: #39d3a0; border-color: #1d9e75; }
+    .roulette-bar { display: none; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 8px 14px;
+      background: linear-gradient(90deg, rgba(57,211,160,0.14), rgba(108,79,216,0.10)); border-bottom: 1px solid #1e3527;
+      font-size: 13px; color: #c8d6cd; }
+    .roulette-bar.show { display: flex; }
+    .roulette-bar .rb-from { flex: 1; min-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .roulette-bar .rb-from b { color: #e8f5ec; font-weight: 600; }
+    .roulette-bar .rb-actions { display: flex; gap: 8px; }
+    .roulette-bar .rb-count { font: 500 11.5px 'JetBrains Mono', monospace; color: #8fbfa3; }
 
     .video-grid.focused-mode { display: flex; flex-direction: column; gap: 0; padding: 0; }
 
@@ -1302,9 +1325,20 @@
       </div>
       <button class="btn" onclick="loadSession()">Load</button>
       <button class="btn btn-secondary btn-icon" id="shareBtn" onclick="copyShareLink()" title="Copy share link" style="display:none;">&#x1F517;</button>
+      <button class="btn btn-secondary btn-small" id="publicBtn" onclick="paTogglePublic()" title="List this session on peakabu.app/browse" style="display:none;">&#x1F310; Public: Off</button>
       <button class="btn btn-secondary btn-small" id="paSignInBtn" onclick="paOpenSignIn()" title="Sign in to leave comments">&#x1F464; Sign in</button>
   
     </div>
+  </div>
+
+  <div class="roulette-bar" id="rouletteBar" role="region" aria-label="Peak Roulette">
+    <span aria-hidden="true">&#x1F3B2;</span>
+    <span class="rb-from" id="rbFrom">Finding a peak&hellip;</span>
+    <span class="rb-count" id="rbCount"></span>
+    <span class="rb-actions">
+      <a class="btn btn-secondary btn-small" id="rbFull" href="#">Full session</a>
+      <button class="btn btn-small" id="rbNext" type="button" onclick="paRouletteNext()">Next peak &#x25B6;</button>
+    </span>
   </div>
 
   <div class="session-loading-overlay" id="sessionLoadingOverlay">
@@ -1460,7 +1494,9 @@
     window.addEventListener('DOMContentLoaded', function() {
       var params = new URLSearchParams(window.location.search);
       var code = params.get('code');
-      if (code) {
+      if (params.get('roulette') === '1' && typeof window.paRouletteStart === 'function') {
+        window.paRouletteStart(params.get('platform'));
+      } else if (code) {
         document.getElementById('sessionInput').value = code.toUpperCase();
         loadSession();
       }
@@ -1560,6 +1596,8 @@
     let myAuthToken = null;
     let myUsername = null;
     let isHost = false;
+    let sessionHostName = null;   // session.createdBy — host POV leads the grid
+    let povPage = 0;              // which page of POVs when a moment has more than the cap
     let selectedForDelete = new Set();
     // Last pill whose select-check was clicked: the far end for a Shift+click range.
     let deleteAnchor = -1;
@@ -2273,6 +2311,7 @@
       currentHighlightIndex = index;
       videos = buildVideosForHighlight(index);
       focusedIndex = -1;
+      povPage = 0;
 
       // Only this highlight's POVs stay loaded. buildVideosForHighlight hands
       // back the same objects that live in allUploads (placeholders have no
@@ -2882,6 +2921,8 @@
 
         isHost = !!(myUsername && session.createdBy &&
         myUsername.toLowerCase() === session.createdBy.toLowerCase());
+        sessionHostName = session.createdBy || null;
+        povPage = 0;
         selectedForDelete.clear();
         deleteAnchor = -1;
 
@@ -2894,6 +2935,7 @@
         renderSessionTimeline();
         renderHighlightsColumn();
         showShareLink(code);
+        if (typeof window.paAfterSessionLoad === 'function') window.paAfterSessionLoad(code);
 
         document.getElementById('sessionTimeline').style.display = 'flex';
         document.getElementById('rightPanel').style.display = 'flex';
@@ -3285,17 +3327,59 @@
           grid.appendChild(sidebar);
         }
       } else {
-        const count = videos.length;
+        // Host POV first, then everyone else; show at most povCap() at a
+        // time and page through the rest (arrows, or swipe on touch).
+        const order = videos.map((v, i) => i);
+        const hostAt = order.findIndex(i => sessionHostName && videos[i].username === sessionHostName);
+        if (hostAt > 0) order.unshift(order.splice(hostAt, 1)[0]);
+        const cap = povCap();
+        const pages = Math.max(1, Math.ceil(order.length / cap));
+        povPage = Math.min(Math.max(0, povPage), pages - 1);
+        const shown = order.slice(povPage * cap, povPage * cap + cap);
+
+        const count = shown.length;
         let gridClass = 'grid-' + Math.min(count, 9);
         if (count >= 10) gridClass = 'grid-10plus';
+        if (count >= 7) gridClass += window.innerHeight > window.innerWidth ? ' pov-tall' : ' pov-wide';
         grid.className = 'video-grid ' + gridClass;
 
-        videos.forEach((v, i) => {
+        shown.forEach(i => {
+          const v = videos[i];
           const container = buildPOVContainer(i, false);
           if (!v.missing && !v.processing) container.addEventListener('click', () => focusOnVideo(i));
           grid.appendChild(container);
         });
+
+        if (pages > 1) {
+          const arrow = (dir, glyph, title) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'pov-pager-btn ' + (dir < 0 ? 'prev' : 'next');
+            b.title = title;
+            b.setAttribute('aria-label', title);
+            b.append(glyph);
+            const n = document.createElement('small');
+            n.textContent = (povPage + 1 + dir) + '/' + pages;
+            b.appendChild(n);
+            b.addEventListener('click', e => { e.stopPropagation(); stepPovPage(dir); });
+            grid.appendChild(b);
+          };
+          if (povPage > 0) arrow(-1, '\u2039', 'Previous POVs');
+          if (povPage < pages - 1) arrow(1, '\u203A', 'More POVs');
+        }
       }
+    }
+
+    // 4 POVs at once on phone-size viewports, 8 on tablets and PCs. Goes by
+    // the actual viewport, so a narrow desktop window drops to 4 too.
+    function povCap() { return window.innerWidth < 700 ? 4 : 8; }
+
+    function stepPovPage(dir) {
+      const pages = Math.max(1, Math.ceil(videos.length / povCap()));
+      const next = Math.min(Math.max(0, povPage + dir), pages - 1);
+      if (next === povPage) return;
+      povPage = next;
+      renderVideoGrid();
     }
 
     function buildPOVContainer(index, isFocused) {
@@ -4025,7 +4109,11 @@
 
         const allEnded = videos.filter(v => !v.missing && !v.processing && v.loaded).every(v => v.element.ended || v.element.paused);
         // A buffer hold pauses everyone on purpose; that isn't the end.
-        if (allEnded && isPlaying && !bufferHold) { pauseAll(); return; }
+        if (allEnded && isPlaying && !bufferHold) {
+          pauseAll();
+          if (typeof window.paOnHighlightEnded === 'function') window.paOnHighlightEnded();
+          return;
+        }
 
         animFrameId = requestAnimationFrame(update);
       }
@@ -6106,6 +6194,226 @@
 })();
 
     </script>
+
+
+  <script>
+  // ================================
+  // PUBLIC SESSIONS — host "Public" toggle, view beacon, Peak Roulette.
+  // Server side: server/routes/public.js. Listing is OFF by default and only
+  // the host can turn it on; the server enforces that, this is just the UI.
+  // ================================
+  (function () {
+    var ROULETTE_SEEN_KEY = 'pa_roulette_seen';
+    var SEEN_MAX = 300;
+    var roulette = { on: false, platform: null, last: null, count: 0, autoTimer: null };
+    var publicState = { isPublic: false, underReview: false };
+
+    function seenList() {
+      try { var a = JSON.parse(localStorage.getItem(ROULETTE_SEEN_KEY) || '[]'); return Array.isArray(a) ? a : []; }
+      catch (e) { return []; }
+    }
+    function markSeen(id) {
+      var a = seenList().filter(function (x) { return x !== id; });
+      a.push(id);
+      try { localStorage.setItem(ROULETTE_SEEN_KEY, JSON.stringify(a.slice(-SEEN_MAX))); } catch (e) {}
+    }
+    function clearSeen() { try { localStorage.removeItem(ROULETTE_SEEN_KEY); } catch (e) {} }
+
+    // --- Host toggle ---
+    function renderPublicBtn() {
+      var btn = document.getElementById('publicBtn');
+      if (!btn) return;
+      var show = !!(isHost && myAuthToken && currentSessionCode);
+      btn.style.display = show ? '' : 'none';
+      if (!show) return;
+      btn.classList.toggle('on', publicState.isPublic);
+      btn.disabled = publicState.underReview;
+      btn.textContent = publicState.underReview ? '\u{1F310} Under review'
+        : '\u{1F310} Public: ' + (publicState.isPublic ? 'On' : 'Off');
+      btn.title = publicState.underReview
+        ? 'This session was reported and is hidden until it’s reviewed.'
+        : publicState.isPublic ? 'Listed on peakabu.app/browse — click to unlist'
+        : 'List this session on peakabu.app/browse';
+    }
+
+    async function loadPublicState(code) {
+      publicState = { isPublic: false, underReview: false };
+      if (!(isHost && myAuthToken)) { renderPublicBtn(); return; }
+      try {
+        var res = await fetch('/sessions/' + encodeURIComponent(code) + '/public', {
+          headers: { 'Authorization': 'Bearer ' + myAuthToken }
+        });
+        if (res.ok) publicState = await res.json();
+      } catch (e) {}
+      if (code === currentSessionCode) renderPublicBtn();
+    }
+
+    window.paTogglePublic = async function () {
+      if (!currentSessionCode || !myAuthToken) return;
+      var want = !publicState.isPublic;
+      if (want && !window.confirm('Make this session public?\n\nAnyone will be able to find and watch it on peakabu.app/browse until it expires. Make sure everyone in it is OK being public. You can unlist it any time.')) return;
+      try {
+        var res = await fetch('/sessions/' + encodeURIComponent(currentSessionCode) + '/public', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + myAuthToken },
+          body: JSON.stringify({ isPublic: want })
+        });
+        var data = await res.json().catch(function () { return {}; });
+        if (!res.ok) { alert(data.error || 'Couldn’t change that. Try again.'); return; }
+        publicState.isPublic = !!data.isPublic;
+      } catch (e) { alert('Couldn’t reach the server. Try again.'); return; }
+      renderPublicBtn();
+    };
+
+    // Runs after every successful loadSession().
+    window.paAfterSessionLoad = function (code) {
+      loadPublicState(code);
+      // View beacon — the server only counts listed sessions, once per
+      // viewer per day, so calling it on every load is harmless.
+      try { fetch('/api/public/sessions/' + encodeURIComponent(code) + '/view', { method: 'POST', keepalive: true }); } catch (e) {}
+    };
+
+    // --- Peak Roulette ---
+    function bar(show) { document.getElementById('rouletteBar').classList.toggle('show', show); }
+    function setFrom(nodes) {
+      var from = document.getElementById('rbFrom');
+      from.textContent = '';
+      nodes.forEach(function (n) { from.appendChild(typeof n === 'string' ? document.createTextNode(n) : n); });
+    }
+    function bold(t) { var b = document.createElement('b'); b.textContent = t; return b; }
+
+    function cancelAuto() {
+      if (roulette.autoTimer) { clearInterval(roulette.autoTimer); roulette.autoTimer = null; }
+      var next = document.getElementById('rbNext');
+      if (next) next.textContent = 'Next peak ▶';
+    }
+
+    async function fetchPeak() {
+      var q = new URLSearchParams();
+      if (roulette.platform === 'pc' || roulette.platform === 'mobile') q.set('platform', roulette.platform);
+      if (roulette.last) q.set('last', roulette.last);
+      q.set('seen', seenList().join(','));
+      var res = await fetch('/api/public/roulette?' + q);
+      if (!res.ok) throw new Error(res.status === 429 ? 'Slow down a little — try again in a moment.' : 'Couldn’t reach the server.');
+      return res.json();
+    }
+
+    async function nextPeak() {
+      cancelAuto();
+      setFrom(['Finding a peak…']);
+      var peak;
+      try {
+        peak = await fetchPeak();
+        if (peak.exhausted && seenList().length) { clearSeen(); peak = await fetchPeak(); }
+      } catch (e) { setFrom([e.message]); return; }
+      if (peak.exhausted) {
+        var a = document.createElement('a'); a.href = '/browse'; a.textContent = 'Browse sessions';
+        setFrom(['No public peaks right now. ', a]);
+        return;
+      }
+
+      roulette.last = peak.code;
+      markSeen(peak.code + '.' + peak.momentTs);
+
+      document.getElementById('sessionInput').value = peak.code;
+      await loadSession();
+      if (currentSessionCode !== peak.code || !highlights.length) {
+        setFrom(['That one just expired — grabbing another…']);
+        setTimeout(nextPeak, 800);
+        return;
+      }
+
+      // Land on the highlight whose moment matches the server's pick.
+      var best = 0, bestDiff = Infinity;
+      highlights.forEach(function (hl, i) {
+        var d = Math.abs((hl.timestamp || 0) - peak.momentTs);
+        if (d < bestDiff) { bestDiff = d; best = i; }
+      });
+      if (best !== currentHighlightIndex) switchHighlight(best);
+
+      roulette.count++;
+      var label = peak.title || peak.game || (peak.platform === 'mobile' ? 'an event' : 'a squad session');
+      setFrom(['From ', bold(peak.host), ' · ', label]);
+      document.getElementById('rbCount').textContent = '#' + roulette.count;
+      document.getElementById('rbFull').href = '/player?code=' + encodeURIComponent(peak.code);
+
+      // Muted autoplay is allowed by browsers; wait for the first POV to load.
+      var tries = 0;
+      var wait = setInterval(function () {
+        tries++;
+        if (videos.some(function (v) { return v.loaded && !v.missing && !v.processing; })) {
+          clearInterval(wait);
+          // Browsers block autoplay WITH sound until the viewer has interacted
+          // with the page, and the player unmutes the first POV by default.
+          // Before any click, start muted (any tile's speaker turns it on);
+          // after one, peaks keep their normal audio.
+          var active = navigator.userActivation ? navigator.userActivation.hasBeenActive : false;
+          if (!active) {
+            videos.forEach(function (v) { v.isMuted = true; if (v.element) v.element.muted = true; });
+            renderAudioControls();
+            document.getElementById('rbCount').textContent = '#' + roulette.count + ' \u00B7 \u{1F507} tap a speaker for sound';
+          }
+          if (!isPlaying) playAll();
+        } else if (tries > 40) clearInterval(wait);
+      }, 200);
+    }
+
+    // When a roulette peak finishes, roll the next one after a short
+    // countdown (clicking Next skips it; pressing play again cancels it).
+    window.paOnHighlightEnded = function () {
+      if (!roulette.on) return;
+      cancelAuto();
+      var left = 3;
+      var btn = document.getElementById('rbNext');
+      btn.textContent = 'Next in ' + left + '…';
+      roulette.autoTimer = setInterval(function () {
+        if (isPlaying) { cancelAuto(); return; }
+        left--;
+        if (left <= 0) { cancelAuto(); nextPeak(); }
+        else btn.textContent = 'Next in ' + left + '…';
+      }, 1000);
+    };
+
+    window.paRouletteNext = function () { nextPeak(); };
+
+    window.paRouletteStart = function (platform) {
+      roulette.on = true;
+      roulette.platform = platform || null;
+      bar(true);
+      nextPeak();
+    };
+
+    // --- POV paging: swipe on touch, re-layout when the cap changes ---
+    (function () {
+      var grid = document.getElementById('videoGrid');
+      if (!grid) return;
+      var x0 = null, y0 = null;
+      grid.addEventListener('touchstart', function (e) {
+        if (e.touches.length !== 1) return;
+        x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
+      }, { passive: true });
+      grid.addEventListener('touchend', function (e) {
+        if (x0 === null || focusedIndex >= 0) { x0 = null; return; }
+        var dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
+        x0 = null;
+        if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) stepPovPage(dx < 0 ? 1 : -1);
+      }, { passive: true });
+
+      var lastCap = povCap(), lastTall = window.innerHeight > window.innerWidth, t = null;
+      window.addEventListener('resize', function () {
+        clearTimeout(t);
+        t = setTimeout(function () {
+          var cap = povCap(), tall = window.innerHeight > window.innerWidth;
+          if (cap === lastCap && tall === lastTall) return;
+          // Keep the first POV on screen visible across the change.
+          povPage = Math.floor(povPage * lastCap / cap);
+          lastCap = cap; lastTall = tall;
+          if (currentSessionCode && videos.length) renderVideoGrid();
+        }, 150);
+      });
+    })();
+  })();
+  </script>
 
   <div class="footer">
     <a href="https://discord.gg/HRepEcKWpM" target="_blank" class="discord-link" title="Join our Discord community">
