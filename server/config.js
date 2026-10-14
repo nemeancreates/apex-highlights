@@ -206,9 +206,9 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 const PRIVACY_POLICY_VERSION = '2026-09-07';
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.92',
-  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.92.exe',
-    releaseNotes: "Combined View now makes one grid per highlight instead of layering everything at once, so each export keeps a steady aspect ratio and handles up to 30 clips. AI Reel was rebuilt as a timeline editor: no more repeated or needlessly split clips, with tighter cuts, grid-then-solo moments, slow-mo and punch-ins, and your stars and comments guiding the edit. New in-app tutorial (Settings has a toggle for its button)."
+  version: '0.1.93',
+  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.93.exe',
+    releaseNotes: "Your own voice now comes through clearly in your own clips. Before, your mic was mixed in far quieter than your teammates' voices, so you sounded clearer in their POV than in yours. AI Reel gets a style picker, builds grids wherever POVs overlap, and has a Reselect last button. New app icon."
 };
 
 

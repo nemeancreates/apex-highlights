@@ -1246,6 +1246,14 @@ let micFirstChunkTime = null;
 let micVolume = 80;
 let micMuted = false;
 
+// The mic is captured raw (no browser AGC), but the teammate's voice reaches
+// the desktop loopback already levelled by Discord. Mixed as-is, a player's
+// own voice sat ~20 dB under the teammate's in their own clip (4WYJGC), so
+// it sounded clearer in everyone else's POV. Level the mic leg before the
+// slider's volume, and limit the summed mix so a louder voice can't clip.
+const MIC_LEVELER = 'speechnorm=p=0.5:e=10:r=0.0005:l=1';
+const MIX_LIMITER = 'alimiter=limit=0.95:level=disabled';
+
 function getArchiveBaseDir() {
   const base = (fullSessionDir && fs.existsSync(fullSessionDir))
     ? fullSessionDir
@@ -3902,7 +3910,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
           mergeArgs.push(
             '-map', '0:v:0',
             '-filter_complex',
-            `[1:a]aresample=async=1000,volume=1.0[desk];[2:a]aresample=async=1000,volume=${vol}[mic];[desk][mic]amix=inputs=2:normalize=0[aout]`,
+            `[1:a]aresample=async=1000,volume=1.0[desk];[2:a]aresample=async=1000,${MIC_LEVELER},volume=${vol}[mic];[desk][mic]amix=inputs=2:normalize=0,${MIX_LIMITER}[aout]`,
             '-map', '[aout]'
           );
         } else {
@@ -3991,7 +3999,7 @@ function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVi
         mergeArgs.push(
           '-map', '0:v:0',
           '-filter_complex',
-          `[1:a]aresample=async=1000,volume=1.0[desk];[2:a]aresample=async=1000,volume=${vol}[mic];[desk][mic]amix=inputs=2:normalize=0[aout]`,
+          `[1:a]aresample=async=1000,volume=1.0[desk];[2:a]aresample=async=1000,${MIC_LEVELER},volume=${vol}[mic];[desk][mic]amix=inputs=2:normalize=0,${MIX_LIMITER}[aout]`,
           '-map', '[aout]'
         );
       } else {
@@ -6908,7 +6916,7 @@ function archiveFullSession() {
         mergeArgs.push(
           '-map', '0:v:0',
           '-filter_complex',
-          `[1:a]aresample=async=1000,volume=1.0[desk];[2:a]aresample=async=1000,volume=${vol}[mic];[desk][mic]amix=inputs=2:normalize=0[aout]`,
+          `[1:a]aresample=async=1000,volume=1.0[desk];[2:a]aresample=async=1000,${MIC_LEVELER},volume=${vol}[mic];[desk][mic]amix=inputs=2:normalize=0,${MIX_LIMITER}[aout]`,
           '-map', '[aout]'
         );
       } else {
