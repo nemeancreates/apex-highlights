@@ -150,6 +150,8 @@
     .pov-pager-btn.next { right: 6px; }
     /* Public toggle + roulette bar */
     #publicBtn.on { color: #39d3a0; border-color: #1d9e75; }
+    /* Share + Public stay on screen; greyed out until they can be used */
+    #shareBtn:disabled, #publicBtn:disabled { filter: grayscale(1); opacity: .45; cursor: not-allowed; }
     .roulette-bar { display: none; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 8px 14px;
       background: linear-gradient(90deg, rgba(57,211,160,0.14), rgba(108,79,216,0.10)); border-bottom: 1px solid #1e3527;
       font-size: 13px; color: #c8d6cd; }
@@ -1326,8 +1328,8 @@
         <button class="input-icon-btn" id="pasteBtn" onclick="pasteAndLoad()" title="Paste from clipboard">&#x1F4CB;</button>
       </div>
       <button class="btn" onclick="loadSession()">Load</button>
-      <button class="btn btn-secondary btn-icon" id="shareBtn" onclick="copyShareLink()" title="Copy share link" style="display:none;">&#x1F517;</button>
-      <button class="btn btn-secondary btn-small" id="publicBtn" onclick="paTogglePublic()" title="List this session on peakabu.app/browse" style="display:none;">&#x1F310; Public: Off</button>
+      <button class="btn btn-secondary btn-icon" id="shareBtn" onclick="copyShareLink()" title="Load a session to copy its share link" disabled>&#x1F517;</button>
+      <button class="btn btn-secondary btn-small" id="publicBtn" onclick="paTogglePublic()" title="Only the session host can make a session public" disabled>&#x1F310; Public: Off</button>
       <button class="btn btn-secondary btn-small" id="paSignInBtn" onclick="paOpenSignIn()" title="Sign in to leave comments">&#x1F464; Sign in</button>
   
     </div>
@@ -2979,8 +2981,16 @@
       document.getElementById('rightPanel').style.display = 'none';
       document.getElementById('highlightsColumn').style.display = 'none';
       document.getElementById('selectionBar').style.display = 'none';
+      currentShareUrl = '';
       const shareBtn = document.getElementById('shareBtn');
-      if (shareBtn) shareBtn.style.display = 'none';
+      if (shareBtn) { shareBtn.disabled = true; shareBtn.title = 'Load a session to copy its share link'; }
+      const publicBtn = document.getElementById('publicBtn');
+      if (publicBtn) {
+        publicBtn.disabled = true;
+        publicBtn.classList.remove('on');
+        publicBtn.textContent = '\u{1F310} Public: Off';
+        publicBtn.title = 'Only the session host can make a session public';
+      }
     }
 
     // Metadata for a list of uploads, six requests at a time. One at a time,
@@ -4131,7 +4141,7 @@
     function showShareLink(code) {
       currentShareUrl = window.location.origin + '/player?code=' + code;
       const btn = document.getElementById('shareBtn');
-      if (btn) btn.style.display = '';
+      if (btn) { btn.disabled = false; btn.title = 'Copy share link'; }
     }
 
     function copyShareLink() {
@@ -6225,9 +6235,17 @@
     function renderPublicBtn() {
       var btn = document.getElementById('publicBtn');
       if (!btn) return;
-      var show = !!(isHost && myAuthToken && currentSessionCode);
-      btn.style.display = show ? '' : 'none';
-      if (!show) return;
+      var canToggle = !!(isHost && myAuthToken && currentSessionCode);
+      if (!canToggle) {
+        // Always on screen, greyed out for everyone but the signed-in host.
+        btn.disabled = true;
+        btn.classList.remove('on');
+        btn.textContent = '\u{1F310} Public: Off';
+        btn.title = !currentSessionCode ? 'Load a session you host to make it public'
+          : !myAuthToken ? 'Sign in as the host to make this session public'
+          : 'Only the session host can make it public';
+        return;
+      }
       btn.classList.toggle('on', publicState.isPublic);
       btn.disabled = publicState.underReview;
       btn.textContent = publicState.underReview ? '\u{1F310} Under review'
