@@ -30,6 +30,7 @@ const { initJoinRoutes } = require('./routes/join');
 const { initUploadRoutes } = require('./routes/uploads');
 const { initCommentRoutes, startCommentCleanup } = require('./routes/comments');
 const { initStarRoutes, startStarCleanup } = require('./routes/stars');
+const { initPublicRoutes, startPublicCleanup } = require('./routes/public');
 const { initCompositeRoutes, startCompositeCleanup } = require('./composite');
 const { initSockets } = require('./sockets');
 const { initAiReel } = require('./aireel');
@@ -116,6 +117,7 @@ initJoinRoutes(app);
 initUploadRoutes(app, io);
 initCommentRoutes(app, io);
 initStarRoutes(app, io);
+initPublicRoutes(app);
 initCompositeRoutes(app);
 initSockets(io);
 
@@ -134,6 +136,7 @@ startSessionPurge();
 startCompositeCleanup();
 startCommentCleanup();
 startStarCleanup();
+startPublicCleanup();
 initAiReel({
   app,
   sessions,
