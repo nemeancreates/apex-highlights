@@ -6326,6 +6326,13 @@
       roulette.last = peak.code;
       markSeen(peak.code + '.' + peak.momentTs);
 
+      // Mobile peaks play on the mobile watch page (its own player), which
+      // jumps straight to the picked peak and links back here for the next one.
+      if (peak.platform === 'mobile' && typeof peak.watchUrl === 'string' && /^https:\/\//.test(peak.watchUrl)) {
+        location.href = peak.watchUrl;
+        return;
+      }
+
       document.getElementById('sessionInput').value = peak.code;
       await loadSession();
       if (currentSessionCode !== peak.code || !highlights.length) {

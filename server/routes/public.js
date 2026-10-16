@@ -31,6 +31,8 @@ const { requireAuth, requireAdmin } = require('../auth');
 const db = require('../db');
 const mod = require('../moderation');
 const { isOnHold, listHolds, releaseHold, getHold } = require('../moderation/legal-hold');
+const mobile = require('../mobile');
+const { postStaffAlert } = require('../moderation/staff-alerts');
 
 // --- Tunables ---
 const PEAK_GAP_MS = 5000;                       // same clustering rule as the web player
@@ -39,6 +41,15 @@ const EXPIRY_GRACE_MS = 60 * 60 * 1000;         // hide sessions expiring within
 const REPORT_HIDE_THRESHOLD = 3;                // distinct reporters before auto-hide
 const BROWSE_PAGE_MAX = 48;
 const SEEN_MAX = 300;                           // roulette "already watched" list cap
+// Starred moments (PC): a session with unseen starred peaks is this many
+// times likelier to be picked, and inside it a starred peak is this many
+// times likelier than an unstarred one. Mobile has no stars yet, so its
+// listings keep plain recency weighting.
+const STAR_SESSION_BOOST = 3;
+const STAR_PEAK_WEIGHT = 4;
+// Mobile listings come from m.peakabu.app (see mobile.js). Their ids are
+// prefixed so they can never collide with a PC session code.
+const MOBILE_PREFIX = 'm-';
 const PLATFORMS = ['pc', 'mobile'];
 const REPORT_REASONS = ['child', 'privacy', 'inappropriate', 'spam', 'other'];
 
@@ -88,8 +99,42 @@ const stmt = {
   `),
   listingCodes: db.prepare(`SELECT sessionCode FROM public_listings UNION SELECT sessionCode FROM public_reports`),
   liveCodes:  db.prepare(`SELECT sessionCode FROM public_listings WHERE hidden = 0`),
-  reportsFor: db.prepare(`SELECT reason, reporterKey, createdAt FROM public_reports WHERE sessionCode = ? ORDER BY createdAt ASC`)
+  reportsFor: db.prepare(`SELECT reason, reporterKey, createdAt FROM public_reports WHERE sessionCode = ? ORDER BY createdAt ASC`),
+  starsFor:   db.prepare(`SELECT momentTs FROM stars WHERE sessionCode = ?`)
 };
+
+function starredSet(code) {
+  try { return new Set(stmt.starsFor.all(code).map(r => r.momentTs)); } catch (e) { return new Set(); }
+}
+// A peak is starred when any of its clips' coordinated timestamps was
+// starred (a star belongs to a moment, shared by every POV of it).
+function peakStarred(peak, stars) {
+  if (!stars.size) return false;
+  return peak.clips.some(c => typeof c.coordinatedTimestamp === 'number' && stars.has(c.coordinatedTimestamp));
+}
+
+// Same card shape as PC sessions, plus watchUrl: mobile sessions open in
+// the mobile watch page, not the web player.
+function mobileCard(l) {
+  return {
+    code: MOBILE_PREFIX + l.id,
+    host: l.host || null,
+    title: l.name || null,
+    game: null,
+    platform: 'mobile',
+    povCount: l.povCount || 0,
+    peakCount: l.peaks.length,
+    views: 0,
+    createdAt: new Date(l.createdAt || Date.now()).toISOString(),
+    listedAt: l.listedAt || l.createdAt || 0,
+    expiresAt: l.expiresAt || null,
+    thumbnailUrl: l.thumbnailUrl || null,
+    watchUrl: l.watchUrl
+  };
+}
+function mobileAgeDays(l, now) {
+  return Math.max(0, (now - (l.createdAt || now)) / 86400000);
+}
 
 // moderation/ reads listings and reports through these, and hides a listing
 // when a scan flags it, without needing to require this file.
@@ -199,7 +244,7 @@ function parseSeen(raw) {
   const seen = new Set();
   if (typeof raw !== 'string' || !raw) return seen;
   for (const part of raw.split(',').slice(0, SEEN_MAX)) {
-    if (/^[A-Z0-9]{4,6}\.\d{1,15}$/.test(part)) seen.add(part);
+    if (/^(?:[A-Z0-9]{4,6}|m-[A-Za-z0-9_-]{4,32})\.\d{1,15}$/.test(part)) seen.add(part);
   }
   return seen;
 }
@@ -348,14 +393,20 @@ function initPublicRoutes(app) {
     if (platform) list = list.filter(l => l.row.platform === platform);
     if (game) list = list.filter(l => (l.session.detectedGame || '').toLowerCase() === game);
 
-    if (sort === 'popular') list.sort((a, b) => b.row.views - a.row.views || b.row.listedAt - a.row.listedAt);
-    else list.sort((a, b) => Date.parse(b.session.createdAt) - Date.parse(a.session.createdAt));
+    // Mobile sessions have no detected game, so a game filter leaves them out.
+    let cards = list.map(card);
+    if ((!platform || platform === 'mobile') && !game) {
+      cards = cards.concat(mobile.mobileListings().filter(l => l.peaks.length).map(mobileCard));
+    }
+
+    if (sort === 'popular') cards.sort((a, b) => b.views - a.views || b.listedAt - a.listedAt);
+    else cards.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
 
     res.set('Cache-Control', 'public, max-age=30');
     res.json({
-      total: list.length,
+      total: cards.length,
       games,
-      sessions: list.slice(offset, offset + BROWSE_PAGE_MAX).map(card)
+      sessions: cards.slice(offset, offset + BROWSE_PAGE_MAX)
     });
   });
 
@@ -366,34 +417,69 @@ function initPublicRoutes(app) {
     const now = Date.now();
     const platform = PLATFORMS.includes(req.query.platform) ? req.query.platform : null;
     const seen = parseSeen(req.query.seen);
-    const last = sanitizeCode(req.query.last || '');
+    const lastRaw = typeof req.query.last === 'string' ? req.query.last.slice(0, 40) : '';
+    const last = lastRaw.startsWith(MOBILE_PREFIX) ? lastRaw : sanitizeCode(lastRaw);
 
+    const rand = () => crypto.randomInt(1e9) / 1e9;
+    function weightedPick(items, weightOf) {
+      const total = items.reduce((s, x) => s + weightOf(x), 0);
+      let r = rand() * total;
+      for (const x of items) { r -= weightOf(x); if (r <= 0) return x; }
+      return items[items.length - 1];
+    }
+
+    // PC: recency, boosted toward sessions with unseen starred moments.
     let pool = liveListings(now)
       .filter(l => !platform || l.row.platform === platform)
       .map(l => {
         // Roulette only uses peaks with a real coordinated timestamp, so the
         // player can land on exactly the same moment.
-        const unseen = l.peaks.filter(p => p.clips.some(c => c.coordinatedTimestamp) &&
-          !seen.has(l.session.code + '.' + p.ts));
-        return { ...l, unseen, weight: Math.pow(0.5, ageDays(l.session, now) / RECENCY_HALF_LIFE_DAYS) };
+        const stars = starredSet(l.session.code);
+        const unseen = l.peaks
+          .filter(p => p.clips.some(c => c.coordinatedTimestamp) && !seen.has(l.session.code + '.' + p.ts))
+          .map(p => ({ ...p, starred: peakStarred(p, stars) }));
+        const boost = unseen.some(p => p.starred) ? STAR_SESSION_BOOST : 1;
+        return { kind: 'pc', key: l.session.code, l, unseen,
+          weight: Math.pow(0.5, ageDays(l.session, now) / RECENCY_HALF_LIFE_DAYS) * boost };
       })
-      .filter(l => l.unseen.length);
+      .filter(x => x.unseen.length);
+
+    // Mobile: plain recency, every peak equal (unchanged weighting).
+    if (!platform || platform === 'mobile') {
+      for (const l of mobile.mobileListings()) {
+        const key = MOBILE_PREFIX + l.id;
+        const unseen = l.peaks.filter(p => Number.isFinite(p.t) && !seen.has(key + '.' + p.t));
+        if (!unseen.length) continue;
+        pool.push({ kind: 'mobile', key, l, unseen,
+          weight: Math.pow(0.5, mobileAgeDays(l, now) / RECENCY_HALF_LIFE_DAYS) });
+      }
+    }
 
     if (!pool.length) return res.json({ exhausted: true });
-    if (pool.length > 1 && last) pool = pool.filter(l => l.session.code !== last);
+    if (pool.length > 1 && last) pool = pool.filter(x => x.key !== last);
 
-    const total = pool.reduce((s, l) => s + l.weight, 0);
-    let r = crypto.randomInt(1e9) / 1e9 * total;
-    let pick = pool[pool.length - 1];
-    for (const l of pool) { r -= l.weight; if (r <= 0) { pick = l; break; } }
-
-    const peak = pick.unseen[crypto.randomInt(pick.unseen.length)];
-    const c = card(pick);
+    const pick = weightedPick(pool, x => x.weight);
     res.set('Cache-Control', 'no-store');
+
+    if (pick.kind === 'mobile') {
+      const peak = pick.unseen[crypto.randomInt(pick.unseen.length)];
+      const c = mobileCard(pick.l);
+      const sep = c.watchUrl.includes('?') ? '&' : '?';
+      return res.json({
+        code: c.code, host: c.host, title: c.title, game: null, platform: 'mobile',
+        expiresAt: c.expiresAt, momentTs: peak.t, starred: false,
+        povCount: peak.povCount || c.povCount,
+        watchUrl: c.watchUrl + sep + 'peak=' + encodeURIComponent(peak.id || '') + '&from=roulette'
+      });
+    }
+
+    const peak = weightedPick(pick.unseen, p => (p.starred ? STAR_PEAK_WEIGHT : 1));
+    const c = card(pick.l);
     res.json({
       code: c.code, host: c.host, title: c.title, game: c.game, platform: c.platform,
       expiresAt: c.expiresAt,
       momentTs: peak.ts,
+      starred: !!peak.starred,
       povCount: new Set(peak.clips.map(u => u.username)).size
     });
   });
@@ -413,6 +499,36 @@ function initPublicRoutes(app) {
 
   // --- REPORT: no account needed.
   app.post('/api/public/sessions/:code/report', reportLimiter, async (req, res) => {
+    // Mobile listings: hidden here (the mobile server never sees reports).
+    // Child-safety hides on the first report; anything else at 3.
+    const raw = String(req.params.code || '');
+    if (raw.startsWith(MOBILE_PREFIX)) {
+      const id = raw.slice(MOBILE_PREFIX.length);
+      const listing = mobile.mobileListings().find(l => l.id === id);
+      if (!/^[A-Za-z0-9_-]{4,32}$/.test(id) || !listing) return safeError(res, 404, 'That session isn\'t listed.');
+      const reason = REPORT_REASONS.includes(req.body?.reason) ? req.body.reason : 'other';
+      let r;
+      try { r = mobile.reportMobileListing(id, reporterKey(req), reason); }
+      catch (err) { log('error', 'mobile_report_failed', { id, error: err.message }); return safeError(res, 500, 'Could not send that. Try again.'); }
+      res.json({ ok: true });
+      log(r.child ? 'warn' : 'info', 'mobile_listing_reported', { id, reports: r.n, hidden: r.hiddenNow, reason });
+      if (r.added && (r.hiddenNow || r.n === 1)) {
+        postStaffAlert({
+          title: r.child ? `Child-safety report (mobile): ${id}` : (r.hiddenNow ? `Mobile listing auto-hidden: ${id}` : `New report (mobile): ${id}`),
+          level: r.child ? 'warn' : 'info',
+          description: r.child
+            ? 'Hidden from /browse and roulette on the first report. Review promptly. If it shows a child being sexually abused or exploited, report to NCMEC; do not download or share it.'
+            : `${r.n} report(s). ${r.hiddenNow ? 'Hidden from /browse and roulette.' : 'Still listed; hides at 3 reports.'}`,
+          fields: [
+            { name: 'Listing', value: id, inline: true },
+            { name: 'Host', value: listing.host || '-', inline: true },
+            { name: 'Watch', value: listing.watchUrl },
+            { name: 'Restore / remove', value: `POST /admin/public/mobile/${id} {"action":"restore"|"hide"}` }
+          ]
+        }).catch(() => {});
+      }
+      return;
+    }
     const code = sanitizeCode(req.params.code);
     if (!code) return safeError(res, 400, 'Invalid session code');
     const row = stmt.get.get(code);
@@ -479,6 +595,20 @@ function initPublicRoutes(app) {
   //   actions: restore | remove (adds a strike) | csam (hold + ban + urgent case)
   app.get('/admin/public/reports', requireAdmin, (req, res) => {
     res.json({ reports: stmt.reported.all() });
+  });
+
+  // Mobile listings: restore after a report, or hide by hand.
+  //   curl -s -X POST localhost:3000/admin/public/mobile/ID -H "X-Admin-Secret: $ADMIN_SECRET" \
+  //        -H "Content-Type: application/json" -d '{"action":"restore"}'
+  app.post('/admin/public/mobile/:id', requireAdmin, (req, res) => {
+    const id = String(req.params.id || '');
+    if (!/^[A-Za-z0-9_-]{4,32}$/.test(id)) return safeError(res, 400, 'Invalid id');
+    const action = req.body?.action;
+    if (action !== 'restore' && action !== 'hide') return safeError(res, 400, 'action must be "restore" or "hide"');
+    const r = mobile.setMobileListingHidden(id, action === 'hide');
+    if (!r.ok) return safeError(res, 409, r.error);
+    log('info', 'mobile_listing_admin_action', { id, action });
+    res.json({ ok: true });
   });
 
   app.post('/admin/public/:code', requireAdmin, async (req, res) => {

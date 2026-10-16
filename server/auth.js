@@ -13,7 +13,8 @@ const { JWT_SECRET, JWT_EXPIRY, BCRYPT_ROUNDS, TIERS, TIER_ORDER, ADMIN_SECRET,
         REGISTER_IP_MAX, REGISTER_IP_WINDOW,
         ANOMALY_REGISTER_BURST_MAX, ANOMALY_REGISTER_BURST_WINDOW } = require('./config');
 const { users, saveUsersToDisk } = require('./stores');
-const { generateRedemptionCodes, redeemCode, peekCode } = require('./redemption');
+const { generateRedemptionCodes, redeemCode, peekCode, isProduct } = require('./redemption');
+const mobile = require('./mobile');
 const { getFlags, setFlags } = require('./killswitch');
 const { DISCORD_ENABLED, DISCORD_RECOVERY_REDIRECT_URI, PRIVACY_POLICY_VERSION } = require('./config');
 const { buildAuthorizeUrl, exchangeCodeForUser, consumeState, linkDiscordAccount, buildRecoveryUrl, consumeRecoveryState } = require('./discord-oauth');
@@ -401,6 +402,44 @@ function initAuthRoutes(app) {
     });
   });
 
+  // Peakabu Mobile status for the signed-in account: paying or free, any
+  // event passes, the free daily allowance. The mobile host page shows it.
+  app.get('/auth/mobile', requireAuth, (req, res) => {
+    const user = users.get(req.user.username.toLowerCase());
+    if (!user) return safeError(res, 404, 'Account not found');
+    res.json(mobile.getMobileStatus(user, getEffectiveTier(user)));
+  });
+
+  // Server-to-server, for the mobile server only (X-Mobile-Secret). It
+  // re-checks a host's status while a session runs, without keeping their
+  // login token, and claims event passes for sessions.
+  app.get('/internal/mobile/status/:username', (req, res) => {
+    if (!mobile.mobileSecretOk(req)) return safeError(res, 403, 'Forbidden');
+    const user = users.get(String(req.params.username || '').toLowerCase());
+    if (!user) return safeError(res, 404, 'Account not found');
+    res.json(mobile.getMobileStatus(user, getEffectiveTier(user)));
+  });
+
+  // Where a listed mobile session stands with moderation, for the host's switch.
+  app.get('/internal/mobile/listing-state/:id', (req, res) => {
+    if (!mobile.mobileSecretOk(req)) return safeError(res, 403, 'Forbidden');
+    const id = String(req.params.id || '');
+    if (!/^[A-Za-z0-9_-]{4,32}$/.test(id)) return safeError(res, 400, 'Invalid id');
+    res.json({ state: mobile.mobileListingState(id) });
+  });
+
+  app.post('/internal/mobile/event-passes/:id/claim', (req, res) => {
+    if (!mobile.mobileSecretOk(req)) return safeError(res, 403, 'Forbidden');
+    const { username, sessionId } = req.body || {};
+    if (typeof username !== 'string' || typeof sessionId !== 'string' || !/^[A-Za-z0-9_-]{4,32}$/.test(sessionId)) {
+      return safeError(res, 400, 'username and sessionId required');
+    }
+    const r = mobile.claimEventPass(username.toLowerCase(), String(req.params.id), sessionId);
+    if (!r.ok) return safeError(res, 409, r.error);
+    log('info', 'mobile_event_pass_claimed', { username, id: req.params.id, sessionId });
+    res.json(r);
+  });
+
   app.post('/auth/accept-privacy', requireAuth, (req, res) => {
     const user = users.get(req.user.username.toLowerCase());
     if (!user) return safeError(res, 404, 'Account not found');
@@ -440,6 +479,31 @@ function initAuthRoutes(app) {
     const user = users.get(usernameLower);
     const currentTier = getEffectiveTier(user);
     const hasActivePlan = currentTier !== 't1';
+
+    // Peakabu Mobile codes (bought on peakabu.app/billing). They don't touch
+    // the PC tier, so the anti-stacking rule below doesn't apply: Mobile time
+    // stacks, and an event pass just lands on the account until it's used.
+    // The PC client and the mobile host page both redeem through here.
+    if (isProduct(preview.tier)) {
+      const result = redeemCode(code, req.user.username);
+      if (!result.ok) {
+        recordRedeemFailure(usernameLower);
+        return safeError(res, 400, result.error);
+      }
+      clearRedeemAttempts(usernameLower);
+      const base = { tier: currentTier, tierExpiresAt: user.tierExpiresAt || null, product: result.tier };
+      if (result.tier === 'mobile') {
+        const mobileExpiresAt = mobile.grantMobileDays(usernameLower, result.durationDays || 30);
+        log('info', 'mobile_code_redeemed', { username: req.user.username, durationDays: result.durationDays });
+        return res.json({ ...base, mobileExpiresAt, durationDays: result.durationDays,
+          message: `Peakabu Mobile is active until ${new Date(mobileExpiresAt).toDateString()}.` });
+      }
+      const m = result.meta || {};
+      const ev = mobile.addEventPass(usernameLower, Number(m.startsAt) || Date.now(), m.hours);
+      log('info', 'event_code_redeemed', { username: req.user.username, eventId: ev.id });
+      return res.json({ ...base, event: ev,
+        message: 'Event pass added. Pick it when you start a session in Peakabu Mobile.' });
+    }
 
     // Anti-stacking: a TIMED code can't be redeemed on top of an active
     // subscription at the same or higher tier — this is what stops one
@@ -507,10 +571,11 @@ function initAuthRoutes(app) {
   //     -H "X-Admin-Secret: $ADMIN_SECRET" -H "Content-Type: application/json" \
   //     -d '{"tier":"t4","note":"lifetime - family","maxUses":1,"quantity":1}'
   app.post('/admin/redemption-codes', requireAdmin, (req, res) => {
-    const { tier, note, maxUses, quantity, durationDays } = req.body || {};
-    if (!TIERS[tier]) return safeError(res, 400, 'Invalid tier');
+    const { tier, note, maxUses, quantity, durationDays, meta } = req.body || {};
+    if (!TIERS[tier] && !isProduct(tier)) return safeError(res, 400, 'Invalid tier');
     try {
-      const generated = generateRedemptionCodes({ tier, note, maxUses, quantity, durationDays });
+      const generated = generateRedemptionCodes({ tier, note, maxUses, quantity, durationDays,
+        meta: tier === 'event' && meta ? { startsAt: Number(meta.startsAt) || Date.now(), hours: Number(meta.hours) || 4 } : undefined });
       return res.status(201).json({ codes: generated });
     } catch (err) {
       log('warn', 'redemption_code_generation_failed', { error: err.message });

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>Your Peakabu code</title>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@600;700&family=Work+Sans:wght@400;500;600&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet">
+<style>
+  :root{ --bg:#0a1611; --card:#0f2318; --card-soft:#0c1c14; --border:#1e3527; --teal:#39d3a0; --text:#e8f5ec; --text-dim:#8fbfa3; --text-muted:#5f7a6a; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--text); font:16px/1.5 'Work Sans',sans-serif; display:grid; place-items:center; min-height:100vh; padding:16px; }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:28px; max-width:440px; width:100%; text-align:center; }
+  h2{ font-family:'Jost',sans-serif; margin:0 0 6px; }
+  .code{ font:600 26px 'JetBrains Mono',monospace; letter-spacing:1px; background:var(--card-soft); border-radius:10px; padding:14px; margin:16px 0; user-select:all; word-break:break-all; }
+  button{ background:var(--teal); color:#062015; border:0; border-radius:10px; padding:11px 16px; font:600 15px 'Work Sans',sans-serif; cursor:pointer; }
+  input{ width:100%; background:var(--card-soft); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:10px; font:inherit; margin:8px 0; }
+  p{ color:var(--text-dim); }
+  .note{ font-size:13px; color:var(--text-muted); }
+  .send{ border-top:1px solid var(--border); margin-top:20px; padding-top:16px; text-align:left; }
+</style>
+</head>
+<body>
+<div class="card" id="box"><p>Confirming your payment…</p></div>
+<script>
+(function () {
+  var sid = new URLSearchParams(location.search).get('session_id');
+  var box = document.getElementById('box');
+  var emailEnabled = false, tries = 0;
+  var cfg = fetch('/api/billing/config').then(function (r) { return r.json(); }).then(function (c) { emailEnabled = !!c.emailEnabled; }).catch(function () {});
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  function render(j) {
+    var what = j.product === 'mobile'
+      ? 'Your ' + j.days + '-day Peakabu Mobile code:'
+      : 'Your event pass (' + j.hours + 'h from ' + new Date(j.startsAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) + '):';
+    box.innerHTML = '<h2>Payment received</h2><p>' + esc(what) + '</p><div class="code">' + esc(j.code) + '</div>' +
+      '<button id="cp">Copy code</button>' +
+      '<p>Sign in to your Peak-Abu account and redeem it, in the PC client under Redeem or on the Mobile host page.' +
+      (j.product === 'event' ? ' Then pick the pass when you start a Mobile session to get your Peak Spots QR codes.' : '') +
+      ' <b>Save it now.</b> Unless you email it to yourself, this page is the only copy.</p>' +
+      (emailEnabled ? '<div class="send"><b>Email me this code</b><input type="email" id="em" autocomplete="email" placeholder="you@example.com">' +
+        '<button id="emBtn">Send</button> <span id="emMsg" class="note"></span>' +
+        '<div class="note">Used once to send this code. Not saved or used for anything else.</div></div>' : '');
+    document.getElementById('cp').onclick = function (e) { navigator.clipboard.writeText(j.code); e.target.textContent = 'Copied'; };
+    var b = document.getElementById('emBtn');
+    if (b) b.onclick = async function () {
+      var msg = document.getElementById('emMsg');
+      b.disabled = true; msg.textContent = 'Sending…';
+      var r = await fetch('/api/billing/session/' + encodeURIComponent(sid) + '/email', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: document.getElementById('em').value })
+      });
+      var k = await r.json().catch(function () { return {}; });
+      msg.textContent = r.ok ? 'Sent. Check your inbox (and spam).' : (k.error || 'Couldn’t send. Copy the code instead.');
+      b.disabled = false;
+    };
+  }
+
+  async function poll() {
+    try {
+      var j = await (await fetch('/api/billing/session/' + encodeURIComponent(sid))).json();
+      if (j.status === 'ready' && j.code) return render(j);
+    } catch (e) {}
+    if (++tries < 30) setTimeout(poll, 2000);
+    else box.innerHTML = '<p>Still confirming. Refresh this page in a minute. Your payment is safe.</p>';
+  }
+  if (sid) cfg.then(poll); else box.innerHTML = '<p>Missing checkout session.</p>';
+})();
+</script>
+</body>
+</html>

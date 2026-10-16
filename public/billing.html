@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Peakabu Mobile — Plans</title>
+<meta name="description" content="Peakabu Mobile plans and one-time event passes. No app store, no account needed to buy.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&family=Work+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a1611; --card:#0f2318; --card-soft:#0c1c14; --border:#1e3527; --border-soft:#24402e;
+    --teal:#39d3a0; --teal-dim:#1d9e75; --teal-dark:#146a4d; --violet:#6c4fd8; --rose:#f0a5bd;
+    --text:#e8f5ec; --text-soft:#c8d6cd; --text-dim:#8fbfa3; --text-muted:#5f7a6a; --err:#ff8f8f;
+    --display:'Jost',sans-serif; --body:'Work Sans',sans-serif; --mono:'JetBrains Mono',monospace;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  body{ background:radial-gradient(ellipse 900px 500px at 15% -10%, rgba(57,211,160,0.08), transparent 60%), var(--bg);
+    color:var(--text-soft); font-family:var(--body); line-height:1.5; min-height:100vh; }
+  a{ color:var(--teal); }
+  .wrap{ max-width:880px; margin:0 auto; padding:32px 16px 64px; }
+  .brand{ font-family:var(--display); font-weight:700; font-size:18px; color:var(--text); text-decoration:none; }
+  h1{ font-family:var(--display); color:var(--text); font-weight:600; font-size:clamp(28px,4.4vw,40px); line-height:1.1; margin:28px 0 6px; }
+  h2{ font-family:var(--display); color:var(--text); font-weight:600; font-size:22px; margin:36px 0 10px; }
+  .lead, .muted{ color:var(--text-dim); }
+  .small{ font-size:13px; }
+  .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px; }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:18px; }
+  .price{ font-family:var(--display); font-size:34px; font-weight:700; color:var(--text); }
+  .tag{ display:inline-block; font-size:12px; color:var(--teal); border:1px solid var(--teal-dark); border-radius:99px; padding:1px 9px; margin-left:6px; }
+  button.buy{ width:100%; margin-top:12px; background:var(--teal); color:#062015; border:0; border-radius:10px; padding:12px; font:600 15px var(--body); cursor:pointer; }
+  button.buy:disabled{ opacity:.5; cursor:wait; }
+  label{ display:block; font-size:13px; color:var(--text-dim); margin:12px 0 4px; }
+  input, select{ width:100%; background:var(--card-soft); border:1px solid var(--border-soft); color:var(--text); border-radius:8px; padding:10px; font:inherit; }
+  .row{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .err{ color:var(--err); min-height:1.4em; margin-top:8px; font-size:14px; }
+  ul.inc{ margin:8px 0 0 18px; color:var(--text-dim); font-size:14px; }
+  .note{ font-size:13px; color:var(--text-muted); margin-top:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="brand" href="/">Peak-Abu</a>
+  <h1>Peakabu Mobile</h1>
+  <p class="lead">Buy here, get a code, redeem it on your Peak-Abu account. You redeem in the PC client or on the Mobile host page. Free hosts get 10 minutes of live session time a day. Mobile comes included with Squad, Pro and Founder plans.</p>
+
+  <div class="card" id="emailBox" style="margin-top:20px;display:none">
+    <label for="email" style="margin-top:0">Email (optional)</label>
+    <input type="email" id="email" autocomplete="email" placeholder="you@example.com">
+    <p class="note">If you add an email, we send your code there once. We don't save it, add it to a list, or use it for anything else. Leave it blank and your code shows on screen only. Stripe's checkout also asks for an email for its receipt; that copy is kept by Stripe as the payment processor.</p>
+  </div>
+
+  <h2>Mobile plans</h2>
+  <div class="grid" id="plans"></div>
+  <ul class="inc">
+    <li>No daily time limit on sessions you host</li>
+    <li>List sessions on Browse and Peak Roulette</li>
+    <li>Footage kept 60 days</li>
+  </ul>
+  <div class="err" id="planErr"></div>
+
+  <h2>One-time event <span class="muted" id="eventPrice"></span></h2>
+  <div class="card">
+    <p class="muted small">For a party, game day or trip. No time limit during your window, and you get Peak Spots: printable QR codes for each area that all join the same session.</p>
+    <div class="row">
+      <div><label for="date">Date</label><input type="date" id="date"></div>
+      <div><label for="time">Start time</label><input type="time" id="time" value="18:00"></div>
+    </div>
+    <label for="hours">Length: <b id="hoursLabel">4</b> hours (up to <span id="maxH">16</span>)</label>
+    <input type="range" id="hours" min="1" max="16" step="1" value="4">
+    <button class="buy" id="eventBtn">Buy event pass</button>
+    <div class="err" id="eventErr"></div>
+  </div>
+  <p class="note" id="off" style="display:none">Payments aren't switched on yet. Check back soon.</p>
+  <p class="note">Questions? <a href="/privacy">Privacy</a> · <a href="/terms.html">Terms</a></p>
+</div>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var money = function (c) { return '$' + (c / 100).toFixed(2).replace(/\.00$/, ''); };
+  async function post(url, body) {
+    var r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    var j = await r.json().catch(function () { return {}; });
+    if (!r.ok) throw new Error(j.error || 'Couldn’t start checkout. Try again.');
+    return j;
+  }
+  var email = function () { return ($('email').value || '').trim(); };
+
+  fetch('/api/billing/config').then(function (r) { return r.json(); }).then(function (cfg) {
+    if (cfg.emailEnabled) $('emailBox').style.display = '';
+    if (!cfg.enabled) { $('off').style.display = ''; }
+    var monthly = cfg.plans[0].cents / cfg.plans[0].days;
+    $('plans').innerHTML = cfg.plans.map(function (p) {
+      var perMonth = Math.round(p.cents / p.days * 30);
+      var save = Math.round((1 - (p.cents / p.days) / monthly) * 100);
+      return '<div class="card"><b>' + (p.days === 30 ? '1 month' : Math.round(p.days / 30) + ' months') + '</b>' +
+        (save > 0 ? '<span class="tag">save ' + save + '%</span>' : '') +
+        '<div class="price">' + money(p.cents) + '</div><div class="muted small">' + money(perMonth) + ' / month</div>' +
+        '<button class="buy" data-plan="' + p.id + '"' + (cfg.enabled ? '' : ' disabled') + '>Buy code</button></div>';
+    }).join('');
+    $('eventPrice').textContent = money(cfg.event.cents);
+    $('hours').max = cfg.event.maxHours; $('maxH').textContent = cfg.event.maxHours;
+    $('eventBtn').disabled = !cfg.enabled;
+  });
+
+  $('plans').addEventListener('click', async function (e) {
+    var id = e.target.dataset && e.target.dataset.plan; if (!id) return;
+    e.target.disabled = true; $('planErr').textContent = '';
+    try { location.href = (await post('/api/billing/checkout', { product: 'mobile', plan: id, email: email() })).url; }
+    catch (err) { $('planErr').textContent = err.message; e.target.disabled = false; }
+  });
+
+  var d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  $('date').value = d.toISOString().slice(0, 10);
+  $('hours').oninput = function () { $('hoursLabel').textContent = $('hours').value; };
+  $('eventBtn').onclick = async function () {
+    $('eventErr').textContent = '';
+    if (!$('date').value || !$('time').value) { $('eventErr').textContent = 'Pick a date and start time.'; return; }
+    var startsAt = new Date($('date').value + 'T' + $('time').value).getTime();
+    $('eventBtn').disabled = true;
+    try { location.href = (await post('/api/billing/checkout', { product: 'event', startsAt: startsAt, hours: +$('hours').value, email: email() })).url; }
+    catch (err) { $('eventErr').textContent = err.message; $('eventBtn').disabled = false; }
+  };
+})();
+</script>
+</body>
+</html>

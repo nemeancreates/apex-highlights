@@ -221,7 +221,10 @@
   function buildCard(s) {
     const card = el('article', 'card');
     const hit = el('a', 'hit');
-    hit.href = '/player?code=' + encodeURIComponent(s.code) + '&from=browse';
+    // Mobile sessions open in the mobile watch page; PC ones in the player.
+    hit.href = (s.platform === 'mobile' && typeof s.watchUrl === 'string' && /^https:\/\//.test(s.watchUrl))
+      ? s.watchUrl
+      : '/player?code=' + encodeURIComponent(s.code) + '&from=browse';
 
     const thumb = el('div', 'thumb');
     const src = safeImgUrl(s.thumbnailUrl);

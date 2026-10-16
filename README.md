@@ -79,6 +79,9 @@ Peak-Abu
    - `R2_ACCOUNT_ID`, `SPACES_KEY`, `SPACES_SECRET`, `SPACES_BUCKET`, `SPACES_CDN_BASE` — object storage credentials
    - `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` — optional, enables Discord account linking + password recovery
    - `DISCORD_BOT_TOKEN` / `DISCORD_GUILD_ID` / `DISCORD_ROLE_T1`–`T5` — optional, enables Discord role sync on tier change
+   - `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` — optional, turns on web billing at `/billing` (webhook: `https://peakabu.app/api/billing/webhook`, event `checkout.session.completed`). `BILLING_BASE_URL` defaults to `https://peakabu.app`
+   - `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `MAIL_FROM` — optional, lets buyers have their code emailed through any SMTP provider. `MAIL_FROM` is required and is the only sender buyers see (use a no-reply address like `Peakabu <codes@peakabu.app>`, not a personal mailbox). Leave unset to hide the email option
+   - `MOBILE_API_URL` / `MOBILE_SHARED_SECRET` / `MOBILE_PUBLIC_URL` — links Peakabu Mobile (see below). Same secret on both servers
 
 3. **Database**
    - SQLite file, created automatically on first run via `better-sqlite3` — no separate DB server to stand up
@@ -149,6 +152,26 @@ Client builds are versioned separately and uploaded to R2 — see the release pr
 
 ---
 
+## Peakabu Mobile and web billing
+
+Peakabu Mobile (m.peakabu.app) is a separate small server. Hosts sign in with their Peak-Abu account; this server answers for it:
+
+| | |
+|---|---|
+| Who pays for Mobile | An active Mobile pass, or an active T3 Squad / T4 Pro / T5 Founder plan (Mobile included) |
+| Free hosts | 10 minutes of live session time per UTC day (`MOBILE_FREE_DAILY_SEC` in `server/mobile.js`) |
+| Retention | Mobile sessions and footage are kept 60 days after they end |
+
+**Prices** (`server/routes/billing.js`): Mobile 1 month $5 (30 days), 3 months $12 (90 days), one-time event pass $3 (a date plus a window of up to 16 hours, which unlocks Peak Spots and no time limit for that window). Buying needs no account. The buyer gets a code (`PA-MOBILE-…` / `PA-EVENT-…`) and redeems it through `POST /auth/redeem`. Mobile time stacks; it never touches the PC tier. Email delivery is optional and the address is never stored.
+
+**Routes added:** `GET /billing`, `POST /api/billing/checkout`, `GET /api/billing/session/:id`, `POST /api/billing/session/:id/email`, `POST /api/billing/webhook`, `GET /auth/mobile`, plus `/internal/mobile/*` (shared secret only) and `POST /admin/public/mobile/:id {"action":"restore"|"hide"}`.
+
+**Admin codes:** `POST /admin/redemption-codes` also accepts `"tier":"mobile"` (with `durationDays`) and `"tier":"event"` (with `"meta":{"startsAt":<ms>,"hours":<n>}`).
+
+**Public listings:** this server polls `MOBILE_API_URL/api/public/listings` every minute and merges listed mobile sessions into `/browse` and Peak Roulette. Mobile listings go through the same scanners as PC footage (CSAM hash match + content classifier, `moderation/scanner.js`) on every clip thumbnail and photo, and only show once everything is clean; new footage puts the listing back to "checking". A CSAM match hides it, bans the host from public posting, places a legal hold on the mobile server (kept past retention, hidden from everyone), and sends an urgent staff alert. A classifier flag hides it for staff review. Reports work like PC: child-safety hides on the first report, anything else at 3. Set `MOBILE_CSAM_SCAN=1` once Cloudflare's CSAM Scanning Tool is on for the zone serving m.peakabu.app; the classifier uses `OPENAI_MODERATION_KEY` as for PC.
+
+---
+
 ## Feature Roadmap
 
 ### Current (v0.1.78)
@@ -167,6 +190,8 @@ Client builds are versioned separately and uploaded to R2 — see the release pr
 - ✅ Application crash reporting on both client and server (Sentry)
 - ✅ Quick comments — timestamped notes anchored to a single POV clip
 - ✅ Upload throttling, so a clip upload doesn't saturate upstream and spike in-game ping
+- ✅ Public sessions: `/browse` and Peak Roulette (roulette leans toward starred moments)
+- ✅ Web billing for Peakabu Mobile (Stripe Checkout, codes redeem in the PC client or on the Mobile host page)
 
 ### Planned (v0.2+)
 - 🔄 Adaptive bitrate streaming (HLS/DASH for bandwidth savings)

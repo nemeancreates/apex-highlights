@@ -65,7 +65,7 @@
         Last Updated: <!-- TODO: set real date before publishing --> [Last Updated]
       </div>
 
-      <p>This policy explains what information Peak-Abu collects through the desktop application, the peakabu.app website and web player, and our servers (together, the "Service"), how we use it, who we share it with, and what control you have over it. It should be read alongside our <a href="/terms.html">Terms of Service</a>.</p>
+      <p>This policy explains what information Peak-Abu collects through the desktop application, Peakabu Mobile (m.peakabu.app), the peakabu.app website and web player, and our servers (together, the "Service"), how we use it, who we share it with, and what control you have over it. It should be read alongside our <a href="/terms.html">Terms of Service</a>.</p>
 
       <div class="toc">
         <h3>Contents</h3>
@@ -74,6 +74,7 @@
           <li><a href="#short-version">The Short Version</a></li>
           <li><a href="#info-you-give">Information You Give Us</a></li>
           <li><a href="#recordings">Your Recordings</a></li>
+          <li><a href="#mobile">Peakabu Mobile</a></li>
           <li><a href="#automatic">Information Collected Automatically</a></li>
           <li><a href="#not-collect">What We Do Not Collect</a></li>
           <li><a href="#retention">How Long We Keep Things</a></li>
@@ -100,18 +101,22 @@
         <tr><th>We collect</th><th>Why</th><th>How long</th></tr>
         <tr><td>Account info (username, password hash)</td><td>To create and secure your account</td><td>Until you delete your account</td></tr>
         <tr><td>Screen and audio recordings you save</td><td>To sync, store, and play back your clips</td><td>Tier-based retention, then permanently deleted</td></tr>
+        <tr><td>Peakabu Mobile camera clips and photos</td><td>To sync and play back event footage</td><td>60 days after the session ends, then permanently deleted</td></tr>
+        <tr><td>Email address, only if you ask us to email you a code</td><td>To send that one message</td><td>Not stored</td></tr>
         <tr><td>Session and clip metadata</td><td>To run sessions and enforce tier limits</td><td>Until deleted</td></tr>
         <tr><td>Subscription and payment status</td><td>To provide paid access</td><td>As required for tax/accounting</td></tr>
         <tr><td>Crash reports and error diagnostics</td><td>To find and fix bugs</td><td>30 days</td></tr>
         <tr><td>Usage and connection data (IP, device, version)</td><td>Security, abuse prevention, compatibility</td><td>90 days</td></tr>
       </table>
-      <div class="callout">We do not require an email address to create your Peak-Abu account.* We do not sell your personal information. We do not use your recordings for advertising or to train AI models.<br><span style="font-size:11px;color:var(--text-muted);">*If you subscribe to a paid tier, Stripe collects a billing email at checkout for receipts — see Section 3.</span></div>
+      <div class="callout">We do not require an email address to create your Peak-Abu account.* We do not sell your personal information. We do not use your recordings for advertising or to train AI models.<br><span style="font-size:11px;color:var(--text-muted);">*If you pay for anything, Stripe collects a billing email at checkout for receipts. If you ask us to email you a code, we use the address you give for that one message and don't keep it. See Section 3.</span></div>
 
       <h2 id="info-you-give">3. Information You Give Us</h2>
       <p><strong>Account information.</strong> A username and a password — no email address is required. Passwords are stored only as a <code>bcrypt</code> hash. Because we don't collect an email address, password recovery is only possible if you've linked a Discord account.</p>
       <p><strong>Linked accounts.</strong> If you connect Discord, we receive your Discord user ID, username, avatar, and (where you grant it) server membership information used to sync your roles. We do not receive your Discord password or read your messages.</p>
-      <p><strong>Payment information.</strong> Subscriptions are processed by Stripe, which collects your billing details — including a billing email address, for receipts — directly at checkout. We never see or store your full card number. Stripe passes us a customer ID, subscription status, the card's last four digits and brand, and billing country<span style="font-size:11px;color:var(--text-muted);"> — and, if you complete a purchase, your billing email as well, so we can link the subscription to your account and reach you about billing issues. This is the one case where the Service does collect an email address.</span></p>
-      <p><strong>Redemption codes.</strong> If you redeem a crowdfunding or promotional code, we record which code was redeemed and by which account.</p>
+      <p><strong>Payment information.</strong> Subscriptions are processed by Stripe, which collects your billing details — including a billing email address, for receipts — directly at checkout. We never see or store your full card number. Stripe passes us a customer ID, subscription status, the card's last four digits and brand, and billing country<span style="font-size:11px;color:var(--text-muted);"> — and, for a recurring subscription, your billing email as well, so we can link the subscription to your account and reach you about billing issues. One-time code purchases (see below) are not linked to an account, and we don't store their billing email.</span></p>
+      <p><strong>Codes bought on peakabu.app.</strong> Peakabu Mobile plans and event passes are sold on our website through Stripe Checkout and delivered as a redemption code; no account is needed to buy one. Stripe's checkout page asks for an email address for its own receipt, and Stripe keeps that as the payment processor. On our side we record only the code, what it grants, and the Stripe checkout ID it was issued for.</p>
+      <p><strong>Optional code delivery by email.</strong> When you buy a code you may enter an email address, before checkout or on the confirmation page, and ask us to send the code there. We use that address only to send that message (through our email provider, see Section 9). We do not save it to your account or any database, add it to a mailing list, use it for marketing, or share it with anyone else. We keep only a count of how many times a code was emailed, so the feature can't be abused. If you leave the field blank, your code is shown on screen only and we never receive an address from you.</p>
+      <p><strong>Redemption codes.</strong> If you redeem a crowdfunding, promotional, or purchased code, we record which code was redeemed and by which account.</p>
       <p><strong>Support and correspondence.</strong> If you email us or report a bug, we keep the message and any logs, screenshots, or files you attach.</p>
       <p><strong>User-entered content.</strong> Session names, clip titles, notes, and similar text you type into the Service.</p>
 
@@ -126,6 +131,18 @@
       <p>We do not review, monitor, or manually inspect your recordings, except when you explicitly send us a clip for support, when responding to a specific abuse report or legal request, or when required by law.</p>
       <h3>4.5 Automated processing</h3>
       <p>Where enabled at your tier, the Service may analyze clips to generate highlight reels, previews, or thumbnails. Depending on the feature and tier, this runs on your own device, on our servers, or through Anthropic's Claude API. Where Claude is used, your clip data is sent to Anthropic solely to generate your output; Anthropic's commercial API terms state customer inputs and outputs are not used to train their models and are deleted from their systems within 30 days of processing. We do not perform facial recognition, voiceprint identification, or any biometric identification on your recordings.</p>
+
+      <h2 id="mobile">4A. Peakabu Mobile</h2>
+      <p>Peakabu Mobile lets a host run a session that guests join by scanning a QR code with their phone's browser.</p>
+      <ul>
+        <li><strong>Hosts</strong> sign in with their Peak-Abu account. Your username and password go straight to our main server to sign you in; the mobile server keeps only the resulting sign-in token in a cookie on your browser. To enforce the free plan's daily hosting time, we keep a per-account count of minutes used, for today and yesterday only.</li>
+        <li><strong>Guests</strong> don't need an account. We store the display name you type, the times you were filming or paused, and which Peak Spot (area QR code) you joined from, if any.</li>
+        <li><strong>Recordings.</strong> Your phone keeps a short rolling buffer in its own memory. It is only uploaded when someone in the session taps PEAK, and only the part covering that moment. Photos you take with the in-app shutter are uploaded when you take them. Clips and photos may include anyone and anything your camera sees and hears.</li>
+        <li><strong>Safety checks.</strong> If the host lists the session publicly, its clip thumbnails and photos go through the same automated checks as PC clips before it can appear (see Section 10).</li>
+        <li><strong>Who can watch.</strong> By default, only members of the session, or people the host gives the watch link to. If the host makes the session public, anyone with the link can watch. If the host also lists it on Peak-Abu public sessions, its saved peaks can appear on peakabu.app/browse and in Peak Roulette for anyone to find.</li>
+        <li><strong>Retention.</strong> Sessions, clips, photos, and comments are permanently deleted 60 days after the session ends.</li>
+        <li><strong>Cookies.</strong> m.peakabu.app sets a few essential cookies: a guest pass that keeps you in a session you joined, a host pass for the browser that started it, and the host's sign-in token. They are HttpOnly, used only by m.peakabu.app, and are not used for analytics or advertising.</li>
+      </ul>
 
       <h2 id="automatic">5. Information Collected Automatically</h2>
       <h3>5.1 Device and application data</h3>
@@ -149,12 +166,12 @@
       <h3>5.5 Update checks</h3>
       <p>The application periodically contacts our servers to check for updates, transmitting its current version and platform.</p>
       <h3>5.6 Website and web player</h3>
-      <p>We do not run analytics or advertising scripts on peakabu.app or in the web player, and we set no cookies of our own. The site and player use browser local storage only for interface preferences — your selected theme, panel layout, comment display settings, and which clips you've already viewed — which stays on your device and is never transmitted to us. Authentication in the web player uses a bearer token held in memory for the session, not a cookie.</p>
+      <p>We do not run analytics or advertising scripts on peakabu.app, m.peakabu.app, or in the web player. peakabu.app and the web player set no cookies of our own (Peakabu Mobile's essential cookies are described in Section 4A). The site and player use browser local storage only for interface preferences — your selected theme, panel layout, comment display settings, and which clips you've already viewed — which stays on your device and is never transmitted to us. Authentication in the web player uses a bearer token held in memory for the session, not a cookie.</p>
       <p>Some pages embed YouTube videos. Loading an embedded video can allow YouTube (Google) to set its own cookies and collect data under <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's privacy policy</a>, independent of anything Peak-Abu does. We do not control this third-party behavior.</p>
 
       <h2 id="not-collect">6. What We Do Not Collect</h2>
       <ul>
-        <li>We do not require an email address to create an account</li>
+        <li>We do not require an email address to create an account, and we do not store the email address you give us for code delivery</li>
         <li>We do not capture your screen outside the window or region you've selected</li>
         <li>We do not upload buffered footage — only clips you or Auto-Highlight have saved</li>
         <li>We do not log keystrokes, read your clipboard, or scan your files</li>
@@ -171,6 +188,10 @@
         <tr><th>Data</th><th>Retention</th></tr>
         <tr><td>Saved clips</td><td>Automatically and permanently deleted after your tier's retention period</td></tr>
         <tr><td>Local buffer</td><td>Rolling; overwritten continuously, cleared when capture stops</td></tr>
+        <tr><td>Peakabu Mobile sessions, clips, photos, comments</td><td>60 days after the session ends</td></tr>
+        <tr><td>Peakabu Mobile daily hosting-minutes count</td><td>Today and yesterday only</td></tr>
+        <tr><td>Email address entered for code delivery</td><td>Not stored; used once to send the message</td></tr>
+        <tr><td>Purchased codes (code, what it grants, Stripe checkout ID)</td><td>As required by tax and accounting law</td></tr>
         <tr><td>Account record</td><td>Until you delete your account</td></tr>
         <tr><td>Session and clip metadata</td><td>Until deleted with the account</td></tr>
         <tr><td>Crash reports (Sentry)</td><td>30 days</td></tr>
@@ -193,19 +214,24 @@
       <h2 id="sharing">9. Who We Share With</h2>
       <table>
         <tr><th>Provider</th><th>Role</th><th>Data involved</th></tr>
-        <tr><td>Cloudflare</td><td>Object storage and CDN for clips</td><td>Clips, clip metadata, request logs</td></tr>
+        <tr><td>Cloudflare</td><td>Object storage and CDN for clips; CSAM hash matching on public listings</td><td>Clips, clip metadata, request logs</td></tr>
         <tr><td>DigitalOcean</td><td>Server hosting</td><td>All server-side data</td></tr>
         <tr><td>Stripe</td><td>Payment processing</td><td>Billing email, payment details, billing country</td></tr>
+        <tr><td>Our email delivery provider<!-- TODO: name the provider once chosen --></td><td>Sending codes you ask us to email, from a no-reply Peakabu address</td><td>The email address you enter and the message with your code, for that one send</td></tr>
         <tr><td>Sentry</td><td>Crash and error monitoring</td><td>Diagnostic data (see §5.4)</td></tr>
         <tr><td>Discord</td><td>Optional account linking, role sync, password recovery</td><td>Discord ID, username, avatar</td></tr>
         <tr><td>Anthropic</td><td>AI Reel generation, where enabled</td><td>Submitted clip content; not used for training</td></tr>
         <tr><td>Google Workspace</td><td>Business email</td><td>Correspondence you send us</td></tr>
+        <tr><td>OpenAI</td><td>Content classifier for public-listing safety checks</td><td>Clip thumbnails and photos from sessions being listed publicly</td></tr>
+        <tr><td>NCMEC</td><td>Legally required reports of apparent child sexual abuse material</td><td>The material and account details involved</td></tr>
         <tr><td>Kickstarter</td><td>Crowdfunding, where applicable</td><td>Backer identity, pledge and reward status</td></tr>
       </table>
       <p>We also disclose information when you direct us to (e.g. sharing a session link), when legally required (a valid subpoena, court order, or law enforcement request), to protect rights and safety, or as part of a business transfer — in which case we'll notify you before your information becomes subject to a materially different policy. We do not sell personal information or share it for cross-context behavioral advertising.</p>
 
       <h2 id="public-links">10. Share Links Are Public By Design</h2>
       <p>Anyone with a Session's share link can watch that Session's clips in the web player without an account. Share links use long, randomly generated identifiers that are impractical to guess, but they are not secret, and once shared you cannot control who it gets forwarded to. Clips remain reachable by link until they expire under your tier's retention period. <strong>Treat anything you capture and share as potentially public.</strong></p>
+      <p><strong>Public listings.</strong> A host can also list a session on Peak-Abu public sessions (peakabu.app/browse and Peak Roulette), on PC or Peakabu Mobile. A listing shows the session's name, the host's username, a preview image, and its saved peaks to anyone, without a link. The host can unlist it at any time. Anyone can report a listing; reported listings may be hidden while we review them.</p>
+      <p><strong>Safety checks before a listing goes public.</strong> Before a session appears in public listings, and again whenever new footage is added, we run automated checks on its clip thumbnails (and, for Peakabu Mobile, its photos): a match against known child sexual abuse material using Cloudflare's CSAM Scanning Tool, and a content classifier (OpenAI's moderation API) that flags sexual or graphically violent images for a person on our team to review. Only listed sessions are checked, and only still images, not full videos. Images sent to the classifier are used to return a result and are not used to train models. A match against known abuse material is preserved and reported to the National Center for Missing &amp; Exploited Children (NCMEC) as the law requires.</p>
 
       <h2 id="security">11. Security</h2>
       <ul>
@@ -229,6 +255,7 @@
         <li><strong>Deletion</strong> — delete your account and associated data</li>
         <li><strong>Export</strong> — download your clips at any time before they expire</li>
         <li><strong>Withdraw optional consents</strong> — unlink Discord, disable microphone capture, opt out of optional features</li>
+        <li><strong>Mobile footage</strong> — if you appear in a Peakabu Mobile session and want something removed, ask the host or email us with the session name and time</li>
       </ul>
       <p>To exercise any of these, email <a href="mailto:peakabullc@gmail.com">peakabullc@gmail.com</a>. We will respond within 30 days.</p>
       <h3>12.2 EEA / UK residents (GDPR)</h3>

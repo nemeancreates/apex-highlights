@@ -8,7 +8,13 @@ const crypto = require('crypto');
 const { log } = require('./logger');
 const { REDEMPTION_CODES_FILE, TIERS, BANDWIDTH_ALERT_BYTES } = require('./config');
 
-const codes = new Map(); // code -> { code, tier, note, maxUses, useCount, usedBy: [{username, redeemedAt}], createdAt }
+const codes = new Map(); // code -> { code, tier, note, maxUses, useCount, usedBy: [{username, redeemedAt}], createdAt, meta? }
+
+// Non-tier products a code can carry instead of a PC tier (Peakabu Mobile).
+//   mobile: durationDays of Mobile on the redeeming account (stacks)
+//   event:  one $3 event pass, meta = { startsAt, hours }
+const PRODUCTS = ['mobile', 'event'];
+const isProduct = (t) => PRODUCTS.includes(t);
 
 function loadCodesFromDisk() {
   try {
@@ -40,8 +46,8 @@ function generateOneCode(tier) {
 // durationDays: omit/null for a LIFETIME code (never expires — for
 // friends/family, $1500+ backers, manual grants). Set a number for a
 // TIMED subscription code (e.g. 30 for a monthly Kickstarter tier).
-function generateRedemptionCodes({ tier, note, maxUses, quantity, durationDays }) {
-  if (!TIERS[tier]) throw new Error(`Unknown tier "${tier}"`);
+function generateRedemptionCodes({ tier, note, maxUses, quantity, durationDays, meta }) {
+  if (!TIERS[tier] && !isProduct(tier)) throw new Error(`Unknown tier "${tier}"`);
   const uses = Math.max(1, Math.min(100000, parseInt(maxUses, 10) || 1));
   const qty = Math.max(1, Math.min(500, parseInt(quantity, 10) || 1));
   const duration = (durationDays !== undefined && durationDays !== null && durationDays !== '')
@@ -55,6 +61,7 @@ function generateRedemptionCodes({ tier, note, maxUses, quantity, durationDays }
       code, tier, note: note || null,
       maxUses: uses, useCount: 0, usedBy: [],
       durationDays: duration, // null = lifetime
+      ...(meta ? { meta } : {}),
       createdAt: new Date().toISOString()
     });
     generated.push(code);
@@ -77,10 +84,10 @@ function peekCode(rawCode, username) {
   if (entry.usedBy.some(u => u.username.toLowerCase() === username.toLowerCase())) {
     return { ok: false, error: "You've already redeemed this code" };
   }
-  return { ok: true, tier: entry.tier, durationDays: entry.durationDays || null };
+  return { ok: true, tier: entry.tier, durationDays: entry.durationDays || null, meta: entry.meta || null };
 }
 
-// Returns { ok: true, tier, durationDays } or { ok: false, error }
+// Returns { ok: true, tier, durationDays, meta } or { ok: false, error }
 function redeemCode(rawCode, username) {
   const code = String(rawCode || '').trim().toUpperCase();
   const entry = codes.get(code);
@@ -93,7 +100,14 @@ function redeemCode(rawCode, username) {
   entry.usedBy.push({ username, redeemedAt: new Date().toISOString() });
   saveCodesToDisk();
   log('info', 'redemption_code_used', { code, username, tier: entry.tier, durationDays: entry.durationDays || null, useCount: entry.useCount, maxUses: entry.maxUses });
-  return { ok: true, tier: entry.tier, durationDays: entry.durationDays || null };
+  return { ok: true, tier: entry.tier, durationDays: entry.durationDays || null, meta: entry.meta || null };
+}
+
+// Billing looks codes up by the Stripe checkout that paid for them, so a
+// retried webhook or a refreshed success page never mints a second code.
+function findCodeByNote(note) {
+  for (const c of codes.values()) if (c.note === note) return c.code;
+  return null;
 }
 
 // --- Bandwidth safeguard (upload bytes — see note in config.js about the
@@ -116,4 +130,4 @@ function trackBandwidth(username, bytes, users, saveUsersToDisk) {
   saveUsersToDisk();
 }
 
-module.exports = { loadCodesFromDisk, generateRedemptionCodes, redeemCode, peekCode, trackBandwidth };
+module.exports = { loadCodesFromDisk, generateRedemptionCodes, redeemCode, peekCode, findCodeByNote, trackBandwidth, isProduct, PRODUCTS };
