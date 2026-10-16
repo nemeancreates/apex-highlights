@@ -206,9 +206,9 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 const PRIVACY_POLICY_VERSION = '2026-09-07';
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.93',
-  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.93.exe',
-    releaseNotes: "Your own voice now comes through clearly in your own clips. Before, your mic was mixed in far quieter than your teammates' voices, so you sounded clearer in their POV than in yours. AI Reel gets a style picker, builds grids wherever POVs overlap, and has a Reselect last button. New app icon."
+  version: '0.1.94',
+  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.94.exe',
+    releaseNotes: "The Session Code box now always shows its share-link and Web Player icons, greyed out until you type a code. The new share icon copies the web player link for that code so you can pass a session along without joining it."
 };
 
 

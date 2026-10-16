@@ -253,6 +253,20 @@
       }
       .hint { font-size: 12px; color: #5f7a6a; text-align: center; margin-top: 4px; margin-bottom: 4px; }
 
+      /* Share + Web Player icons inside the join-code box. Always shown;
+         greyed out until the box holds a plausible code. */
+      .join-code-icons {
+        position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+        display: flex; gap: 2px;
+      }
+      .join-code-icons button {
+        width: 26px; height: 26px; min-width: 26px; padding: 0; margin: 0;
+        background: none; border: none; cursor: pointer; font-size: 16px; line-height: 1;
+        display: flex; align-items: center; justify-content: center; border-radius: 6px;
+      }
+      .join-code-icons button:hover:not(:disabled) { background: rgba(57, 211, 160, 0.12); }
+      .join-code-icons button:disabled { filter: grayscale(1); opacity: 0.35; cursor: default; }
+
       .rejoin-card {
        background: #1a2b21;
        border: 1px solid #2e4536;
@@ -837,7 +851,7 @@
               <img src="assets/kickstarter.png" alt="kickstarter" />
             </button>
           </div>
-          <span class="version-tag">v0.1.93</span>
+          <span class="version-tag">v0.1.94</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="redeem-wrap">
@@ -1262,11 +1276,14 @@
             <label>Session Code</label>
             <div style="position:relative;">
               <input type="text" id="joinCodeInput" placeholder="e.g. ABCD12" maxlength="6"
-                     style="text-transform:uppercase;letter-spacing:3px;text-align:center;width:100%;box-sizing:border-box;padding-right:34px;"
+                     style="text-transform:uppercase;letter-spacing:3px;text-align:center;width:100%;box-sizing:border-box;padding-left:62px;padding-right:62px;"
                      oninput="updateJoinCodeBrowserIcon()" />
-              <button id="joinCodeBrowserIcon" onclick="openPlayerForCode(document.getElementById('joinCodeInput').value.trim().toUpperCase())"
-                      title="Open in Web Player — view the AI Reel and comment without joining"
-                      style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);width:26px;height:26px;min-width:26px;background:none;border:none;cursor:pointer;font-size:16px;line-height:1;padding:0;margin:0;align-items:center;justify-content:center;">🌐</button>
+              <div class="join-code-icons">
+                <button id="joinCodeShareIcon" onclick="copyJoinCodeShareLink()" disabled
+                        title="Type a session code to copy its web player link">🔗</button>
+                <button id="joinCodeBrowserIcon" onclick="openPlayerForCode(document.getElementById('joinCodeInput').value.trim().toUpperCase())" disabled
+                        title="Type a session code to open it in the Web Player">🌐</button>
+              </div>
             </div>
             <div id="joinCodeError" style="display:none;color:#f0857a;font-size:12px;margin-top:-4px;margin-bottom:6px;text-align:center;"></div>
             <button class="btn-secondary" id="joinSessionBtn" onclick="joinSession()">Join Session</button>
@@ -1944,7 +1961,7 @@
         return h.role === 'host' && h.username === window.authUsername;
       });
       if (!lastHosted) return;
-      document.getElementById('joinCodeInput').value = lastHosted.code;
+      document.getElementById('joinCodeInput').value = lastHosted.code; if (window.updateJoinCodeBrowserIcon) window.updateJoinCodeBrowserIcon();
       updateJoinCodeBrowserIcon();
       joinSession();
     };
@@ -2061,7 +2078,7 @@
         item.appendChild(meta);
 
         item.addEventListener('click', function() {
-          document.getElementById('joinCodeInput').value = h.code;
+          document.getElementById('joinCodeInput').value = h.code; if (window.updateJoinCodeBrowserIcon) window.updateJoinCodeBrowserIcon();
           updateJoinCodeBrowserIcon();
           clipboard.writeText(h.code);
           hudLog('system', '📋 Code ' + h.code + ' copied & filled', 'success');
@@ -3405,10 +3422,36 @@
       // login riding along so comments post as them.
       window.updateJoinCodeBrowserIcon = function() {
         var input = document.getElementById('joinCodeInput');
-        var icon = document.getElementById('joinCodeBrowserIcon');
-        if (!input || !icon) return;
-        icon.style.display = (input.value.trim().length >= 4) ? 'flex' : 'none';
+        if (!input) return;
+        var ready = input.value.trim().length >= 4;
+        var code = input.value.trim().toUpperCase();
+        var web = document.getElementById('joinCodeBrowserIcon');
+        var share = document.getElementById('joinCodeShareIcon');
+        if (web) {
+          web.disabled = !ready;
+          web.title = ready ? 'Open ' + code + ' in the Web Player \u2014 view the AI Reel and comment without joining'
+                            : 'Type a session code to open it in the Web Player';
+        }
+        if (share) {
+          share.disabled = !ready;
+          share.title = ready ? 'Copy the web player link for ' + code
+                              : 'Type a session code to copy its web player link';
+        }
         clearJoinCodeError();
+      };
+
+      // Copies the public web player link for whatever code is typed in the
+      // join box — for passing a session to someone without joining it.
+      window.copyJoinCodeShareLink = function() {
+        var input = document.getElementById('joinCodeInput');
+        var btn = document.getElementById('joinCodeShareIcon');
+        var code = input ? input.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
+        if (code.length < 4) return;
+        clipboard.writeText('https://peakabu.app/player?code=' + code);
+        if (btn) {
+          btn.textContent = '\u2705';
+          setTimeout(function() { btn.textContent = '\uD83D\uDD17'; }, 1500);
+        }
       };
 
       // =====================
@@ -5020,7 +5063,7 @@
           hudLog('squad', 'Host started a new session — moving to ' + d.newCode, 'broadcast');
           var wasHost = window.isSessionHost;
           window.leaveSession({ keepRecording: true });
-          document.getElementById('joinCodeInput').value = d.newCode;
+          document.getElementById('joinCodeInput').value = d.newCode; if (window.updateJoinCodeBrowserIcon) window.updateJoinCodeBrowserIcon();
           updateJoinCodeBrowserIcon();
           window.isSessionHost = wasHost;
           connectToSession(d.newCode, window.authUsername);
@@ -6135,7 +6178,7 @@
         }
 
         window.autoStartAfterJoin = !!link.autostart;
-        document.getElementById('joinCodeInput').value = link.code;
+        document.getElementById('joinCodeInput').value = link.code; if (window.updateJoinCodeBrowserIcon) window.updateJoinCodeBrowserIcon();
         updateJoinCodeBrowserIcon();
         hudLog('squad', '\uD83D\uDD17 Joining ' + link.code + ' from invite...', 'broadcast');
         window.isSessionHost = false;
