@@ -31,6 +31,8 @@ const { initUploadRoutes } = require('./routes/uploads');
 const { initCommentRoutes, startCommentCleanup } = require('./routes/comments');
 const { initStarRoutes, startStarCleanup } = require('./routes/stars');
 const { initPublicRoutes, startPublicCleanup } = require('./routes/public');
+const { initBillingWebhook, initBillingRoutes } = require('./routes/billing');
+const { startMobileListingSync } = require('./mobile');
 const { initCompositeRoutes, startCompositeCleanup } = require('./composite');
 const { initSockets } = require('./sockets');
 const { initAiReel } = require('./aireel');
@@ -66,7 +68,8 @@ app.use(helmet({
       // into their upload records, and those need to keep loading until
       // they age out per each tier's retentionDays.
       mediaSrc: ["'self'", "blob:", "https://peakbu-media.nyc3.cdn.digitaloceanspaces.com", config.SPACES_CDN_BASE],
-      imgSrc: ["'self'", "data:", "https://peakbu-media.nyc3.cdn.digitaloceanspaces.com", config.SPACES_CDN_BASE, "https://i.ytimg.com"],
+      // MOBILE_PUBLIC_URL: mobile session thumbnails on /browse (m.peakabu.app).
+      imgSrc: ["'self'", "data:", "https://peakbu-media.nyc3.cdn.digitaloceanspaces.com", config.SPACES_CDN_BASE, "https://i.ytimg.com", ...(process.env.MOBILE_PUBLIC_URL ? [process.env.MOBILE_PUBLIC_URL] : [])],
       connectSrc: ["'self'", "ws:", "wss:", "https://peakbu-media.nyc3.cdn.digitaloceanspaces.com", config.SPACES_CDN_BASE]
     }
   },
@@ -80,6 +83,7 @@ app.get('/privacy', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'privacy.html'));
 });
 app.use(cors({ origin: config.ALLOWED_ORIGINS }));
+initBillingWebhook(app);                        // raw body for Stripe — must stay above express.json
 app.use(express.json({ limit: '1mb' }));
 app.use(rateLimit);
 
@@ -118,6 +122,7 @@ initUploadRoutes(app, io);
 initCommentRoutes(app, io);
 initStarRoutes(app, io);
 initPublicRoutes(app);
+initBillingRoutes(app);
 initCompositeRoutes(app);
 initSockets(io);
 
@@ -137,6 +142,7 @@ startCompositeCleanup();
 startCommentCleanup();
 startStarCleanup();
 startPublicCleanup();
+startMobileListingSync();
 initAiReel({
   app,
   sessions,
