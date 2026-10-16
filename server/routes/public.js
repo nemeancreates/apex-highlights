@@ -29,6 +29,8 @@ const { JWT_SECRET } = require('../config');
 const { sessions } = require('../stores');
 const { requireAuth, requireAdmin } = require('../auth');
 const db = require('../db');
+const mod = require('../moderation');
+const { isOnHold, listHolds, releaseHold, getHold } = require('../moderation/legal-hold');
 
 // --- Tunables ---
 const PEAK_GAP_MS = 5000;                       // same clustering rule as the web player
@@ -38,6 +40,7 @@ const REPORT_HIDE_THRESHOLD = 3;                // distinct reporters before aut
 const BROWSE_PAGE_MAX = 48;
 const SEEN_MAX = 300;                           // roulette "already watched" list cap
 const PLATFORMS = ['pc', 'mobile'];
+const REPORT_REASONS = ['child', 'privacy', 'inappropriate', 'spam', 'other'];
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS public_listings (
@@ -83,8 +86,18 @@ const stmt = {
     FROM public_listings l JOIN public_reports r ON r.sessionCode = l.sessionCode
     GROUP BY l.sessionCode ORDER BY lastReportAt DESC LIMIT 100
   `),
-  listingCodes: db.prepare(`SELECT sessionCode FROM public_listings UNION SELECT sessionCode FROM public_reports`)
+  listingCodes: db.prepare(`SELECT sessionCode FROM public_listings UNION SELECT sessionCode FROM public_reports`),
+  liveCodes:  db.prepare(`SELECT sessionCode FROM public_listings WHERE hidden = 0`),
+  reportsFor: db.prepare(`SELECT reason, reporterKey, createdAt FROM public_reports WHERE sessionCode = ? ORDER BY createdAt ASC`)
 };
+
+// moderation/ reads listings and reports through these, and hides a listing
+// when a scan flags it, without needing to require this file.
+mod.registerListingHooks({
+  getListing: (code) => { try { return stmt.get.get(code) || null; } catch (e) { return null; } },
+  getReports: (code) => { try { return stmt.reportsFor.all(code); } catch (e) { return []; } },
+  hideListing: (code) => { try { stmt.hide.run(code); } catch (e) {} }
+});
 
 // Salted so the stored key can't be reversed to an IP by brute-forcing the
 // IPv4 space. Truncated: dedupe only needs it to be unique-enough.
@@ -146,6 +159,10 @@ function liveListings(now) {
     const session = sessions.get(row.sessionCode);
     if (!session) continue;
     if (session.expiresAt && session.expiresAt - now < EXPIRY_GRACE_MS) continue;
+    // Banned hosts, held sessions, and anything not yet cleared by the
+    // scanners never show, whatever the listing row says.
+    if (!mod.isHostAllowed(session)) continue;
+    if (mod.sessionScanState(session) !== 'clean') continue;
     const peaks = peaksOf(session);
     if (!peaks.length) continue;
     out.push({ row, session, peaks });
@@ -196,6 +213,9 @@ setInterval(() => {
 
 // Hourly: drop listings + reports whose session is gone (purged at expiry).
 function startPublicCleanup() {
+  mod.startModerationSweep(() => {
+    try { return stmt.liveCodes.all().map(r => r.sessionCode); } catch (e) { return []; }
+  });
   setInterval(() => {
     try {
       let purged = 0;
@@ -215,6 +235,27 @@ const browseLimiter   = createRateLimiter({ windowMs: 60000, max: 60 });
 const rouletteLimiter = createRateLimiter({ windowMs: 60000, max: 40 });
 const reportLimiter   = createRateLimiter({ windowMs: 60 * 60 * 1000, max: 10 });
 const toggleLimiter   = createRateLimiter({ windowMs: 60000, max: 10 });
+
+// What the host's Public button should show.
+//   state: 'off' | 'checking' (scan pending) | 'live' | 'under-review'
+function hostState(session) {
+  const row = stmt.get.get(session.code);
+  const allowed = mod.canListPublic(session.createdBy);
+  let state = 'off';
+  if (row) {
+    if (row.hidden || isOnHold(session.code)) state = 'under-review';
+    else if (mod.sessionScanState(session) === 'pending') state = 'checking';
+    else if (mod.sessionScanState(session) === 'flagged') state = 'under-review';
+    else state = 'live';
+  }
+  return {
+    isPublic: state === 'live' || state === 'checking',
+    state,
+    underReview: state === 'under-review',
+    canList: allowed.ok,
+    reason: allowed.ok ? null : allowed.reason
+  };
+}
 
 // ================================
 // ROUTES
@@ -239,6 +280,12 @@ function initPublicRoutes(app) {
 
     const { isPublic: want, platform } = req.body || {};
     if (typeof want !== 'boolean') return safeError(res, 400, 'isPublic must be true or false');
+
+    if (want) {
+      const allowed = mod.canListPublic(session.createdBy);
+      if (!allowed.ok) return safeError(res, 403, allowed.reason);
+      if (isOnHold(code)) return safeError(res, 403, 'This session is under review.');
+    }
 
     try {
       if (want) {
@@ -268,7 +315,10 @@ function initPublicRoutes(app) {
     }
 
     log('info', 'public_toggled', { session: code, isPublic: want, by: session.createdBy });
-    res.json({ isPublic: want && isPublic(code) });
+    // Scans run in the background; the listing appears on /browse once
+    // every clip has cleared (immediately, if no scanner is configured).
+    if (want) mod.scanSession(session).catch(() => {});
+    res.json(hostState(session));
   });
 
   // --- Host-only read of the toggle state (the player shows the switch).
@@ -280,8 +330,7 @@ function initPublicRoutes(app) {
     if (session.createdBy !== sanitizeUsername(req.user.username)) {
       return safeError(res, 403, 'Only the session host can see this.');
     }
-    const row = stmt.get.get(code);
-    res.json({ isPublic: !!row && !row.hidden, underReview: !!row && !!row.hidden });
+    res.json(hostState(session));
   });
 
   // --- BROWSE: cards for the website's public page.
@@ -363,20 +412,26 @@ function initPublicRoutes(app) {
   });
 
   // --- REPORT: no account needed.
-  app.post('/api/public/sessions/:code/report', reportLimiter, (req, res) => {
+  app.post('/api/public/sessions/:code/report', reportLimiter, async (req, res) => {
     const code = sanitizeCode(req.params.code);
     if (!code) return safeError(res, 400, 'Invalid session code');
     const row = stmt.get.get(code);
     if (!row) return safeError(res, 404, 'That session isn\'t listed.');
+    const session = sessions.get(code);
 
-    const reason = typeof req.body?.reason === 'string'
-      ? req.body.reason.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 200) : null;
+    const reason = REPORT_REASONS.includes(req.body?.reason) ? req.body.reason : 'other';
 
+    let added = 0, n = 0, autoHidden = false, childHidden = false;
     try {
-      stmt.addReport.run(code, reporterKey(req), reason, Date.now());
-      const n = stmt.countReports.get(code).n;
-      if (n >= REPORT_HIDE_THRESHOLD && !row.hidden) {
-        stmt.hide.run(code);
+      added = stmt.addReport.run(code, reporterKey(req), reason, Date.now()).changes;
+      n = stmt.countReports.get(code).n;
+      // Child-safety reports hide the listing on the FIRST report and go to
+      // staff as urgent. Nobody is banned or struck until staff confirm.
+      if (reason === 'child' && !row.hidden) {
+        stmt.hide.run(code); childHidden = true;
+        log('warn', 'public_listing_child_report', { session: code, host: row.listedBy });
+      } else if (n >= REPORT_HIDE_THRESHOLD && !row.hidden) {
+        stmt.hide.run(code); autoHidden = true;
         log('warn', 'public_listing_auto_hidden', { session: code, reports: n, host: row.listedBy });
       } else {
         log('info', 'public_listing_reported', { session: code, reports: n });
@@ -386,25 +441,130 @@ function initPublicRoutes(app) {
       return safeError(res, 500, 'Could not send that. Try again.');
     }
     res.json({ ok: true });
+
+    // Staff channel: the first report, the auto-hide, and every child-safety
+    // hide. Repeat reports in between are counted, not re-posted.
+    if (!session || !added) return;
+    if (childHidden) {
+      mod.sendCase(session, {
+        kind: 'report', level: 'urgent',
+        title: `Child-safety report: ${code}`,
+        trigger: 'User report: involves a minor',
+        detail: `${n} report(s) total. Review promptly. If it shows a child being sexually abused or exploited, use the csam action and report to NCMEC; do not download or share it.`,
+        actions: ['Listing hidden from /browse and roulette until staff review.']
+      }).catch(() => {});
+    } else if (autoHidden) {
+      mod.sendCase(session, {
+        kind: 'autohide', level: 'warn',
+        title: `Auto-hidden after ${n} reports: ${code}`,
+        trigger: `${n} reports from different people`,
+        detail: 'Hidden automatically. Confirm with remove (adds a strike) or restore.',
+        actions: ['Listing hidden from /browse and roulette.', 'Host can\'t relist it until staff restore it.']
+      }).catch(() => {});
+    } else if (n === 1) {
+      mod.sendCase(session, {
+        kind: 'report', level: 'info',
+        title: `New report: ${code}`,
+        trigger: 'User report',
+        detail: `Reason: ${reason}. Still listed; it hides automatically at ${REPORT_HIDE_THRESHOLD} reports.`,
+        actions: []
+      }).catch(() => {});
+    }
   });
 
-  // --- ADMIN: review + resolve reports.
-  //   curl https://peakabu.app/admin/public/reports -H "X-Admin-Secret: $ADMIN_SECRET"
-  //   curl -X POST https://peakabu.app/admin/public/ABC123 -H "X-Admin-Secret: $ADMIN_SECRET" \
-  //        -H "Content-Type: application/json" -d '{"action":"restore"}'    (or "remove")
+  // --- ADMIN (X-Admin-Secret). Run on the droplet, e.g.:
+  //   curl -s localhost:3000/admin/public/reports -H "X-Admin-Secret: $ADMIN_SECRET"
+  //   curl -s -X POST localhost:3000/admin/public/ABC123 -H "X-Admin-Secret: $ADMIN_SECRET" \
+  //        -H "Content-Type: application/json" -d '{"action":"remove"}'
+  //   actions: restore | remove (adds a strike) | csam (hold + ban + urgent case)
   app.get('/admin/public/reports', requireAdmin, (req, res) => {
     res.json({ reports: stmt.reported.all() });
   });
 
-  app.post('/admin/public/:code', requireAdmin, (req, res) => {
+  app.post('/admin/public/:code', requireAdmin, async (req, res) => {
     const code = sanitizeCode(req.params.code);
     if (!code) return safeError(res, 400, 'Invalid session code');
     const action = req.body?.action;
-    if (action === 'restore') { stmt.unhide.run(code); stmt.clearReports.run(code); }
-    else if (action === 'remove') { stmt.hide.run(code); }
-    else return safeError(res, 400, 'action must be "restore" or "remove"');
-    log('info', 'public_admin_action', { session: code, action });
-    res.json({ ok: true });
+    const session = sessions.get(code);
+    const note = typeof req.body?.note === 'string' ? req.body.note.slice(0, 200) : null;
+
+    if (action === 'restore') {
+      if (isOnHold(code)) return safeError(res, 409, 'Session is on legal hold. Release the hold first if that was a mistake.');
+      stmt.unhide.run(code); stmt.clearReports.run(code);
+      mod.clearReviewFlags(code);
+      log('info', 'public_admin_action', { session: code, action });
+      return res.json({ ok: true, restored: true });
+    }
+    if (action === 'remove') {
+      if (!session) return safeError(res, 404, 'Session not found');
+      stmt.hide.run(code);
+      const r = mod.addStrike(session.createdBy, code, note || 'Public listing removed by staff', 'staff');
+      log('info', 'public_admin_action', { session: code, action, strikes: r.count, banned: r.banned });
+      // Keep the staff channel's record complete: every strike, and the ban.
+      require('../moderation/staff-alerts').postStaffAlert({
+        title: r.banned ? `${session.createdBy} banned from public posting (${r.count} strikes)` : `Strike ${r.count}/${mod.STRIKES_TO_BAN}: ${session.createdBy}`,
+        level: r.banned ? 'warn' : 'info',
+        fields: [
+          { name: 'Session', value: code, inline: true },
+          { name: 'Host', value: session.createdBy, inline: true },
+          { name: 'Note', value: note || 'Public listing removed by staff' }
+        ]
+      }).catch(() => {});
+      return res.json({ ok: true, host: session.createdBy, strikes: r.count, bannedFromPublic: r.banned || !!mod.getBan(session.createdBy) });
+    }
+    if (action === 'csam') {
+      if (!session) return safeError(res, 404, 'Session not found');
+      await mod.handleCsam(session, { trigger: 'Confirmed by staff', detail: note || 'Staff confirmed apparent CSAM', by: 'staff' });
+      return res.json({ ok: true, hold: getHold(code), host: session.createdBy });
+    }
+    return safeError(res, 400, 'action must be "restore", "remove" or "csam"');
+  });
+
+  // Strikes / public ban for one account.
+  //   GET  /admin/public/users/NAME
+  //   POST /admin/public/users/NAME  {"action":"unban"} | {"action":"clear-strikes"} | {"action":"ban","note":"..."}
+  app.get('/admin/public/users/:username', requireAdmin, (req, res) => {
+    const name = sanitizeUsername(req.params.username);
+    if (!name) return safeError(res, 400, 'Invalid username');
+    res.json({ username: name, strikes: mod.getStrikes(name), ban: mod.getBan(name), strikesToBan: mod.STRIKES_TO_BAN });
+  });
+
+  app.post('/admin/public/users/:username', requireAdmin, (req, res) => {
+    const name = sanitizeUsername(req.params.username);
+    if (!name) return safeError(res, 400, 'Invalid username');
+    const action = req.body?.action;
+    if (action === 'unban') res.json({ ok: true, unbanned: mod.unban(name) });
+    else if (action === 'clear-strikes') res.json({ ok: true, cleared: mod.clearStrikes(name) });
+    else if (action === 'ban') { mod.banFromPublic(name, req.body?.note || 'Banned by staff', 'staff'); res.json({ ok: true }); }
+    else return safeError(res, 400, 'action must be "unban", "clear-strikes" or "ban"');
+    log('info', 'public_admin_user_action', { username: name, action });
+  });
+
+  // Legal holds. Release only if a hold was placed by mistake (a scanner
+  // false positive staff have checked) — never after an NCMEC report.
+  app.get('/admin/holds', requireAdmin, (req, res) => res.json({ holds: listHolds() }));
+  app.post('/admin/holds/:code', requireAdmin, (req, res) => {
+    const code = sanitizeCode(req.params.code);
+    if (!code) return safeError(res, 400, 'Invalid session code');
+    if (req.body?.action !== 'release') return safeError(res, 400, 'action must be "release"');
+    const released = releaseHold(code);
+    log('warn', 'legal_hold_released', { session: code, released });
+    res.json({ ok: true, released });
+  });
+
+  // Fresh case file for a session, as a PDF download.
+  //   curl -s localhost:3000/admin/public/ABC123/case -H "X-Admin-Secret: $ADMIN_SECRET" -o case.pdf
+  app.get('/admin/public/:code/case', requireAdmin, (req, res) => {
+    const code = sanitizeCode(req.params.code);
+    const session = code && sessions.get(code);
+    if (!session) return safeError(res, 404, 'Session not found');
+    const caseId = mod.newCaseId();
+    const pdf = mod.buildCaseFile(session, {
+      caseId, kind: 'report', trigger: 'Requested by staff', detail: 'On-demand case file', actions: []
+    });
+    res.set('Content-Type', 'application/pdf');
+    res.set('Content-Disposition', `attachment; filename="${caseId}.pdf"`);
+    res.send(pdf);
   });
 }
 

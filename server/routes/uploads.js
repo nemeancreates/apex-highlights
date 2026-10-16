@@ -839,6 +839,9 @@ function initUploadRoutes(app, io) {
     const session = sessions.get(code);
     if (!session) return safeError(res, 404, 'Session not found');
 
+    // Evidence under legal hold can't be deleted by anyone through the API.
+    if (require('../moderation/legal-hold').isOnHold(code)) return safeError(res, 404, 'Session not found');
+
     const requesterName = sanitizeUsername(req.user.username);
     const idx = session.uploads.findIndex(u => u.id === req.params.uploadId);
     const rec = idx === -1 ? null : session.uploads[idx];

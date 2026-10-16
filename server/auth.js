@@ -18,6 +18,8 @@ const { getFlags, setFlags } = require('./killswitch');
 const { DISCORD_ENABLED, DISCORD_RECOVERY_REDIRECT_URI, PRIVACY_POLICY_VERSION } = require('./config');
 const { buildAuthorizeUrl, exchangeCodeForUser, consumeState, linkDiscordAccount, buildRecoveryUrl, consumeRecoveryState } = require('./discord-oauth');
 const { syncRole } = require('./discord-bot');
+const { recordEvent } = require('./anomaly');
+const loginSlots = require('./login-slots');
 // A user's tier as of right now — falls back to t1 for missing/unknown/
 // expired tiers rather than trusting a stale field forever. tierExpiresAt
 // is null for lifetime grants (redeemed codes, manual); a future Stripe
@@ -153,11 +155,27 @@ function requireAdmin(req, res, next) {
 // token minted before tv existed has no tv claim; treated as version 0,
 // which matches the DEFAULT 0 on existing rows, so nobody is force-logged
 // out by the upgrade itself — only by a genuine newer login.
+// Also checks the login slot (login-slots.js): a token with a sid is only
+// good while that slot is still one of the account's active logins.
 function tokenVersionOk(decoded) {
-  const user = users.get((decoded.username || '').toLowerCase());
+  const key = (decoded.username || '').toLowerCase();
+  const user = users.get(key);
   if (!user) return false;
   const claimTv = typeof decoded.tv === 'number' ? decoded.tv : 0;
-  return claimTv === (user.tokenVersion || 0);
+  if (claimTv !== (user.tokenVersion || 0)) return false;
+  if (decoded.sid) return loginSlots.isActive(key, decoded.sid);
+  return true;
+}
+
+// Mints a token in a fresh login slot. The account's first slot login
+// bumps tokenVersion once so pre-slot tokens (no sid) stop working —
+// they'd otherwise be an uncounted extra login. Caller saves the user.
+function issueLoginToken(user) {
+  const key = user.username.toLowerCase();
+  if (!loginSlots.hasSlots(key)) user.tokenVersion = (user.tokenVersion || 0) + 1;
+  const { sid, evicted } = loginSlots.openSlot(key);
+  if (evicted.length) log('info', 'login_slot_evicted', { username: user.username, evicted: evicted.length });
+  return jwt.sign({ username: user.username, tv: user.tokenVersion || 0, sid }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
 }
 
 function requireAuth(req, res, next) {
@@ -168,7 +186,7 @@ function requireAuth(req, res, next) {
   try {
     const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET);
     if (!tokenVersionOk(decoded)) {
-      return safeError(res, 401, 'Signed in on another device. Please log in again.');
+      return safeError(res, 401, 'Signed in on too many devices — this one was signed out. Please log in again.');
     }
     req.user = decoded;
     next();
@@ -191,7 +209,7 @@ function requireAuthAny(req, res, next) {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     if (!tokenVersionOk(decoded)) {
-      return safeError(res, 401, 'Signed in on another device. Please log in again.');
+      return safeError(res, 401, 'Signed in on too many devices — this one was signed out. Please log in again.');
     }
     req.user = decoded;
     next();
@@ -272,7 +290,10 @@ function initAuthRoutes(app) {
     if (!user) return safeError(res, 400, 'Account not found');
 
     user.passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    // Sign out everywhere: the version bump kills every token, and the
+    // slots go so the next two logins start fresh.
     user.tokenVersion = (user.tokenVersion || 0) + 1;
+    loginSlots.clearSlots(user.username.toLowerCase());
     saveUsersToDisk();
     log('info', 'password_reset_via_discord', { username: user.username });
 
@@ -312,8 +333,9 @@ function initAuthRoutes(app) {
       privacyVersionAccepted: PRIVACY_POLICY_VERSION, privacyAcceptedAt: Date.now(),
       recordingConsentSeen: false
     };
-        user.tokenVersion = 0;
+    user.tokenVersion = 0;
     users.set(clean.toLowerCase(), user);
+    const token = issueLoginToken(user);
     saveUsersToDisk();
     // Only count SUCCESSFUL registrations — a typo'd username or a taken
     // name shouldn't burn someone's daily allowance.
@@ -324,7 +346,6 @@ function initAuthRoutes(app) {
       event: 'registration_burst_detected',
       extra: { ip }
     });
-    const token = jwt.sign({ username: clean, tv: user.tokenVersion }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
     log('info', 'user_registered', { username: clean, ip });
     return res.status(201).json({
       token, username: clean, tier: 't1',
@@ -346,11 +367,10 @@ function initAuthRoutes(app) {
     if (!user || !valid) {
       return safeError(res, 401, 'Invalid username or password');
     }
-    // Newest-wins: bump the version so every previously-issued token for
-    // this account (other devices) fails its tv check from here on.
-    user.tokenVersion = (user.tokenVersion || 0) + 1;
+    // Up to loginSlots.MAX_LOGINS places at once (e.g. PC + phone). A login
+    // past that signs out only the oldest one.
+    const token = issueLoginToken(user);
     saveUsersToDisk();
-    const token = jwt.sign({ username: user.username, tv: user.tokenVersion }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
     log('info', 'user_login', { username: user.username, tier: getEffectiveTier(user) });
     return res.status(200).json({
       token, username: user.username, tier: getEffectiveTier(user), tierExpiresAt: user.tierExpiresAt || null,
@@ -358,6 +378,13 @@ function initAuthRoutes(app) {
       privacyPolicyVersion: PRIVACY_POLICY_VERSION,
       recordingConsentSeen: !!user.recordingConsentSeen
     });
+  });
+
+  // Frees this device's login slot. Clients that just drop their token
+  // still work — the slot ages out when two newer logins replace it.
+  app.post('/auth/logout', requireAuth, (req, res) => {
+    if (req.user.sid) loginSlots.closeSlot(req.user.username.toLowerCase(), req.user.sid);
+    res.json({ ok: true });
   });
 
   app.get('/auth/me', requireAuth, (req, res) => {

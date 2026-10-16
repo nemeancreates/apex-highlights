@@ -31,6 +31,8 @@ const db = require('./db');
 
 const users = new Map();
 const sessions = new Map();
+// Legal holds (moderation/legal-hold.js) exempt a session from expiry.
+const { isOnHold } = require('./moderation/legal-hold');
 
 // ================================
 // CLIP WEIGHT — duration-based clip-count cost. 0-3min = 1, 3:01-6min = 2.
@@ -240,7 +242,7 @@ function loadSessionsFromDisk() {
   let loaded = 0, expired = 0, migratedCount = 0;
   for (const row of stmt.allSessions.all()) {
     // Per-session tier retention, with the global TTL as the fallback
-    if (now > sessionExpiryMs(row)) {
+    if (now > sessionExpiryMs(row) && !isOnHold(row.code)) {
       stmt.deleteSession.run(row.code); // cascade drops uploads
       expired++;
       continue;
@@ -425,7 +427,8 @@ function startSessionPurge() {
     const now = Date.now();
     let purged = 0;
     for (const [code, session] of sessions) {
-      if (now > sessionExpiryMs(session)) {
+      // Held sessions are evidence: never expired, never deleted.
+      if (now > sessionExpiryMs(session) && !isOnHold(code)) {
         for (const up of session.uploads) {
           if (up.videoKey) await deleteFromSpaces(up.videoKey);
           if (up.thumbnailKey) await deleteFromSpaces(up.thumbnailKey);
