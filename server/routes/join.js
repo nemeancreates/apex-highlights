@@ -128,7 +128,7 @@ function initJoinRoutes(app) {
     }
 
     const session = sessions.get(code);
-    if (!session) {
+    if (!session || require('../moderation/legal-hold').isOnHold(code)) {
       log('info', 'join_page_miss', { code });
       return res.status(404).send(page({
         code, valid: false,

@@ -125,12 +125,12 @@ const ANOMALY_REGISTER_BURST_WINDOW = 300000;   // 5 minutes
 // ================================
 // NEW — clipCap in seconds of highlight time per session
 const TIERS = {
-  t1: { label: 'Free',    canHost: true, memberCap: 2,  clipCap: 3600,   sessionsPerMonth: 6,   retentionDays: 1,  hasAiReel: false, aiReelMaxSec: 0,    reelPriority: 0, hasAutoCapture: false, hasAiReelPro: false, aiReelProMonthlyCap: 0, hasDownload: false, hasExport: false },
-  t2: { label: 'Creator', canHost: true, memberCap: 5,  clipCap: 36000,  sessionsPerMonth: 20,  retentionDays: 30,  hasAiReel: false, aiReelMaxSec: 0,    reelPriority: 0, hasAutoCapture: true, hasAiReelPro: false, aiReelProMonthlyCap: 0, hasDownload: true,  hasExport: true },
-  t3: { label: 'Squad',   canHost: true, memberCap: 11, clipCap: 79200,  sessionsPerMonth: 45,  retentionDays: 30, hasAiReel: true,  aiReelMaxSec: 900,  reelPriority: 0, hasAutoCapture: true, hasAiReelPro: false, aiReelProMonthlyCap: 0, hasDownload: true,  hasExport: true },
-  t4: { label: 'Pro',     canHost: true, memberCap: 25, clipCap: 144000, sessionsPerMonth: 110, retentionDays: 60, hasAiReel: true,  aiReelMaxSec: 1800, reelPriority: 1, hasAutoCapture: true, hasAiReelPro: true,  aiReelProMonthlyCap: 100, hasDownload: true,  hasExport: true },
+  t1: { label: 'Free',    canHost: true, memberCap: 2,  clipCap: 3600,   sessionsPerMonth: 6,   retentionDays: 1,  hasAiReel: false, aiReelMaxSec: 0,    reelPriority: 0, hasAutoCapture: false, hasAiReelPro: false, aiReelProMonthlyCap: 0, hasDownload: false, hasExport: false, canListPublic: false },
+  t2: { label: 'Creator', canHost: true, memberCap: 5,  clipCap: 36000,  sessionsPerMonth: 20,  retentionDays: 30,  hasAiReel: false, aiReelMaxSec: 0,    reelPriority: 0, hasAutoCapture: true, hasAiReelPro: false, aiReelProMonthlyCap: 0, hasDownload: true,  hasExport: true, canListPublic: true },
+  t3: { label: 'Squad',   canHost: true, memberCap: 11, clipCap: 79200,  sessionsPerMonth: 45,  retentionDays: 30, hasAiReel: true,  aiReelMaxSec: 900,  reelPriority: 0, hasAutoCapture: true, hasAiReelPro: false, aiReelProMonthlyCap: 0, hasDownload: true,  hasExport: true, canListPublic: true },
+  t4: { label: 'Pro',     canHost: true, memberCap: 25, clipCap: 144000, sessionsPerMonth: 110, retentionDays: 60, hasAiReel: true,  aiReelMaxSec: 1800, reelPriority: 1, hasAutoCapture: true, hasAiReelPro: true,  aiReelProMonthlyCap: 100, hasDownload: true,  hasExport: true, canListPublic: true },
   // Founder — $1,500 lifetime Kickstarter tier.
-  t5: { label: 'Founder', canHost: true, memberCap: 41, clipCap: 144000, sessionsPerMonth: 200, retentionDays: 60, hasAiReel: true,  aiReelMaxSec: 1800, reelPriority: 2, hasAutoCapture: true, hasAiReelPro: true,  aiReelProMonthlyCap: 100, hasDownload: true,  hasExport: true }
+  t5: { label: 'Founder', canHost: true, memberCap: 41, clipCap: 144000, sessionsPerMonth: 200, retentionDays: 60, hasAiReel: true,  aiReelMaxSec: 1800, reelPriority: 2, hasAutoCapture: true, hasAiReelPro: true,  aiReelProMonthlyCap: 100, hasDownload: true,  hasExport: true, canListPublic: true }
 };
 
 // Derives a tier-key array from a TIERS capability flag, e.g.

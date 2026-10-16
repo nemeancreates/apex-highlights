@@ -16,6 +16,8 @@ const sessionLookupLimiter = createRateLimiter({ windowMs: 60000, max: 20 });
 const { sessions, users, saveUsersToDisk, getSessionsByUser } = require('../stores');
 const { requireAuth, getEffectiveTier, getMonthKey } = require('../auth');
 const { listStars, getSquadCanStar } = require('./stars');
+// A session on legal hold reads as "not found" to everyone.
+const { isOnHold } = require('../moderation/legal-hold');
 
 // Shared by POST /sessions and the migrate-session socket handler.
 // Returns { session } on success or { error, status } on failure.
@@ -125,7 +127,7 @@ function initSessionRoutes(app) {
     if (!code) return res.status(400).json({ error: 'Invalid session code' });
 
     const session = sessions.get(code);
-    if (!session) return res.status(404).json({ error: 'Session not found' });
+    if (!session || isOnHold(code)) return res.status(404).json({ error: 'Session not found' });
 
     res.json({
       code: session.code,
@@ -150,7 +152,7 @@ function initSessionRoutes(app) {
     if (!code) return res.status(400).json({ error: 'Invalid session code' });
 
     const session = sessions.get(code);
-    if (!session) return res.status(404).json({ error: 'Session not found' });
+    if (!session || isOnHold(code)) return res.status(404).json({ error: 'Session not found' });
 
     // closed/expiresAt ride along so the client can tell the three cases
     // apart without guessing: 404 = purged past retention (nothing to sync

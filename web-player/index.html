@@ -150,6 +150,7 @@
     .pov-pager-btn.next { right: 6px; }
     /* Public toggle + roulette bar */
     #publicBtn.on { color: #39d3a0; border-color: #1d9e75; }
+    #publicBtn.pa-public-locked { filter: grayscale(1); opacity: .5; cursor: not-allowed; }
     .roulette-bar { display: none; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 8px 14px;
       background: linear-gradient(90deg, rgba(57,211,160,0.14), rgba(108,79,216,0.10)); border-bottom: 1px solid #1e3527;
       font-size: 13px; color: #c8d6cd; }
@@ -6208,7 +6209,7 @@
     var ROULETTE_SEEN_KEY = 'pa_roulette_seen';
     var SEEN_MAX = 300;
     var roulette = { on: false, platform: null, last: null, count: 0, autoTimer: null };
-    var publicState = { isPublic: false, underReview: false };
+    var publicState = { isPublic: false, underReview: false, state: 'off', canList: true, reason: null };
 
     function seenList() {
       try { var a = JSON.parse(localStorage.getItem(ROULETTE_SEEN_KEY) || '[]'); return Array.isArray(a) ? a : []; }
@@ -6228,13 +6229,20 @@
       var show = !!(isHost && myAuthToken && currentSessionCode);
       btn.style.display = show ? '' : 'none';
       if (!show) return;
-      btn.classList.toggle('on', publicState.isPublic);
-      btn.disabled = publicState.underReview;
-      btn.textContent = publicState.underReview ? '\u{1F310} Under review'
-        : '\u{1F310} Public: ' + (publicState.isPublic ? 'On' : 'Off');
-      btn.title = publicState.underReview
-        ? 'This session was reported and is hidden until it’s reviewed.'
-        : publicState.isPublic ? 'Listed on peakabu.app/browse — click to unlist'
+      var st = publicState.state || (publicState.isPublic ? 'live' : 'off');
+      var locked = st === 'off' && publicState.canList === false;
+      btn.classList.toggle('on', st === 'live' || st === 'checking');
+      // Not allowed to go public (tier or public ban): greyed, reason on
+      // hover. A live listing can always be turned off.
+      btn.classList.toggle('pa-public-locked', locked);
+      btn.disabled = st === 'under-review' || locked;
+      btn.textContent = st === 'under-review' ? '\u{1F310} Under review'
+        : st === 'checking' ? '\u{1F310} Public: Checking…'
+        : '\u{1F310} Public: ' + (st === 'live' ? 'On' : 'Off');
+      btn.title = st === 'under-review' ? 'Hidden from the public page until staff review it.'
+        : st === 'checking' ? 'Safety checks running — it shows on peakabu.app/browse once they pass. Click to unlist.'
+        : st === 'live' ? 'Listed on peakabu.app/browse — click to unlist'
+        : locked ? (publicState.reason || 'Public sessions are for Creator tier and up.')
         : 'List this session on peakabu.app/browse';
     }
 
@@ -6252,7 +6260,8 @@
 
     window.paTogglePublic = async function () {
       if (!currentSessionCode || !myAuthToken) return;
-      var want = !publicState.isPublic;
+      var cur = publicState.state || (publicState.isPublic ? 'live' : 'off');
+      var want = !(cur === 'live' || cur === 'checking');
       if (want && !window.confirm('Make this session public?\n\nAnyone will be able to find and watch it on peakabu.app/browse until it expires. Make sure everyone in it is OK being public. You can unlist it any time.')) return;
       try {
         var res = await fetch('/sessions/' + encodeURIComponent(currentSessionCode) + '/public', {
@@ -6262,7 +6271,7 @@
         });
         var data = await res.json().catch(function () { return {}; });
         if (!res.ok) { alert(data.error || 'Couldn’t change that. Try again.'); return; }
-        publicState.isPublic = !!data.isPublic;
+        publicState = data;
       } catch (e) { alert('Couldn’t reach the server. Try again.'); return; }
       renderPublicBtn();
     };

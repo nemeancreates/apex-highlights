@@ -170,7 +170,7 @@ function initSockets(io) {
       }
 
       const session = sessions.get(sessionCode);
-      if (!session) { socket.emit('error-message', { message: 'Session not found' }); return; }
+      if (!session || require('../moderation/legal-hold').isOnHold(sessionCode)) { socket.emit('error-message', { message: 'Session not found' }); return; }
 
       if (session.closed) {
         if (cleanUsername === session.createdBy) {
