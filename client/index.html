@@ -837,7 +837,7 @@
               <img src="assets/kickstarter.png" alt="kickstarter" />
             </button>
           </div>
-          <span class="version-tag">v0.1.93</span>
+          <span class="version-tag">v0.1.94</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="redeem-wrap">
@@ -1265,8 +1265,8 @@
                      style="text-transform:uppercase;letter-spacing:3px;text-align:center;width:100%;box-sizing:border-box;padding-right:34px;"
                      oninput="updateJoinCodeBrowserIcon()" />
               <button id="joinCodeBrowserIcon" onclick="openPlayerForCode(document.getElementById('joinCodeInput').value.trim().toUpperCase())"
-                      title="Open in Web Player — view the AI Reel and comment without joining"
-                      style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);width:26px;height:26px;min-width:26px;background:none;border:none;cursor:pointer;font-size:16px;line-height:1;padding:0;margin:0;align-items:center;justify-content:center;">🌐</button>
+                      title="Type a session code to open it in the Web Player" disabled
+                      style="display:flex;filter:grayscale(1);opacity:0.4;position:absolute;right:6px;top:50%;transform:translateY(-50%);width:26px;height:26px;min-width:26px;background:none;border:none;cursor:default;font-size:16px;line-height:1;padding:0;margin:0;align-items:center;justify-content:center;">🌐</button>
             </div>
             <div id="joinCodeError" style="display:none;color:#f0857a;font-size:12px;margin-top:-4px;margin-bottom:6px;text-align:center;"></div>
             <button class="btn-secondary" id="joinSessionBtn" onclick="joinSession()">Join Session</button>
@@ -3407,7 +3407,14 @@
         var input = document.getElementById('joinCodeInput');
         var icon = document.getElementById('joinCodeBrowserIcon');
         if (!input || !icon) return;
-        icon.style.display = (input.value.trim().length >= 4) ? 'flex' : 'none';
+        // Always on screen; greyed out until the box holds a plausible code.
+        var ready = input.value.trim().length >= 4;
+        icon.disabled = !ready;
+        icon.style.filter = ready ? 'none' : 'grayscale(1)';
+        icon.style.opacity = ready ? '1' : '0.4';
+        icon.style.cursor = ready ? 'pointer' : 'default';
+        icon.title = ready ? 'Open in Web Player — view the AI Reel and comment without joining'
+                           : 'Type a session code to open it in the Web Player';
         clearJoinCodeError();
       };
 
@@ -6785,6 +6792,11 @@
       };
 
       window.logoutUser = function() {
+        // Free this PC's login slot on the server (an account can be signed
+        // in at 2 places). Fire-and-forget: logging out never waits on it.
+        if (window.authToken) {
+          try { fetch('https://peakabu.app/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + window.authToken } }).catch(function () {}); } catch (e) {}
+        }
         clearAuthState();
         renderDiscordStatus(false);
         showAuthLoggedOut();
