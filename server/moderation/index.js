@@ -403,6 +403,8 @@ function startModerationSweep(getListedCodes) {
   setInterval(() => {
     try {
       for (const { sessionCode } of stmt.scanSessions.all()) {
+        // 'm-…' rows belong to Peakabu Mobile listings; mobile.js cleans those.
+        if (sessionCode.startsWith('m-')) continue;
         if (!sessions.has(sessionCode)) stmt.dropScans.run(sessionCode);
       }
     } catch (e) {}

@@ -605,7 +605,8 @@ function initPublicRoutes(app) {
     if (!/^[A-Za-z0-9_-]{4,32}$/.test(id)) return safeError(res, 400, 'Invalid id');
     const action = req.body?.action;
     if (action !== 'restore' && action !== 'hide') return safeError(res, 400, 'action must be "restore" or "hide"');
-    mobile.setMobileListingHidden(id, action === 'hide');
+    const r = mobile.setMobileListingHidden(id, action === 'hide');
+    if (!r.ok) return safeError(res, 409, r.error);
     log('info', 'mobile_listing_admin_action', { id, action });
     res.json({ ok: true });
   });

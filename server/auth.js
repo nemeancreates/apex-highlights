@@ -420,6 +420,14 @@ function initAuthRoutes(app) {
     res.json(mobile.getMobileStatus(user, getEffectiveTier(user)));
   });
 
+  // Where a listed mobile session stands with moderation, for the host's switch.
+  app.get('/internal/mobile/listing-state/:id', (req, res) => {
+    if (!mobile.mobileSecretOk(req)) return safeError(res, 403, 'Forbidden');
+    const id = String(req.params.id || '');
+    if (!/^[A-Za-z0-9_-]{4,32}$/.test(id)) return safeError(res, 400, 'Invalid id');
+    res.json({ state: mobile.mobileListingState(id) });
+  });
+
   app.post('/internal/mobile/event-passes/:id/claim', (req, res) => {
     if (!mobile.mobileSecretOk(req)) return safeError(res, 403, 'Forbidden');
     const { username, sessionId } = req.body || {};

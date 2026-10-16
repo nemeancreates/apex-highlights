@@ -138,6 +138,7 @@
         <li><strong>Hosts</strong> sign in with their Peak-Abu account. Your username and password go straight to our main server to sign you in; the mobile server keeps only the resulting sign-in token in a cookie on your browser. To enforce the free plan's daily hosting time, we keep a per-account count of minutes used, for today and yesterday only.</li>
         <li><strong>Guests</strong> don't need an account. We store the display name you type, the times you were filming or paused, and which Peak Spot (area QR code) you joined from, if any.</li>
         <li><strong>Recordings.</strong> Your phone keeps a short rolling buffer in its own memory. It is only uploaded when someone in the session taps PEAK, and only the part covering that moment. Photos you take with the in-app shutter are uploaded when you take them. Clips and photos may include anyone and anything your camera sees and hears.</li>
+        <li><strong>Safety checks.</strong> If the host lists the session publicly, its clip thumbnails and photos go through the same automated checks as PC clips before it can appear (see Section 10).</li>
         <li><strong>Who can watch.</strong> By default, only members of the session, or people the host gives the watch link to. If the host makes the session public, anyone with the link can watch. If the host also lists it on Peak-Abu public sessions, its saved peaks can appear on peakabu.app/browse and in Peak Roulette for anyone to find.</li>
         <li><strong>Retention.</strong> Sessions, clips, photos, and comments are permanently deleted 60 days after the session ends.</li>
         <li><strong>Cookies.</strong> m.peakabu.app sets a few essential cookies: a guest pass that keeps you in a session you joined, a host pass for the browser that started it, and the host's sign-in token. They are HttpOnly, used only by m.peakabu.app, and are not used for analytics or advertising.</li>
@@ -213,14 +214,16 @@
       <h2 id="sharing">9. Who We Share With</h2>
       <table>
         <tr><th>Provider</th><th>Role</th><th>Data involved</th></tr>
-        <tr><td>Cloudflare</td><td>Object storage and CDN for clips</td><td>Clips, clip metadata, request logs</td></tr>
+        <tr><td>Cloudflare</td><td>Object storage and CDN for clips; CSAM hash matching on public listings</td><td>Clips, clip metadata, request logs</td></tr>
         <tr><td>DigitalOcean</td><td>Server hosting</td><td>All server-side data</td></tr>
         <tr><td>Stripe</td><td>Payment processing</td><td>Billing email, payment details, billing country</td></tr>
-        <tr><td>Zoho Mail</td><td>Sending codes you ask us to email</td><td>The email address you enter and the message with your code, for that one send</td></tr>
+        <tr><td>Our email delivery provider<!-- TODO: name the provider once chosen --></td><td>Sending codes you ask us to email, from a no-reply Peakabu address</td><td>The email address you enter and the message with your code, for that one send</td></tr>
         <tr><td>Sentry</td><td>Crash and error monitoring</td><td>Diagnostic data (see §5.4)</td></tr>
         <tr><td>Discord</td><td>Optional account linking, role sync, password recovery</td><td>Discord ID, username, avatar</td></tr>
         <tr><td>Anthropic</td><td>AI Reel generation, where enabled</td><td>Submitted clip content; not used for training</td></tr>
         <tr><td>Google Workspace</td><td>Business email</td><td>Correspondence you send us</td></tr>
+        <tr><td>OpenAI</td><td>Content classifier for public-listing safety checks</td><td>Clip thumbnails and photos from sessions being listed publicly</td></tr>
+        <tr><td>NCMEC</td><td>Legally required reports of apparent child sexual abuse material</td><td>The material and account details involved</td></tr>
         <tr><td>Kickstarter</td><td>Crowdfunding, where applicable</td><td>Backer identity, pledge and reward status</td></tr>
       </table>
       <p>We also disclose information when you direct us to (e.g. sharing a session link), when legally required (a valid subpoena, court order, or law enforcement request), to protect rights and safety, or as part of a business transfer — in which case we'll notify you before your information becomes subject to a materially different policy. We do not sell personal information or share it for cross-context behavioral advertising.</p>
@@ -228,6 +231,7 @@
       <h2 id="public-links">10. Share Links Are Public By Design</h2>
       <p>Anyone with a Session's share link can watch that Session's clips in the web player without an account. Share links use long, randomly generated identifiers that are impractical to guess, but they are not secret, and once shared you cannot control who it gets forwarded to. Clips remain reachable by link until they expire under your tier's retention period. <strong>Treat anything you capture and share as potentially public.</strong></p>
       <p><strong>Public listings.</strong> A host can also list a session on Peak-Abu public sessions (peakabu.app/browse and Peak Roulette), on PC or Peakabu Mobile. A listing shows the session's name, the host's username, a preview image, and its saved peaks to anyone, without a link. The host can unlist it at any time. Anyone can report a listing; reported listings may be hidden while we review them.</p>
+      <p><strong>Safety checks before a listing goes public.</strong> Before a session appears in public listings, and again whenever new footage is added, we run automated checks on its clip thumbnails (and, for Peakabu Mobile, its photos): a match against known child sexual abuse material using Cloudflare's CSAM Scanning Tool, and a content classifier (OpenAI's moderation API) that flags sexual or graphically violent images for a person on our team to review. Only listed sessions are checked, and only still images, not full videos. Images sent to the classifier are used to return a result and are not used to train models. A match against known abuse material is preserved and reported to the National Center for Missing &amp; Exploited Children (NCMEC) as the law requires.</p>
 
       <h2 id="security">11. Security</h2>
       <ul>

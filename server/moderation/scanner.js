@@ -21,6 +21,8 @@
 //    child-safety category is text-only), which is why layer 1 exists.
 //
 // Thumbnails only: one frame per clip. Video frames aren't scanned yet.
+// Peakabu Mobile listings get the same two layers on every clip thumbnail
+// and every photo, before the listing can show (see mobile.js).
 // ================================
 const { log } = require('../logger');
 
@@ -95,7 +97,13 @@ async function classify(url) {
 //   { verdict: 'clean' | 'csam' | 'review' | 'unscanned', detail }
 // 'unscanned' = no layer could check it (not configured, or no thumbnail).
 async function scanUpload(code, upload) {
-  const { url, scanUrl } = thumbUrls(code, upload);
+  return scanImage(thumbUrls(code, upload));
+}
+
+// Same two layers on any image. url = what the classifier fetches; scanUrl =
+// the same image through the Cloudflare zone with CSAM Scanning turned on.
+// Peakabu Mobile uses this for its clip thumbnails and photos (mobile.js).
+async function scanImage({ url, scanUrl }) {
   const hm = await hashMatch(scanUrl);
   if (hm.match) return { verdict: 'csam', detail: 'Cloudflare CSAM Scanning Tool hash match (HTTP 451)' };
   // Never send a hash-matched image anywhere else; only unmatched ones
@@ -118,4 +126,4 @@ function logStartup() {
   });
 }
 
-module.exports = { scanUpload, scannerConfigured: configured, logScannerStartup: logStartup };
+module.exports = { scanUpload, scanImage, scannerConfigured: configured, logScannerStartup: logStartup };

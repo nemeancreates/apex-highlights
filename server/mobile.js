@@ -7,7 +7,10 @@
 //   - is this account paying for Mobile right now? (getMobileStatus)
 //   - claim one of its $3 event passes for a session (claimEventPass)
 // It also hands us its public listings, which /browse and Peak Roulette
-// merge in (see routes/public.js).
+// merge in (see routes/public.js). A mobile listing goes through the SAME
+// scanners as PC footage (moderation/scanner.js: CSAM hash match + content
+// classifier) on every clip thumbnail and photo, and only shows once all of
+// it is clean. New footage puts it back to "checking" until that's scanned.
 //
 // Paying for Mobile = any of:
 //   - an active Mobile pass (Stripe 1- or 3-month code, see routes/billing.js)
@@ -50,6 +53,15 @@ db.exec(`
     createdAt   INTEGER NOT NULL,
     PRIMARY KEY (listingId, reporterKey)
   );
+  -- Shared with moderation/index.js (same schema). Created here too because
+  -- this file can load first, and its statements are prepared at load.
+  CREATE TABLE IF NOT EXISTS moderation_scans (
+    uploadId    TEXT PRIMARY KEY,
+    sessionCode TEXT NOT NULL,
+    verdict     TEXT NOT NULL,
+    detail      TEXT,
+    scannedAt   INTEGER NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS mobile_listing_hidden (
     listingId TEXT PRIMARY KEY,
     reason    TEXT,
@@ -68,6 +80,17 @@ const stmt = {
   `),
   eventsFor:   db.prepare(`SELECT * FROM mobile_event_passes WHERE usernameLower = ? AND endsAt > ? ORDER BY startsAt ASC`),
   getEvent:    db.prepare(`SELECT * FROM mobile_event_passes WHERE id = ?`),
+  scansFor:    db.prepare(`SELECT uploadId, verdict, detail FROM moderation_scans WHERE sessionCode = ?`),
+  putScan:     db.prepare(`
+    INSERT INTO moderation_scans (uploadId, sessionCode, verdict, detail, scannedAt)
+    VALUES (@uploadId, @sessionCode, @verdict, @detail, @scannedAt)
+    ON CONFLICT(uploadId) DO UPDATE SET verdict = excluded.verdict, detail = excluded.detail, scannedAt = excluded.scannedAt
+  `),
+  clearReview: db.prepare(`UPDATE moderation_scans SET verdict = 'cleared', detail = COALESCE(detail, '') || ' (cleared by staff)' WHERE sessionCode = ? AND verdict = 'review'`),
+  hasCsam:     db.prepare(`SELECT 1 FROM moderation_scans WHERE sessionCode = ? AND verdict = 'csam' LIMIT 1`),
+  mobileScanCodes: db.prepare(`SELECT DISTINCT sessionCode FROM moderation_scans WHERE sessionCode LIKE 'm-%'`),
+  dropScans:   db.prepare(`DELETE FROM moderation_scans WHERE sessionCode = ?`),
+  getHidden:   db.prepare(`SELECT * FROM mobile_listing_hidden WHERE listingId = ?`),
   claimEvent:  db.prepare(`UPDATE mobile_event_passes SET claimedBy = ?, claimedAt = ? WHERE id = ? AND (claimedBy IS NULL OR claimedBy = ?)`),
   dropOldEvents: db.prepare(`DELETE FROM mobile_event_passes WHERE endsAt < ?`),
 
@@ -139,11 +162,17 @@ function claimEventPass(usernameLower, id, sessionId) {
 
 // --- Public listings from the mobile server --------------------------------
 // The mobile server lists what its hosts switched public. We poll it once a
-// minute and keep the last good copy, so /browse never waits on it.
+// minute, keep the last good copy (so /browse never waits on it), and scan
+// any new media straight after.
 const MOBILE_API_URL = (process.env.MOBILE_API_URL || '').replace(/\/$/, '');
 const MOBILE_SHARED_SECRET = process.env.MOBILE_SHARED_SECRET || '';
+const PREFIX = 'm-';
 let listingCache = [];
 let listingFetchedAt = 0;
+
+// Lazy: moderation/ requires auth.js, which requires this file.
+const mod = () => require('./moderation');
+const scanner = () => require('./moderation/scanner');
 
 async function refreshMobileListings() {
   if (!MOBILE_API_URL || !MOBILE_SHARED_SECRET) return;
@@ -161,12 +190,106 @@ async function refreshMobileListings() {
   } catch (err) {
     log('warn', 'mobile_listings_fetch_failed', { error: err.message });
   }
+  await scanMobileListings();
 }
 
 function validListing(l) {
   return l && typeof l.id === 'string' && /^[A-Za-z0-9_-]{4,32}$/.test(l.id) &&
     typeof l.watchUrl === 'string' && /^https?:\/\//.test(l.watchUrl) &&
-    Array.isArray(l.peaks);
+    Array.isArray(l.peaks) && Array.isArray(l.media);
+}
+
+// Every clip thumbnail and photo in the listing is one scan item.
+//   'clean'   every item passed (or no scanner is configured, same as PC)
+//   'pending' something isn't scanned yet (incl. a clip with no thumbnail yet)
+//   'flagged' anything came back csam or review
+function listingScanState(l) {
+  const conf = scanner().scannerConfigured();
+  const byId = new Map(stmt.scansFor.all(PREFIX + l.id).map(r => [r.uploadId, r]));
+  let pending = false;
+  for (const m of l.media) {
+    const r = byId.get(itemKey(l, m));
+    if (r && (r.verdict === 'csam' || r.verdict === 'review')) return 'flagged';
+    if (!r && (conf.hashMatch || conf.classifier)) pending = true;
+  }
+  return pending ? 'pending' : 'clean';
+}
+const itemKey = (l, m) => `${PREFIX}${l.id}:${m.id}`;
+
+let scanBusy = false;
+async function scanMobileListings() {
+  const conf = scanner().scannerConfigured();
+  if (scanBusy || (!conf.hashMatch && !conf.classifier)) return;
+  scanBusy = true;
+  try {
+    for (const l of listingCache) {
+      const code = PREFIX + l.id;
+      if (stmt.hasCsam.get(code)) continue;            // already on the CSAM path
+      const done = new Set(stmt.scansFor.all(code).map(r => r.uploadId));
+      let worst = null;
+      for (const m of l.media) {
+        if (done.has(itemKey(l, m)) || !m.url) continue;   // no thumbnail yet: next pass
+        // The mobile server serves these through m.peakabu.app, which sits
+        // behind Cloudflare, so the same URL is what the CSAM tool sees.
+        const r = await scanner().scanImage({ url: m.url, scanUrl: process.env.MOBILE_CSAM_SCAN === '1' ? m.url : null });
+        if (r.verdict === 'unscanned') continue;
+        stmt.putScan.run({ uploadId: itemKey(l, m), sessionCode: code, verdict: r.verdict, detail: r.detail, scannedAt: Date.now() });
+        if (r.verdict === 'csam') { worst = { verdict: 'csam', item: m, detail: r.detail }; break; }
+        if (r.verdict === 'review' && !worst) worst = { verdict: 'review', item: m, detail: r.detail };
+      }
+      if (worst) await actOnFlag(l, worst);
+    }
+  } catch (err) {
+    log('warn', 'mobile_scan_failed', { error: err.message });
+  } finally {
+    scanBusy = false;
+  }
+}
+
+// Same outcomes as PC (moderation/index.js handleCsam / scan-review):
+//   csam   -> hidden, host banned from public posting, legal hold on the
+//             mobile server (kept past retention, hidden from everyone),
+//             urgent staff alert
+//   review -> hidden pending staff review, staff alert; nobody is banned
+async function actOnFlag(l, worst) {
+  const code = PREFIX + l.id;
+  if (worst.verdict === 'csam') {
+    stmt.hide.run(l.id, 'csam', Date.now());
+    if (l.host) mod().banFromPublic(l.host, 'Apparent CSAM (Peakabu Mobile)', 'scanner');
+    let held = false;
+    try {
+      const r = await fetch(`${MOBILE_API_URL}/api/internal/hold/${encodeURIComponent(l.id)}`, {
+        method: 'POST', headers: { 'X-Mobile-Secret': MOBILE_SHARED_SECRET, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'Apparent CSAM: automated scan' }), signal: AbortSignal.timeout(8000)
+      });
+      held = r.ok;
+    } catch (e) {}
+    log('warn', 'mobile_csam_flag', { listing: l.id, host: l.host, held });
+    await require('./moderation/staff-alerts').postStaffAlert({
+      title: `URGENT: apparent CSAM in Peakabu Mobile session ${l.id}`,
+      level: 'urgent',
+      description: `${worst.detail} (${worst.item.kind} ${worst.item.id}). Do not download or share it. Report to NCMEC: https://report.cybertip.org/`,
+      fields: [
+        { name: 'Session', value: l.id, inline: true },
+        { name: 'Host', value: l.host || '-', inline: true },
+        { name: 'Legal hold', value: held ? 'Placed on the mobile server: kept past retention, hidden from everyone.' : 'FAILED to reach the mobile server. Place it by hand.' },
+        { name: 'Actions taken', value: 'Listing removed from /browse and roulette. Host banned from public posting.' }
+      ]
+    }).catch(() => {});
+  } else {
+    stmt.hide.run(l.id, 'scan-review', Date.now());
+    log('warn', 'mobile_scan_review', { listing: l.id, host: l.host });
+    await require('./moderation/staff-alerts').postStaffAlert({
+      title: `Scan flagged Peakabu Mobile session ${l.id} for review`,
+      level: 'warn',
+      description: `${worst.detail} (${worst.item.kind} ${worst.item.id}). Hidden from /browse and roulette pending staff review.`,
+      fields: [
+        { name: 'Watch', value: l.watchUrl },
+        { name: 'Host', value: l.host || '-', inline: true },
+        { name: 'Restore', value: `POST /admin/public/mobile/${l.id} {"action":"restore"}` }
+      ]
+    }).catch(() => {});
+  }
 }
 
 function startMobileListingSync() {
@@ -176,16 +299,41 @@ function startMobileListingSync() {
   }
   refreshMobileListings();
   setInterval(refreshMobileListings, 60 * 1000);
-  setInterval(() => { try { stmt.dropOldEvents.run(Date.now() - 30 * 86400000); } catch (e) {} }, 6 * 60 * 60 * 1000);
+  setInterval(() => {
+    try { stmt.dropOldEvents.run(Date.now() - 30 * 86400000); } catch (e) {}
+    // Drop scan rows for listings that are gone (unlisted or expired),
+    // except anything that hit the CSAM path, which is kept as evidence.
+    try {
+      if (Date.now() - listingFetchedAt > 5 * 60 * 1000) return;
+      const live = new Set(listingCache.map(l => PREFIX + l.id));
+      for (const { sessionCode } of stmt.mobileScanCodes.all()) {
+        if (!live.has(sessionCode) && !stmt.hasCsam.get(sessionCode)) stmt.dropScans.run(sessionCode);
+      }
+    } catch (e) {}
+  }, 6 * 60 * 60 * 1000);
 }
 
-// Listings minus anything hidden by reports or staff, and anything we
-// haven't heard about in 5 minutes (mobile server down = nothing stale).
+// What /browse and roulette may show: not hidden, host not banned from public
+// posting, and every piece of media scanned clean. Nothing stale if the
+// mobile server hasn't answered in 5 minutes.
 function mobileListings() {
   if (Date.now() - listingFetchedAt > 5 * 60 * 1000) return [];
   let hidden = new Set();
   try { hidden = new Set(stmt.hiddenAll.all().map(r => r.listingId)); } catch (e) {}
-  return listingCache.filter(l => !hidden.has(l.id));
+  return listingCache.filter(l => !hidden.has(l.id) &&
+    !(l.host && mod().getBan(l.host)) &&
+    listingScanState(l) === 'clean');
+}
+
+// For the mobile host page's switch: 'off' | 'checking' | 'live' | 'under-review'
+function mobileListingState(id) {
+  const l = listingCache.find(x => x.id === id);
+  const h = stmt.getHidden.get(id);
+  if (h) return 'under-review';
+  if (!l) return 'checking';                     // switched on, not polled yet
+  if (l.host && mod().getBan(l.host)) return 'under-review';
+  const st = listingScanState(l);
+  return st === 'clean' ? 'live' : st === 'pending' ? 'checking' : 'under-review';
 }
 
 // Report: child-safety hides on the first report, anything else at 3.
@@ -202,9 +350,14 @@ function reportMobileListing(listingId, reporterKey, reason) {
   return { added, n, hiddenNow, child: reason === 'child' };
 }
 
+// Staff. Restore never overrides a CSAM verdict (same rule as PC legal holds).
 function setMobileListingHidden(listingId, hidden) {
-  if (hidden) stmt.hide.run(listingId, 'staff', Date.now());
-  else { stmt.unhide.run(listingId); stmt.clearReports.run(listingId); }
+  if (hidden) { stmt.hide.run(listingId, 'staff', Date.now()); return { ok: true }; }
+  if (stmt.hasCsam.get(PREFIX + listingId)) return { ok: false, error: 'A scan matched known CSAM for this session. It stays hidden.' };
+  stmt.unhide.run(listingId);
+  stmt.clearReports.run(listingId);
+  stmt.clearReview.run(PREFIX + listingId);
+  return { ok: true };
 }
 
 function mobileSecretOk(req) {
@@ -216,5 +369,6 @@ function mobileSecretOk(req) {
 module.exports = {
   MOBILE_FREE_DAILY_SEC, MOBILE_INCLUDED_TIERS, EVENT_MAX_HOURS,
   grantMobileDays, addEventPass, getMobileStatus, claimEventPass,
-  startMobileListingSync, mobileListings, reportMobileListing, setMobileListingHidden, mobileSecretOk
+  startMobileListingSync, mobileListings, mobileListingState, reportMobileListing, setMobileListingHidden, mobileSecretOk,
+  _refreshForTest: refreshMobileListings
 };

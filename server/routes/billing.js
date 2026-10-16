@@ -43,9 +43,15 @@ if (STRIPE_SECRET_KEY) {
   console.warn('Billing disabled: STRIPE_SECRET_KEY not set in .env');
 }
 
-// --- Optional email over SMTP (Zoho). Nothing is configured = no email box.
+// --- Optional email over SMTP (any provider). Nothing configured = no email box.
+// MAIL_FROM is required and is the ONLY sender buyers see, e.g.
+// "Peakabu <codes@peakabu.app>". Use a dedicated no-reply address, not a
+// personal mailbox: we refuse to send without it rather than fall back to
+// the SMTP login, which could be a mailbox under someone's real name.
 let mailer = null;
-if (process.env.SMTP_HOST) {
+if (process.env.SMTP_HOST && !process.env.MAIL_FROM) {
+  console.warn('Billing email disabled: set MAIL_FROM (e.g. "Peakabu <codes@peakabu.app>") to turn it on');
+} else if (process.env.SMTP_HOST) {
   try {
     const nodemailer = require('nodemailer');
     const port = Number(process.env.SMTP_PORT || 465);
@@ -53,7 +59,7 @@ if (process.env.SMTP_HOST) {
       host: process.env.SMTP_HOST, port, secure: port === 465,
       auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
     });
-    const from = process.env.MAIL_FROM || process.env.SMTP_USER;
+    const from = process.env.MAIL_FROM;
     mailer = { send: ({ to, subject, text }) => t.sendMail({ from, to, subject, text }) };
   } catch (e) { console.warn('Billing email disabled: nodemailer package missing'); }
 }

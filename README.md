@@ -80,7 +80,7 @@ Peak-Abu
    - `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` — optional, enables Discord account linking + password recovery
    - `DISCORD_BOT_TOKEN` / `DISCORD_GUILD_ID` / `DISCORD_ROLE_T1`–`T5` — optional, enables Discord role sync on tier change
    - `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` — optional, turns on web billing at `/billing` (webhook: `https://peakabu.app/api/billing/webhook`, event `checkout.session.completed`). `BILLING_BASE_URL` defaults to `https://peakabu.app`
-   - `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `MAIL_FROM` — optional, lets buyers have their code emailed (Zoho works). Leave unset to hide the email option
+   - `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `MAIL_FROM` — optional, lets buyers have their code emailed through any SMTP provider. `MAIL_FROM` is required and is the only sender buyers see (use a no-reply address like `Peakabu <codes@peakabu.app>`, not a personal mailbox). Leave unset to hide the email option
    - `MOBILE_API_URL` / `MOBILE_SHARED_SECRET` / `MOBILE_PUBLIC_URL` — links Peakabu Mobile (see below). Same secret on both servers
 
 3. **Database**
@@ -168,7 +168,7 @@ Peakabu Mobile (m.peakabu.app) is a separate small server. Hosts sign in with th
 
 **Admin codes:** `POST /admin/redemption-codes` also accepts `"tier":"mobile"` (with `durationDays`) and `"tier":"event"` (with `"meta":{"startsAt":<ms>,"hours":<n>}`).
 
-**Public listings:** this server polls `MOBILE_API_URL/api/public/listings` every minute and merges listed mobile sessions into `/browse` and Peak Roulette. Mobile listings skip the clip scanners; a child-safety report hides one immediately, any other reason at 3 reports, and staff get a Discord alert.
+**Public listings:** this server polls `MOBILE_API_URL/api/public/listings` every minute and merges listed mobile sessions into `/browse` and Peak Roulette. Mobile listings go through the same scanners as PC footage (CSAM hash match + content classifier, `moderation/scanner.js`) on every clip thumbnail and photo, and only show once everything is clean; new footage puts the listing back to "checking". A CSAM match hides it, bans the host from public posting, places a legal hold on the mobile server (kept past retention, hidden from everyone), and sends an urgent staff alert. A classifier flag hides it for staff review. Reports work like PC: child-safety hides on the first report, anything else at 3. Set `MOBILE_CSAM_SCAN=1` once Cloudflare's CSAM Scanning Tool is on for the zone serving m.peakabu.app; the classifier uses `OPENAI_MODERATION_KEY` as for PC.
 
 ---
 
