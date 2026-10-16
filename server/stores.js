@@ -86,7 +86,7 @@ const stmt = {
       tier, tierSource, tierExpiresAt,
       sessionsThisMonth, sessionsMonthKey,
       bandwidthBytesThisMonth, bandwidthMonthKey, bandwidthAlertedThisMonth,
-      tokenVersion, discordId, discordUsername, discordLinkedAt,
+      tokenVersion, tokenVersionMobile, discordId, discordUsername, discordLinkedAt,
       privacyVersionAccepted, privacyAcceptedAt, recordingConsentSeen
     )
     VALUES (
@@ -94,7 +94,7 @@ const stmt = {
       @tier, @tierSource, @tierExpiresAt,
       @sessionsThisMonth, @sessionsMonthKey,
       @bandwidthBytesThisMonth, @bandwidthMonthKey, @bandwidthAlertedThisMonth,
-      @tokenVersion, @discordId, @discordUsername, @discordLinkedAt,
+      @tokenVersion, @tokenVersionMobile, @discordId, @discordUsername, @discordLinkedAt,
       @privacyVersionAccepted, @privacyAcceptedAt, @recordingConsentSeen
     )
     ON CONFLICT(username_lower) DO UPDATE SET
@@ -108,6 +108,7 @@ const stmt = {
       bandwidthMonthKey = excluded.bandwidthMonthKey,
       bandwidthAlertedThisMonth = excluded.bandwidthAlertedThisMonth,
       tokenVersion = excluded.tokenVersion,
+      tokenVersionMobile = excluded.tokenVersionMobile,
       discordId = excluded.discordId,
       discordUsername = excluded.discordUsername,
       discordLinkedAt = excluded.discordLinkedAt,
@@ -186,6 +187,7 @@ function loadUsersFromDisk() {
       // SQLite has no boolean type — stored as 0/1, surfaced as a bool
       bandwidthAlertedThisMonth: !!row.bandwidthAlertedThisMonth,
       tokenVersion: row.tokenVersion || 0,
+      tokenVersionMobile: row.tokenVersionMobile || 0,
       discordId: row.discordId || null,
       discordUsername: row.discordUsername || null,
       discordLinkedAt: row.discordLinkedAt || null,
@@ -216,6 +218,7 @@ function saveUsersToDisk() {
         bandwidthMonthKey: u.bandwidthMonthKey ?? null,
         bandwidthAlertedThisMonth: u.bandwidthAlertedThisMonth ? 1 : 0,
         tokenVersion: u.tokenVersion || 0,
+        tokenVersionMobile: u.tokenVersionMobile || 0,
         discordId: u.discordId ?? null,
         discordUsername: u.discordUsername ?? null,
         discordLinkedAt: u.discordLinkedAt ?? null,

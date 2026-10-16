@@ -18,6 +18,7 @@ const { getFlags, setFlags } = require('./killswitch');
 const { DISCORD_ENABLED, DISCORD_RECOVERY_REDIRECT_URI, PRIVACY_POLICY_VERSION } = require('./config');
 const { buildAuthorizeUrl, exchangeCodeForUser, consumeState, linkDiscordAccount, buildRecoveryUrl, consumeRecoveryState } = require('./discord-oauth');
 const { syncRole } = require('./discord-bot');
+const { recordEvent } = require('./anomaly');
 // A user's tier as of right now — falls back to t1 for missing/unknown/
 // expired tiers rather than trusting a stale field forever. tierExpiresAt
 // is null for lifetime grants (redeemed codes, manual); a future Stripe
@@ -146,6 +147,32 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// --- Login slots ---
+// One account can be signed in on ONE PC and ONE phone at the same time.
+// Each slot has its own version counter: a new login bumps only its own
+// slot, so signing in on a second PC logs out the first PC but leaves the
+// phone alone (and vice versa). Tokens carry the slot in the `sl` claim;
+// tokens minted before slots existed have none and count as the PC slot.
+const MOBILE_UA = /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/i;
+
+function loginSlot(req) {
+  const asked = req.body && req.body.platform;
+  if (asked === 'mobile' || asked === 'pc') return asked;
+  return MOBILE_UA.test(req.headers['user-agent'] || '') ? 'mobile' : 'pc';
+}
+
+function slotVersionKey(slot) {
+  return slot === 'mobile' ? 'tokenVersionMobile' : 'tokenVersion';
+}
+
+// Bumps one slot's counter and returns a token for that slot.
+function issueToken(user, slot) {
+  const key = slotVersionKey(slot);
+  user[key] = (user[key] || 0) + 1;
+  saveUsersToDisk();
+  return jwt.sign({ username: user.username, tv: user[key], sl: slot }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
+}
+
 // --- HTTP middleware ---
 // Rejects a token whose tokenVersion (tv claim) no longer matches the
 // account's current version — i.e. the account has since logged in
@@ -157,7 +184,8 @@ function tokenVersionOk(decoded) {
   const user = users.get((decoded.username || '').toLowerCase());
   if (!user) return false;
   const claimTv = typeof decoded.tv === 'number' ? decoded.tv : 0;
-  return claimTv === (user.tokenVersion || 0);
+  const key = slotVersionKey(decoded.sl === 'mobile' ? 'mobile' : 'pc');
+  return claimTv === (user[key] || 0);
 }
 
 function requireAuth(req, res, next) {
@@ -272,7 +300,9 @@ function initAuthRoutes(app) {
     if (!user) return safeError(res, 400, 'Account not found');
 
     user.passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    // A password reset signs out everywhere — both the PC and phone slots.
     user.tokenVersion = (user.tokenVersion || 0) + 1;
+    user.tokenVersionMobile = (user.tokenVersionMobile || 0) + 1;
     saveUsersToDisk();
     log('info', 'password_reset_via_discord', { username: user.username });
 
@@ -312,9 +342,10 @@ function initAuthRoutes(app) {
       privacyVersionAccepted: PRIVACY_POLICY_VERSION, privacyAcceptedAt: Date.now(),
       recordingConsentSeen: false
     };
-        user.tokenVersion = 0;
+    user.tokenVersion = 0;
+    user.tokenVersionMobile = 0;
     users.set(clean.toLowerCase(), user);
-    saveUsersToDisk();
+    const token = issueToken(user, loginSlot(req));
     // Only count SUCCESSFUL registrations — a typo'd username or a taken
     // name shouldn't burn someone's daily allowance.
     recordRegistration(ip);
@@ -324,7 +355,6 @@ function initAuthRoutes(app) {
       event: 'registration_burst_detected',
       extra: { ip }
     });
-    const token = jwt.sign({ username: clean, tv: user.tokenVersion }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
     log('info', 'user_registered', { username: clean, ip });
     return res.status(201).json({
       token, username: clean, tier: 't1',
@@ -346,12 +376,12 @@ function initAuthRoutes(app) {
     if (!user || !valid) {
       return safeError(res, 401, 'Invalid username or password');
     }
-    // Newest-wins: bump the version so every previously-issued token for
-    // this account (other devices) fails its tv check from here on.
-    user.tokenVersion = (user.tokenVersion || 0) + 1;
-    saveUsersToDisk();
-    const token = jwt.sign({ username: user.username, tv: user.tokenVersion }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
-    log('info', 'user_login', { username: user.username, tier: getEffectiveTier(user) });
+    // Newest-wins PER SLOT: this bumps only this device type's counter, so
+    // the previous login of the same type (another PC, or another phone) is
+    // signed out while the other type stays signed in.
+    const slot = loginSlot(req);
+    const token = issueToken(user, slot);
+    log('info', 'user_login', { username: user.username, tier: getEffectiveTier(user), slot });
     return res.status(200).json({
       token, username: user.username, tier: getEffectiveTier(user), tierExpiresAt: user.tierExpiresAt || null,
       privacyVersionAccepted: user.privacyVersionAccepted || null,

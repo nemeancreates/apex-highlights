@@ -161,6 +161,9 @@ function addColumnIfMissing(table, column, definition) {
 // users — tier state + monthly counters
 addColumnIfMissing('users', 'tier', "TEXT NOT NULL DEFAULT 't1'");
 addColumnIfMissing('users', 'tokenVersion', 'INTEGER NOT NULL DEFAULT 0');
+// Second login slot (v0.1.94): tokenVersion is now the PC slot, this is the
+// mobile slot, so one account can be signed in on a PC and a phone at once.
+addColumnIfMissing('users', 'tokenVersionMobile', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('users', 'tierSource', "TEXT NOT NULL DEFAULT 'default'");
 addColumnIfMissing('users', 'tierExpiresAt', 'INTEGER');
 addColumnIfMissing('users', 'sessionsThisMonth', 'INTEGER NOT NULL DEFAULT 0');
