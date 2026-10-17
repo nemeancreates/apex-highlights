@@ -88,15 +88,22 @@ function initAccountRoutes(app) {
   });
 
   // --- Hosted sessions with their Public switch state, in one call.
-  app.get('/api/account/sessions', requireAuth, accountLimiter, (req, res) => {
+  app.get('/api/account/sessions', requireAuth, accountLimiter, async (req, res) => {
     try {
       const list = getSessionsByUser(req.user.username, 50).map(s => {
         const live = sessions.get(s.code);
         let pub = { isPublic: false, state: 'off', canList: false, reason: null };
         if (live) { try { pub = hostState(live); } catch (e) {} }
-        return { ...s, public: pub };
+        return { ...s, kind: 'pc', public: pub };
       });
-      res.json({ sessions: list });
+      // Peakabu Mobile parties this account hosted. Public is switched on the
+      // mobile host page, so the row only shows its state.
+      const mob = (await mobile.hostedMobileSessions(req.user.username)).map(m => ({
+        kind: 'mobile', code: m.id, title: m.name, createdAt: m.createdAt, endedAt: m.endedAt,
+        clipCount: (m.clips || 0) + (m.photos || 0), clips: m.clips || 0, photos: m.photos || 0, peaks: m.peaks || 0,
+        expiresAt: m.expiresAt, watchUrl: m.watchUrl, listed: !!m.listed
+      }));
+      res.json({ sessions: list.concat(mob) });
     } catch (err) {
       log('error', 'account_sessions_failed', { error: err.message });
       safeError(res, 500, 'Could not load your sessions');

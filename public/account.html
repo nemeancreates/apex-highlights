@@ -7,7 +7,7 @@
 <meta name="description" content="Sign in to see your plan, your sessions, your devices and your Swing cards.">
 <meta property="og:title" content="Your account — Peakabu">
 <meta property="og:description" content="Sign in to see your plan, your sessions, your devices and your Swing cards.">
-<meta property="og:image" content="https://peakabu.app/site/img/badge-open.png">
+<meta property="og:image" content="https://peakabu.app/site/img/badge-see-no-evil.png">
 <meta name="theme-color" content="#061009">
 <link rel="icon" type="image/png" href="/site/img/badge-see-no-evil.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -49,11 +49,22 @@
 .empty{color:var(--faint);font-size:15px;padding:18px;border:1px dashed var(--line-hi);border-radius:14px}
 #printSheet{display:none}
 @media (max-width:860px){.acct{grid-template-columns:minmax(0,1fr);gap:24px}.side{position:static;flex-direction:row;flex-wrap:wrap}.side button{margin-top:0}}
+/* Sortable Clips / Expires headers */
+#sessions .sort{background:none;border:0;padding:0;font:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:6px;min-height:32px}
+#sessions .sort::after{content:"↕";opacity:.5}
+#sessions .sort[data-dir="up"]::after{content:"↑";opacity:1}
+#sessions .sort[data-dir="down"]::after{content:"↓";opacity:1}
+#sessions .sort:hover,#sessions .sort[data-dir="up"],#sessions .sort[data-dir="down"]{color:var(--lime)}
+@media (max-width:700px){#sessions .sort{min-height:36px;padding:0 12px;border:1px solid var(--line-hi);border-radius:999px}}
+.tag-mob{display:inline-block;margin-left:4px;padding:1px 7px;border-radius:999px;border:1px solid var(--teal);color:var(--teal);font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;vertical-align:middle}
 /* Phones: sessions become stacked cards instead of a wide table */
 @media (max-width:700px){
   #sessions .table-wrap{overflow:visible}
   #sessions table.data{min-width:0}
-  #sessions thead{display:none}
+  #sessions thead{display:block}
+  #sessions thead tr{display:flex;gap:8px;padding:0 16px 10px;border-bottom:1px solid var(--line)}
+  #sessions thead th{display:none;width:auto;padding:0}
+  #sessions thead th.sortable{display:block}
   #sessions table.data,#sessions tbody,#sessions tr,#sessions th,#sessions td{display:block;width:100%}
   #sessions tr{padding:14px 16px;border-bottom:1px solid var(--line)}
   #sessions tr:last-child{border-bottom:none}
@@ -66,7 +77,7 @@
 .sizes button{min-height:36px;padding:0 12px;border-radius:999px;border:1px solid var(--line-hi);background:transparent;color:var(--text);font:600 13px var(--body);cursor:pointer}
 .sizes button[aria-pressed="true"]{background:var(--lime);border-color:var(--lime);color:var(--ink)}
 @media print{
-  @page{margin:12mm}
+  @page{margin:12mm;size:portrait} /* the card heights are worked out for an upright page */
   body{background:#fff}
   body.printing .page{display:none}
   body.printing #printSheet{display:grid;grid-template-columns:1fr 1fr;gap:8mm}
@@ -172,7 +183,7 @@
 <h2 class="h3">My sessions</h2>
 <p class="small">Sessions start private. Only you, the host, can list one on Browse.</p>
 <div class="table-wrap"><table class="data">
-<thead><tr><th scope="col">Session</th><th scope="col">Clips</th><th scope="col">Expires</th><th scope="col">Public</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+<thead><tr><th scope="col">Session</th><th scope="col" class="sortable" aria-sort="none"><button type="button" class="sort" data-sort="clips">Clips</button></th><th scope="col" class="sortable" aria-sort="none"><button type="button" class="sort" data-sort="expires">Expires</button></th><th scope="col">Public</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
 <tbody id="sessBody"><tr><td colspan="5" class="small">Loading…</td></tr></tbody>
 </table></div>
 <p class="msg" id="sessMsg" role="status" aria-live="polite"></p>
