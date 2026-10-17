@@ -32,6 +32,7 @@ const { initCommentRoutes, startCommentCleanup } = require('./routes/comments');
 const { initStarRoutes, startStarCleanup } = require('./routes/stars');
 const { initPublicRoutes, startPublicCleanup } = require('./routes/public');
 const { initBillingWebhook, initBillingRoutes } = require('./routes/billing');
+const { initAccountRoutes } = require('./routes/account');
 const { startMobileListingSync } = require('./mobile');
 const { initCompositeRoutes, startCompositeCleanup } = require('./composite');
 const { initSockets } = require('./sockets');
@@ -75,7 +76,8 @@ app.use(helmet({
   },
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
 }));
-app.use(express.static(path.join(__dirname, '..', 'public')));
+// extensions: '/guide' serves public/guide.html, so site links stay clean.
+app.use(express.static(path.join(__dirname, '..', 'public'), { extensions: ['html'] }));
 
 // Serves public/privacy.html at /privacy (no .html in the URL) — matches
 // the links already baked into the client's consent checkbox/modal.
@@ -122,6 +124,7 @@ initUploadRoutes(app, io);
 initCommentRoutes(app, io);
 initStarRoutes(app, io);
 initPublicRoutes(app);
+initAccountRoutes(app);
 initBillingRoutes(app);
 initCompositeRoutes(app);
 initSockets(io);

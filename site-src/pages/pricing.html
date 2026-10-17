@@ -1,0 +1,114 @@
+<!-- title:Pricing — Peakabu|desc:Watching is always free. Plans decide how big your squad can be and how long clips stick around.|active:pricing -->
+<!--HEAD--><style>
+.seg-wrap{display:inline-flex;gap:4px;padding:4px;border:1px solid var(--line-hi);border-radius:999px;background:#08150d}
+.seg{min-height:44px;padding:0 22px;border:none;border-radius:999px;cursor:pointer;font:700 15px var(--body);background:transparent;color:var(--text)}
+.seg[aria-selected="true"]{background:var(--lime);color:var(--ink)}
+.ok{color:var(--lime);font-weight:700} .no{color:var(--faint)}
+table.data td{color:var(--muted)}
+</style><!--/HEAD-->
+<div class="page">
+{{HEADER}}
+
+<section class="section" style="padding-top:104px;padding-bottom:72px">
+<svg class="deco-leaf" style="right:-40px;top:10px;width:240px;height:240px;color:#143a22;rotate:160deg" aria-hidden="true"><use href="#fl-palm"></use></svg>
+<div class="wrap stack" style="gap:22px;position:relative">
+<p class="eyebrow">Pricing</p>
+<h1 class="h1">Pick your expedition.</h1>
+<p class="lede">Watching is always free. Anyone with a link can play back a session, no account needed. Plans decide how big your squad can be and how long clips stick around.</p>
+<div class="seg-wrap" role="tablist" aria-label="Which app">
+<button class="seg" role="tab" id="tab-pc" aria-controls="panel-pc" aria-selected="true">PC app</button>
+<button class="seg" role="tab" id="tab-mobile" aria-controls="panel-mobile" aria-selected="false" tabindex="-1">Mobile</button>
+</div>
+</div>
+</section>
+
+<section id="panel-pc" class="section" role="tabpanel" aria-labelledby="tab-pc" style="padding-top:0">
+<div class="wrap stack" style="gap:56px">
+<div class="grid" style="--min:240px">
+<div class="card"><h3 class="h3">Free</h3><p class="price">$0</p><p>Try it with a friend.</p><a class="btn btn-ghost" style="margin-top:auto" href="/guide" data-download>Download</a></div>
+<div class="card"><h3 class="h3">Creator</h3><p class="price">$10<small> /mo</small></p><p>Small squads, auto capture and downloads.</p><a class="btn btn-ghost" style="margin-top:auto" href="#redeem">Redeem a Creator code</a></div>
+<div class="card pick"><span class="tag">SQUAD PICK</span><h3 class="h3">Squad</h3><p class="price">$20<small> /mo</small></p><p>Full team, AI Reel and Peakabu Mobile.</p><a class="btn btn-glow" style="margin-top:auto" href="#redeem">Redeem a Squad code</a></div>
+<div class="card"><h3 class="h3">Pro</h3><p class="price">$40<small> /mo</small></p><p>Big lobbies, events and creators.</p><a class="btn btn-ghost" style="margin-top:auto" href="#redeem">Redeem a Pro code</a></div>
+</div>
+<p class="small" style="margin-top:-36px">PC plans are activated with a code. Ask in our <a class="discord-link" style="padding:0" href="https://discord.gg/HRepEcKWpM" target="_blank" rel="noopener">Discord</a> how to get one.</p>
+
+<div class="stack">
+<h2 class="h3">Compare plans</h2>
+<div class="table-wrap"><table class="data">
+<thead><tr><th scope="col"><span class="sr-only">Feature</span></th><th scope="col">Free</th><th scope="col">Creator</th><th scope="col">Squad</th><th scope="col">Pro</th></tr></thead>
+<tbody>
+<tr><th scope="row">Players per session</th><td>2</td><td>5</td><td>11</td><td>25</td></tr>
+<tr><th scope="row">Sessions you can host a month</th><td>6</td><td>20</td><td>45</td><td>110</td></tr>
+<tr><th scope="row">Clips kept</th><td>24 hours</td><td>30 days</td><td>30 days</td><td>60 days</td></tr>
+<tr><th scope="row">Auto capture</th><td class="no">—</td><td class="ok">✓</td><td class="ok">✓</td><td class="ok">✓</td></tr>
+<tr><th scope="row">Downloads &amp; combined view export</th><td class="no">—</td><td class="ok">✓</td><td class="ok">✓</td><td class="ok">✓</td></tr>
+<tr><th scope="row">List sessions publicly</th><td class="no">—</td><td class="ok">✓</td><td class="ok">✓</td><td class="ok">✓</td></tr>
+<tr><th scope="row">AI Reel</th><td class="no">—</td><td class="no">—</td><td>Up to 15 min</td><td>Up to 30 min, priority</td></tr>
+<tr><th scope="row">Peakabu Mobile hosting</th><td class="no">—</td><td class="no">—</td><td>Included</td><td>Included</td></tr>
+<tr><th scope="row">Watch &amp; comment on any session</th><td class="ok">✓</td><td class="ok">✓</td><td class="ok">✓</td><td class="ok">✓</td></tr>
+</tbody>
+</table></div>
+</div>
+</div>
+</section>
+
+<section id="panel-mobile" class="section" role="tabpanel" aria-labelledby="tab-mobile" style="padding-top:0" hidden>
+<div class="wrap stack" style="gap:24px">
+<div class="grid" style="--min:280px">
+<div class="card"><h3 class="h3">Guest</h3><p class="price">Free</p><ul><li>Join by QR in the browser</li><li>Film, Peak and watch back</li><li>Hosts get 10 free minutes a day</li></ul><a class="btn btn-ghost" style="margin-top:auto" href="/mobile">How it works</a></div>
+<div class="card"><h3 class="h3">One event</h3><p class="price">$3</p><ul><li>Up to 16 hours, you set the window</li><li>Guests can join early</li><li>No inactivity timeout</li></ul><a class="btn btn-ghost" style="margin-top:auto" href="/billing">Buy a pass</a></div>
+<div class="card pick"><span class="tag">FOR REGULAR HOSTS</span><h3 class="h3">Mobile host</h3><p class="price">$5<small> /month</small></p><ul><li>Host any time</li><li>Downloads &amp; synced exports</li><li>Or 3 months for $12</li></ul><a class="btn btn-glow" style="margin-top:auto" href="/billing">Start hosting</a></div>
+</div>
+<p class="small">Squad and Pro include Mobile hosting for as long as the plan runs. Same account, same sign-in.</p>
+</div>
+</section>
+
+<section id="redeem" class="section band tight">
+<div class="wrap split" style="align-items:flex-start">
+<div class="stack" style="gap:10px">
+<h2 class="h2">Got a code?</h2>
+<p class="lede" style="font-size:17px">PC and Mobile codes both work here. You'll need to be signed in.</p>
+</div>
+<form class="stack" data-redeem style="gap:12px;max-width:520px">
+<div class="field"><label for="redeemCode">Redemption code</label><input class="input mono" id="redeemCode" name="code" autocomplete="off" spellcheck="false" maxlength="64" required></div>
+<div class="row"><button class="btn btn-lime" type="submit">Redeem</button><a class="small" href="/account" data-redeem-signin hidden>Sign in first</a></div>
+<p class="msg" role="status" aria-live="polite"></p>
+</form>
+</div>
+</section>
+
+<section class="section tight">
+<div class="wrap stack" style="gap:12px;max-width:820px">
+<h2 class="h2" style="margin-bottom:16px">Questions</h2>
+<details class="faq"><summary>Do my friends need a paid plan?</summary><p>No. Plans only limit what the host can do. Anyone can join a session or watch a link for free. The host's plan sets the squad size and how long clips are kept.</p></details>
+<details class="faq"><summary>What happens when clips expire?</summary><p>They're deleted automatically at the end of your plan's storage window. Download anything you want to keep before then.</p></details>
+<details class="faq"><summary>Is Peakabu Mobile a separate account?</summary><p>No, it's the same account and sign-in. Mobile hosting is its own plan, or comes free with Squad and Pro.</p></details>
+<details class="faq"><summary>Can I cancel any time?</summary><p>Yes. Cancel whenever you like and your plan keeps working until the end of the time you've already paid for. After that the account moves to Free.</p></details>
+<details class="faq"><summary>Can I be signed in on my PC and phone at once?</summary><p>Yes. You can be signed in once on the desktop app, once on a phone and once on the website at the same time. Signing in on a second device of the same kind signs the older one out.</p></details>
+</div>
+</section>
+
+{{FOOTER}}
+</div>
+<script>
+(function () {
+  var tabs = [document.getElementById('tab-pc'), document.getElementById('tab-mobile')];
+  function pick(t, focus) {
+    tabs.forEach(function (x) {
+      var on = x === t;
+      x.setAttribute('aria-selected', on ? 'true' : 'false');
+      x.tabIndex = on ? 0 : -1;
+      document.getElementById(x.getAttribute('aria-controls')).hidden = !on;
+    });
+    if (focus) t.focus();
+  }
+  tabs.forEach(function (t, i) {
+    t.addEventListener('click', function () { pick(t); });
+    t.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); pick(tabs[1 - i], true); }
+    });
+  });
+  if (location.hash === '#mobile') pick(tabs[1]);
+})();
+</script>
+<script src="/site/redeem.js"></script>

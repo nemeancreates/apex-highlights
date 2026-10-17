@@ -1,0 +1,30 @@
+<!-- title:Peakabu Swing card — waiting for the party|desc:This Swing card joins a Peakabu Mobile party when it starts.|active:spot -->
+<!--HEAD--><meta name="robots" content="noindex"><style>
+.spot-wrap{min-height:calc(100vh - 160px);display:grid;place-items:center;padding:64px 0}
+.spot-card{max-width:460px;width:100%;text-align:center;align-items:center;gap:16px;padding:32px 28px}
+.spot-dot{width:64px;height:64px;border-radius:50%;box-shadow:0 0 0 10px rgba(255,255,255,.04)}
+.wait{display:inline-flex;gap:6px}.wait i{width:8px;height:8px;border-radius:50%;background:var(--lime);animation:blink 1.4s ease-in-out infinite}
+.wait i:nth-child(2){animation-delay:.2s}.wait i:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,100%{opacity:.25}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.wait i{animation:none}}
+</style><!--/HEAD-->
+<div class="page">
+{{HEADER}}
+<section class="section" style="padding:0">
+<div class="wrap spot-wrap">
+<div class="card hi spot-card" id="spotCard">
+<span class="spot-dot" id="spotDot" style="background:var(--line-hi)" aria-hidden="true"></span>
+<span class="eyebrow" id="spotSet">Peakabu Swing card</span>
+<span class="small" id="spotBy" style="margin-bottom:-10px" hidden>Swing by</span>
+<h1 class="h2" id="spotName">Checking this card…</h1>
+<p id="spotLine" style="font-size:16px">One moment.</p>
+<span class="wait" id="spotWait" aria-hidden="true" hidden><i></i><i></i><i></i></span>
+<p class="card" id="spotMine" role="status" style="border-color:var(--lime);font-size:15px;color:var(--text);text-align:left" hidden></p>
+<p class="small" id="spotHint"></p>
+<a class="btn btn-ghost" href="/mobile" id="spotMore" hidden>What is Peakabu Mobile?</a>
+</div>
+</div>
+</section>
+{{FOOTER}}
+</div>
+<script src="/site/spot.js"></script>

@@ -1,0 +1,187 @@
+<!-- title:Peakabu — Every angle of the play. One save.|desc:Peakabu records your whole squad in the background. One hotkey saves everyone's view of the same moment, synced to the frame, ready to watch side by side.|active:home -->
+<!--HEAD--><script src="/site/home.js" defer></script>
+<style>
+.hero{position:relative;z-index:1;padding:104px 0 150px}
+.hero .split{gap:56px}
+.hero-copy{display:flex;flex-direction:column;gap:22px;flex:1 1 420px}
+.hero-video{flex:1 1 580px}
+.step-top{display:flex;justify-content:space-between;align-items:center}
+.step-num{font:600 13px var(--mono);color:var(--lime)}
+.feature-col{flex:1 1 460px;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:28px;display:flex;flex-direction:column;gap:22px}
+.devices{display:flex;gap:18px;justify-content:center;align-items:flex-end;flex-wrap:wrap}
+.device{display:flex;flex-direction:column;gap:8px;align-items:center}
+.device .shell{border:2px solid var(--line-strong);background:#071209;display:flex;flex-direction:column;gap:8px;padding:14px 10px}
+.device .lbl{font:11px var(--mono);color:#8fa99a}
+.panes{display:grid;gap:4px;flex:1}
+.panes > i{border-radius:5px}
+.qr-demo{width:100px;height:100px;border-radius:10px;background-image:repeating-conic-gradient(var(--lime) 0 25%,#0c1a12 0 50%);background-size:14px 14px;opacity:.85;align-self:center}
+.dl-wrap{display:flex;flex-wrap:wrap;gap:16px;align-items:stretch}
+.dl-panel{flex:1 1 440px;min-width:0;background:#08150d;border:1px solid #23432f;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:14px}
+.dl-panel.pics{flex-basis:320px}
+.dl-list{max-height:440px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:4px 6px 4px 2px;scrollbar-width:thin;scrollbar-color:var(--line-hi) transparent}
+.dl-grid{max-height:440px;overflow-y:auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;align-content:start;padding:4px 6px 4px 2px}
+.sync-card{border-radius:14px;padding:2px;background:linear-gradient(135deg,var(--lime),var(--teal));box-shadow:0 0 22px rgba(57,211,160,.22)}
+.sync-inner{background:#0b1d12;border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:4px}
+.pick{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:5px 8px;cursor:pointer;background:#0f2318;border:1px solid var(--line);border-radius:8px;color:inherit;font:inherit;text-align:left}
+.pick.head{background:transparent;border:none}
+.pick.child{width:calc(100% - 28px);margin-left:28px}
+.tick{flex:none;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;color:var(--ink);border:1.5px solid var(--teal);background:rgba(6,16,9,.6)}
+.pick[aria-pressed="true"] .tick,.pick[aria-pressed="mixed"] .tick{background:var(--teal)}
+.thumb{flex:none;width:56px;height:32px;border-radius:4px}
+.sync-chip{flex:none;background:linear-gradient(135deg,var(--lime),var(--teal));color:var(--ink);font:600 11px var(--mono);padding:3px 8px;border-radius:999px}
+.pic{position:relative;aspect-ratio:1;padding:0;cursor:pointer;border-radius:10px;border:2px solid var(--line)}
+.pic[aria-pressed="true"]{border-color:var(--lime)}
+.pic .tick{position:absolute;right:6px;top:6px;border-color:var(--lime)}
+.pic[aria-pressed="true"] .tick{background:var(--lime)}
+.dl-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:14px}
+.sec-item{display:flex;gap:12px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.sec-item strong{color:var(--white);font-size:15px}
+.sec-item p{font-size:14px;color:var(--muted);margin-top:2px}
+</style>
+<!--/HEAD-->
+<div class="page">
+{{HEADER}}
+
+<section class="hero">
+<svg class="deco-leaf" style="left:-70px;top:-30px;width:420px;height:160px;color:#143a22;rotate:18deg" aria-hidden="true"><use href="#fl-banana"></use></svg>
+<svg class="deco-leaf b" style="right:-90px;bottom:-40px;width:360px;height:360px;color:#12341f;rotate:200deg" aria-hidden="true"><use href="#fl-palm"></use></svg>
+<div class="wrap split">
+<div class="hero-copy">
+<p class="eyebrow lime">Multi-POV highlight capture</p>
+<h1 class="h1">Every angle of the play. One save.</h1>
+<p class="lede">Your whole squad records in the background. When anyone hits the hotkey, everyone's clip of that moment saves together, synced to the frame, ready to watch side by side.</p>
+<div class="row" style="margin-top:6px">
+<a class="btn btn-lime btn-lg" href="/guide" data-download>Download free for Windows</a>
+<a class="btn btn-ghost btn-lg" href="/browse">Watch a public session</a>
+</div>
+<p class="mono small" style="margin-top:8px">Peakabu. We see the play, not you.</p>
+</div>
+<div class="hero-video">
+<div class="frame">
+<div class="video" data-yt="AJfdR4zguQA" data-title="PeakAbu 1 minute show-off">
+<img src="https://i.ytimg.com/vi/AJfdR4zguQA/hqdefault.jpg" alt="" loading="eager">
+<button type="button" class="play" aria-label="Play the one-minute Peakabu tour"><svg width="34" height="34" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l12 7-12 7z" fill="#0a1f12"/></svg></button>
+</div>
+<div class="row" style="justify-content:space-between;padding:12px 6px 4px">
+<span style="font:700 18px var(--display);color:var(--head)">Peakabu in one minute</span>
+<span class="mono" style="font-size:12px;color:var(--lime)">1:08</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<section id="how" class="section band">
+<div class="wrap">
+<div class="section-head">
+<p class="eyebrow">How it works</p>
+<h2 class="h2">Four steps. The squad does one of them.</h2>
+</div>
+<div class="grid" style="--min:240px">
+<div class="card"><div class="step-top"><span class="step-num">01</span><span class="pill">HOST</span></div><h3 class="h3">Start a session</h3><p>One player opens Peakabu and gets a session code.</p></div>
+<div class="card"><div class="step-top"><span class="step-num">02</span><span class="pill">SQUAD</span></div><h3 class="h3">Squad joins</h3><p>Everyone drops the same code into their client. Now you share one clock.</p></div>
+<div class="card"><div class="step-top"><span class="step-num">03</span><span class="pill">AUTO</span></div><h3 class="h3">Just play</h3><p>Each client keeps a rolling buffer of its own gameplay in the background, on your own PC.</p></div>
+<div class="card hi"><div class="step-top"><span class="step-num">04</span><span class="pill solid">ANYONE</span></div><h3 class="h3">Hit the hotkey</h3><p>Every POV of that moment saves at once and lands in the web player, synced.</p></div>
+</div>
+</div>
+</section>
+
+<section class="section">
+<div class="wrap">
+<div class="section-head">
+<p class="eyebrow">Features</p>
+<h2 class="h2">Record in the app. Watch on the web.</h2>
+</div>
+<div class="row" style="align-items:stretch;gap:20px">
+<div class="feature-col">
+<div class="row"><span class="pill solid" style="background:var(--teal);border-color:var(--teal)">DESKTOP APP</span><h3 class="h3" style="font-size:26px">While you play</h3></div>
+<div class="icon-row"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#39d3a0" stroke-width="1.8" aria-hidden="true"><rect x="3" y="7" width="18" height="11" rx="2"/><path d="M7 11h2M11 11h2M15 11h2M8 14h8"/></svg><div><strong>One key saves the whole squad</strong><p>Anyone's hotkey saves every member's clip of the same moment.</p></div></div>
+<div class="icon-row"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#39d3a0" stroke-width="1.8" aria-hidden="true"><path d="M3 12h3l2-6 4 12 2-6h7"/></svg><div><strong>Auto-Highlight</strong><p>Catches the loud moments for you, with lead-in footage before the action.</p></div></div>
+<div class="icon-row"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#39d3a0" stroke-width="1.8" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 20h16"/></svg><div><strong>Background upload queue</strong><p>Clips upload while you keep playing, with a low-bandwidth mode that protects your ping.</p></div></div>
+</div>
+<div class="feature-col">
+<div class="row"><span class="pill solid">WEB PLAYER</span><h3 class="h3" style="font-size:26px">After the match</h3></div>
+<div class="icon-row"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#c6f36b" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="8" height="7" rx="1.5"/><rect x="13" y="4" width="8" height="7" rx="1.5"/><rect x="3" y="13" width="8" height="7" rx="1.5"/><rect x="13" y="13" width="8" height="7" rx="1.5"/></svg><div><strong>Every POV on one timeline</strong><p>Synced side by side, built to grow to 40+ angles. Click a tile to focus it.</p></div></div>
+<div class="icon-row"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#c6f36b" stroke-width="1.8" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h6"/><path d="M17 14l4 3-4 3z"/></svg><div><strong>AI Reel</strong><p>Cuts a reel from the session's best angles and your comments.</p></div></div>
+<div class="icon-row"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#c6f36b" stroke-width="1.8" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.6 0l3-3a4 4 0 0 0-5.6-5.6l-1 1"/><path d="M14 10a4 4 0 0 0-5.6 0l-3 3a4 4 0 0 0 5.6 5.6l1-1"/></svg><div><strong>Share with a link</strong><p>Anyone with the link can watch. No account needed.</p></div></div>
+<div class="icon-row"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#c6f36b" stroke-width="1.8" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg><div><strong>Public sessions &amp; Peak Roulette</strong><p>Hosts can go public. Spin to drop into other squads' plays.</p></div></div>
+</div>
+</div>
+</div>
+</section>
+
+<section id="mobile" class="section" style="padding-top:0">
+<div class="wrap">
+<div style="background:var(--card-hi);border:1px solid var(--line-hi);border-radius:22px;padding:44px;display:flex;flex-direction:column;gap:36px;position:relative;overflow:hidden">
+<svg class="deco-leaf" style="right:-40px;top:-80px;width:300px;height:300px;color:#17442a;rotate:120deg" aria-hidden="true"><use href="#fl-palm"></use></svg>
+<div class="split" style="position:relative;gap:40px">
+<div class="stack" style="gap:14px">
+<p class="eyebrow amber">Peakabu Mobile</p>
+<h2 class="h2" style="font-size:clamp(32px,3.6vw,44px)">The party, from every phone in the room.</h2>
+<p class="lede" style="font-size:17px">Guests scan a QR code and join from their browser. No install. One tap on PEAK saves the moment from everyone's camera.</p>
+<div class="row mono" style="gap:10px;font-size:13px">
+<span class="pill" style="color:var(--text);border-color:var(--line-strong)">Host $5/mo</span>
+<span class="pill" style="color:var(--text);border-color:var(--line-strong)">One-event pass $3</span>
+<span class="pill" style="color:var(--text);border-color:var(--line-strong)">Guests free</span>
+<span class="pill" style="color:var(--lime);border-color:var(--lime)">Included with Squad &amp; Pro</span>
+</div>
+<a class="btn btn-ghost" href="/mobile" style="align-self:flex-start">More about Mobile</a>
+</div>
+<div class="devices" aria-hidden="true">
+<div class="device"><div class="shell" style="width:140px;height:290px;border-radius:26px;align-items:center"><span class="mono" style="font-size:10px;color:var(--faint);letter-spacing:.1em">JOIN</span><div class="qr-demo"></div><span style="font-size:12px;color:var(--dim)">Scan to join</span><span style="margin-top:auto;background:var(--amber);color:#1f1800;font-weight:700;font-size:14px;padding:10px 20px;border-radius:999px">PEAK</span></div><span class="lbl">Guest phone</span></div>
+<div class="device"><div class="shell" style="width:140px;height:290px;border-radius:26px"><span class="mono" style="font-size:10px;color:var(--faint);text-align:center">PLAYBACK</span><div class="panes" style="grid-template-columns:repeat(2,1fr)"><i class="pov" style="border:1.5px solid var(--lime)"></i><i class="pov"></i><i class="pov"></i><i class="pov"></i></div><span style="font-size:11px;color:var(--dim);text-align:center">Swipe to swap views</span></div><span class="lbl">Phone · 4 views</span></div>
+<div class="device"><div class="shell" style="width:290px;height:200px;border-radius:22px"><span class="mono" style="font-size:10px;color:var(--faint);text-align:center">PLAYBACK</span><div class="panes" style="grid-template-columns:repeat(4,1fr)"><i class="pov" style="border:1.5px solid var(--lime)"></i><i class="pov"></i><i class="pov"></i><i class="pov"></i><i class="pov"></i><i class="pov"></i><i class="pov"></i><i class="pov"></i></div></div><span class="lbl">Tablet &amp; bigger · up to 8 views</span></div>
+</div>
+</div>
+
+<div class="stack" style="position:relative;gap:18px">
+<div><h3 class="h3" style="font-size:26px">Take the party home</h3><p style="font-size:15px;color:var(--muted);margin-top:4px">Pick the videos and pictures you want. Synced sets download together and play back on one screen. Downloads are for paid hosts.</p></div>
+<div class="dl-wrap">
+<div class="dl-panel">
+<div class="row" style="justify-content:space-between"><strong style="font:700 20px var(--display);color:var(--head)">Videos</strong><span class="mono small" id="vidSel">0 selected</span></div>
+<div class="dl-list" id="vidList"></div>
+<div class="dl-foot"><button type="button" class="btn btn-lime" id="vidBtn">Select videos</button><span class="small">Synced sets arrive as one video.</span></div>
+</div>
+<div class="dl-panel pics">
+<div class="row" style="justify-content:space-between"><strong style="font:700 20px var(--display);color:var(--head)">Pictures</strong><span class="mono small" id="picSel">0 selected</span></div>
+<div class="dl-grid" id="picGrid"></div>
+<div class="dl-foot"><button type="button" class="btn btn-lime" id="picBtn">Select pictures</button></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<section id="pricing" class="section band">
+<div class="wrap">
+<div class="section-head"><p class="eyebrow">Pricing</p><h2 class="h2">Pick your expedition</h2></div>
+<div class="grid" style="--min:240px">
+<div class="card"><h3 class="h3" style="font-size:22px">Free</h3><p class="price">$0</p><ul><li>2 per session</li><li>6 sessions a month</li><li>Clips kept 24 hours</li></ul><a class="btn btn-ghost" style="margin-top:auto" href="/guide" data-download>Download</a></div>
+<div class="card"><h3 class="h3" style="font-size:22px">Creator</h3><p class="price">$10<small> /mo</small></p><ul><li>5 per session</li><li>20 sessions a month</li><li>Clips kept 30 days</li><li>Downloads &amp; exports</li></ul><a class="btn btn-ghost" style="margin-top:auto" href="/pricing">See plan</a></div>
+<div class="card pick"><span class="tag">SQUAD PICK</span><h3 class="h3" style="font-size:22px">Squad</h3><p class="price">$20<small> /mo</small></p><ul><li>11 per session</li><li>45 sessions a month</li><li>Clips kept 30 days</li><li>AI Reel</li><li style="color:var(--lime)">Peakabu Mobile included</li></ul><a class="btn btn-lime" style="margin-top:auto" href="/pricing">See plan</a></div>
+<div class="card"><h3 class="h3" style="font-size:22px">Pro</h3><p class="price">$40<small> /mo</small></p><ul><li>25 per session</li><li>110 sessions a month</li><li>Clips kept 60 days</li><li>AI Reel</li><li style="color:var(--lime)">Peakabu Mobile included</li></ul><a class="btn btn-ghost" style="margin-top:auto" href="/pricing">See plan</a></div>
+</div>
+<p class="small" style="margin-top:20px">Squad and Pro include Peakabu Mobile hosting for as long as your plan runs.</p>
+</div>
+</section>
+
+<section id="security" class="section">
+<div class="wrap">
+<div class="section-head"><p class="eyebrow">Security</p><h2 class="h2" style="font-size:clamp(30px,3.4vw,40px)">We see the play. Here's how we protect it.</h2></div>
+<div class="grid" style="--min:270px;gap:12px">
+<div class="sec-item"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#39d3a0" stroke-width="1.8" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/></svg><div><strong>Hashed passwords</strong><p>Passwords are hashed with bcrypt and never stored as text.</p></div></div>
+<div class="sec-item"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#39d3a0" stroke-width="1.8" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><div><strong>Encrypted sign-in on your PC</strong><p>The desktop app keeps your sign-in encrypted with Windows' own protection.</p></div></div>
+<div class="sec-item"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#39d3a0" stroke-width="1.8" aria-hidden="true"><path d="M4 12a8 8 0 0 1 16 0"/><path d="M12 12v8M8 16h8"/></svg><div><strong>HTTPS everywhere</strong><p>All traffic is encrypted, with strict browser security headers.</p></div></div>
+<div class="sec-item"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#39d3a0" stroke-width="1.8" aria-hidden="true"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg><div><strong>Checked on our servers</strong><p>Your plan and session membership are verified server-side on every request.</p></div></div>
+<div class="sec-item"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#39d3a0" stroke-width="1.8" aria-hidden="true"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4"/></svg><div><strong>Uploads are inspected</strong><p>Files are checked for type and size before they're stored.</p></div></div>
+<div class="sec-item"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#39d3a0" stroke-width="1.8" aria-hidden="true"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="9"/></svg><div><strong>Clips expire on schedule</strong><p>Footage is removed automatically when your plan's storage window ends.</p></div></div>
+<div class="sec-item"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#39d3a0" stroke-width="1.8" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><path d="M4 20L20 4"/></svg><div><strong>Private by default</strong><p>Sessions stay off the public list unless the host turns it on.</p></div></div>
+<div class="sec-item"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#39d3a0" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="8" r="4"/><path d="M3 20c0-3 3-5 6-5"/><path d="M15 15l5 5M20 15l-5 5"/></svg><div><strong>Host moderation</strong><p>Hosts can kick or ban anyone from their session.</p></div></div>
+<div class="sec-item"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#39d3a0" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg><div><strong>Clean logs, audited code</strong><p>Sensitive data is stripped from logs, and dependencies are pinned and scanned.</p></div></div>
+</div>
+</div>
+</section>
+
+{{FOOTER}}
+</div>
