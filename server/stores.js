@@ -161,7 +161,8 @@ const stmt = {
   uploadsForSession: db.prepare(`SELECT * FROM uploads WHERE sessionCode = ?`),
   sessionsByUser: db.prepare(`
     SELECT s.*,
-      (SELECT COALESCE(SUM(u.clipWeight), 0) FROM uploads u WHERE u.sessionCode = s.code) AS clipsUsed
+      (SELECT COALESCE(SUM(u.clipWeight), 0) FROM uploads u WHERE u.sessionCode = s.code) AS clipsUsed,
+      (SELECT COUNT(*) FROM uploads u WHERE u.sessionCode = s.code AND (u.videoFile IS NOT NULL OR u.videoKey IS NOT NULL OR u.videoUrl IS NOT NULL)) AS clipCount
     FROM sessions s
     WHERE s.createdBy = ?
     ORDER BY s.createdAt DESC
@@ -464,7 +465,8 @@ function getSessionsByUser(username, limit = 50) {
         ? r.expiresAt
         : sessionExpiryMs(r),
       createdAt: r.createdAt,
-      clipsUsed: r.clipsUsed || 0,
+      clipsUsed: r.clipsUsed || 0,   // clip-time weight (seconds), for the plan's clip cap
+      clipCount: r.clipCount || 0,   // clips you can actually watch
       role: 'host'
     }));
 }

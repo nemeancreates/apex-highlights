@@ -33,23 +33,63 @@
 .swatches button[aria-pressed="true"]{border-color:var(--white);box-shadow:0 0 0 2px var(--ink) inset}
 .empty{color:var(--faint);font-size:15px;padding:18px;border:1px dashed var(--line-hi);border-radius:14px}
 #printSheet{display:none}
-@media (max-width:860px){.acct{grid-template-columns:1fr}.side{position:static;flex-direction:row;flex-wrap:wrap}}
+@media (max-width:860px){.acct{grid-template-columns:minmax(0,1fr);gap:24px}.side{position:static;flex-direction:row;flex-wrap:wrap}.side button{margin-top:0}}
+/* Phones: sessions become stacked cards instead of a wide table */
+@media (max-width:700px){
+  #sessions .table-wrap{overflow:visible}
+  #sessions table.data{min-width:0}
+  #sessions thead{display:none}
+  #sessions table.data,#sessions tbody,#sessions tr,#sessions th,#sessions td{display:block;width:100%}
+  #sessions tr{padding:14px 16px;border-bottom:1px solid var(--line)}
+  #sessions tr:last-child{border-bottom:none}
+  #sessions td,#sessions th{border:0;padding:3px 0}
+  #sessions td[data-label]{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  #sessions td[data-label]::before{content:attr(data-label);font:600 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--faint);min-width:64px}
+  #sessions td:last-child{padding-top:10px}
+}
+.sizes{display:flex;flex-wrap:wrap;gap:6px}
+.sizes button{min-height:36px;padding:0 12px;border-radius:999px;border:1px solid var(--line-hi);background:transparent;color:var(--text);font:600 13px var(--body);cursor:pointer}
+.sizes button[aria-pressed="true"]{background:var(--lime);border-color:var(--lime);color:var(--ink)}
 @media print{
   @page{margin:12mm}
   body{background:#fff}
   body.printing .page{display:none}
-  body.printing #printSheet{display:grid;grid-template-columns:1fr 1fr;gap:10mm}
+  body.printing #printSheet{display:grid;grid-template-columns:1fr 1fr;gap:8mm}
+  /* print sizes: sticker (many per page), card, half page, full page */
+  body.printing #printSheet.size-sticker{grid-template-columns:repeat(3,1fr);gap:4mm}
+  body.printing #printSheet.size-half,body.printing #printSheet.size-full{grid-template-columns:1fr}
   .pcard{break-inside:avoid;border:1.5px dashed #9bb3a2;border-radius:6mm;padding:7mm;display:flex;flex-direction:column;align-items:center;gap:4mm;color:#10261a;font-family:'Work Sans',sans-serif}
   .pcard .set-name{font:600 9pt 'JetBrains Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:#4d6b58}
   .pcard .swing{font:700 12pt 'Bricolage Grotesque',sans-serif;color:#2b7343;margin-bottom:-3mm}
   .pcard h2{font:800 22pt/1.05 'Bricolage Grotesque',sans-serif;color:#10261a;text-align:center;margin:0}
-  .pcard .qr{width:62mm;height:62mm}
   .pcard .qr svg{width:100%;height:100%;display:block}
   .pcard .strip{width:100%;height:4mm;border-radius:2mm;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .pcard p{margin:0;font-size:11pt;text-align:center}
   .pcard .url{font:8pt 'JetBrains Mono',monospace;color:#4d6b58;word-break:break-all}
   .pcard .foot{display:flex;align-items:center;gap:2mm;font:700 10pt 'Bricolage Grotesque',sans-serif}
   .pcard .foot img{width:7mm;height:7mm}
+  /* Letter/A4 with 12mm margins leaves ~255mm of height: every size is a
+     fixed border-box height so the cards tile exactly with no blank pages. */
+  .pcard{box-sizing:border-box;height:120mm;justify-content:center;overflow:hidden;padding:6mm;gap:2.5mm}
+  .pcard .qr{width:50mm;height:50mm}
+  .size-sticker .pcard{height:58mm;padding:3mm;gap:1mm;border-radius:4mm}
+  .size-sticker .pcard .qr{width:34mm;height:34mm}
+  .size-sticker .pcard h2{font-size:12pt}
+  .size-sticker .pcard .swing{font-size:8pt;margin-bottom:-1mm}
+  .size-sticker .pcard .set-name,.size-sticker .pcard p,.size-sticker .pcard .url,.size-sticker .pcard .foot{display:none}
+  .size-sticker .pcard .strip{height:2.5mm}
+  .size-half .pcard{height:120mm}
+  .size-half .pcard .qr{width:62mm;height:62mm}
+  .size-half .pcard h2{font-size:26pt}
+  .size-half .pcard .swing{font-size:15pt}
+  .size-full .pcard{height:245mm;break-after:page;border-width:2px}
+  .size-full .pcard:last-child{break-after:auto}
+  .size-full .pcard .qr{width:140mm;height:140mm}
+  .size-full .pcard h2{font-size:50pt}
+  .size-full .pcard .swing{font-size:24pt;margin-bottom:-2mm}
+  .size-full .pcard .set-name{font-size:12pt}
+  .size-full .pcard p{font-size:15pt}
+  .size-full .pcard .foot{font-size:15pt}.size-full .pcard .foot img{width:11mm;height:11mm}
 }
 </style><!--/HEAD-->
 <div class="page">
@@ -119,6 +159,12 @@
 <div id="spots" class="panel stack">
 <div class="row" style="justify-content:space-between"><h2 class="h3">Swing cards</h2><button class="btn btn-lime btn-sm" id="newSet" type="button">New card set</button></div>
 <p style="color:var(--muted);font-size:15px;max-width:62ch">Make a printable QR card for each area of a big event, any time: “Swing by the Pool,” “Swing by the Dance floor.” Guests scan the card where they're standing. Cards go live when you start the party in Peakabu Mobile with a host plan or event pass.</p>
+<div class="row" style="gap:10px"><span class="small" id="sizeLabel">Print size</span><div class="sizes" role="group" aria-labelledby="sizeLabel" id="printSizes">
+<button type="button" data-size="sticker" aria-pressed="false">Stickers · 12 a page</button>
+<button type="button" data-size="card" aria-pressed="true">Cards · 4 a page</button>
+<button type="button" data-size="half" aria-pressed="false">Half page</button>
+<button type="button" data-size="full" aria-pressed="false">Full page poster</button>
+</div></div>
 <div id="editorSlot"></div>
 <div id="sets" class="stack" style="gap:12px"></div>
 <p class="msg" id="spotMsg" role="status" aria-live="polite"></p>
