@@ -698,4 +698,4 @@ function initPublicRoutes(app) {
   });
 }
 
-module.exports = { initPublicRoutes, startPublicCleanup, isPublic };
+module.exports = { initPublicRoutes, startPublicCleanup, isPublic, hostState };

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Field guide — Peakabu</title>
+<meta name="description" content="Every screen of Peakabu, page by page: install, sessions, saving highlights, settings and the synced web player.">
+<meta property="og:title" content="Field guide — Peakabu">
+<meta property="og:description" content="Every screen of Peakabu, page by page: install, sessions, saving highlights, settings and the synced web player.">
+<meta property="og:image" content="https://peakabu.app/site/img/badge-open.png">
+<meta name="theme-color" content="#061009">
+<link rel="icon" type="image/png" href="/site/img/badge-see-no-evil.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&amp;family=Work+Sans:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<link rel="stylesheet" href="/site/site.css">
+<style>
+.g-wrap{max-width:1320px;margin:0 auto;padding:40px 24px 96px;display:flex;flex-direction:column;gap:24px;position:relative;z-index:1}
+.g-top{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+.g-seg{display:flex;gap:4px;background:#08150d;border:1px solid var(--line);border-radius:999px;padding:3px}
+.g-seg button{min-height:36px;padding:0 16px;border:none;border-radius:999px;font:600 14px var(--body);cursor:pointer;background:transparent;color:#8fa99a}
+.g-seg button[aria-pressed="true"]{background:var(--lime);color:var(--ink)}
+.g-trail{display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start}
+.g-nav{flex:1 1 280px;max-width:320px;background:#08150d;border:1px solid var(--line);border-radius:18px;padding:18px 14px;display:flex;flex-direction:column;gap:16px;position:sticky;top:16px}
+.g-prog{height:6px;margin:0 8px;border-radius:3px;background:#13281b;overflow:hidden}
+.g-prog i{display:block;height:100%;background:linear-gradient(90deg,var(--teal),var(--lime))}
+.g-stops{display:flex;flex-direction:column;gap:14px;max-height:calc(100vh - 180px);overflow-y:auto;scrollbar-width:thin;scrollbar-color:#2f5a3c transparent}
+.g-site{display:flex;align-items:center;gap:8px;padding:0 8px 4px}
+.g-site span{font:11px var(--mono);color:var(--faint)}
+.g-site strong{font:700 17px var(--display)}
+.g-line{display:flex;flex-direction:column;margin-left:12px;border-left:2px dashed #24402e;padding-left:4px}
+.stop{display:flex;align-items:center;gap:10px;width:100%;min-height:36px;padding:4px 8px;border:none;background:transparent;border-radius:8px;cursor:pointer;text-align:left;font:500 14px var(--body);color:var(--faint)}
+.stop:hover{background:#0f2318}
+.stop.seen{color:var(--text)}
+.stop[aria-current="page"]{color:var(--head);background:#13281b}
+.stop .dot{flex:none;width:14px;height:14px;margin-left:-14px;border-radius:50%;background:#24402e;border:2px solid var(--bg)}
+.stop.seen .dot{background:var(--teal)}
+.stop[aria-current="page"] .dot{background:var(--lime);box-shadow:0 0 0 4px rgba(198,243,107,.25)}
+.stop.treasure{color:#ff5a6e;margin-top:4px}
+.g-main{flex:999 1 640px;min-width:0;display:flex;flex-direction:column;gap:20px}
+.g-where{font:12px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.g-page{background:var(--card);border:1px solid #23432f;border-radius:20px;padding:28px;display:flex;flex-direction:column;gap:22px;position:relative}
+.g-page::before,.g-page::after{content:"";position:absolute;width:24px;height:24px}
+.g-page::before{left:-1px;top:-1px;border-left:3px solid var(--lime);border-top:3px solid var(--lime);border-top-left-radius:20px}
+.g-page::after{right:-1px;bottom:-1px;border-right:3px solid var(--lime);border-bottom:3px solid var(--lime);border-bottom-right-radius:20px}
+.g-page h2{font-weight:800;font-size:clamp(32px,4vw,48px);line-height:1;letter-spacing:-.02em}
+.g-shots{background:#06100c;border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-wrap:wrap;gap:12px;justify-content:center;align-items:center}
+.g-shots img{display:block;width:auto;height:auto;border-radius:8px;max-width:46%;max-height:260px}
+.g-shots img:first-child{max-width:100%;max-height:560px}
+.g-body{display:flex;flex-wrap:wrap;gap:24px}
+.g-body ul{flex:2 1 340px;margin:0;padding-left:20px;display:flex;flex-direction:column;gap:10px;color:#b6c9bb;font-size:17px}
+.g-body li strong{color:var(--head)}
+.g-tip{flex:1 1 220px;background:var(--card-hi);border:1px solid var(--line-strong);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:6px;align-self:flex-start}
+.g-tip span:first-child{font:11px var(--mono);letter-spacing:.12em;color:var(--lime)}
+.g-tip span:last-child{font-size:15px}
+.g-pager{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.g-pager .btn{white-space:normal;text-align:left}
+.dug{animation:dig .45s cubic-bezier(.2,.8,.2,1)}
+@keyframes dig{from{opacity:0;translate:0 14px;filter:blur(3px)}to{opacity:1;translate:0 0;filter:none}}
+.g-list{display:flex;flex-direction:column;gap:20px}
+.g-list .input{max-width:520px;border-radius:999px;padding:0 20px}
+.g-list section{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:4px}
+.idx{display:flex;gap:10px;align-items:baseline;width:100%;min-height:40px;padding:6px 10px;border:none;border-radius:8px;background:transparent;color:var(--text);font:500 15px var(--body);text-align:left;cursor:pointer}
+.idx:hover{background:#0f2318;color:var(--head)}
+.idx span:first-child{font:12px var(--mono);color:var(--faint);min-width:22px}
+.idx .d{margin-left:auto;color:#24402e}.idx.seen .d{color:var(--teal)}
+/* treasure */
+.chamber-box{position:relative;overflow:hidden;border-radius:22px;border:1px solid #3a2a2c;background:radial-gradient(ellipse 60% 70% at 50% 62%,rgba(224,38,63,.22),transparent 70%),linear-gradient(180deg,#0b0a08,#15110c 60%,#0b0907);display:flex;flex-direction:column;align-items:center;padding:0 0 22px}
+.chamber-box::before{content:"";position:absolute;inset:0;pointer-events:none;background-image:repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 2px,transparent 2px 46px),repeating-linear-gradient(90deg,rgba(0,0,0,.25) 0 2px,transparent 2px 92px)}
+.plaque{position:absolute;left:6%;top:28px;z-index:2;background:#2a2016;border:2px solid #5b4630;border-radius:6px;padding:10px 14px;rotate:-4deg;font:12px var(--mono);letter-spacing:.1em;color:#e8c88f}
+.ruby{position:absolute;left:42.5%;top:33%;width:15%;height:32%;border-radius:12px;border:none;background:transparent;padding:0;cursor:pointer}
+.chamber .gemaura{animation:aura 2.8s ease-in-out infinite}
+@keyframes aura{0%,100%{opacity:.7}50%{opacity:1}}
+.chamber .gem{transform-box:fill-box;transform-origin:50% 100%}
+.chamber .flash{opacity:0;transform-box:fill-box;transform-origin:50% 50%}
+.chamber.touched .gem{animation:gemhit .5s ease-out}
+.chamber.touched .flash{animation:flash .9s .05s ease-out both}
+.chamber.touched .gemaura{animation:surge 1.4s .05s ease-out both}
+@keyframes gemhit{0%{transform:scale(1)}30%{transform:scale(1.12)}100%{transform:scale(1)}}
+@keyframes flash{0%{opacity:.95;transform:scale(.2)}100%{opacity:0;transform:scale(3.2)}}
+@keyframes surge{0%{opacity:1}30%{opacity:1;transform:scale(1.3)}100%{opacity:.8;transform:scale(1)}}
+.rumble{animation:rumble .12s linear .2s 10}
+@keyframes rumble{0%{translate:0 0}25%{translate:-5px 2px}50%{translate:4px -2px}75%{translate:-3px -1px}100%{translate:0 0}}
+.pebble{position:absolute;top:-20px;width:10px;height:10px;border-radius:3px;background:#5b5446;animation:pebble 1.4s ease-in forwards}
+@keyframes pebble{to{transform:translateY(420px) rotate(260deg);opacity:.2}}
+.t-line{position:relative;margin:6px 16px 0;font:800 26px var(--display);color:#f4e6d4;text-align:center}
+.reveal{display:flex;flex-wrap:wrap;gap:16px;animation:reveal .6s .9s both cubic-bezier(.2,.8,.2,1)}
+@keyframes reveal{from{opacity:0;translate:0 20px}to{opacity:1;translate:0 0}}
+.qref{flex:2 1 380px;background:var(--card);border:1px solid #23432f;border-radius:18px;padding:24px;display:flex;flex-direction:column;gap:12px}
+.qref .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;font-size:15px}
+.qref .cols div{display:flex;flex-direction:column;gap:6px}
+.qref .cols strong{font:600 12px var(--mono);letter-spacing:.1em}
+.badge{flex:1 1 240px;background:var(--card-hi);border:1px solid var(--lime);border-radius:18px;padding:24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+@media (prefers-reduced-motion:reduce){.dug,.chamber .gemaura,.chamber.touched .gem,.chamber.touched .gemaura,.rumble,.pebble,.reveal{animation:none}.chamber.touched .flash{animation:none;opacity:0}}
+@media (max-width:860px){.g-nav{position:static;max-width:none}.g-stops{max-height:340px}}
+@media print{
+  body.print-card .page > *:not(.g-wrap),body.print-card .g-top,body.print-card .g-nav,body.print-card .g-where,body.print-card .chamber-box,body.print-card .badge,body.print-card .qref button{display:none !important}
+  body.print-card{background:#fff}
+  body.print-card .qref{border:1.5px solid #9bb3a2;background:#fff;color:#10261a}
+  body.print-card .qref h2{color:#10261a}
+  body.print-card .reveal{animation:none}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><symbol id="fl-banana" viewBox="0 0 320 120"><path d="M8 62 C 80 4, 220 0, 314 50 C 226 108, 84 118, 8 62 Z" fill="currentColor"/><path d="M8 62 C 120 52, 220 50, 314 50" fill="none" stroke="#04100a" stroke-opacity="0.45" stroke-width="3"/></symbol><symbol id="fl-monstera" viewBox="0 0 220 220"><mask id="fl-mcut"><rect width="220" height="220" fill="#fff"/><path d="M-4 104 L-4 122 L74 150 Z M10 54 L2 70 L80 120 Z M54 4 L40 14 L96 96 Z M224 104 L224 122 L146 150 Z M210 54 L218 70 L140 120 Z M166 4 L180 14 L124 96 Z" fill="#000"/><ellipse cx="74" cy="100" rx="8" ry="13" fill="#000"/><ellipse cx="146" cy="100" rx="8" ry="13" fill="#000"/></mask><path mask="url(#fl-mcut)" d="M110 214 C 30 192, 0 122, 10 78 C 22 26, 76 6, 110 30 C 144 6, 198 26, 210 78 C 220 122, 190 192, 110 214 Z" fill="currentColor"/></symbol><symbol id="fl-small" viewBox="0 0 100 100"><path d="M10 90 C 10 40, 40 10, 92 8 C 90 60, 60 90, 10 90 Z" fill="currentColor"/><path d="M10 90 L 80 20" stroke="#04100a" stroke-opacity="0.35" stroke-width="3"/></symbol><symbol id="fl-palm" viewBox="0 0 320 320"><g fill="none" stroke="currentColor" stroke-linecap="round"><path d="M20 300 C 100 220, 200 120, 300 30" stroke-width="5"/><g stroke-width="12"><path d="M60 262 Q38 230 34 196"/><path d="M60 262 Q92 270 124 262"/><path d="M95 228 Q72 192 70 152"/><path d="M95 228 Q132 236 166 226"/><path d="M130 192 Q108 156 108 116"/><path d="M130 192 Q168 198 202 188"/><path d="M165 156 Q146 122 148 84"/><path d="M165 156 Q200 160 232 150"/><path d="M200 120 Q184 90 188 58"/><path d="M200 120 Q230 122 258 112"/></g></g></symbol></defs></svg>
+<div class="page">
+<header class="site-header"><div class="wrap">
+<a class="brand" href="/" aria-label="Peakabu home"><span class="peek" aria-hidden="true"><span class="peek-in"><img class="peek-a" src="/site/img/badge-see-no-evil.png" alt="" width="40" height="40"><img class="peek-b" src="/site/img/badge-open.png" alt="" width="40" height="40"></span></span><span class="brand-name">Peakabu</span></a>
+<nav class="nav-links" aria-label="Main"><a href="/#how">How it works</a><a href="/browse">Browse sessions</a><a href="/mobile">Mobile</a><a href="/guide" aria-current="page">Guide</a><a href="/pricing">Pricing</a></nav>
+<div class="nav-actions"><a class="discord-link" href="https://discord.gg/HRepEcKWpM" target="_blank" rel="noopener">Discord</a><a class="btn btn-glow" href="/account" data-signin>Sign in</a><a class="btn btn-outline" href="/guide" data-download>Download</a></div>
+</div></header>
+<div class="g-wrap">
+<div class="g-top">
+<div class="stack" style="gap:4px"><h1 class="h2" style="font-size:40px">Field guide</h1><span id="gHint" style="font-size:15px;color:#8fa99a"></span></div>
+<div class="g-seg" role="group" aria-label="View">
+<button type="button" id="vTrail" aria-pressed="true">Trail</button>
+<button type="button" id="vList" aria-pressed="false">List</button>
+</div>
+</div>
+<div id="gList" class="g-list" hidden>
+<label for="gq" class="sr-only">Find a topic</label>
+<input id="gq" class="input" type="search" placeholder="Find a topic, e.g. hotkey, AI Reel, upload" autocomplete="off">
+<div id="gListGrid" class="grid"></div>
+</div>
+<div id="gTrail" class="g-trail">
+<nav class="g-nav" aria-label="Guide trail">
+<div class="row" style="justify-content:space-between;padding:0 8px"><strong style="font:700 20px var(--display);color:var(--head)">The trail</strong><span class="mono" id="gProg" style="font-size:12px;color:var(--lime)"></span></div>
+<div class="g-prog" aria-hidden="true"><i id="gBar"></i></div>
+<div class="g-stops" id="gStops"></div>
+</nav>
+<main class="g-main" id="gMain" tabindex="-1"></main>
+</div>
+</div>
+<footer class="site-footer"><div class="wrap">
+<span class="brand-name" style="font-size:20px;color:var(--text)">Peakabu</span><span>We see the play, not you. · Patent pending · Peak-Abu LLC</span>
+<nav aria-label="Footer"><a class="discord-link" href="https://discord.gg/HRepEcKWpM" target="_blank" rel="noopener">Discord</a><a href="/guide">Guide</a><a href="/pricing">Pricing</a><a href="/account">Account</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="mailto:peakabullc@gmail.com">Contact</a></nav>
+</div></footer>
+</div>
+<script src="/site/site.js"></script>
+<script src="/site/guide.js"></script>
+</body>
+</html>

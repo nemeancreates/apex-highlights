@@ -1,0 +1,392 @@
+// /account — sign in, plan + usage, sessions, Spot QR cards, devices.
+// Everything the server sends is put on the page with textContent; the
+// only HTML inserted is the QR SVG our own server generates.
+(function () {
+  'use strict';
+  var A = window.paAuth;
+  var $ = function (id) { return document.getElementById(id); };
+  var COLORS = ['#39d3a0', '#7fc8ff', '#ffd23f', '#ff8a5c', '#c6f36b', '#a98fe8', '#f0a5bd', '#e8c88f'];
+  var MAX_SPOTS = 12;
+  var sets = [];
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function btn(text, cls, onClick) {
+    var b = el('button', 'btn btn-sm ' + (cls || 'btn-ghost'), text);
+    b.type = 'button';
+    if (onClick) b.addEventListener('click', onClick);
+    return b;
+  }
+  function say(id, text, ok) { var m = $(id); if (!m) return; m.textContent = text || ''; m.className = 'msg' + (text ? (ok ? ' ok' : ' err') : ''); }
+  function day(ms) { return ms ? new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : ''; }
+  function when(ms) {
+    if (!ms) return '';
+    var d = Date.now() - ms;
+    if (d < 120000) return 'just now';
+    if (d < 3600000) return Math.round(d / 60000) + ' min ago';
+    if (d < 86400000) return Math.round(d / 3600000) + ' h ago';
+    return day(ms);
+  }
+  function left(ms) {
+    var d = ms - Date.now();
+    if (d <= 0) return 'expired';
+    if (d < 3600000) return Math.max(1, Math.round(d / 60000)) + ' min';
+    if (d < 86400000 * 2) return Math.round(d / 3600000) + ' h';
+    return Math.round(d / 86400000) + ' days';
+  }
+  // Two-click confirm without browser dialogs.
+  function confirmBtn(text, sure, onConfirm) {
+    var b = btn(text, 'btn-danger'), armed = null;
+    b.addEventListener('click', function () {
+      if (armed) { clearTimeout(armed); armed = null; b.textContent = text; onConfirm(b); return; }
+      b.textContent = sure;
+      armed = setTimeout(function () { armed = null; b.textContent = text; }, 4000);
+    });
+    return b;
+  }
+
+  // ---------------- signed out ----------------
+  function showSignedOut() {
+    $('signedIn').hidden = true;
+    $('signedOut').hidden = false;
+    var tL = $('tabLogin'), tR = $('tabRegister');
+    function pick(reg) {
+      tL.setAttribute('aria-selected', reg ? 'false' : 'true'); tL.tabIndex = reg ? -1 : 0;
+      tR.setAttribute('aria-selected', reg ? 'true' : 'false'); tR.tabIndex = reg ? 0 : -1;
+      $('loginForm').hidden = reg; $('registerForm').hidden = !reg;
+      $('authTitle').textContent = reg ? 'Make camp.' : 'Welcome back.';
+    }
+    tL.onclick = function () { pick(false); };
+    tR.onclick = function () { pick(true); };
+    [tL, tR].forEach(function (t) {
+      t.onkeydown = function (e) {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        e.preventDefault(); var reg = t === tL; pick(reg); (reg ? tR : tL).focus();
+      };
+    });
+    if (location.hash === '#register') pick(true);
+  }
+
+  function authSubmit(form, url, extra) {
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var msg = form.querySelector('.msg'), b = form.querySelector('[type="submit"]');
+      var body = Object.assign({ username: form.username.value.trim(), password: form.password.value, platform: 'web' }, extra ? extra(form) : {});
+      b.disabled = true; msg.textContent = '';
+      fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (r) {
+          b.disabled = false;
+          if (!r.ok || !r.d.token) { msg.className = 'msg err'; msg.textContent = r.d.error || 'That did not work. Try again.'; return; }
+          A.set(r.d.token, r.d.username);
+          form.reset();
+          document.querySelectorAll('[data-signin]').forEach(function (x) { x.textContent = r.d.username; });
+          start();
+        })
+        .catch(function () { b.disabled = false; msg.className = 'msg err'; msg.textContent = 'Could not reach Peakabu. Try again in a moment.'; });
+    });
+  }
+
+  // ---------------- signed in ----------------
+  function signedOutNow() {
+    A.clear();
+    document.querySelectorAll('[data-signin]').forEach(function (x) { x.textContent = 'Sign in'; });
+    showSignedOut();
+  }
+  function api(url, opts) {
+    return A.api(url, opts).then(function (r) {
+      if (r.status === 401) { signedOutNow(); throw new Error('signed-out'); }
+      return r;
+    });
+  }
+
+  function loadOverview() {
+    return api('/api/account').then(function (r) {
+      if (!r.ok) { say('loadErr', r.data.error || 'Could not load your account.'); return; }
+      var a = r.data, l = a.limits || {};
+      $('who').textContent = a.username;
+      $('planName').textContent = a.tierLabel;
+      $('planLine').textContent = a.tier === 't1' ? 'Free plan. Clips are kept for 24 hours.'
+        : (a.tierExpiresAt ? 'Active until ' + day(a.tierExpiresAt) + '.' : 'Lifetime plan.') + ' Clips kept ' + l.retentionDays + ' days.';
+      var used = (a.usage && a.usage.sessionsThisMonth) || 0, cap = l.sessionsPerMonth || 0;
+      $('sessUse').textContent = '';
+      $('sessUse').append(String(used), el('small', null, ' / ' + cap + ' sessions'));
+      $('sessBar').style.width = (cap ? Math.min(100, used / cap * 100) : 0).toFixed(1) + '%';
+      $('limitsLine').textContent = 'Up to ' + l.memberCap + ' players per session. Resets on the 1st.';
+      var m = a.mobile || {};
+      if (m.source === 'plan') { $('mobName').textContent = 'Included'; $('mobLine').textContent = 'Comes with your ' + a.tierLabel + ' plan.'; }
+      else if (m.source === 'pass') { $('mobName').textContent = 'Host pass'; $('mobLine').textContent = 'Active until ' + day(m.passExpiresAt) + '.'; }
+      else { $('mobName').textContent = 'Free'; $('mobLine').textContent = 'Host up to ' + Math.round((m.freeDailySec || 600) / 60) + ' minutes a day.'; }
+      if (m.events && m.events.length) $('mobLine').textContent += ' ' + m.events.length + ' event pass' + (m.events.length === 1 ? '' : 'es') + ' ready.';
+      $('discName').textContent = a.discordLinked ? (a.discordUsername || 'Linked') : 'Not linked';
+      $('linkDiscord').hidden = !!a.discordLinked;
+    });
+  }
+
+  function loadSessions() {
+    return api('/api/account/sessions').then(function (r) {
+      var body = $('sessBody');
+      body.replaceChildren();
+      var list = (r.ok && r.data.sessions) || [];
+      if (!list.length) {
+        var tr = el('tr'), td = el('td', 'small', 'No sessions yet. Host one from the desktop app and it shows up here.');
+        td.colSpan = 5; tr.append(td); body.append(tr); return;
+      }
+      list.forEach(function (s) {
+        var tr = el('tr', 'sessrow');
+        var th = el('th'); th.scope = 'row';
+        th.append(el('div', null, s.title || s.detectedGame || 'Session ' + s.code), el('div', 'small mono', day(s.createdAt) + ' · ' + s.code));
+        var pub = s.public || {};
+        var sw = el('button', 'switch'); sw.type = 'button'; sw.setAttribute('role', 'switch');
+        sw.setAttribute('aria-checked', pub.isPublic ? 'true' : 'false');
+        sw.setAttribute('aria-label', 'List ' + s.code + ' on Browse');
+        sw.append(el('span'));
+        var note = el('div', 'small');
+        function paint(p) {
+          sw.setAttribute('aria-checked', p.isPublic ? 'true' : 'false');
+          sw.disabled = !!p.underReview || (!p.canList && !p.isPublic);
+          note.textContent = p.underReview ? 'Under review' : p.state === 'checking' ? 'Checking clips…' : (!p.canList && p.reason) ? p.reason : '';
+        }
+        paint(pub);
+        sw.addEventListener('click', function () {
+          var want = sw.getAttribute('aria-checked') !== 'true';
+          sw.disabled = true;
+          api('/sessions/' + encodeURIComponent(s.code) + '/public', { method: 'PATCH', body: JSON.stringify({ isPublic: want }) }).then(function (x) {
+            if (x.ok) { paint(x.data); say('sessMsg', want ? 'Listed. It shows on Browse once its clips clear the check.' : 'Taken off Browse.', true); }
+            else { paint(pub); say('sessMsg', x.data.error || 'Could not change that.'); }
+          }).catch(function () {});
+        });
+        var tdPub = el('td'); tdPub.append(sw, note);
+        var watch = el('a', 'btn btn-ghost btn-sm', 'Watch'); watch.href = '/player?code=' + encodeURIComponent(s.code);
+        var copy = btn('Copy link', 'btn-ghost', function () {
+          var url = location.origin + '/player?code=' + encodeURIComponent(s.code);
+          (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(
+            function () { say('sessMsg', 'Link copied.', true); },
+            function () { say('sessMsg', url, true); });
+        });
+        var tdAct = el('td'); tdAct.append(watch, ' ', copy);
+        tr.append(th, el('td', null, String(s.clipsUsed || 0)), el('td', null, left(s.expiresAt)), tdPub, tdAct);
+        body.append(tr);
+      });
+    });
+  }
+
+  var PLATFORM = { pc: ['PC', 'Desktop app'], mobile: ['MOB', 'Phone · Peakabu Mobile'], web: ['WEB', 'Web browser'] };
+  function loadDevices() {
+    return api('/api/account/devices').then(function (r) {
+      var box = $('devList');
+      box.replaceChildren();
+      var list = (r.ok && r.data.devices) || [];
+      if (!list.length) { box.append(el('p', 'small', 'No other sign-ins.')); return; }
+      list.forEach(function (d) {
+        var p = PLATFORM[d.platform] || ['?', 'Older sign-in'];
+        var row = el('div', 'dev'), info = el('div');
+        info.style.flex = '1 1 220px';
+        info.append(el('strong', null, p[1]), el('div', 'small', d.current ? 'This browser · active now' : 'Last seen ' + when(d.lastSeenAt || d.signedInAt)));
+        row.append(el('span', 'ic', p[0]), info);
+        if (!d.current) {
+          row.append(btn('Sign out', 'btn-ghost', function (e) {
+            e.target.disabled = true;
+            api('/api/account/devices/' + encodeURIComponent(d.id) + '/signout', { method: 'POST' }).then(function (x) {
+              if (x.ok) { say('devMsg', p[1] + ' signed out.', true); loadDevices(); }
+              else { e.target.disabled = false; say('devMsg', x.data.error || 'Could not sign that out.'); }
+            }).catch(function () {});
+          }));
+        }
+        box.append(row);
+      });
+    });
+  }
+
+  // ---------------- Spot card sets ----------------
+  function loadSets() {
+    return api('/api/spots/sets').then(function (r) {
+      if (!r.ok) { say('spotMsg', r.data.error || 'Could not load your card sets.'); return; }
+      sets = r.data.sets || [];
+      if (r.data.colors && r.data.colors.length) COLORS = r.data.colors;
+      if (r.data.limits) MAX_SPOTS = r.data.limits.maxSpots || MAX_SPOTS;
+      renderSets();
+    });
+  }
+
+  function renderSets() {
+    var box = $('sets');
+    box.replaceChildren();
+    if (!sets.length) { box.append(el('div', 'empty', 'No card sets yet. Make one for your next big event — a wedding, a tournament, a birthday.')); return; }
+    sets.forEach(function (s) {
+      var card = el('div', 'set');
+      var top = el('div', 'row');
+      top.style.justifyContent = 'space-between';
+      var name = el('div');
+      name.append(el('strong', null, s.name), el('span', 'small', ' · ' + s.spots.length + ' card' + (s.spots.length === 1 ? '' : 's')));
+      if (s.live) { var lv = el('span', 'pill solid', 'LIVE'); lv.style.marginLeft = '10px'; name.append(lv); }
+      top.append(name);
+      var chips = el('div', 'chips');
+      s.spots.forEach(function (sp) {
+        var c = el('span', 'chip'), dot = el('i'); dot.style.background = sp.color;
+        c.append(dot, document.createTextNode(sp.name)); chips.append(c);
+      });
+      var acts = el('div', 'row');
+      acts.style.gap = '8px';
+      acts.append(
+        btn('Print cards', 'btn-lime', function (e) { printSet(s, e.target); }),
+        btn('Edit', 'btn-ghost', function () { openEditor(s); }),
+        confirmBtn('New codes', 'Old cards stop working. Sure?', function (b) {
+          b.disabled = true;
+          api('/api/spots/sets/' + encodeURIComponent(s.id) + '/reissue', { method: 'POST' }).then(function (x) {
+            b.disabled = false;
+            if (x.ok) { say('spotMsg', 'New codes made. Print the cards again; the old ones no longer work.', true); loadSets(); }
+            else say('spotMsg', x.data.error || 'Could not do that.');
+          }).catch(function () {});
+        }),
+        confirmBtn('Delete', 'Delete this set?', function (b) {
+          b.disabled = true;
+          api('/api/spots/sets/' + encodeURIComponent(s.id), { method: 'DELETE' }).then(function (x) {
+            if (x.ok) { say('spotMsg', 'Card set deleted.', true); loadSets(); }
+            else { b.disabled = false; say('spotMsg', x.data.error || 'Could not delete it.'); }
+          }).catch(function () {});
+        })
+      );
+      card.append(top, chips, acts);
+      box.append(card);
+    });
+  }
+
+  function openEditor(existing) {
+    var slot = $('editorSlot');
+    slot.replaceChildren();
+    say('spotMsg', '');
+    var rows = existing
+      ? existing.spots.map(function (s) { return { id: s.id, name: s.name, color: s.color }; })
+      : [{ name: 'Head table', color: COLORS[0] }, { name: 'Dance floor', color: COLORS[2] }];
+    var ed = el('form', 'editor');
+    ed.noValidate = true;
+    var nf = el('div', 'field'), nl = el('label', null, 'Set name'), ni = el('input', 'input');
+    nl.htmlFor = ni.id = 'setName'; ni.maxLength = 60; ni.value = existing ? existing.name : '';
+    ni.placeholder = 'Sam & Riley’s wedding';
+    nf.append(nl, ni);
+    var list = el('div', 'stack');
+    list.style.gap = '10px';
+    var add = btn('Add a spot', 'btn-ghost');
+    var err = el('p', 'msg err'); err.setAttribute('role', 'alert');
+
+    function draw() {
+      list.replaceChildren();
+      rows.forEach(function (r, i) {
+        var row = el('div', 'spotrow');
+        var inp = el('input', 'input'); inp.maxLength = 40; inp.value = r.name;
+        inp.setAttribute('aria-label', 'Spot ' + (i + 1) + ' name'); inp.placeholder = 'Spot name';
+        inp.addEventListener('input', function () { r.name = inp.value; });
+        var sw = el('div', 'swatches'); sw.setAttribute('role', 'group'); sw.setAttribute('aria-label', 'Spot ' + (i + 1) + ' colour');
+        COLORS.forEach(function (c) {
+          var b = el('button'); b.type = 'button'; b.style.background = c;
+          b.setAttribute('aria-label', c); b.setAttribute('aria-pressed', r.color === c ? 'true' : 'false');
+          b.addEventListener('click', function () { r.color = c; draw(); });
+          sw.append(b);
+        });
+        var rm = btn('Remove', 'btn-ghost', function () { rows.splice(i, 1); draw(); });
+        rm.disabled = rows.length <= 1;
+        row.append(inp, sw, rm);
+        list.append(row);
+      });
+      add.disabled = rows.length >= MAX_SPOTS;
+      add.textContent = rows.length >= MAX_SPOTS ? MAX_SPOTS + ' spots max' : 'Add a spot';
+    }
+    add.addEventListener('click', function () {
+      if (rows.length >= MAX_SPOTS) return;
+      rows.push({ name: '', color: COLORS[rows.length % COLORS.length] });
+      draw();
+      var inputs = list.querySelectorAll('input'); inputs[inputs.length - 1].focus();
+    });
+    var save = el('button', 'btn btn-lime btn-sm', existing ? 'Save changes' : 'Make cards'); save.type = 'submit';
+    var cancel = btn('Cancel', 'btn-ghost', function () { slot.replaceChildren(); });
+    var bar = el('div', 'row'); bar.append(add, save, cancel);
+    if (existing) bar.append(el('span', 'small', 'Spots you keep keep their QR codes.'));
+
+    ed.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var name = ni.value.trim();
+      var spots = rows.map(function (r) { return { id: r.id, name: r.name.trim(), color: r.color }; });
+      if (!name) { err.textContent = 'Give the set a name.'; ni.focus(); return; }
+      if (spots.some(function (s) { return !s.name; })) { err.textContent = 'Every spot needs a name.'; return; }
+      save.disabled = true; err.textContent = '';
+      var url = existing ? '/api/spots/sets/' + encodeURIComponent(existing.id) : '/api/spots/sets';
+      api(url, { method: existing ? 'PATCH' : 'POST', body: JSON.stringify({ name: name, spots: spots }) }).then(function (x) {
+        save.disabled = false;
+        if (!x.ok) { err.textContent = x.data.error || 'Could not save that.'; return; }
+        slot.replaceChildren();
+        say('spotMsg', existing ? 'Saved.' : 'Cards made. Hit Print cards when you’re ready.', true);
+        loadSets();
+      }).catch(function () { save.disabled = false; });
+    });
+    ed.append(el('strong', null, existing ? 'Edit card set' : 'New card set'), nf, list, bar, err);
+    slot.append(ed);
+    draw();
+    ni.focus();
+  }
+
+  // Ready-to-print sheet: two cards across, cut along the dashed lines.
+  function printSet(set, b) {
+    b.disabled = true;
+    say('spotMsg', 'Getting your cards ready…', true);
+    api('/api/spots/sets/' + encodeURIComponent(set.id) + '/cards').then(function (x) {
+      b.disabled = false;
+      if (!x.ok) { say('spotMsg', x.data.error || 'Could not make the QR codes.'); return; }
+      var sheet = $('printSheet');
+      sheet.replaceChildren();
+      x.data.cards.forEach(function (c) {
+        var card = el('div', 'pcard');
+        var strip = el('div', 'strip'); strip.style.background = c.color;
+        var qr = el('div', 'qr');
+        qr.innerHTML = c.svg; // generated by our server's QR library
+        var foot = el('div', 'foot'), img = el('img'); img.src = '/site/img/badge-see-no-evil.png'; img.alt = '';
+        foot.append(img, document.createTextNode('Peakabu'));
+        card.append(el('span', 'set-name', x.data.set.name), el('h2', null, c.name), qr,
+          el('p', null, 'Scan with your phone camera to join the party here.'), strip, el('span', 'url', c.url), foot);
+        sheet.append(card);
+      });
+      say('spotMsg', '');
+      var imgs = sheet.querySelectorAll('img'), pending = imgs.length;
+      function go() {
+        document.body.classList.add('printing');
+        window.print();
+      }
+      if (!pending) go();
+      else imgs.forEach(function (i) { if (i.complete) { if (--pending === 0) go(); } else i.onload = i.onerror = function () { if (--pending === 0) go(); }; });
+    }).catch(function () { b.disabled = false; });
+  }
+  window.addEventListener('afterprint', function () { document.body.classList.remove('printing'); });
+
+  // ---------------- start ----------------
+  function start() {
+    if (!A.get()) { showSignedOut(); return; }
+    $('signedOut').hidden = true;
+    $('signedIn').hidden = false;
+    $('who').textContent = A.get().username;
+    Promise.all([loadOverview(), loadSessions(), loadSets(), loadDevices()]).then(function () {
+      if (location.hash) { var t = document.querySelector(location.hash.replace(/[^#\w-]/g, '')); if (t) t.scrollIntoView(); }
+    }).catch(function () {});
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    authSubmit($('loginForm'), '/auth/login');
+    authSubmit($('registerForm'), '/auth/register', function (f) { return { acceptedTerms: f.terms.checked }; });
+    $('newSet').addEventListener('click', function () { openEditor(null); });
+    $('signOut').addEventListener('click', function () {
+      api('/auth/logout', { method: 'POST' }).catch(function () {}).then(signedOutNow);
+    });
+    $('linkDiscord').addEventListener('click', function () {
+      api('/auth/discord/link-url').then(function (r) {
+        if (r.ok && r.data.url) location.href = r.data.url;
+        else say('discMsg', r.data.error || 'Discord linking is not available right now.');
+      }).catch(function () {});
+    });
+    var redeem = document.querySelector('#redeem form');
+    if (redeem) redeem.addEventListener('redeemed', function () { loadOverview().catch(function () {}); });
+    start();
+  });
+})();

@@ -168,15 +168,17 @@ function tokenVersionOk(decoded) {
   return true;
 }
 
-// Mints a token in a fresh login slot. The account's first slot login
-// bumps tokenVersion once so pre-slot tokens (no sid) stop working —
-// they'd otherwise be an uncounted extra login. Caller saves the user.
-function issueLoginToken(user) {
+// Mints a token in a fresh login slot for `platform` ('pc' | 'mobile' |
+// 'web'). An older login on the same platform is signed out; the other
+// platforms stay signed in. The account's first slot login bumps
+// tokenVersion once so pre-slot tokens (no sid) stop working — they'd
+// otherwise be an uncounted extra login. Caller saves the user.
+function issueLoginToken(user, platform) {
   const key = user.username.toLowerCase();
   if (!loginSlots.hasSlots(key)) user.tokenVersion = (user.tokenVersion || 0) + 1;
-  const { sid, evicted } = loginSlots.openSlot(key);
-  if (evicted.length) log('info', 'login_slot_evicted', { username: user.username, evicted: evicted.length });
-  return jwt.sign({ username: user.username, tv: user.tokenVersion || 0, sid }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
+  const { sid, evicted, platform: pl } = loginSlots.openSlot(key, platform);
+  if (evicted.length) log('info', 'login_slot_evicted', { username: user.username, platform: pl, evicted: evicted.length });
+  return jwt.sign({ username: user.username, tv: user.tokenVersion || 0, sid, pl }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
 }
 
 function requireAuth(req, res, next) {
@@ -187,7 +189,7 @@ function requireAuth(req, res, next) {
   try {
     const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET);
     if (!tokenVersionOk(decoded)) {
-      return safeError(res, 401, 'Signed in on too many devices — this one was signed out. Please log in again.');
+      return safeError(res, 401, 'You signed in on another device of the same kind, so this one was signed out. Please log in again.');
     }
     req.user = decoded;
     next();
@@ -210,7 +212,7 @@ function requireAuthAny(req, res, next) {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     if (!tokenVersionOk(decoded)) {
-      return safeError(res, 401, 'Signed in on too many devices — this one was signed out. Please log in again.');
+      return safeError(res, 401, 'You signed in on another device of the same kind, so this one was signed out. Please log in again.');
     }
     req.user = decoded;
     next();
@@ -336,7 +338,7 @@ function initAuthRoutes(app) {
     };
     user.tokenVersion = 0;
     users.set(clean.toLowerCase(), user);
-    const token = issueLoginToken(user);
+    const token = issueLoginToken(user, loginSlots.platformFor(req));
     saveUsersToDisk();
     // Only count SUCCESSFUL registrations — a typo'd username or a taken
     // name shouldn't burn someone's daily allowance.
@@ -368,9 +370,10 @@ function initAuthRoutes(app) {
     if (!user || !valid) {
       return safeError(res, 401, 'Invalid username or password');
     }
-    // Up to loginSlots.MAX_LOGINS places at once (e.g. PC + phone). A login
-    // past that signs out only the oldest one.
-    const token = issueLoginToken(user);
+    // One login per platform (desktop app, mobile, website) at the same
+    // time. Signing in again on the same platform signs out only the older
+    // login there.
+    const token = issueLoginToken(user, loginSlots.platformFor(req));
     saveUsersToDisk();
     log('info', 'user_login', { username: user.username, tier: getEffectiveTier(user) });
     return res.status(200).json({
@@ -382,7 +385,7 @@ function initAuthRoutes(app) {
   });
 
   // Frees this device's login slot. Clients that just drop their token
-  // still work — the slot ages out when two newer logins replace it.
+  // still work — the slot is replaced by the next login on that platform.
   app.post('/auth/logout', requireAuth, (req, res) => {
     if (req.user.sid) loginSlots.closeSlot(req.user.username.toLowerCase(), req.user.sid);
     res.json({ ok: true });

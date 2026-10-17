@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Peakabu Spot — waiting for the party</title>
+<meta name="description" content="This QR card joins a Peakabu Mobile party when it starts.">
+<meta property="og:title" content="Peakabu Spot — waiting for the party">
+<meta property="og:description" content="This QR card joins a Peakabu Mobile party when it starts.">
+<meta property="og:image" content="https://peakabu.app/site/img/badge-open.png">
+<meta name="theme-color" content="#061009">
+<link rel="icon" type="image/png" href="/site/img/badge-see-no-evil.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&amp;family=Work+Sans:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<link rel="stylesheet" href="/site/site.css">
+<meta name="robots" content="noindex"><style>
+.spot-wrap{min-height:calc(100vh - 160px);display:grid;place-items:center;padding:64px 0}
+.spot-card{max-width:460px;width:100%;text-align:center;align-items:center;gap:16px;padding:32px 28px}
+.spot-dot{width:64px;height:64px;border-radius:50%;box-shadow:0 0 0 10px rgba(255,255,255,.04)}
+.wait{display:inline-flex;gap:6px}.wait i{width:8px;height:8px;border-radius:50%;background:var(--lime);animation:blink 1.4s ease-in-out infinite}
+.wait i:nth-child(2){animation-delay:.2s}.wait i:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,100%{opacity:.25}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.wait i{animation:none}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><symbol id="fl-banana" viewBox="0 0 320 120"><path d="M8 62 C 80 4, 220 0, 314 50 C 226 108, 84 118, 8 62 Z" fill="currentColor"/><path d="M8 62 C 120 52, 220 50, 314 50" fill="none" stroke="#04100a" stroke-opacity="0.45" stroke-width="3"/></symbol><symbol id="fl-monstera" viewBox="0 0 220 220"><mask id="fl-mcut"><rect width="220" height="220" fill="#fff"/><path d="M-4 104 L-4 122 L74 150 Z M10 54 L2 70 L80 120 Z M54 4 L40 14 L96 96 Z M224 104 L224 122 L146 150 Z M210 54 L218 70 L140 120 Z M166 4 L180 14 L124 96 Z" fill="#000"/><ellipse cx="74" cy="100" rx="8" ry="13" fill="#000"/><ellipse cx="146" cy="100" rx="8" ry="13" fill="#000"/></mask><path mask="url(#fl-mcut)" d="M110 214 C 30 192, 0 122, 10 78 C 22 26, 76 6, 110 30 C 144 6, 198 26, 210 78 C 220 122, 190 192, 110 214 Z" fill="currentColor"/></symbol><symbol id="fl-small" viewBox="0 0 100 100"><path d="M10 90 C 10 40, 40 10, 92 8 C 90 60, 60 90, 10 90 Z" fill="currentColor"/><path d="M10 90 L 80 20" stroke="#04100a" stroke-opacity="0.35" stroke-width="3"/></symbol><symbol id="fl-palm" viewBox="0 0 320 320"><g fill="none" stroke="currentColor" stroke-linecap="round"><path d="M20 300 C 100 220, 200 120, 300 30" stroke-width="5"/><g stroke-width="12"><path d="M60 262 Q38 230 34 196"/><path d="M60 262 Q92 270 124 262"/><path d="M95 228 Q72 192 70 152"/><path d="M95 228 Q132 236 166 226"/><path d="M130 192 Q108 156 108 116"/><path d="M130 192 Q168 198 202 188"/><path d="M165 156 Q146 122 148 84"/><path d="M165 156 Q200 160 232 150"/><path d="M200 120 Q184 90 188 58"/><path d="M200 120 Q230 122 258 112"/></g></g></symbol></defs></svg>
+<div class="page">
+<header class="site-header"><div class="wrap">
+<a class="brand" href="/" aria-label="Peakabu home"><span class="peek" aria-hidden="true"><span class="peek-in"><img class="peek-a" src="/site/img/badge-see-no-evil.png" alt="" width="40" height="40"><img class="peek-b" src="/site/img/badge-open.png" alt="" width="40" height="40"></span></span><span class="brand-name">Peakabu</span></a>
+<nav class="nav-links" aria-label="Main"><a href="/#how">How it works</a><a href="/browse">Browse sessions</a><a href="/mobile">Mobile</a><a href="/guide">Guide</a><a href="/pricing">Pricing</a></nav>
+<div class="nav-actions"><a class="discord-link" href="https://discord.gg/HRepEcKWpM" target="_blank" rel="noopener">Discord</a><a class="btn btn-glow" href="/account" data-signin>Sign in</a><a class="btn btn-outline" href="/guide" data-download>Download</a></div>
+</div></header>
+<section class="section" style="padding:0">
+<div class="wrap spot-wrap">
+<div class="card hi spot-card" id="spotCard">
+<span class="spot-dot" id="spotDot" style="background:var(--line-hi)" aria-hidden="true"></span>
+<span class="eyebrow" id="spotSet">Peakabu Spot</span>
+<h1 class="h2" id="spotName">Checking this card…</h1>
+<p id="spotLine" style="font-size:16px">One moment.</p>
+<span class="wait" id="spotWait" aria-hidden="true" hidden><i></i><i></i><i></i></span>
+<p class="small" id="spotHint"></p>
+<a class="btn btn-ghost" href="/mobile" id="spotMore" hidden>What is Peakabu Mobile?</a>
+</div>
+</div>
+</section>
+<footer class="site-footer"><div class="wrap">
+<span class="brand-name" style="font-size:20px;color:var(--text)">Peakabu</span><span>We see the play, not you. · Patent pending · Peak-Abu LLC</span>
+<nav aria-label="Footer"><a class="discord-link" href="https://discord.gg/HRepEcKWpM" target="_blank" rel="noopener">Discord</a><a href="/guide">Guide</a><a href="/pricing">Pricing</a><a href="/account">Account</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="mailto:peakabullc@gmail.com">Contact</a></nav>
+</div></footer>
+</div>
+<script src="/site/site.js"></script>
+<script src="/site/spot.js"></script>
+</body>
+</html>

@@ -1,0 +1,150 @@
+<!-- title:Your account — Peakabu|desc:Sign in to see your plan, your sessions, your devices and your Spot QR cards.|active:account -->
+<!--HEAD--><style>
+.acct{display:grid;grid-template-columns:220px minmax(0,1fr);gap:40px;align-items:start}
+.side{position:sticky;top:24px;display:flex;flex-direction:column;gap:4px}
+.side a{color:var(--text);text-decoration:none;padding:10px 14px;border-radius:10px;font-weight:500;font-size:15px}
+.side a:hover{background:var(--card);color:var(--head)}
+.side button{margin-top:12px;align-self:flex-start}
+.panel{scroll-margin-top:24px}
+.panel + .panel{margin-top:56px}
+.stat{font:800 32px/1 var(--display);color:var(--head)}
+.stat small{font:500 15px var(--body);color:var(--faint)}
+.bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--lime),var(--teal))}
+.authbox{max-width:440px;margin:0 auto}
+.tabs{display:flex;gap:4px;padding:4px;border:1px solid var(--line-hi);border-radius:999px;background:#08150d;align-self:flex-start}
+.tabs button{min-height:40px;padding:0 18px;border:none;border-radius:999px;background:transparent;color:var(--text);font:700 14px var(--body);cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--lime);color:var(--ink)}
+.check{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:var(--muted)}
+.check input{margin-top:3px;accent-color:var(--lime);width:18px;height:18px}
+.sessrow td:last-child{white-space:nowrap}
+.dev{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:16px 0;border-bottom:1px solid var(--line)}
+.dev:last-child{border-bottom:none}
+.dev .ic{width:40px;height:40px;border-radius:10px;background:#13281b;display:grid;place-items:center;color:var(--lime);font:600 12px var(--mono)}
+.set{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:14px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:#08150d;border:1px solid var(--line-hi);font-size:14px;color:var(--white)}
+.chip i{width:10px;height:10px;border-radius:50%}
+.editor{border:1px solid var(--line-strong);background:var(--card-hi);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:14px}
+.spotrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.spotrow .input{flex:1 1 200px}
+.swatches{display:flex;gap:6px}
+.swatches button{width:28px;height:28px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0}
+.swatches button[aria-pressed="true"]{border-color:var(--white);box-shadow:0 0 0 2px var(--ink) inset}
+.empty{color:var(--faint);font-size:15px;padding:18px;border:1px dashed var(--line-hi);border-radius:14px}
+#printSheet{display:none}
+@media (max-width:860px){.acct{grid-template-columns:1fr}.side{position:static;flex-direction:row;flex-wrap:wrap}}
+@media print{
+  @page{margin:12mm}
+  body{background:#fff}
+  body.printing .page{display:none}
+  body.printing #printSheet{display:grid;grid-template-columns:1fr 1fr;gap:10mm}
+  .pcard{break-inside:avoid;border:1.5px dashed #9bb3a2;border-radius:6mm;padding:7mm;display:flex;flex-direction:column;align-items:center;gap:4mm;color:#10261a;font-family:'Work Sans',sans-serif}
+  .pcard .set-name{font:600 9pt 'JetBrains Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:#4d6b58}
+  .pcard h2{font:800 22pt/1.05 'Bricolage Grotesque',sans-serif;color:#10261a;text-align:center;margin:0}
+  .pcard .qr{width:62mm;height:62mm}
+  .pcard .qr svg{width:100%;height:100%;display:block}
+  .pcard .strip{width:100%;height:4mm;border-radius:2mm;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .pcard p{margin:0;font-size:11pt;text-align:center}
+  .pcard .url{font:8pt 'JetBrains Mono',monospace;color:#4d6b58;word-break:break-all}
+  .pcard .foot{display:flex;align-items:center;gap:2mm;font:700 10pt 'Bricolage Grotesque',sans-serif}
+  .pcard .foot img{width:7mm;height:7mm}
+}
+</style><!--/HEAD-->
+<div class="page">
+{{HEADER}}
+
+<!-- Signed out -->
+<section id="signedOut" class="section" style="padding-top:96px" hidden>
+<div class="wrap">
+<div class="authbox stack" style="gap:20px">
+<h1 class="h2" id="authTitle">Welcome back.</h1>
+<div class="tabs" role="tablist" aria-label="Sign in or create an account">
+<button role="tab" id="tabLogin" aria-selected="true" aria-controls="loginForm">Sign in</button>
+<button role="tab" id="tabRegister" aria-selected="false" aria-controls="registerForm" tabindex="-1">Create account</button>
+</div>
+<form id="loginForm" class="card stack" style="gap:16px" role="tabpanel" aria-labelledby="tabLogin">
+<div class="field"><label for="liUser">Username</label><input class="input" id="liUser" name="username" autocomplete="username" maxlength="24" required></div>
+<div class="field"><label for="liPass">Password</label><input class="input" id="liPass" name="password" type="password" autocomplete="current-password" maxlength="128" required></div>
+<div class="row" style="justify-content:space-between"><button class="btn btn-lime" type="submit">Sign in</button><a href="/forgot-password.html" style="font-size:14px">Forgot it?</a></div>
+<p class="msg" role="status" aria-live="polite"></p>
+</form>
+<form id="registerForm" class="card stack" style="gap:16px" role="tabpanel" aria-labelledby="tabRegister" hidden>
+<div class="field"><label for="reUser">Username</label><input class="input" id="reUser" name="username" autocomplete="username" minlength="2" maxlength="24" pattern="[A-Za-z0-9_\-]{2,24}" required><span class="small">2–24 characters: letters, numbers, _ or -</span></div>
+<div class="field"><label for="rePass">Password</label><input class="input" id="rePass" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required><span class="small">8 to 128 characters.</span></div>
+<label class="check"><input type="checkbox" name="terms" required><span>I agree to the <a href="/terms" target="_blank">Terms</a> and <a href="/privacy" target="_blank">Privacy Policy</a>.</span></label>
+<button class="btn btn-lime" type="submit" style="align-self:flex-start">Create account</button>
+<p class="msg" role="status" aria-live="polite"></p>
+</form>
+<p class="small">You can be signed in once on the desktop app, once on your phone and once on this website. Signing in on another device of the same kind signs the older one out.</p>
+</div>
+</div>
+</section>
+
+<!-- Signed in -->
+<section id="signedIn" class="section" style="padding-top:72px" hidden>
+<div class="wrap acct">
+<nav class="side" aria-label="Account">
+<a href="#overview">Overview</a>
+<a href="#sessions">My sessions</a>
+<a href="#spots">Spots &amp; QR cards</a>
+<a href="#devices">Devices</a>
+<a href="#redeem">Redeem a code</a>
+<button class="btn btn-ghost btn-sm" id="signOut" type="button">Sign out</button>
+</nav>
+<div>
+
+<div id="overview" class="panel stack" style="gap:20px">
+<h1 class="h2">Base camp, <span id="who"></span>.</h1>
+<p class="msg err" id="loadErr" role="alert"></p>
+<div class="grid" style="--min:190px">
+<div class="card hi"><span class="eyebrow">Your plan</span><span class="stat" id="planName">…</span><p id="planLine"></p><div class="row" style="margin-top:auto"><a class="btn btn-ghost btn-sm" href="/pricing">See plans</a></div></div>
+<div class="card"><span class="eyebrow">This month</span><span class="stat" id="sessUse">…</span><div class="bar" aria-hidden="true"><i id="sessBar" style="width:0"></i></div><p id="limitsLine"></p></div>
+<div class="card"><span class="eyebrow">Peakabu Mobile</span><span class="stat" id="mobName">…</span><p id="mobLine"></p><div class="row" style="margin-top:auto"><a class="btn btn-ghost btn-sm" href="/billing">Mobile passes</a></div></div>
+<div class="card"><span class="eyebrow">Discord</span><span class="stat" id="discName" style="font-size:24px">…</span><p>Discord is how you reset a forgotten password and get your server role. Keep it linked.</p><div class="row" style="margin-top:auto"><button class="btn btn-discord btn-sm" id="linkDiscord" type="button" hidden>Link Discord</button></div><p class="msg" id="discMsg" role="status"></p></div>
+</div>
+</div>
+
+<div id="sessions" class="panel stack">
+<h2 class="h3">My sessions</h2>
+<p class="small">Sessions start private. Only you, the host, can list one on Browse.</p>
+<div class="table-wrap"><table class="data">
+<thead><tr><th scope="col">Session</th><th scope="col">Clips</th><th scope="col">Expires</th><th scope="col">Public</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+<tbody id="sessBody"><tr><td colspan="5" class="small">Loading…</td></tr></tbody>
+</table></div>
+<p class="msg" id="sessMsg" role="status" aria-live="polite"></p>
+</div>
+
+<div id="spots" class="panel stack">
+<div class="row" style="justify-content:space-between"><h2 class="h3">Spot QR cards</h2><button class="btn btn-lime btn-sm" id="newSet" type="button">New card set</button></div>
+<p style="color:var(--muted);font-size:15px;max-width:62ch">Make a printable card for each area of a big event, any time. Guests scan the card for where they're standing. Cards go live when you start the party in Peakabu Mobile with a host plan or event pass.</p>
+<div id="editorSlot"></div>
+<div id="sets" class="stack" style="gap:12px"></div>
+<p class="msg" id="spotMsg" role="status" aria-live="polite"></p>
+</div>
+
+<div id="devices" class="panel stack">
+<h2 class="h3">Signed in on</h2>
+<p class="small">One desktop app, one phone and one browser at a time. A new sign-in on the same kind of device replaces the old one.</p>
+<div class="card" id="devList" style="padding:4px 20px"></div>
+<p class="msg" id="devMsg" role="status" aria-live="polite"></p>
+</div>
+
+<div id="redeem" class="panel stack">
+<h2 class="h3">Redeem a code</h2>
+<form class="stack" data-redeem style="gap:12px;max-width:520px">
+<div class="field"><label for="redeemCode">Redemption code</label><input class="input mono" id="redeemCode" name="code" autocomplete="off" spellcheck="false" maxlength="64" required></div>
+<button class="btn btn-lime" type="submit" style="align-self:flex-start">Redeem</button>
+<p class="msg" role="status" aria-live="polite"></p>
+</form>
+</div>
+
+</div>
+</div>
+</section>
+
+{{FOOTER}}
+</div>
+<div id="printSheet" aria-hidden="true"></div>
+<script src="/site/redeem.js"></script>
+<script src="/site/account.js"></script>
