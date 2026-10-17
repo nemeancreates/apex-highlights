@@ -296,7 +296,7 @@
         list.append(row);
       });
       add.disabled = rows.length >= MAX_SPOTS;
-      add.textContent = rows.length >= MAX_SPOTS ? MAX_SPOTS + ' areas max' : 'Add a spot';
+      add.textContent = rows.length >= MAX_SPOTS ? MAX_SPOTS + ' areas max' : 'Add an area';
     }
     add.addEventListener('click', function () {
       if (rows.length >= MAX_SPOTS) return;
