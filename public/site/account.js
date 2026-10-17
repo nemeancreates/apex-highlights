@@ -171,7 +171,9 @@
             function () { say('sessMsg', url, true); });
         });
         var tdAct = el('td'); tdAct.append(watch, ' ', copy);
-        tr.append(th, el('td', null, String(s.clipsUsed || 0)), el('td', null, left(s.expiresAt)), tdPub, tdAct);
+        var tdClips = el('td', null, String(s.clipCount || 0)), tdExp = el('td', null, left(s.expiresAt));
+        tdClips.setAttribute('data-label', 'Clips'); tdExp.setAttribute('data-label', 'Expires'); tdPub.setAttribute('data-label', 'Public');
+        tr.append(th, tdClips, tdExp, tdPub, tdAct);
         body.append(tr);
       });
     });
@@ -340,6 +342,7 @@
       if (!x.ok) { say('spotMsg', x.data.error || 'Could not make the QR codes.'); return; }
       var sheet = $('printSheet');
       sheet.replaceChildren();
+      sheet.className = 'size-' + printSize;
       x.data.cards.forEach(function (c) {
         var card = el('div', 'pcard');
         var strip = el('div', 'strip'); strip.style.background = c.color;
@@ -363,6 +366,15 @@
   }
   window.addEventListener('afterprint', function () { document.body.classList.remove('printing'); });
 
+  // Print size, remembered on this browser: stickers to dot around a venue,
+  // table cards, half-page signs or a full-page poster for a bulletin board.
+  var SIZES = ['sticker', 'card', 'half', 'full'];
+  var printSize = 'card';
+  try { var ps = localStorage.getItem('pa_print_size'); if (SIZES.indexOf(ps) >= 0) printSize = ps; } catch (e) {}
+  function paintSizes() {
+    document.querySelectorAll('#printSizes button').forEach(function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-size') === printSize ? 'true' : 'false'); });
+  }
+
   // ---------------- start ----------------
   function start() {
     if (!A.get()) { showSignedOut(); return; }
@@ -378,6 +390,14 @@
     authSubmit($('loginForm'), '/auth/login');
     authSubmit($('registerForm'), '/auth/register', function (f) { return { acceptedTerms: f.terms.checked }; });
     $('newSet').addEventListener('click', function () { openEditor(null); });
+    paintSizes();
+    document.querySelectorAll('#printSizes button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        printSize = b.getAttribute('data-size');
+        try { localStorage.setItem('pa_print_size', printSize); } catch (e) {}
+        paintSizes();
+      });
+    });
     $('signOut').addEventListener('click', function () {
       api('/auth/logout', { method: 'POST' }).catch(function () {}).then(signedOutNow);
     });

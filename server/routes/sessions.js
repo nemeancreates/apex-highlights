@@ -165,8 +165,17 @@ function initSessionRoutes(app) {
     // Already public via GET /sessions/:code.
     // stars/squadCanStar (v0.1.87): the web player shows them, and the
     // desktop app's Sync writes the star flag into local clip sidecars.
+    // ?around=<ms>: just the one peak (the clips saved together at that
+    // moment). Peak Roulette uses this so it doesn't pull a whole session's
+    // clip list, and every clip's metadata, to play a single moment.
+    let uploads = session.uploads;
+    const around = Number(req.query.around);
+    if (req.query.around !== undefined && Number.isFinite(around) && around > 0) {
+      uploads = uploadsAroundMoment(session.uploads || [], around);
+    }
     res.json({
-      uploads: session.uploads,
+      uploads,
+      partial: uploads !== session.uploads,
       closed: !!session.closed,
       createdBy: session.createdBy,
       expiresAt: session.expiresAt || null,
@@ -174,6 +183,30 @@ function initSessionRoutes(app) {
       squadCanStar: getSquadCanStar(code)
     });
   });
+}
+
+// Same clustering rule as the web player and /browse: clips saved within 5s
+// of each other are one peak. Returns the peak nearest the given moment.
+const PEAK_GAP_MS = 5000;
+function uploadTs(u) {
+  if (typeof u.coordinatedTimestamp === 'number' && u.coordinatedTimestamp > 0) return u.coordinatedTimestamp;
+  const t = Date.parse(u.uploadedAt);
+  return Number.isFinite(t) ? t : 0;
+}
+function uploadsAroundMoment(all, moment) {
+  const sorted = all.slice().sort((a, b) => uploadTs(a) - uploadTs(b));
+  let best = null, bestDiff = Infinity, cur = null, prev = 0;
+  for (const u of sorted) {
+    const ts = uploadTs(u);
+    if (!cur || ts - prev > PEAK_GAP_MS) {
+      cur = { start: ts, clips: [] };
+      const d = Math.abs(ts - moment);
+      if (d < bestDiff) { bestDiff = d; best = cur; }
+    }
+    cur.clips.push(u);
+    prev = ts;
+  }
+  return best ? best.clips : [];
 }
 
 module.exports = { initSessionRoutes, createSessionForUser };

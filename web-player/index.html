@@ -155,6 +155,16 @@
       background: linear-gradient(90deg, rgba(57,211,160,0.14), rgba(108,79,216,0.10)); border-bottom: 1px solid #1e3527;
       font-size: 13px; color: #c8d6cd; }
     .roulette-bar.show { display: flex; }
+    .video-area { position: relative; }
+    .rl-next { position: absolute; z-index: 30; left: 50%; top: 40%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .rl-next[hidden] { display: none; }
+    .rl-next-btn { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 6px 22px 6px 8px; border: 0; border-radius: 999px; cursor: pointer;
+      background: linear-gradient(135deg, #c6f36b, #39d3a0); color: #0a1f12; font: 700 16px 'Work Sans', sans-serif; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+    .rl-ring { width: 44px; height: 44px; transform: rotate(-90deg); }
+    .rl-ring circle { fill: none; stroke: rgba(10,31,18,.2); stroke-width: 4; }
+    .rl-ring .rl-ring-fill { stroke: #0a1f12; stroke-dasharray: 119.4; stroke-dashoffset: 0; transition: stroke-dashoffset 1s linear; }
+    .rl-cancel { min-height: 36px; padding: 0 16px; border-radius: 999px; border: 1px solid #2f5a3c; background: rgba(6,16,9,.85); color: #c8d6cd; font: 600 13px 'Work Sans', sans-serif; cursor: pointer; }
+    @media (prefers-reduced-motion: reduce) { .rl-ring .rl-ring-fill { transition: none; } }
     .roulette-bar .rb-from { flex: 1; min-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .roulette-bar .rb-from b { color: #e8f5ec; font-weight: 600; }
     .roulette-bar .rb-actions { display: flex; gap: 8px; }
@@ -1172,6 +1182,7 @@
       color: #8fbfa3; font-size: 10px; line-height: 1.35; cursor: pointer; user-select: none;
     }
     .hl-chapter:first-child { margin-top: 0; }
+    @media (pointer: coarse) { .hl-chapter { min-height: 44px; padding-top: 8px; padding-bottom: 8px; } }
     .hl-chapter:hover { border-color: #39d3a0; }
     .hl-chapter.open { border-style: solid; }
     .hl-chapter-line { display: flex; align-items: center; gap: 3px; font-weight: 700; color: #39d3a0; white-space: nowrap; overflow: hidden; }
@@ -1355,6 +1366,14 @@
 
   <div class="main-layout">
     <div class="video-area">
+      <!-- Peak Roulette: after a peak plays, offer the next one -->
+      <div class="rl-next" id="rlNext" hidden>
+        <button type="button" class="rl-next-btn" id="rlNextBtn" onclick="paRouletteNext()">
+          <svg class="rl-ring" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="19"/><circle class="rl-ring-fill" id="rlRing" cx="22" cy="22" r="19"/></svg>
+          <span>Next peak in <b id="rlSecs">8</b></span>
+        </button>
+        <button type="button" class="rl-cancel" onclick="paRouletteCancel()">Cancel</button>
+      </div>
       <div class="video-grid" id="videoGrid">
         <div class="empty-state">
           <div class="monkey">&#x1F648;</div>
@@ -1569,6 +1588,7 @@
     let compositeJobId = null;
     let compositePollInterval = null;
     let refreshInterval = null;
+    let partialSession = false;   // Peak Roulette loaded just one peak, not the whole session
 
     let sessionStart = 0;
     let commentSettings = { filterMode: 'all', topN: 0 };
@@ -2605,19 +2625,15 @@
       h.appendChild(line);
       h.appendChild(meta);
 
-      // Mouse: hover shows the info card, click collapses. Touch: tapping the
-      // chevron collapses, tapping anywhere else toggles the info card.
-      let lastPointer = 'mouse';
-      h.addEventListener('pointerdown', e => { lastPointer = e.pointerType; });
+      // Tapping or clicking anywhere on the chapter box opens/closes it.
+      // Mouse users also get the info card on hover.
+      h.setAttribute('role', 'button');
+      h.setAttribute('tabindex', '0');
+      h.setAttribute('aria-expanded', open ? 'true' : 'false');
       h.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') showChapterCard(ch, h); });
       h.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') hideChapterCard(); });
-      h.addEventListener('click', e => {
-        if (lastPointer === 'touch' && e.target !== chev) {
-          const card = document.getElementById('hlChapterCard');
-          if (card && card.classList.contains('show') && card.dataset.key === ch.key) hideChapterCard();
-          else showChapterCard(ch, h);
-          return;
-        }
+      h.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); h.click(); } });
+      h.addEventListener('click', () => {
         chapterOpenState[ch.key] = !open;
         saveChapterState();
         hideChapterCard();
@@ -2843,7 +2859,9 @@
     // SESSION LOADING
     // ========================
 
-    async function loadSession() {
+    async function loadSession(opts) {
+      // opts.around (Peak Roulette): load only the peak at that moment.
+      const around = opts && typeof opts.around === 'number' && opts.around > 0 ? opts.around : null;
       const code = document.getElementById('sessionInput').value.trim().toUpperCase();
       if (!code || code.length < 4) { alert('Enter a valid session code'); return; }
 
@@ -2858,8 +2876,9 @@
         if (!sessionRes.ok) { hideSessionLoading(); alert('Error loading session'); return; }
         const session = await sessionRes.json();
 
-        const uploadsRes = await fetch('/sessions/' + code + '/uploads');
+        const uploadsRes = await fetch('/sessions/' + code + '/uploads' + (around ? '?around=' + around : ''));
         const uploadsData = await uploadsRes.json();
+        partialSession = !!around;
         if (!uploadsData.uploads || uploadsData.uploads.length === 0) {
           showExpiredState('No uploads in this session yet. Clips will appear once squad members save highlights.');
           return;
@@ -2945,7 +2964,7 @@
         document.getElementById('highlightsColumn').style.display = 'flex';
 
         if (refreshInterval) clearInterval(refreshInterval);
-        refreshInterval = setInterval(refreshUploads, hasProcessing ? 10000 : 45000);
+        refreshInterval = partialSession ? null : setInterval(refreshUploads, hasProcessing ? 10000 : 45000);
 
         console.log('Loaded ' + code + ' — ' + allUploads.length + ' uploads, ' + highlights.length + ' highlight(s), ' + allUsers.length + ' user(s)' + (hasProcessing ? ' (some still processing)' : ''));
       } catch (err) {
@@ -3011,7 +3030,7 @@
     // ========================
 
     async function refreshUploads() {
-      if (!currentSessionCode) return;
+      if (!currentSessionCode || partialSession) return;
       try {
         const uploadsRes = await fetch('/sessions/' + currentSessionCode + '/uploads');
 
@@ -4110,7 +4129,12 @@
           });
         }
 
-        const allEnded = videos.filter(v => !v.missing && !v.processing && v.loaded).every(v => v.element.ended || v.element.paused);
+        // Ended = every playable POV has reached the end of its clip. A POV
+        // that's merely paused (autoplay blocked, waiting for its turn in the
+        // timeline) or not loaded yet doesn't count, and no POVs isn't an end.
+        const playable = videos.filter(v => !v.missing && !v.processing && v.loaded && v.element);
+        const allEnded = playable.length > 0 && playable.every(v => v.element.ended ||
+          (v.element.duration > 0 && masterTime - (v.offset || 0) >= v.element.duration - 0.15));
         // A buffer hold pauses everyone on purpose; that isn't the end.
         if (allEnded && isPlaying && !bufferHold) {
           pauseAll();
@@ -6295,8 +6319,8 @@
 
     function cancelAuto() {
       if (roulette.autoTimer) { clearInterval(roulette.autoTimer); roulette.autoTimer = null; }
-      var next = document.getElementById('rbNext');
-      if (next) next.textContent = 'Next peak ▶';
+      var o = document.getElementById('rlNext');
+      if (o) o.hidden = true;
     }
 
     async function fetchPeak() {
@@ -6334,7 +6358,8 @@
       }
 
       document.getElementById('sessionInput').value = peak.code;
-      await loadSession();
+      // Only this peak's clips, not the whole session.
+      await loadSession({ around: peak.momentTs });
       if (currentSessionCode !== peak.code || !highlights.length) {
         setFrom(['That one just expired — grabbing another…']);
         setTimeout(nextPeak, 800);
@@ -6376,23 +6401,31 @@
       }, 200);
     }
 
-    // When a roulette peak finishes, roll the next one after a short
-    // countdown (clicking Next skips it; pressing play again cancels it).
+    // When a roulette peak has played to the end, a big "Next peak in 8"
+    // button counts down over the video. Tap it to go now, Cancel to stay
+    // (replay, browse the session). Pressing play again also cancels it.
+    var NEXT_SECS = 8;
     window.paOnHighlightEnded = function () {
       if (!roulette.on) return;
       cancelAuto();
-      var left = 3;
-      var btn = document.getElementById('rbNext');
-      btn.textContent = 'Next in ' + left + '…';
+      var left = NEXT_SECS;
+      var o = document.getElementById('rlNext'), secs = document.getElementById('rlSecs'), ring = document.getElementById('rlRing');
+      secs.textContent = left;
+      ring.style.transition = 'none'; ring.style.strokeDashoffset = '0';
+      void ring.getBoundingClientRect(); ring.style.transition = '';
+      o.hidden = false;
+      document.getElementById('rlNextBtn').focus({ preventScroll: true });
       roulette.autoTimer = setInterval(function () {
         if (isPlaying) { cancelAuto(); return; }
         left--;
+        ring.style.strokeDashoffset = String(119.4 * (1 - left / NEXT_SECS));
         if (left <= 0) { cancelAuto(); nextPeak(); }
-        else btn.textContent = 'Next in ' + left + '…';
+        else secs.textContent = left;
       }, 1000);
     };
 
     window.paRouletteNext = function () { nextPeak(); };
+    window.paRouletteCancel = function () { cancelAuto(); };
 
     window.paRouletteStart = function (platform) {
       roulette.on = true;
