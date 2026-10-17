@@ -190,6 +190,15 @@ function initAccountRoutes(app) {
     res.sendFile(path.join(PUBLIC_DIR, 'spot.html'));
   });
 
+  // A host test-scanning their own printed card while signed in on this
+  // browser: the waiting page says the card is theirs and linked.
+  app.get('/api/spots/card/:token/mine', requireAuth, cardPollLimiter, (req, res) => {
+    const hit = spots.resolveToken(req.params.token);
+    if (!hit) return safeError(res, 404, 'Card not found');
+    res.set('Cache-Control', 'no-store');
+    res.json({ mine: hit.set.usernameLower === req.user.username.toLowerCase(), setName: hit.set.name });
+  });
+
   app.get('/api/spots/card/:token', cardPollLimiter, (req, res) => {
     const hit = spots.resolveToken(req.params.token);
     if (!hit) return safeError(res, 404, 'This card isn\'t active any more. Ask the host for a new one.');
@@ -223,6 +232,14 @@ function initAccountRoutes(app) {
     if (!set) return;
     spots.detachSet(set);
     res.json({ ok: true });
+  });
+
+  // The mobile host page's "Use Swing cards" picker: this host's sets.
+  app.get('/internal/mobile/spots/sets/:username', (req, res) => {
+    if (!mobile.mobileSecretOk(req)) return safeError(res, 403, 'Forbidden');
+    const key = String(req.params.username || '').toLowerCase();
+    if (!/^[a-z0-9_-]{2,24}$/.test(key)) return safeError(res, 400, 'Invalid username');
+    res.json({ sets: spots.listSets(key, cardUrl) });
   });
 
   app.get('/internal/mobile/spots/card/:token', (req, res) => {

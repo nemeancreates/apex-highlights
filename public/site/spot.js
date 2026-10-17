@@ -7,7 +7,22 @@
   var $ = function (id) { return document.getElementById(id); };
   var tries = 0, MAX_TRIES = 120; // ~1 hour at 30s
 
+  var mineChecked = false;
+  // A host test-scanning their own printed card (signed in on this browser):
+  // confirm it's theirs and linked, so they know the print came out right.
+  function checkMine() {
+    if (mineChecked || !window.paAuth || !window.paAuth.get()) return;
+    mineChecked = true;
+    window.paAuth.api('/api/spots/card/' + encodeURIComponent(token) + '/mine').then(function (r) {
+      if (!r.ok || !r.data.mine) return;
+      var p = $('spotMine');
+      p.textContent = '✓ This card is yours and it\u2019s linked. It belongs to your set \u201c' + r.data.setName +
+        '\u201d. Pick that set in Peakabu Mobile when the party starts and this card brings guests straight in.';
+      p.hidden = false;
+    }).catch(function () {});
+  }
   function show(d) {
+    checkMine();
     $('spotBy').hidden = false;
     $('spotSet').textContent = d.setName;
     $('spotName').textContent = d.spotName;
