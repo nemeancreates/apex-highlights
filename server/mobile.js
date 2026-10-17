@@ -193,6 +193,25 @@ async function refreshMobileListings() {
   await scanMobileListings();
 }
 
+// One host's Peakabu Mobile sessions for /account. Empty (not an error) when
+// the mobile server is off or slow, so the desktop sessions still show.
+async function hostedMobileSessions(username) {
+  if (!MOBILE_API_URL || !MOBILE_SHARED_SECRET || !username) return [];
+  try {
+    const res = await fetch(MOBILE_API_URL + '/api/internal/hosted?username=' + encodeURIComponent(username), {
+      headers: { 'X-Mobile-Secret': MOBILE_SHARED_SECRET },
+      signal: AbortSignal.timeout(3000)
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    return Array.isArray(data.sessions) ? data.sessions.filter(s => s && typeof s.id === 'string' &&
+      typeof s.watchUrl === 'string' && /^https?:\/\//.test(s.watchUrl)) : [];
+  } catch (err) {
+    log('warn', 'mobile_hosted_fetch_failed', { error: err.message });
+    return [];
+  }
+}
+
 function validListing(l) {
   return l && typeof l.id === 'string' && /^[A-Za-z0-9_-]{4,32}$/.test(l.id) &&
     typeof l.watchUrl === 'string' && /^https?:\/\//.test(l.watchUrl) &&
@@ -369,6 +388,6 @@ function mobileSecretOk(req) {
 module.exports = {
   MOBILE_FREE_DAILY_SEC, MOBILE_INCLUDED_TIERS, EVENT_MAX_HOURS,
   grantMobileDays, addEventPass, getMobileStatus, claimEventPass,
-  startMobileListingSync, mobileListings, mobileListingState, reportMobileListing, setMobileListingHidden, mobileSecretOk,
+  startMobileListingSync, mobileListings, hostedMobileSessions, mobileListingState, reportMobileListing, setMobileListingHidden, mobileSecretOk,
   _refreshForTest: refreshMobileListings
 };

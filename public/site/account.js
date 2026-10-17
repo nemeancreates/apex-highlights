@@ -129,16 +129,76 @@
     });
   }
 
+  // My sessions: desktop and Peakabu Mobile together, newest first until a
+  // Clips or Expires header is clicked (click again to flip the order).
+  var sessList = [], sessSort = { key: null, dir: 1 };
+  function ms(v) { return typeof v === 'number' ? v : (Date.parse(v) || 0); }
+  function sortSessions() {
+    var k = sessSort.key, dir = sessSort.dir;
+    return sessList.slice().sort(function (a, b) {
+      if (k === 'clips') return dir * ((a.clipCount || 0) - (b.clipCount || 0)) || ms(b.createdAt) - ms(a.createdAt);
+      if (k === 'expires') return dir * (ms(a.expiresAt) - ms(b.expiresAt)) || ms(b.createdAt) - ms(a.createdAt);
+      return ms(b.createdAt) - ms(a.createdAt);
+    });
+  }
+  function paintSortHeads() {
+    document.querySelectorAll('#sessions [data-sort]').forEach(function (b) {
+      var on = b.getAttribute('data-sort') === sessSort.key;
+      b.closest('th').setAttribute('aria-sort', on ? (sessSort.dir > 0 ? 'ascending' : 'descending') : 'none');
+      b.setAttribute('data-dir', on ? (sessSort.dir > 0 ? 'up' : 'down') : '');
+    });
+  }
+  document.querySelectorAll('#sessions [data-sort]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var k = b.getAttribute('data-sort');
+      // First click: most clips first / soonest to expire first.
+      if (sessSort.key === k) sessSort.dir = -sessSort.dir;
+      else { sessSort.key = k; sessSort.dir = k === 'clips' ? -1 : 1; }
+      paintSortHeads();
+      renderSessions();
+    });
+  });
+
   function loadSessions() {
     return api('/api/account/sessions').then(function (r) {
+      sessList = (r.ok && r.data.sessions) || [];
+      renderSessions();
+    });
+  }
+
+  function mobileRow(s) {
+    var tr = el('tr', 'sessrow');
+    var th = el('th'); th.scope = 'row';
+    var name = el('div', null, s.title || 'Mobile party');
+    name.append(' ', el('span', 'tag-mob', 'Mobile'));
+    var bits = [day(s.createdAt), s.peaks + ' peak' + (s.peaks === 1 ? '' : 's')];
+    if (s.photos) bits.push(s.photos + ' photo' + (s.photos === 1 ? '' : 's'));
+    if (!s.endedAt) bits.push('Live now');
+    th.append(name, el('div', 'small mono', bits.join(' · ')));
+    var tdClips = el('td', null, String(s.clipCount || 0)), tdExp = el('td', null, left(s.expiresAt));
+    var tdPub = el('td', 'small', s.listed ? 'Listed (set on the Mobile host page)' : 'Private');
+    var watch = el('a', 'btn btn-ghost btn-sm', 'Watch'); watch.href = s.watchUrl; watch.target = '_blank'; watch.rel = 'noopener';
+    var copy = btn('Copy link', 'btn-ghost', function () {
+      (navigator.clipboard ? navigator.clipboard.writeText(s.watchUrl) : Promise.reject()).then(
+        function () { say('sessMsg', 'Link copied.', true); },
+        function () { say('sessMsg', s.watchUrl, true); });
+    });
+    var tdAct = el('td'); tdAct.append(watch, ' ', copy);
+    tdClips.setAttribute('data-label', 'Clips'); tdExp.setAttribute('data-label', 'Expires'); tdPub.setAttribute('data-label', 'Public');
+    tr.append(th, tdClips, tdExp, tdPub, tdAct);
+    return tr;
+  }
+
+  function renderSessions() {
       var body = $('sessBody');
       body.replaceChildren();
-      var list = (r.ok && r.data.sessions) || [];
+      var list = sortSessions();
       if (!list.length) {
-        var tr = el('tr'), td = el('td', 'small', 'No sessions yet. Host one from the desktop app and it shows up here.');
+        var tr = el('tr'), td = el('td', 'small', 'No sessions yet. Host one from the desktop app or Peakabu Mobile and it shows up here.');
         td.colSpan = 5; tr.append(td); body.append(tr); return;
       }
       list.forEach(function (s) {
+        if (s.kind === 'mobile') { body.append(mobileRow(s)); return; }
         var tr = el('tr', 'sessrow');
         var th = el('th'); th.scope = 'row';
         th.append(el('div', null, s.title || s.detectedGame || 'Session ' + s.code), el('div', 'small mono', day(s.createdAt) + ' · ' + s.code));
@@ -176,7 +236,6 @@
         tr.append(th, tdClips, tdExp, tdPub, tdAct);
         body.append(tr);
       });
-    });
   }
 
   var PLATFORM = { pc: ['PC', 'Desktop app'], mobile: ['MOB', 'Phone · Peakabu Mobile'], web: ['WEB', 'Web browser'] };
@@ -343,7 +402,12 @@
       var sheet = $('printSheet');
       sheet.replaceChildren();
       sheet.className = 'size-' + printSize;
+      // Stickers and cards: a full sheet (12 / 4) for each area, so every area gets its own page.
+      var copies = { sticker: 12, card: 4 }[printSize] || 1;
       x.data.cards.forEach(function (c) {
+        for (var n = 0; n < copies; n++) addCard(c);
+      });
+      function addCard(c) {
         var card = el('div', 'pcard');
         var strip = el('div', 'strip'); strip.style.background = c.color;
         var qr = el('div', 'qr');
@@ -353,7 +417,7 @@
         card.append(el('span', 'set-name', x.data.set.name), el('span', 'swing', 'Swing by'), el('h2', null, c.name), qr,
           el('p', null, 'Scan with your phone camera to film from here.'), strip, el('span', 'url', c.url), foot);
         sheet.append(card);
-      });
+      }
       say('spotMsg', '');
       var imgs = sheet.querySelectorAll('img'), pending = imgs.length;
       function go() {
