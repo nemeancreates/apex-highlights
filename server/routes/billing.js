@@ -124,7 +124,7 @@ function messageFor(out) {
   return {
     subject: 'Your Peakabu event pass',
     text: `Your Peakabu event pass (${out.hours}h starting ${new Date(out.startsAt).toUTCString()}):\n\n    ${out.code}` +
-      `${tail}\n\nOnce redeemed, pick the pass when you start a Mobile session to unlock Peak Spots QR codes for the event.`
+      `${tail}\n\nOnce redeemed, pick the pass when you start a Mobile session to bring your Swing cards to life for the event.`
   };
 }
 

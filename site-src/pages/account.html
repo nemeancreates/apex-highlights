@@ -1,4 +1,4 @@
-<!-- title:Your account — Peakabu|desc:Sign in to see your plan, your sessions, your devices and your Spot QR cards.|active:account -->
+<!-- title:Your account — Peakabu|desc:Sign in to see your plan, your sessions, your devices and your Swing cards.|active:account -->
 <!--HEAD--><style>
 .acct{display:grid;grid-template-columns:220px minmax(0,1fr);gap:40px;align-items:start}
 .side{position:sticky;top:24px;display:flex;flex-direction:column;gap:4px}
@@ -41,6 +41,7 @@
   body.printing #printSheet{display:grid;grid-template-columns:1fr 1fr;gap:10mm}
   .pcard{break-inside:avoid;border:1.5px dashed #9bb3a2;border-radius:6mm;padding:7mm;display:flex;flex-direction:column;align-items:center;gap:4mm;color:#10261a;font-family:'Work Sans',sans-serif}
   .pcard .set-name{font:600 9pt 'JetBrains Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:#4d6b58}
+  .pcard .swing{font:700 12pt 'Bricolage Grotesque',sans-serif;color:#2b7343;margin-bottom:-3mm}
   .pcard h2{font:800 22pt/1.05 'Bricolage Grotesque',sans-serif;color:#10261a;text-align:center;margin:0}
   .pcard .qr{width:62mm;height:62mm}
   .pcard .qr svg{width:100%;height:100%;display:block}
@@ -87,7 +88,7 @@
 <nav class="side" aria-label="Account">
 <a href="#overview">Overview</a>
 <a href="#sessions">My sessions</a>
-<a href="#spots">Spots &amp; QR cards</a>
+<a href="#spots">Swing cards</a>
 <a href="#devices">Devices</a>
 <a href="#redeem">Redeem a code</a>
 <button class="btn btn-ghost btn-sm" id="signOut" type="button">Sign out</button>
@@ -116,8 +117,8 @@
 </div>
 
 <div id="spots" class="panel stack">
-<div class="row" style="justify-content:space-between"><h2 class="h3">Spot QR cards</h2><button class="btn btn-lime btn-sm" id="newSet" type="button">New card set</button></div>
-<p style="color:var(--muted);font-size:15px;max-width:62ch">Make a printable card for each area of a big event, any time. Guests scan the card for where they're standing. Cards go live when you start the party in Peakabu Mobile with a host plan or event pass.</p>
+<div class="row" style="justify-content:space-between"><h2 class="h3">Swing cards</h2><button class="btn btn-lime btn-sm" id="newSet" type="button">New card set</button></div>
+<p style="color:var(--muted);font-size:15px;max-width:62ch">Make a printable QR card for each area of a big event, any time: “Swing by the Pool,” “Swing by the Dance floor.” Guests scan the card where they're standing. Cards go live when you start the party in Peakabu Mobile with a host plan or event pass.</p>
 <div id="editorSlot"></div>
 <div id="sets" class="stack" style="gap:12px"></div>
 <p class="msg" id="spotMsg" role="status" aria-live="polite"></p>

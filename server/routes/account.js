@@ -121,7 +121,7 @@ function initAccountRoutes(app) {
     res.json({ ok: true });
   });
 
-  // ---------------- Spot cards ----------------
+  // ---------------- Spot cards ("Swing cards" to users; see spots.js) ----------------
   app.get('/api/spots/sets', requireAuth, accountLimiter, (req, res) => {
     res.json({
       sets: spots.listSets(req.user.username.toLowerCase(), cardUrl),

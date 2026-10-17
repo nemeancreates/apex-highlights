@@ -1,6 +1,11 @@
 // ================================
 // SPOT CARDS — printable QR cards for big Peakabu Mobile events.
 //
+// NAMING: "spot" is the code name only. Users see these as SWING CARDS:
+// one card per area of the event, printed as "Swing by the <area>".
+// Keep spot/spots in code, tables and API paths (the mobile server uses
+// them); use the Swing wording in anything a person reads.
+//
 // A host makes a card SET ("Wedding") with up to MAX_SPOTS spots ("Head
 // table", "Pool", …). Each spot gets its own long random token, printed as
 // a QR code that points at https://peakabu.app/s/<token>. Any signed-in
@@ -78,11 +83,11 @@ function cleanName(v, fallback) {
 
 // Validates a spots array from the website. Returns { spots } or { error }.
 function cleanSpots(list) {
-  if (!Array.isArray(list) || list.length === 0) return { error: 'Add at least one spot.' };
-  if (list.length > MAX_SPOTS) return { error: `A set can have up to ${MAX_SPOTS} spots.` };
+  if (!Array.isArray(list) || list.length === 0) return { error: 'Add at least one area.' };
+  if (list.length > MAX_SPOTS) return { error: `A set can have up to ${MAX_SPOTS} areas.` };
   const spots = list.map((s, i) => ({
     id: typeof s.id === 'string' && /^[a-f0-9]{18}$/.test(s.id) ? s.id : null,
-    name: cleanName(s && s.name, `Spot ${i + 1}`),
+    name: cleanName(s && s.name, `Area ${i + 1}`),
     color: COLORS.includes(String(s && s.color).toLowerCase()) ? String(s.color).toLowerCase() : COLORS[i % COLORS.length]
   }));
   return { spots };

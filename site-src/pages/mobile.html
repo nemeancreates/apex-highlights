@@ -3,6 +3,7 @@
 .phone{border:2px solid var(--line-strong);background:#071209;display:flex;flex-direction:column;gap:12px}
 .qr-demo{border-radius:10px;background-image:repeating-conic-gradient(var(--lime) 0 25%,#0c1a12 0 50%);background-size:15px 15px;opacity:.85}
 .spotcard{background:#efe6cc;border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px;align-items:center;box-shadow:0 14px 30px rgba(0,0,0,.4)}
+.spotcard small{font:700 11px var(--display);color:#2b7343;margin-bottom:-8px}
 .spotcard b{font:800 18px var(--display);color:#1b4a2c}
 .spotcard i{width:90%;aspect-ratio:1;border-radius:6px;background-image:repeating-conic-gradient(#1b4a2c 0 25%,#efe6cc 0 50%);background-size:14px 14px}
 .spotcard u{width:100%;height:6px;border-radius:3px;text-decoration:none}
@@ -51,16 +52,16 @@
 <section class="section">
 <div class="wrap split">
 <div class="stack">
-<p class="eyebrow">Spots</p>
+<p class="eyebrow">Swing cards</p>
 <h2 class="h2">Big event? Give each area its own QR.</h2>
-<p class="lede" style="font-size:17px">At a wedding, a Peak at the pool shouldn't interrupt the head table. Set up Spots, print a QR card for each one, and guests join where they're standing. It all stays one session, color-coded by Spot when you watch back.</p>
+<p class="lede" style="font-size:17px">At a wedding, a Peak at the pool shouldn't interrupt the head table. Print a Swing card for each area (“Swing by the Pool”) and guests join where they're standing. It all stays one session, color-coded by area when you watch back.</p>
 <p style="font-size:15px;color:#8fa99a;max-width:48ch">Any signed-in account can make and print cards ahead of time, free accounts included. They come alive when the party starts on a host plan or event pass.</p>
-<a class="btn btn-outline" href="/account#spots" style="align-self:flex-start">Make QR cards</a>
+<a class="btn btn-outline" href="/account#spots" style="align-self:flex-start">Make Swing cards</a>
 </div>
 <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px" aria-hidden="true">
-<div class="spotcard" style="rotate:-3deg"><b>Head table</b><i></i><u style="background:#39d3a0"></u></div>
-<div class="spotcard" style="translate:0 18px"><b>Pool</b><i></i><u style="background:#7fc8ff"></u></div>
-<div class="spotcard" style="rotate:3deg"><b>Dance floor</b><i></i><u style="background:#ffd23f"></u></div>
+<div class="spotcard" style="rotate:-3deg"><small>Swing by</small><b>Head table</b><i></i><u style="background:#39d3a0"></u></div>
+<div class="spotcard" style="translate:0 18px"><small>Swing by</small><b>Pool</b><i></i><u style="background:#7fc8ff"></u></div>
+<div class="spotcard" style="rotate:3deg"><small>Swing by</small><b>Dance floor</b><i></i><u style="background:#ffd23f"></u></div>
 </div>
 </div>
 </section>

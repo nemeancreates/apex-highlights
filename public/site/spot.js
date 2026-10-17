@@ -1,4 +1,4 @@
-// /s/:token — a scanned Spot card whose party hasn't started yet.
+// /s/:token — a scanned Swing card ("spot" in code) whose party hasn't started yet.
 // Polls quietly; once the host starts the party, reloading /s/:token
 // lets the server send the guest straight in.
 (function () {
@@ -8,6 +8,7 @@
   var tries = 0, MAX_TRIES = 120; // ~1 hour at 30s
 
   function show(d) {
+    $('spotBy').hidden = false;
     $('spotSet').textContent = d.setName;
     $('spotName').textContent = d.spotName;
     $('spotDot').style.background = d.color;
@@ -24,7 +25,7 @@
         }
         show(r.d);
         if (r.d.live) { $('spotLine').textContent = 'The party is on. Taking you in…'; location.replace('/s/' + token); return; }
-        $('spotLine').textContent = 'The party hasn’t started yet. Keep this page open and you’ll join this spot as soon as the host starts.';
+        $('spotLine').textContent = 'The party hasn’t started yet. Keep this page open and you’ll join this area as soon as the host starts.';
         $('spotWait').hidden = false;
         $('spotHint').textContent = 'Nothing to install. You film from this browser.';
         $('spotMore').hidden = false;
