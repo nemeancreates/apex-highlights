@@ -100,6 +100,7 @@ const stmt = {
   get:    db.prepare(`SELECT * FROM billing_email_sends WHERE checkoutId = ?`),
   bump:   db.prepare(`INSERT INTO billing_email_sends (checkoutId, sends) VALUES (?, 1)
                       ON CONFLICT(checkoutId) DO UPDATE SET sends = sends + 1`),
+  unbump: db.prepare(`UPDATE billing_email_sends SET sends = MAX(sends - 1, 0) WHERE checkoutId = ?`),
   auto:   db.prepare(`INSERT INTO billing_email_sends (checkoutId, autoSent) VALUES (?, 1)
                       ON CONFLICT(checkoutId) DO UPDATE SET autoSent = 1`)
 };
@@ -155,8 +156,13 @@ function messageFor(out) {
 async function sendCode(checkoutId, out, to) {
   const row = stmt.get.get(checkoutId);
   if (row && row.sends >= MAX_EMAILS_PER_PURCHASE) throw Object.assign(new Error('email_limit'), { status: 429 });
-  stmt.bump.run(checkoutId);
-  await mailer.send({ to, ...messageFor(out) });
+  stmt.bump.run(checkoutId);   // counted up front so parallel clicks can't slip past the limit
+  try {
+    await mailer.send({ to, ...messageFor(out) });
+  } catch (err) {
+    stmt.unbump.run(checkoutId); // a send that never left doesn't use up the buyer's tries
+    throw err;
+  }
 }
 
 const checkoutLimiter = createRateLimiter({ windowMs: 60000, max: 10 });
