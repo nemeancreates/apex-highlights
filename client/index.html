@@ -837,7 +837,7 @@
               <img src="assets/kickstarter.png" alt="kickstarter" />
             </button>
           </div>
-          <span class="version-tag">v0.1.93</span>
+          <span class="version-tag">v0.1.94</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="redeem-wrap">
@@ -5345,17 +5345,45 @@
       // =====================
       // RECORDING
       // =====================
+      // The monitor choice sticks: it's saved by Windows' stable monitor id,
+      // a first run starts on the primary monitor, and if the saved monitor
+      // isn't connected nothing is picked for the user: they choose.
       window.savedMonitorIndex = null;
+      window.savedMonitorMissing = false;
+      window.savedSettingsLoaded = false;
       window.monitorsPopulated = false;
       function applySavedMonitorSelection() {
         var sel = document.getElementById('monitorSelect');
-        if (!sel || !window.monitorsPopulated || window.savedMonitorIndex === null) return;
-        var opt = sel.querySelector('option[value="'+window.savedMonitorIndex+'"]');
-        if (opt) sel.value = String(window.savedMonitorIndex);
+        if (!sel || !window.monitorsPopulated || !window.savedSettingsLoaded) return;
+        var ph = sel.querySelector('option[value=""]');
+        if (ph) ph.remove();
+        if (window.savedMonitorMissing) {
+          var pick = document.createElement('option');
+          pick.value = '';
+          pick.textContent = 'Your saved monitor isn’t connected — pick one';
+          sel.insertBefore(pick, sel.firstChild);
+          sel.value = '';
+          hudLog('system', '⚠ Your saved monitor isn’t connected. Pick the monitor to record before starting.', 'error');
+          return;
+        }
+        var want = window.savedMonitorIndex;
+        if (want === null) {
+          var primary = sel.querySelector('option[data-primary="1"]');
+          if (primary) want = primary.value;
+        }
+        var opt = want !== null && sel.querySelector('option[value="'+want+'"]');
+        if (opt) sel.value = String(want);
       }
       window.onMonitorChange = function() {
-        var idx = parseInt(document.getElementById('monitorSelect').value);
-        if (!isNaN(idx)) ipcRenderer.send('update-settings', { monitor: idx });
+        var sel = document.getElementById('monitorSelect');
+        var idx = parseInt(sel.value);
+        if (isNaN(idx)) return;
+        var opt = sel.options[sel.selectedIndex];
+        var id = opt && opt.dataset.id ? Number(opt.dataset.id) : null;
+        var ph = sel.querySelector('option[value=""]');
+        if (ph) ph.remove();
+        window.savedMonitorMissing = false;
+        ipcRenderer.send('update-settings', { monitor: idx, monitorId: id });
       };
 
       ipcRenderer.send('get-monitors');
@@ -5365,6 +5393,8 @@
         monitors.forEach(function(m, i) {
           var opt = document.createElement('option');
           opt.value = m.index;
+          if (m.id != null) opt.dataset.id = String(m.id);
+          if (m.primary) opt.dataset.primary = '1';
           opt.textContent = 'Monitor '+(i+1)+' — '+m.width+'x'+m.height+(m.primary?' (Primary)':'');
           sel.appendChild(opt);
         });
@@ -5481,6 +5511,12 @@
       async function reallyStartRecording() {
         var monitorIndex = parseInt(document.getElementById('monitorSelect').value);
         var sourceLabel = document.getElementById('monitorSelect').options[document.getElementById('monitorSelect').selectedIndex].textContent;
+
+        if (window.wgcMode !== 'window' && isNaN(monitorIndex)) {
+          hudLog('system', '⚠ Pick the monitor to record first', 'error');
+          document.getElementById('monitorSelect').focus();
+          return;
+        }
 
         if (window.wgcMode === 'window') {
           if (!window.wgcSourceId) {
@@ -5920,13 +5956,13 @@
         }, 1500);
       });
 
-      ipcRenderer.on('wgc-fallback-to-monitor', function(ev, d) {
+      // Window capture gave up. Recording stops instead of switching to the
+      // whole monitor, which could show screens the user never chose to share.
+      ipcRenderer.on('wgc-capture-stopped', function(ev, d) {
         hudLog('system', '⚠ ' + d.reason, 'error');
-        wgcStopAll();
-        window.wgcMode = 'monitor';
-        document.getElementById('captureModeSelect').value = 'monitor';
-        document.getElementById('wgcPickRow').style.display = 'none';
-        document.getElementById('fullSessionToggle').disabled = false;
+        if (window.isRecordingActive) window.stopRecording(); else wgcStopAll();
+        window.wgcSourceId = null;
+        document.getElementById('wgcPickedName').textContent = 'Capture stopped — pick the window again';
       });
 
       // Restore capture mode on launch
@@ -6568,6 +6604,8 @@
          if (saved.resolution) document.getElementById('resolutionSelect').value = saved.resolution;
          document.getElementById('hdrSelect').value = saved.hdr ? 'hdr' : 'sdr';
          window.savedMonitorIndex = (typeof saved.monitorIndex === 'number') ? saved.monitorIndex : null;
+         window.savedMonitorMissing = !!saved.monitorMissing;
+         window.savedSettingsLoaded = true;
          applySavedMonitorSelection();
        });
       });

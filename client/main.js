@@ -559,6 +559,7 @@ let recordFps = 30;
 let recordResolution = null;
 let recordResolutionKey = 'native'; // 'native' | '720' | '480' — persisted key form
 let savedMonitorIndex = null; // last user-selected monitor index, persisted
+let savedMonitorId = null;    // ...and its stable display id (the index can shift)
 let customHotkey = 'F9';
 let startupHotkeyRegistered = true;
 let starHotkey = null;              // star key (v0.1.87) — unbound until the user sets one
@@ -1393,6 +1394,7 @@ function loadUserPreferences() {
     savedMonitorIndex = prefs.monitorIndex;
     console.log(`Loaded monitor preference: index ${savedMonitorIndex}`);
   }
+  if (prefs.monitorId != null) savedMonitorId = prefs.monitorId;
 
   console.log(`Loaded preferences: storageDir=${CLIPS_DIR}`);
   return prefs;
@@ -5703,21 +5705,16 @@ function createWindow() {
         });
       }
     } else {
-      console.log('WGC max restarts reached — falling back to Monitor mode');
+      // Never switch to recording the whole monitor on the user's behalf: it
+      // can show screens and windows they didn't choose to share. Stop and
+      // let them pick again (the window, or Monitor mode themselves).
+      console.log('WGC max restarts reached — stopping (no automatic switch to Monitor)');
+      wgcRetire('window capture stopped after repeated failures');   // queued saves still cut from the old files
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('wgc-fallback-to-monitor', {
-          reason: 'Window capture failed repeatedly — recording your monitor instead.'
+        mainWindow.webContents.send('wgc-capture-stopped', {
+          reason: 'Window capture kept failing, so recording stopped. Pick the game window again, or switch to Monitor mode yourself.'
         });
       }
-      wgcRetire('fell back to monitor capture');   // queued saves still cut from the old files
-      wgcCaptureMode = false;
-      stoppingIntentionally = false;
-      midSessionRestarts = 0;
-      transientCaptureRetries = 0;
-      recordingSessionTag = Date.now();
-      engineLadder = buildEngineLadder();
-      engineIndex = 0;
-      startRecording(currentMonitor);
     }
   });
 
@@ -5737,13 +5734,31 @@ function createWindow() {
   ipcMain.handle('get-current-adapter', () => captureAdapter);
 
   // Consolidated settings snapshot for UI restore on launch.
-  ipcMain.handle('get-saved-settings', () => ({
-    fps: recordFps,
-    resolution: recordResolutionKey,
-    monitorIndex: savedMonitorIndex,
-    hotkey: customHotkey,
-    hdr: captureHdr
-  }));
+  ipcMain.handle('get-saved-settings', () => {
+    // Find the saved monitor by its stable id. If it isn't connected any more,
+    // say so rather than quietly recording a different screen.
+    let monitorIndex = savedMonitorIndex;
+    let monitorMissing = false;
+    try {
+      const screen = require('electron').screen;
+      const displays = screen.getAllDisplays();
+      if (savedMonitorId != null) {
+        const i = displays.findIndex(d => d.id === savedMonitorId);
+        if (i >= 0) monitorIndex = i;
+        else { monitorIndex = null; monitorMissing = true; }
+      } else if (savedMonitorIndex != null && !displays[savedMonitorIndex]) {
+        monitorIndex = null; monitorMissing = true;
+      }
+    } catch (e) { console.log('Monitor lookup skipped:', e.message); }
+    return {
+      fps: recordFps,
+      resolution: recordResolutionKey,
+      monitorIndex,
+      monitorMissing,
+      hotkey: customHotkey,
+      hdr: captureHdr
+    };
+  });
 
   ipcMain.on('save-highlight', () => saveHighlight());
   ipcMain.on('broadcast-save-highlight', (event, { coordinated_timestamp, clipDuration, triggerSource }) => {
@@ -5917,10 +5932,13 @@ function createWindow() {
       captureChanged = true;
     }
 
-    if (typeof settings.monitor === 'number' && !Number.isNaN(settings.monitor) && settings.monitor !== savedMonitorIndex) {
+    if (typeof settings.monitor === 'number' && !Number.isNaN(settings.monitor) &&
+        (settings.monitor !== savedMonitorIndex || (settings.monitorId != null && settings.monitorId !== savedMonitorId))) {
       savedMonitorIndex = settings.monitor;
+      if (settings.monitorId != null) savedMonitorId = settings.monitorId;
       const prefs = readPrefsRaw();
       prefs.monitorIndex = savedMonitorIndex;
+      prefs.monitorId = savedMonitorId;
       saveUserPreferences(prefs);
       console.log(`Monitor preference set to index ${savedMonitorIndex}`);
       monitorChanged = true;
@@ -6133,12 +6151,16 @@ function createWindow() {
   ipcMain.on('get-monitors', (event) => {
     const screen = require('electron').screen;
     const displays = screen.getAllDisplays();
+    const primaryId = screen.getPrimaryDisplay().id;
+    // id is Windows' stable handle for a monitor; the index can change when
+    // monitors are plugged in or rearranged.
     const monitorList = displays.map((d, i) => ({
       index: i,
+      id: d.id,
       width: Math.round(d.bounds.width * (d.scaleFactor || 1)),
       height: Math.round(d.bounds.height * (d.scaleFactor || 1)),
       x: d.bounds.x, y: d.bounds.y,
-      primary: d.bounds.x === 0 && d.bounds.y === 0
+      primary: d.id === primaryId
     }));
     event.reply('monitors-list', monitorList);
   });
