@@ -43,24 +43,48 @@ if (STRIPE_SECRET_KEY) {
   console.warn('Billing disabled: STRIPE_SECRET_KEY not set in .env');
 }
 
-// --- Optional email over SMTP (any provider). Nothing configured = no email box.
+// --- Optional email. Nothing configured = no email box on the success page.
+// Preferred: Resend over HTTPS (RESEND_API_KEY), which works on hosts that block
+// outbound SMTP ports. Fallback: any SMTP provider (SMTP_HOST...).
 // MAIL_FROM is required and is the ONLY sender buyers see, e.g.
 // "Peakabu <codes@peakabu.app>". Use a dedicated no-reply address, not a
 // personal mailbox: we refuse to send without it rather than fall back to
 // the SMTP login, which could be a mailbox under someone's real name.
+// MAIL_REPLY_TO (optional) is where buyer replies go, e.g. support@peakabu.app.
+const MAIL_TIMEOUT_MS = 15000;
 let mailer = null;
-if (process.env.SMTP_HOST && !process.env.MAIL_FROM) {
+if ((process.env.RESEND_API_KEY || process.env.SMTP_HOST) && !process.env.MAIL_FROM) {
   console.warn('Billing email disabled: set MAIL_FROM (e.g. "Peakabu <codes@peakabu.app>") to turn it on');
+} else if (process.env.RESEND_API_KEY) {
+  const from = process.env.MAIL_FROM;
+  const replyTo = process.env.MAIL_REPLY_TO || undefined;
+  mailer = {
+    send: async ({ to, subject, text }) => {
+      const r = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from, to: [to], subject, text, reply_to: replyTo }),
+        signal: AbortSignal.timeout(MAIL_TIMEOUT_MS)
+      });
+      if (!r.ok) {
+        let detail = '';
+        try { detail = (await r.json()).message || ''; } catch (e) { /* ignore */ }
+        throw new Error('resend ' + r.status + (detail ? ': ' + detail : ''));
+      }
+    }
+  };
 } else if (process.env.SMTP_HOST) {
   try {
     const nodemailer = require('nodemailer');
     const port = Number(process.env.SMTP_PORT || 465);
     const t = nodemailer.createTransport({
       host: process.env.SMTP_HOST, port, secure: port === 465,
-      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+      connectionTimeout: MAIL_TIMEOUT_MS, greetingTimeout: MAIL_TIMEOUT_MS, socketTimeout: MAIL_TIMEOUT_MS
     });
     const from = process.env.MAIL_FROM;
-    mailer = { send: ({ to, subject, text }) => t.sendMail({ from, to, subject, text }) };
+    const replyTo = process.env.MAIL_REPLY_TO || undefined;
+    mailer = { send: ({ to, subject, text }) => t.sendMail({ from, to, subject, text, replyTo }) };
   } catch (e) { console.warn('Billing email disabled: nodemailer package missing'); }
 }
 

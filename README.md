@@ -80,7 +80,7 @@ Peak-Abu
    - `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` — optional, enables Discord account linking + password recovery
    - `DISCORD_BOT_TOKEN` / `DISCORD_GUILD_ID` / `DISCORD_ROLE_T1`–`T5` — optional, enables Discord role sync on tier change
    - `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` — optional, turns on web billing at `/billing` (webhook: `https://peakabu.app/api/billing/webhook`, event `checkout.session.completed`). `BILLING_BASE_URL` defaults to `https://peakabu.app`
-   - `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `MAIL_FROM` — optional, lets buyers have their code emailed through any SMTP provider. `MAIL_FROM` is required and is the only sender buyers see (use a no-reply address like `Peakabu <codes@peakabu.app>`, not a personal mailbox). Leave unset to hide the email option
+   - `RESEND_API_KEY` / `MAIL_FROM` / `MAIL_REPLY_TO` — optional, lets buyers have their code emailed over HTTPS through Resend (works on hosts that block outbound SMTP). `MAIL_FROM` is required and is the only sender buyers see (use a no-reply address like `Peakabu <codes@peakabu.app>`, not a personal mailbox); `MAIL_REPLY_TO` is optional and decides where replies go. SMTP still works instead: `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS`. Leave all unset to hide the email option
    - `MOBILE_API_URL` / `MOBILE_SHARED_SECRET` / `MOBILE_PUBLIC_URL` — links Peakabu Mobile (see below). Same secret on both servers
 
 3. **Database**
