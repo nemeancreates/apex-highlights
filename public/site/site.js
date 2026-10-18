@@ -11,14 +11,17 @@
 
   // ---------- auth helpers (same storage key as the web player) ----------
   var AUTH_KEY = 'pa_browser_auth';
+  // Tell the page (e.g. the Redeem form) when you sign in or out.
+  function authChanged() { try { window.dispatchEvent(new Event('pa-auth')); } catch (e) {} }
   window.paAuth = {
     get: function () {
       try { var a = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); return a && a.token ? a : null; } catch (e) { return null; }
     },
     set: function (token, username) {
       try { localStorage.setItem(AUTH_KEY, JSON.stringify({ token: token, username: username })); } catch (e) {}
+      authChanged();
     },
-    clear: function () { try { localStorage.removeItem(AUTH_KEY); } catch (e) {} },
+    clear: function () { try { localStorage.removeItem(AUTH_KEY); } catch (e) {} authChanged(); },
     // fetch with the bearer token; a 401 clears the saved sign-in
     api: function (url, opts) {
       opts = opts || {};

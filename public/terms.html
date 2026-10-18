@@ -2,167 +2,98 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Peak-Abu — Terms of Service</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terms of Service — Peakabu</title>
+<meta name="description" content="The terms for using Peakabu: accounts, sessions, recordings, billing and your content. Effective October 18, 2026.">
+<meta property="og:title" content="Terms of Service — Peakabu">
+<meta property="og:description" content="The terms for using Peakabu: accounts, sessions, recordings, billing and your content.">
+<meta property="og:image" content="https://peakabu.app/site/img/badge-open.png">
+<meta name="theme-color" content="#061009">
+<link rel="icon" type="image/png" href="/site/img/badge-see-no-evil.png">
+<!-- Fonts are self-hosted (not Google Fonts): this page is where we say we don't track people. -->
+<link rel="stylesheet" href="/site/fonts.css">
+<link rel="stylesheet" href="/site/site.css">
 <style>
-  :root{
-    --bg:#0a1611;
-    --bg-deep:#06100c;
-    --card:#0f2318;
-    --card-soft:#0c1c14;
-    --border:#1e3527;
-    --border-soft:#24402e;
-    --teal:#39d3a0;
-    --teal-dim:#1d9e75;
-    --teal-dark:#146a4d;
-    --pupil:#0b1a13;
-    --violet:#6c4fd8;
-    --amber:#d8a838;
-    --text:#e8f5ec;
-    --text-soft:#c8d6cd;
-    --text-dim:#8fbfa3;
-    --text-muted:#5f7a6a;
-    /* System-font stacks, not Google Fonts — this page is what tells people
-       we don't track them, so it shouldn't be the one page that does. */
-    --display: -apple-system, "Segoe UI", "Segoe UI Semibold", Roboto, sans-serif;
-    --body: -apple-system, "Segoe UI", Roboto, sans-serif;
-    --mono: "Cascadia Code", "Consolas", "SFMono-Regular", Menlo, monospace;
-  }
-
-  *{ box-sizing:border-box; margin:0; padding:0; }
-  html{ scroll-behavior:smooth; }
-
-  body{
-    background:
-      radial-gradient(ellipse 900px 500px at 15% -10%, rgba(57,211,160,0.06), transparent 60%),
-      radial-gradient(ellipse 700px 500px at 90% 15%, rgba(108,79,216,0.05), transparent 60%),
-      var(--bg);
-    color:var(--text-soft);
-    font-family:var(--body);
-    line-height:1.65;
-  }
-
-  a{ color:var(--teal); text-decoration:none; }
-  a:hover{ text-decoration:underline; }
-  ::selection{ background:var(--teal); color:#04140d; }
-
-  .wrap{ max-width:920px; margin:0 auto; padding:0 24px; }
-
-  header.nav{
-    position:sticky; top:0; z-index:50;
-    background:rgba(10,22,17,0.9); backdrop-filter:blur(10px);
-    border-bottom:1px solid var(--border);
-  }
-  .nav-inner{ display:flex; align-items:center; justify-content:space-between; padding:14px 24px; max-width:920px; margin:0 auto; }
-  .brand{ display:flex; align-items:center; gap:10px; font-family:var(--display); font-weight:700; font-size:17px; color:var(--text); }
-  .brand svg{ width:32px; height:32px; flex-shrink:0; }
-  .back-link{ font-size:13.5px; color:var(--text-dim); }
-
-  .doc-header{ padding:56px 0 32px; border-bottom:1px solid var(--border); }
-  .doc-header h1{ font-family:var(--display); font-size:clamp(28px,4vw,38px); color:var(--text); font-weight:700; letter-spacing:-0.01em; margin-bottom:14px; }
-  .doc-meta{ font-family:var(--mono); font-size:12.5px; color:var(--text-muted); line-height:1.9; }
-  .doc-meta strong{ color:var(--text-dim); }
-  .placeholder{ color:var(--amber); background:rgba(216,168,56,0.12); padding:1px 6px; border-radius:4px; font-style:normal; }
-
-  nav.toc{ background:var(--card-soft); border:1px solid var(--border-soft); border-radius:12px; padding:20px 24px; margin:32px 0 48px; }
-  nav.toc h2{ font-family:var(--display); font-size:13px; text-transform:uppercase; letter-spacing:0.1em; color:var(--teal); margin-bottom:12px; }
-  nav.toc ol{ columns:2; column-gap:28px; list-style:none; counter-reset:toc; }
-  @media(max-width:640px){ nav.toc ol{ columns:1; } }
-  nav.toc li{ font-size:13.5px; margin-bottom:7px; break-inside:avoid; }
-  nav.toc a{ color:var(--text-soft); }
-  nav.toc a:hover{ color:var(--teal); text-decoration:none; }
-
-  main{ padding-bottom:80px; }
-
-  section.clause{ padding:34px 0; border-bottom:1px solid var(--border); scroll-margin-top:80px; }
-  section.clause:last-of-type{ border-bottom:none; }
-  section.clause h2{ font-family:var(--display); font-size:20px; color:var(--text); font-weight:600; margin-bottom:14px; letter-spacing:-0.005em; }
-  section.clause h3{ font-family:var(--display); font-size:15px; color:var(--teal); font-weight:600; margin:20px 0 8px; }
-  section.clause p{ margin-bottom:14px; }
-  section.clause p:last-child{ margin-bottom:0; }
-  section.clause ul, section.clause ol{ margin:0 0 14px 22px; }
-  section.clause li{ margin-bottom:7px; }
-  section.clause strong{ color:var(--text); }
-  section.clause .callout{
-    background:var(--card-soft); border:1px solid var(--border-soft); border-left:3px solid var(--amber);
-    border-radius:8px; padding:14px 18px; font-size:14px; margin:14px 0;
-  }
-  section.clause .shout{ text-transform:uppercase; font-weight:600; color:var(--text); }
-  section.clause code{ font-family:var(--mono); font-size:12.5px; background:var(--card-soft); padding:1px 6px; border-radius:4px; }
-
-  footer{ border-top:1px solid var(--border); padding:40px 0; }
-  .foot-inner{ display:flex; flex-direction:column; gap:14px; align-items:center; text-align:center; }
-  @media(min-width:700px){ .foot-inner{ flex-direction:row; justify-content:space-between; text-align:left; } }
-  .foot-links{ display:flex; gap:20px; font-size:13.5px; color:var(--text-dim); }
-  .foot-links a{ color:var(--text-dim); }
-  .foot-links a:hover{ color:var(--teal); }
-  .foot-meta{ font-family:var(--mono); font-size:11.5px; color:var(--text-muted); }
+.doc{max-width:880px;margin:0 auto;padding:0 24px}
+.doc-hero{position:relative;z-index:1;padding:72px 0 28px}
+.doc-hero .eyebrow{display:block;margin-bottom:14px}
+.doc-hero h1{font-weight:800;font-size:clamp(40px,5.4vw,60px);line-height:1;letter-spacing:-.03em;margin-bottom:20px}
+.doc-meta{display:flex;flex-wrap:wrap;gap:8px 12px;font:600 12.5px var(--mono);color:var(--faint)}
+.doc-meta span{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px 12px}
+.doc-meta b{color:var(--lime);font-weight:600}
+.toc{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px 26px;margin:28px 0 20px}
+.toc h2{font:600 13px/1.2 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--teal);margin-bottom:14px}
+.toc ol{columns:2;column-gap:32px;list-style:none;margin:0;padding:0}
+.toc li{font-size:14.5px;margin-bottom:8px;break-inside:avoid}
+.toc a{color:var(--text);text-decoration:none}
+.toc a:hover{color:var(--lime)}
+@media(max-width:640px){.toc ol{columns:1}.doc-hero{padding-top:48px}}
+main.legal{position:relative;z-index:1;padding-bottom:96px}
+.clause{padding:36px 0;border-bottom:1px solid var(--line);scroll-margin-top:24px}
+.clause:last-of-type{border-bottom:none}
+.clause h2{font-weight:700;font-size:clamp(22px,2.6vw,28px);line-height:1.15;letter-spacing:-.01em;margin-bottom:16px}
+.clause h3{font:600 14px/1.3 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--teal);margin:24px 0 10px}
+.clause p{margin:0 0 14px;font-size:16.5px}
+.clause p:last-child{margin-bottom:0}
+.clause ul,.clause ol{margin:0 0 14px 22px;padding:0}
+.clause li{margin-bottom:8px;font-size:16.5px}
+.clause li::marker{color:var(--lime)}
+.clause strong{color:var(--white)}
+.clause .callout{background:var(--card-hi);border:1px solid var(--line-hi);border-left:3px solid var(--amber);border-radius:12px;padding:16px 20px;font-size:15.5px;margin:16px 0}
+.clause .shout{text-transform:uppercase;font-weight:700;color:var(--white);letter-spacing:.01em}
+.clause code{font:13px var(--mono);background:var(--card-hi);border:1px solid var(--line);border-radius:6px;padding:1px 7px}
+.placeholder{color:var(--amber);background:rgba(255,210,63,.1);padding:1px 7px;border-radius:5px}
 </style>
 </head>
 <body>
+<div class="page">
+<header class="site-header"><div class="wrap">
+<a class="brand" href="/" aria-label="Peakabu home"><span class="peek" aria-hidden="true"><span class="peek-in"><img class="peek-a" src="/site/img/badge-see-no-evil.png" alt="" width="40" height="40"><img class="peek-b" src="/site/img/badge-open.png" alt="" width="40" height="40"></span></span><span class="brand-name">Peakabu</span></a>
+<nav class="nav-links" aria-label="Main"><a href="/#how">How it works</a><a href="/browse">Browse sessions</a><a href="/mobile">Mobile</a><a href="/guide">Guide</a><a href="/pricing">Pricing</a></nav>
+<div class="nav-actions"><a class="discord-link" href="https://discord.gg/HRepEcKWpM" target="_blank" rel="noopener">Discord</a><a class="btn btn-glow" href="/account" data-signin>Sign in</a><a class="btn btn-outline" href="/guide" data-download>Download</a></div>
+</div></header>
 
-<header class="nav">
-  <div class="nav-inner">
-    <div class="brand">
-      <svg viewBox="0 0 64 64">
-        <circle cx="32" cy="32" r="29" fill="var(--card-soft)" stroke="var(--teal)" stroke-width="1.4" opacity="0.9"/>
-        <circle cx="18.5" cy="27.5" r="7" fill="var(--teal)"/>
-        <circle cx="45.5" cy="27.5" r="7" fill="var(--teal)"/>
-        <circle cx="32" cy="36" r="15.5" fill="var(--teal)"/>
-        <ellipse cx="26" cy="33" rx="6.1" ry="5.5" fill="var(--teal-dark)"/>
-        <circle cx="38" cy="33" r="2.6" fill="var(--pupil)"/>
-      </svg>
-      Peak-Abu
-    </div>
-    <a class="back-link" href="https://peakabu.app">← peakabu.app</a>
-  </div>
-</header>
+<div class="doc-hero"><div class="doc">
+<span class="eyebrow lime">Legal</span>
+<h1>Terms of Service</h1>
+<div class="doc-meta"><span>Peakabu, LLC</span><span><b>Effective</b> October 18, 2026</span><span><b>Last updated</b> October 18, 2026</span><span>Version 2.0</span></div>
 
-<main>
-  <div class="wrap">
-    <div class="doc-header">
-      <h1>Terms of Service</h1>
-      <div class="doc-meta">
-        Peakabu, LLC<br>
-        <strong>Effective:</strong> <span class="placeholder">[date pending publish]</span><br>
-        <strong>Last Updated:</strong> <span class="placeholder">[date pending publish]</span> · Version 2.0
-      </div>
-    </div>
+<nav class="toc" aria-label="Table of contents">
+<h2>Contents</h2>
+<ol>
+          <li><a href="#section-1">1. Agreement to These Terms</a></li>
+          <li><a href="#section-2">2. Definitions</a></li>
+          <li><a href="#section-3">3. Eligibility and Age Requirements</a></li>
+          <li><a href="#section-4">4. Accounts</a></li>
+          <li><a href="#section-5">5. Subscriptions, Access Codes, and Billing</a></li>
+          <li><a href="#section-6">6. Your Content</a></li>
+          <li><a href="#section-7">7. Recording Consent — Your Responsibility</a></li>
+          <li><a href="#section-8">8. Third-Party Game and Media Content</a></li>
+          <li><a href="#section-9">9. Acceptable Use</a></li>
+          <li><a href="#section-10">10. Sessions, Hosting, and Moderation</a></li>
+          <li><a href="#section-11">11. Storage, Retention, and Deletion</a></li>
+          <li><a href="#section-12">12. Share Links and Public Access</a></li>
+          <li><a href="#section-13">13. AI Reel and Automated Processing</a></li>
+          <li><a href="#section-14">14. Software License and Updates</a></li>
+          <li><a href="#section-15">15. Our Intellectual Property</a></li>
+          <li><a href="#section-16">16. Third-Party Services</a></li>
+          <li><a href="#section-17">17. Privacy and Telemetry</a></li>
+          <li><a href="#section-18">18. Service Availability, Changes, and Beta Status</a></li>
+          <li><a href="#section-19">19. Suspension and Termination</a></li>
+          <li><a href="#section-20">20. Discontinuation of the Service</a></li>
+          <li><a href="#section-21">21. Disclaimers</a></li>
+          <li><a href="#section-22">22. Limitation of Liability</a></li>
+          <li><a href="#section-23">23. Indemnification</a></li>
+          <li><a href="#section-24">24. Copyright Complaints (DMCA)</a></li>
+          <li><a href="#section-25">25. Dispute Resolution and Governing Law</a></li>
+          <li><a href="#section-26">26. Changes to These Terms</a></li>
+          <li><a href="#section-27">27. General</a></li>
+          <li><a href="#section-28">28. Contact</a></li>
+</ol>
+</nav>
+</div></div>
 
-    <nav class="toc" aria-label="Table of contents">
-      <h2>Contents</h2>
-      <ol>
-        <li><a href="#section-1">1. Agreement to These Terms</a></li>
-        <li><a href="#section-2">2. Definitions</a></li>
-        <li><a href="#section-3">3. Eligibility and Age Requirements</a></li>
-        <li><a href="#section-4">4. Accounts</a></li>
-        <li><a href="#section-5">5. Subscriptions, Access Codes, and Billing</a></li>
-        <li><a href="#section-6">6. Your Content</a></li>
-        <li><a href="#section-7">7. Recording Consent — Your Responsibility</a></li>
-        <li><a href="#section-8">8. Third-Party Game and Media Content</a></li>
-        <li><a href="#section-9">9. Acceptable Use</a></li>
-        <li><a href="#section-10">10. Sessions, Hosting, and Moderation</a></li>
-        <li><a href="#section-11">11. Storage, Retention, and Deletion</a></li>
-        <li><a href="#section-12">12. Share Links and Public Access</a></li>
-        <li><a href="#section-13">13. AI Reel and Automated Processing</a></li>
-        <li><a href="#section-14">14. Software License and Updates</a></li>
-        <li><a href="#section-15">15. Our Intellectual Property</a></li>
-        <li><a href="#section-16">16. Third-Party Services</a></li>
-        <li><a href="#section-17">17. Privacy and Telemetry</a></li>
-        <li><a href="#section-18">18. Service Availability, Changes, and Beta Status</a></li>
-        <li><a href="#section-19">19. Suspension and Termination</a></li>
-        <li><a href="#section-20">20. Discontinuation of the Service</a></li>
-        <li><a href="#section-21">21. Disclaimers</a></li>
-        <li><a href="#section-22">22. Limitation of Liability</a></li>
-        <li><a href="#section-23">23. Indemnification</a></li>
-        <li><a href="#section-24">24. Copyright Complaints (DMCA)</a></li>
-        <li><a href="#section-25">25. Dispute Resolution and Governing Law</a></li>
-        <li><a href="#section-26">26. Changes to These Terms</a></li>
-        <li><a href="#section-27">27. General</a></li>
-        <li><a href="#section-28">28. Contact</a></li>
-      </ol>
-    </nav>
-
+<main class="legal"><div class="doc">
     <section class="clause" id="section-1">
       <h2>1. Agreement to These Terms</h2>
       <p>These Terms of Service (“Terms”) are a binding agreement between you (“you,” “your,” or “User”) and Peakabu, LLC, an Oregon limited liability company (“Peakabu,” “we,” “us,” or “our”).</p>
@@ -190,14 +121,14 @@
       <h2>3. Eligibility and Age Requirements</h2>
       <p>You must be at least <strong>13 years old</strong> to use the Service. If you are between 13 and 18 (or the age of majority where you live), you may only use the Service with the consent and supervision of a parent or legal guardian who agrees to these Terms on your behalf.</p>
       <p>If you are located in the European Economic Area, United Kingdom, or another jurisdiction with a higher digital-consent age, you must be at least <strong>16 years old</strong>, or have verifiable parental consent.</p>
-      <p>We do not knowingly collect personal information from children under 13. If we learn that we have, we will delete the account and associated data. Contact us at <a href="mailto:Peakabullc@gmail.com">Peakabullc@gmail.com</a> to report such an account.</p>
+      <p>We do not knowingly collect personal information from children under 13. If we learn that we have, we will delete the account and associated data. Contact us at <a href="mailto:reports@peakabu.app">reports@peakabu.app</a> to report such an account.</p>
       <p>You may not use the Service if you are barred from doing so under applicable law, or if we have previously terminated your account for violation of these Terms.</p>
     </section>
 
     <section class="clause" id="section-4">
       <h2>4. Accounts</h2>
       <p><strong>Registration.</strong> Creating an account requires only a username and password — no email address or other personal information is required. You agree to keep your account information accurate.</p>
-      <p><strong>Security.</strong> You are responsible for safeguarding your password and any access tokens issued to your device. You must notify us immediately at <a href="mailto:Peakabullc@gmail.com">Peakabullc@gmail.com</a> if you suspect unauthorized access to your account.</p>
+      <p><strong>Security.</strong> You are responsible for safeguarding your password and any access tokens issued to your device. You must notify us immediately at <a href="mailto:reports@peakabu.app">reports@peakabu.app</a>, with your username, if you suspect unauthorized access to your account. Never include your password.</p>
       <p><strong>Account recovery.</strong> Because accounts do not require an email address, password recovery is only available if you have linked a Discord account (see “Linked services” below). If you do not link Discord and you lose access to your password, we have no way to verify your identity and may not be able to recover your account.</p>
       <p><strong>Responsibility.</strong> You are responsible for all activity that occurs under your account, whether or not you authorized it, except to the extent caused by our failure to meet our own security obligations.</p>
       <p><strong>One account per person.</strong> You may not create multiple accounts to circumvent Tier limits, free-tier quotas, or a suspension or ban.</p>
@@ -211,7 +142,7 @@
       <p>Access Codes are sold in fixed day-denominations (for example, 30, 60, 90, or 120 days) at a specified Tier, and longer denominations may be offered at a discount. Redeeming a code adds its full duration to your account's access period at that Tier. <strong>Codes stack:</strong> if you redeem more than one code, or redeem a new code while time remains on your account, the durations add together rather than resetting or running in parallel.</p>
 
       <h3>5.2 Tiers and Limits</h3>
-      <p>Each Tier carries limits on session member count, sessions created per month, clip retention period, maximum clip length, and feature availability (including AI Reel). Current Tier definitions and pricing are published at <span class="placeholder">[pricing page pending]</span>.</p>
+      <p>Each Tier carries limits on session member count, sessions created per month, clip retention period, maximum clip length, and feature availability (including AI Reel). Current Tier definitions and pricing are published at <a href="/pricing">peakabu.app/pricing</a>.</p>
       <p><strong>We may change Tier pricing, limits, and feature sets.</strong> For active recurring subscribers, we will provide at least 30 days' notice before a price increase or a material reduction in Tier limits takes effect, and the change will apply at your next renewal. Your continued use after the effective date constitutes acceptance. If you do not accept, you may cancel before renewal.</p>
       <p>Changes to the Free Tier may take effect with 30 days' notice.</p>
 
@@ -320,14 +251,14 @@
       <p><strong>Host authority.</strong> A Host controls their Session, including the ability to remove (kick) or ban Members and to end the Session. Host decisions are between the Host and Members; we are not responsible for them.</p>
       <p><strong>Automatic closure.</strong> Sessions may close automatically after a period of Host inactivity. Captured Clips are retained per Section 11.</p>
       <p><strong>No obligation to moderate.</strong> We are not obligated to monitor Sessions or User Content, but we may review, remove, or restrict access to any Content that we reasonably believe violates these Terms or the law.</p>
-      <p><strong>Reporting.</strong> To report abusive content or a Session, contact <a href="mailto:Peakabullc@gmail.com">Peakabullc@gmail.com</a>.</p>
+      <p><strong>Reporting.</strong> To report abusive content or a Session, contact <a href="mailto:reports@peakabu.app">reports@peakabu.app</a> with the Session link or the username involved.</p>
     </section>
 
     <section class="clause" id="section-11">
       <h2>11. Storage, Retention, and Deletion</h2>
-      <p><strong>Retention is Tier-based and finite.</strong> Clips are automatically and permanently deleted after the retention period associated with the Tier under which they were created. Retention periods for each Tier are published at <span class="placeholder">[pricing page pending]</span>.</p>
+      <p><strong>Retention is Tier-based and finite.</strong> Clips are automatically and permanently deleted after the retention period associated with the Tier under which they were created. Retention periods for each Tier are published at <a href="/pricing">peakabu.app/pricing</a>.</p>
       <div class="callout"><span class="shout">The Service is not a backup or archival service.</span> You are solely responsible for downloading and preserving any Clip you wish to keep. We are not liable for the loss of Clips due to retention expiry, account suspension, payment failure, technical fault, or discontinuation of the Service.</div>
-      <p><strong>Deletion on request.</strong> You may request deletion of your account and associated User Content by emailing <a href="mailto:Peakabullc@gmail.com">Peakabullc@gmail.com</a>. We will process deletion within 30 days, excluding routine backups, which cycle out within 30 days, and excluding data we must retain for legal, tax, or fraud-prevention purposes.</p>
+      <p><strong>Deletion on request.</strong> You may request deletion of your account and associated User Content by emailing <a href="mailto:reports@peakabu.app">reports@peakabu.app</a>. We will process deletion within 30 days, excluding routine backups, which cycle out within 30 days, and excluding data we must retain for legal, tax, or fraud-prevention purposes.</p>
     </section>
 
     <section class="clause" id="section-12">
@@ -364,12 +295,12 @@
 
     <section class="clause" id="section-16">
       <h2>16. Third-Party Services</h2>
-      <p>The Service depends on third-party providers, including cloud storage and CDN, hosting, payment processing, error monitoring, and authentication providers. Their availability and performance are outside our control, and their handling of data is governed by their own terms and privacy policies. We are not liable for the acts, omissions, outages, or data practices of third-party providers.</p>
+      <p>The Service depends on third-party providers, including cloud storage and CDN, hosting, payment processing, email delivery, error monitoring, and authentication providers. Their availability and performance are outside our control, and their handling of data is governed by their own terms and privacy policies. We are not liable for the acts, omissions, outages, or data practices of third-party providers.</p>
     </section>
 
     <section class="clause" id="section-17">
       <h2>17. Privacy and Telemetry</h2>
-      <p>Our collection and handling of personal information is described in our <a href="privacy.html">Privacy Policy</a>, which is incorporated into these Terms by reference.</p>
+      <p>Our collection and handling of personal information is described in our <a href="/privacy">Privacy Policy</a>, which is incorporated into these Terms by reference.</p>
       <p>In summary: the Service collects account information, session and usage metadata, and — through automated crash and error reporting — diagnostic data including stack traces, application state, and device information. Crash reports may incidentally include file paths or session identifiers. We do not sell personal information.</p>
     </section>
 
@@ -444,7 +375,7 @@
 
     <section class="clause" id="section-24">
       <h2>24. Copyright Complaints (DMCA)</h2>
-      <p>If you believe content on the Service infringes your copyright, send a notice to our designated agent at <a href="mailto:Peakabullc@gmail.com">Peakabullc@gmail.com</a> including:</p>
+      <p>If you believe content on the Service infringes your copyright, send a notice to our designated agent at <a href="mailto:reports@peakabu.app">reports@peakabu.app</a> including:</p>
       <ol>
         <li>your physical or electronic signature;</li>
         <li>identification of the copyrighted work claimed to be infringed;</li>
@@ -459,7 +390,7 @@
     <section class="clause" id="section-25">
       <h2>25. Dispute Resolution and Governing Law</h2>
       <p><strong>Governing law.</strong> These Terms are governed by the laws of the State of Oregon, without regard to conflict-of-law principles. If you are a consumer resident in the EEA or UK, you retain the protections of the mandatory consumer laws of your country of residence.</p>
-      <p><strong>25.1 Informal resolution.</strong> Before filing a claim, you agree to contact us at <a href="mailto:Peakabullc@gmail.com">Peakabullc@gmail.com</a> and attempt to resolve the dispute informally for at least 60 days.</p>
+      <p><strong>25.1 Informal resolution.</strong> Before filing a claim, you agree to contact us at <a href="mailto:reports@peakabu.app">reports@peakabu.app</a> and attempt to resolve the dispute informally for at least 60 days.</p>
       <p><strong>25.2 Courts, not arbitration.</strong> Any dispute not resolved informally will be brought exclusively in the state or federal courts located in Washington County, Oregon, and both parties consent to that jurisdiction and venue.</p>
       <p><strong>25.3 Time limit.</strong> Any claim must be brought within one (1) year after it arises, or it is permanently barred, unless applicable law prohibits this limitation.</p>
     </section>
@@ -472,7 +403,7 @@
 
     <section class="clause" id="section-27">
       <h2>27. General</h2>
-      <p><strong>Entire agreement.</strong> These Terms, together with the Privacy Policy and any Tier or pricing terms published at <span class="placeholder">[pricing page pending]</span>, are the entire agreement between you and us regarding the Service.</p>
+      <p><strong>Entire agreement.</strong> These Terms, together with the Privacy Policy and any Tier or pricing terms published at <a href="/pricing">peakabu.app/pricing</a>, are the entire agreement between you and us regarding the Service.</p>
       <p><strong>Severability.</strong> If any provision is held unenforceable, it will be modified to the minimum extent necessary, and the remaining provisions stay in effect.</p>
       <p><strong>No waiver.</strong> Our failure to enforce a provision is not a waiver of it.</p>
       <p><strong>Assignment.</strong> You may not assign these Terms without our written consent. We may assign them in connection with a merger, acquisition, or sale of assets.</p>
@@ -486,26 +417,21 @@
       <h2>28. Contact</h2>
       <p>Peakabu, LLC<br><span class="placeholder">[mailing address pending]</span></p>
       <ul>
-        <li><strong>General support:</strong> <a href="mailto:Peakabullc@gmail.com">Peakabullc@gmail.com</a></li>
+        <li><strong>Account reports and general support:</strong> <a href="mailto:reports@peakabu.app">reports@peakabu.app</a> (include your username, never your password)</li>
         <li><strong>Security disclosures:</strong> see <code>SECURITY.md</code></li>
-        <li><strong>Copyright / DMCA:</strong> <a href="mailto:Peakabullc@gmail.com">Peakabullc@gmail.com</a></li>
-        <li><strong>Legal notices:</strong> <a href="mailto:Peakabullc@gmail.com">Peakabullc@gmail.com</a></li>
+        <li><strong>Copyright / DMCA:</strong> <a href="mailto:reports@peakabu.app">reports@peakabu.app</a></li>
+        <li><strong>Legal notices:</strong> <a href="mailto:reports@peakabu.app">reports@peakabu.app</a></li>
       </ul>
     </section>
 
-  </div>
-</main>
+</div></main>
 
-<footer>
-  <div class="wrap foot-inner">
-    <div class="foot-links">
-      <a href="https://peakabu.app">peakabu.app</a>
-      <a href="privacy.html">Privacy Policy</a>
-      <a href="mailto:Peakabullc@gmail.com">Contact</a>
-    </div>
-    <div class="foot-meta">© 2026 Peakabu, LLC · Sync protocol patent pending — USPTO App #64/111,818</div>
-  </div>
-</footer>
-
+<footer class="site-footer"><div class="wrap">
+<span class="brand-name" style="font-size:20px;color:var(--text)">Peakabu</span><span>We see the play, not you.<span class="fn-mark" aria-hidden="true">*</span> · Patent pending · Peak-Abu LLC</span>
+<nav aria-label="Footer"><a class="discord-link" href="https://discord.gg/HRepEcKWpM" target="_blank" rel="noopener">Discord</a><a href="/guide">Guide</a><a href="/pricing">Pricing</a><a href="/account">Account</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="mailto:reports@peakabu.app">Contact</a></nav>
+<p class="fn">*Peakabu never requires your real name, email address, or birth date. An account needs only a username and password. Purchases are handled by Stripe, which collects its own billing details. See our <a href="/privacy#not-collect">Privacy Policy</a> and <a href="/terms#section-4">Terms, section 4</a>.</p>
+</div></footer>
+</div>
+<script src="/site/site.js"></script>
 </body>
 </html>

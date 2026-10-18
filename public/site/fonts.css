@@ -1,0 +1,8 @@
+/* Self-hosted fonts for the legal pages, so reading our privacy promise
+   never sends a request to Google. Latin subset, variable weight. */
+@font-face{font-family:'Bricolage Grotesque';font-style:normal;font-weight:200 800;font-display:swap;
+  src:url(/site/fonts/bricolage-grotesque-latin-wght-normal.woff2) format('woff2')}
+@font-face{font-family:'Work Sans';font-style:normal;font-weight:100 900;font-display:swap;
+  src:url(/site/fonts/work-sans-latin-wght-normal.woff2) format('woff2')}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:100 800;font-display:swap;
+  src:url(/site/fonts/jetbrains-mono-latin-wght-normal.woff2) format('woff2')}

@@ -461,6 +461,62 @@ function initAuthRoutes(app) {
     return res.json({ success: true });
   });
 
+  // Anti-stacking: a TIMED code can't be redeemed on top of an active
+  // subscription at the same or higher tier — this is what stops one
+  // account from buying five 30-day codes and chaining them into five
+  // months. It CAN be used to upgrade (t2 active -> redeem t3 timed
+  // code is fine) and lifetime codes always bypass this entirely, since
+  // those are hand-issued (friends/family, big backers) not sold in bulk.
+  // Mobile/event codes never touch the PC tier, so they're never blocked.
+  function stackingError(preview, currentTier) {
+    if (isProduct(preview.tier)) return null;
+    if (preview.durationDays && currentTier !== 't1' &&
+        TIER_ORDER.indexOf(preview.tier) <= TIER_ORDER.indexOf(currentTier)) {
+      return `You already have an active ${TIERS[currentTier].label} plan. Timed codes can't stack on an active subscription — wait for it to expire, or redeem a code for a higher tier to upgrade now.`;
+    }
+    return null;
+  }
+
+  // What a code grants, in words the site can show ("Squad", 30 days).
+  function describeCode(preview) {
+    if (preview.tier === 'event') {
+      const m = preview.meta || {};
+      return { kind: 'event', label: 'Peakabu Mobile event pass', durationDays: null, hours: Number(m.hours) || null };
+    }
+    if (preview.tier === 'mobile') {
+      return { kind: 'mobile', label: 'Peakabu Mobile', durationDays: preview.durationDays || 30 };
+    }
+    return { kind: 'pc', label: (TIERS[preview.tier] || {}).label || preview.tier, durationDays: preview.durationDays || null };
+  }
+
+  // Looks a code up WITHOUT using it, so the website can ask
+  // "Are you sure you want to use Squad (30 days) for <username>?" first.
+  // Shares the failed-attempt limiter with /auth/redeem, so it can't be
+  // used to guess codes.
+  app.post('/auth/redeem/check', requireAuth, (req, res) => {
+    const { code } = req.body || {};
+    if (!code) return safeError(res, 400, 'Code required');
+
+    const usernameLower = req.user.username.toLowerCase();
+    if (!checkRedeemRate(usernameLower)) {
+      log('warn', 'redeem_rate_limited', { username: req.user.username });
+      return safeError(res, 429, 'Too many failed code attempts. Try again in an hour.');
+    }
+
+    const preview = peekCode(code, req.user.username);
+    if (!preview.ok) {
+      recordRedeemFailure(usernameLower);
+      return safeError(res, 400, preview.error);
+    }
+
+    const user = users.get(usernameLower);
+    if (!user) return safeError(res, 404, 'Account not found');
+    const stackErr = stackingError(preview, getEffectiveTier(user));
+    if (stackErr) return safeError(res, 400, stackErr);
+
+    return res.json({ username: req.user.username, ...describeCode(preview) });
+  });
+
   app.post('/auth/redeem', requireAuth, (req, res) => {
     const { code } = req.body || {};
     if (!code) return safeError(res, 400, 'Code required');
@@ -481,7 +537,6 @@ function initAuthRoutes(app) {
 
     const user = users.get(usernameLower);
     const currentTier = getEffectiveTier(user);
-    const hasActivePlan = currentTier !== 't1';
 
     // Peakabu Mobile codes (bought on peakabu.app/billing). They don't touch
     // the PC tier, so the anti-stacking rule below doesn't apply: Mobile time
@@ -508,19 +563,11 @@ function initAuthRoutes(app) {
         message: 'Event pass added. Pick it when you start a session in Peakabu Mobile.' });
     }
 
-    // Anti-stacking: a TIMED code can't be redeemed on top of an active
-    // subscription at the same or higher tier — this is what stops one
-    // account from buying five 30-day codes and chaining them into five
-    // months. It CAN be used to upgrade (t2 active -> redeem t3 timed
-    // code is fine) and lifetime codes always bypass this entirely, since
-    // those are hand-issued (friends/family, big backers) not sold in bulk.
-    if (preview.durationDays && hasActivePlan &&
-        TIER_ORDER.indexOf(preview.tier) <= TIER_ORDER.indexOf(currentTier)) {
-      // Not a brute-force signal — this is a legitimate code the user
-      // simply can't apply yet, so it doesn't count against the limiter.
-      return safeError(res, 400,
-        `You already have an active ${TIERS[currentTier].label} plan. Timed codes can't stack on an active subscription — wait for it to expire, or redeem a code for a higher tier to upgrade now.`);
-    }
+    // Anti-stacking (see stackingError above). Not a brute-force signal —
+    // a legitimate code the user simply can't apply yet, so it doesn't
+    // count against the limiter.
+    const stackErr = stackingError(preview, currentTier);
+    if (stackErr) return safeError(res, 400, stackErr);
 
     const result = redeemCode(code, req.user.username);
     if (!result.ok) {

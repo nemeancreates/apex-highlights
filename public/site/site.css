@@ -150,6 +150,12 @@ details.faq p{margin:0 0 18px;color:var(--muted);font-size:15px}
 .site-footer a{color:#8fbfa3;text-decoration:none}
 .site-footer .discord-link{padding:0}
 
+/* footnote on the tagline: "We see the play, not you.*" */
+.fn-mark{color:var(--lime);font-weight:700;margin-left:1px}
+.fn{flex-basis:100%;margin:0;max-width:74ch;font-size:13px;line-height:1.55;color:var(--faint)}
+.fn a{color:#8fbfa3}
+.section-head .fn{margin-top:4px}
+
 /* ---------- falling leaves (site.js adds them) ---------- */
 .leaf-layer{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
 .fall{position:absolute;top:0;animation:fall1 linear forwards;will-change:transform}

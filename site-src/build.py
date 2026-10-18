@@ -13,8 +13,9 @@ def header(active):
 <div class="nav-actions"><a class="discord-link" href="{DISCORD}" target="_blank" rel="noopener">Discord</a><a class="btn btn-glow" href="/account" data-signin>Sign in</a><a class="btn btn-outline" href="/guide" data-download>Download</a></div>
 </div></header>'''
 FOOTER=f'''<footer class="site-footer"><div class="wrap">
-<span class="brand-name" style="font-size:20px;color:var(--text)">Peakabu</span><span>We see the play, not you. · Patent pending · Peak-Abu LLC</span>
-<nav aria-label="Footer"><a class="discord-link" href="{DISCORD}" target="_blank" rel="noopener">Discord</a><a href="/guide">Guide</a><a href="/pricing">Pricing</a><a href="/account">Account</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="mailto:peakabullc@gmail.com">Contact</a></nav>
+<span class="brand-name" style="font-size:20px;color:var(--text)">Peakabu</span><span>We see the play, not you.<span class="fn-mark" aria-hidden="true">*</span> · Patent pending · Peak-Abu LLC</span>
+<nav aria-label="Footer"><a class="discord-link" href="{DISCORD}" target="_blank" rel="noopener">Discord</a><a href="/guide">Guide</a><a href="/pricing">Pricing</a><a href="/account">Account</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="mailto:reports@peakabu.app">Contact</a></nav>
+<p class="fn">*Peakabu never requires your real name, email address, or birth date. An account needs only a username and password. Purchases are handled by Stripe, which collects its own billing details. See our <a href="/privacy#not-collect">Privacy Policy</a> and <a href="/terms#section-4">Terms, section 4</a>.</p>
 </div></footer>'''
 import json, re
 _js=open(os.path.join(OUT,'site','site.js'), encoding='utf-8').read()
