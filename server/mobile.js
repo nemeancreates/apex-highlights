@@ -2,7 +2,7 @@
 // PEAKABU MOBILE — the main server's side of m.peakabu.app.
 //
 // Mobile runs as its own small server (own port, own data folder). It has
-// no accounts of its own: hosts sign in with their Peak-Abu account, and
+// no accounts of its own: hosts sign in with their Peakabu account, and
 // the mobile server asks this module two things over a shared secret:
 //   - is this account paying for Mobile right now? (getMobileStatus)
 //   - claim one of its $3 event passes for a session (claimEventPass)

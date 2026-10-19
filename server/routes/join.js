@@ -29,8 +29,8 @@ function esc(s) {
 function page({ code, host, memberCount, valid, reason }) {
   const deepLink = `peakabu://join/${code}?autostart=1`;
   const title = valid
-    ? `Join ${esc(host)}'s Peak-Abu squad`
-    : 'Peak-Abu session unavailable';
+    ? `Join ${esc(host)}'s Peakabu squad`
+    : 'Peakabu session unavailable';
   const desc = valid
     ? `Session ${code} — ${memberCount} in the squad. Click to join and start recording.`
     : (reason || 'This session has expired or the code is incorrect.');
@@ -79,24 +79,24 @@ function page({ code, host, memberCount, valid, reason }) {
       <div class="sub">${memberCount} ${memberCount === 1 ? 'player' : 'players'} in the squad</div>
       <div class="code" id="code" onclick="copyCode()">${code}</div>
       <div class="hint" id="hint">Click the code to copy it</div>
-      <a class="btn primary" id="openBtn" href="${deepLink}">Open Peak-Abu &amp; Join</a>
+      <a class="btn primary" id="openBtn" href="${deepLink}">Open Peakabu &amp; Join</a>
       <a class="btn ghost" href="/player?code=${code}">Watch in browser instead</a>
       <div class="hint" id="handoff" style="display:none;color:${BRAND.teal};margin-top:14px;margin-bottom:0;">
-        Peak-Abu is opening — you can close this tab.
+        Peakabu is opening — you can close this tab.
       </div>
       <div class="foot">
-        Nothing happened? <a href="https://peakabu.app" style="color:${BRAND.teal}">Download Peak-Abu</a>,
+        Nothing happened? <a href="https://peakabu.app" style="color:${BRAND.teal}">Download Peakabu</a>,
         then enter code <strong>${code}</strong> in the app.
       </div>
     ` : `
       <h1>Session unavailable</h1>
       <div class="err">${esc(desc)}</div>
-      <a class="btn primary" href="https://peakabu.app">Go to Peak-Abu</a>
+      <a class="btn primary" href="https://peakabu.app">Go to Peakabu</a>
     `}
   </div>
 ${valid ? `<script>
   // No auto-handoff. The user picks one of the two buttons below —
-  // "Open Peak-Abu & Join" or "Watch in browser instead" — nothing fires
+  // "Open Peakabu & Join" or "Watch in browser instead" — nothing fires
   // on its own. Clicking the primary button navigates to the deep link
   // (browser-native <a href>), which is also the trigger main.js listens
   // for to route the join and, separately, decide whether to auto-start

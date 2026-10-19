@@ -268,7 +268,7 @@ function buildCaseFile(session, { caseId, kind, trigger, detail, actions }) {
   const csam = kind === 'csam';
 
   const blocks = [
-    { h1: `Peak-Abu moderation case ${caseId}` },
+    { h1: `Peakabu moderation case ${caseId}` },
     { small: `Generated ${fmt(Date.now())}. CONFIDENTIAL - staff only. Contains no images or video by design.` },
     { rule: true },
     { h2: 'Summary', color: csam ? '0.7 0.1 0.2' : null },
@@ -354,7 +354,7 @@ function buildCaseFile(session, { caseId, kind, trigger, detail, actions }) {
     { small: `Confirm CSAM (hold + ban + urgent case):   ... -d '{"action":"csam"}'` }
   );
 
-  return buildPdf(blocks, { footer: `Peak-Abu case ${caseId} - CONFIDENTIAL` });
+  return buildPdf(blocks, { footer: `Peakabu case ${caseId} - CONFIDENTIAL` });
 }
 
 // Builds the case file, records it, and posts it to the staff channel.

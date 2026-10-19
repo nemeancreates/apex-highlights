@@ -1,5 +1,5 @@
 // ================================
-// UTILS — pure helpers with no Peak-Abu module dependencies.
+// UTILS — pure helpers with no Peakabu module dependencies.
 // Everything in here is trivially unit-testable: input in, output out.
 // ================================
 const fs = require('fs');

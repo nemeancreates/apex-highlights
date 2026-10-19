@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Peak-Abu – Multi-POV Player</title>
+  <title>Peakabu – Multi-POV Player</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -1326,7 +1326,7 @@
 <body>
 
   <div class="header">
-    <h1><a href="/" class="header-home" title="Peak-Abu home">&#x1F648; Peak-Abu Player</a></h1>
+    <h1><a href="/" class="header-home" title="Peakabu home">&#x1F648; Peakabu Player</a></h1>
     <div class="header-actions">
       <a href="https://discord.gg/HRepEcKWpM" target="_blank" class="discord-link" title="Join our Discord community">
         <svg viewBox="0 0 24 24" fill="currentColor" style="width: 16px; height: 16px;">
@@ -1649,7 +1649,7 @@
       myUsername = params.get('u') || null;
       // No token from the desktop app? Fall back to a browser sign-in this
       // viewer may have completed earlier (paDoSignIn below). URL params
-      // always win — they mean "opened from the Peak-Abu app," which is
+      // always win — they mean "opened from the Peakabu app," which is
       // the more authoritative source when both are present.
       if (!myAuthToken) {
         try {
@@ -3891,7 +3891,7 @@
 
     async function downloadSelected() {
   if (selectedExportClips.size === 0) { alert('Select at least one clip to download'); return; }
-  if (!myAuthToken) { alert('Sign in through the Peak-Abu app with a paid plan to download clips.'); return; }
+  if (!myAuthToken) { alert('Sign in through the Peakabu app with a paid plan to download clips.'); return; }
 
   const hlLookup = {};
   highlights.forEach((hl, idx) => {
@@ -3934,7 +3934,7 @@
   }
 
   if (btn && originalText) btn.textContent = originalText;
-  if (denied) alert('Downloads require a paid Peak-Abu plan — sign in through the app.');
+  if (denied) alert('Downloads require a paid Peakabu plan — sign in through the app.');
   else if (n === 0) alert('No clips downloaded — selected clips may not be ready yet');
   else if (failed > 0) alert('Downloaded ' + n + ' clips (' + failed + ' failed)');
 }
@@ -4393,7 +4393,7 @@
       if (cancelBtn) cancelBtn.style.display = '';
 
       try {
-        if (!myAuthToken) throw new Error('Sign in through the Peak-Abu app with a paid plan to export.');
+        if (!myAuthToken) throw new Error('Sign in through the Peakabu app with a paid plan to export.');
         const res = await fetch('/sessions/' + currentSessionCode + '/composite', {
           method: 'POST',
           headers: {
@@ -4584,7 +4584,7 @@
       report.style.display = 'none';
 
       try {
-        if (!myAuthToken) throw new Error('Sign in through the Peak-Abu app with a Squad/Pro plan to generate reels.');
+        if (!myAuthToken) throw new Error('Sign in through the Peakabu app with a Squad/Pro plan to generate reels.');
         const res = await fetch('/sessions/' + currentSessionCode + '/aireel', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + myAuthToken },
@@ -5673,7 +5673,7 @@
 
   function paOpenSignIn(onSuccess) {
     paCloseAll();
-    var ui = paBuildPanel('paSignInPanel', 'Sign in to Peak-Abu');
+    var ui = paBuildPanel('paSignInPanel', 'Sign in to Peakabu');
     var note = document.createElement('div');
     note.className = 'pa-meta';
     note.textContent = 'Any account works, including Free tier. This only lets you comment — host controls stay with the session owner.';

@@ -1,7 +1,7 @@
 // ================================
 // LOGGER — structured JSON logging + file mirroring + usage log.
 // Every other module imports { log } from here. Nothing here imports
-// other Peak-Abu modules, so this is always safe to require first.
+// other Peakabu modules, so this is always safe to require first.
 // ================================
 const fs = require('fs');
 const path = require('path');

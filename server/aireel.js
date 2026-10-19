@@ -1,5 +1,5 @@
 // ================================================================
-// server/aireel.js — Peak-Abu AI Highlight Reel engine (v0.1.14)
+// server/aireel.js — Peakabu AI Highlight Reel engine (v0.1.14)
 // ================================================================
 // v0.1.14 (10-10-26): the cut is built by reel-editor.js on the session's
 //          real timeline (see that file for what was wrong before). Here:
@@ -891,7 +891,7 @@ async function aiDirect(ctx, job) {
   const target = job.effectiveTarget || job.targetSec;
 
   const systemPrompt =
-    'You are the editor of a Peak-Abu highlight reel (multi-POV gameplay recorded by a squad). ' +
+    'You are the editor of a Peakabu highlight reel (multi-POV gameplay recorded by a squad). ' +
     'The footage has already been analysed. You are given MOMENTS: stretches of action on the session timeline, each with its ' +
     'length in seconds, an intensity score (0-100, from loudness), which players recorded it and how involved each was, ' +
     'whether the squad starred it, and any comments players left on it. Choose which moments make the reel. ' +
@@ -949,7 +949,7 @@ async function buildEdl({ game, targetSec, seg, styleNotes, clips }) {
   const features = clips; // already shaped: {clipId, player, durationSec, startTimeUTC, hasAudio, topMoments}
 
   const systemPrompt =
-    'You are the editing engine for Peak-Abu, a multi-POV gameplay highlight tool. ' +
+    'You are the editing engine for Peakabu, a multi-POV gameplay highlight tool. ' +
     'You receive per-clip intensity analysis (loudness + visual chaos scores) and must produce an edit decision list for a highlight reel. ' +
     'Clips from different players whose startTimeUTC-aligned moments coincide show the SAME real play from different POVs — ' +
     `group them into a single multi-view segment (up to ${MAX_TILES} tiles on screen at once). ` +
