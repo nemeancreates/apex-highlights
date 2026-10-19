@@ -89,7 +89,13 @@
 
   fetch('/api/billing/config').then(function (r) { return r.json(); }).then(function (cfg) {
     if (cfg.emailEnabled) $('emailBox').style.display = '';
-    if (!cfg.enabled) { $('off').style.display = ''; }
+    if (!cfg.enabled) {
+      if (cfg.testing) {
+        $('off').textContent = 'Peakabu is free while we test, so purchases are switched off. Every feature on PC and Mobile is unlocked for every account, and paid monthly plans start after testing.';
+        $('off').style.cssText = 'font-size:15px;color:var(--teal);margin-top:16px';
+        document.querySelector('.lead').insertAdjacentElement('afterend', $('off'));
+      } else { $('off').style.display = ''; }
+    }
     var monthly = cfg.plans[0].cents / cfg.plans[0].days;
     $('plans').innerHTML = cfg.plans.map(function (p) {
       var perMonth = Math.round(p.cents / p.days * 30);

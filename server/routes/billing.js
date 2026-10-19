@@ -24,6 +24,7 @@ const { safeError } = require('../utils');
 const { createRateLimiter } = require('../ratelimit');
 const { generateRedemptionCodes, findCodeByNote } = require('../redemption');
 const { EVENT_MAX_HOURS } = require('../mobile');
+const { TESTING } = require('../config');
 
 const PLANS = {
   mobile1: { cents: 500,  days: 30, label: 'Peakabu Mobile, 1 month' },
@@ -203,7 +204,8 @@ function initBillingRoutes(app) {
 
   app.get('/api/billing/config', (req, res) => {
     res.json({
-      enabled: !!stripe,
+      enabled: !!stripe && !TESTING.enabled,
+      testing: TESTING.enabled,
       emailEnabled: !!mailer,
       plans: Object.entries(PLANS).map(([id, p]) => ({ id, cents: p.cents, days: p.days, label: p.label })),
       event: { cents: EVENT_CENTS, maxHours: EVENT_MAX_HOURS }
@@ -211,6 +213,7 @@ function initBillingRoutes(app) {
   });
 
   app.post('/api/billing/checkout', checkoutLimiter, async (req, res) => {
+    if (TESTING.enabled) return safeError(res, 503, 'Peakabu is free while we test, so purchases are switched off for now.');
     if (!stripe) return safeError(res, 503, 'Payments aren\'t set up yet.');
     const { product, plan, startsAt, hours } = req.body || {};
     const email = cleanEmail(req.body?.email);
