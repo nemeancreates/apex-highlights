@@ -12,11 +12,12 @@
       h2 { color: #39d3a0; font-size: 17px; font-weight: 500; margin: 0 0 4px; }
       p.sub { font-size: 11px; color: #5f7a6a; margin: 0 0 14px; }
       label { font-size: 11px; color: #5f7a6a; display: block; margin: 10px 0 4px; text-transform: uppercase; letter-spacing: 0.6px; }
-      select, input[type="text"] {
+      select, input[type="text"], textarea {
         width: 100%; padding: 9px 10px; background: #0c1c14; color: #e8f5ec;
         border: 1px solid #2a4636; border-radius: 6px; font-size: 14px; font-family: inherit;
       }
-      select:focus, input:focus { border-color: #39d3a0; outline: none; }
+      select:focus, input:focus, textarea:focus { border-color: #39d3a0; outline: none; }
+      textarea { resize: vertical; min-height: 64px; line-height: 1.4; }
       .row { display: flex; gap: 8px; }
       .row > * { flex: 1; }
 
@@ -178,6 +179,9 @@
         <option value="longer holds">Longer holds</option>
         <option value="no effects">Plain: no slow-mo, zoom or speed-ups</option>
       </select>
+
+      <label>Notes for the editor (optional)</label>
+      <textarea id="notes" rows="3" maxlength="300" placeholder="e.g. focus on Morgan, more slow-mo on the kills, keep the whole boss fight"></textarea>
 
       <div class="ai-usage" id="aiUsage"></div>
       <button class="primary" id="buildBtn" onclick="build()">🤖 Build Reel Locally</button>
@@ -564,7 +568,9 @@
 
         const targetSec = parseInt(document.getElementById('length').value);
         const game = document.getElementById('game').value.trim().slice(0, 60);
-        const style = document.getElementById('style').value.trim().slice(0, 200);
+        // The style choice and the free-text notes go to the editor together.
+        const style = [document.getElementById('style').value.trim(), document.getElementById('notes').value.trim()]
+          .filter(Boolean).join('. ').slice(0, 500);
 
         if (activeVideo) { activeVideo.pause(); activeVideo = null; }
 

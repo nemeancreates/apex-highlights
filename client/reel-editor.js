@@ -37,13 +37,21 @@
 const BIN = 0.5;                 // timeline resolution, seconds
 const MAX_TILES = 4;
 const CANVAS_W = 1280, CANVAS_H = 720;
-const TILE_W = 640, TILE_H = 360;
-const OUT_FPS = 30;
-const GRID_POS = {
-  2: [[0, 180], [640, 180]],
-  3: [[0, 0], [640, 0], [320, 360]],
-  4: [[0, 0], [640, 0], [0, 360], [640, 360]]
+// Every shot fills the whole frame: no black bars, so the reel never jumps
+// between full-screen shots and letterboxed strips. Each picture is scaled up
+// to cover its space and the edges trimmed, which also evens out players who
+// record at different shapes (16:10, ultrawide). Tiles per player count:
+//   2: split screen, two full-height halves
+//   3: the lead player on the left half, two more stacked on the right
+//   4: 2 x 2
+const TILE_LAYOUTS = {
+  1: [{ x: 0, y: 0, w: 1280, h: 720 }],
+  2: [{ x: 0, y: 0, w: 640, h: 720 }, { x: 640, y: 0, w: 640, h: 720 }],
+  3: [{ x: 0, y: 0, w: 640, h: 720 }, { x: 640, y: 0, w: 640, h: 360 }, { x: 640, y: 360, w: 640, h: 360 }],
+  4: [{ x: 0, y: 0, w: 640, h: 360 }, { x: 640, y: 0, w: 640, h: 360 }, { x: 0, y: 360, w: 640, h: 360 }, { x: 640, y: 360, w: 640, h: 360 }]
 };
+const cover = (w, h) => `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`;
+const OUT_FPS = 30;
 
 const MIN_SPAN = 4;              // shortest moment worth showing, seconds
 const MIN_TRIM = 4;              // shortest piece a moment may be trimmed to
@@ -822,21 +830,18 @@ function segmentArgs(seg, getClip, opts) {
     }
     // setpts before fps: a 60 fps clip slowed to half speed fills all 30
     // output frames with real ones.
-    filter = `[0:v]${crop}${pts},fps=${OUT_FPS},scale=${CANVAS_W}:${CANVAS_H}:force_original_aspect_ratio=decrease,` +
-      `pad=${CANVAS_W}:${CANVAS_H}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p${ass}[v]`;
+    filter = `[0:v]${crop}${pts},fps=${OUT_FPS},${cover(CANVAS_W, CANVAS_H)},setsar=1,format=yuv420p${ass}[v]`;
   } else {
-    const pos = GRID_POS[members.length];
+    const tiles = TILE_LAYOUTS[members.length];
     const baseIdx = members.length;
     silentIdx = members.length + 1;
     args.push('-f', 'lavfi', '-t', out, '-i', `color=c=black:s=${CANVAS_W}x${CANVAS_H}:r=${OUT_FPS}`);
     args.push('-f', 'lavfi', '-t', out, '-i', 'anullsrc=r=48000:cl=stereo');
-    const cell = `${pts},fps=${OUT_FPS},scale=${TILE_W}:${TILE_H}:force_original_aspect_ratio=decrease,` +
-      `pad=${TILE_W}:${TILE_H}:(ow-iw)/2:(oh-ih)/2,setsar=1`;
-    const chain = members.map((m, i) => `[${i}:v]${cell}[t${i}]`);
+    const chain = members.map((m, i) => `[${i}:v]${pts},fps=${OUT_FPS},${cover(tiles[i].w, tiles[i].h)},setsar=1[t${i}]`);
     let prev = `[${baseIdx}:v]`;
     members.forEach((m, i) => {
       const last = i === members.length - 1;
-      chain.push(`${prev}[t${i}]overlay=${pos[i][0]}:${pos[i][1]}${last ? ',format=yuv420p' + ass + '[v]' : `[b${i}]`}`);
+      chain.push(`${prev}[t${i}]overlay=${tiles[i].x}:${tiles[i].y}${last ? ',format=yuv420p' + ass + '[v]' : `[b${i}]`}`);
       prev = `[b${i}]`;
     });
     filter = chain.join(';');
@@ -881,8 +886,7 @@ function commentPlacement(seg) {
         tile = { x: -x * CANVAS_W / f, y: -y * CANVAS_H / f, w: CANVAS_W / f, h: CANVAS_H / f };
       }
     } else {
-      const pos = GRID_POS[Math.min(raw.length, MAX_TILES)];
-      tile = { x: pos[i][0], y: pos[i][1], w: TILE_W, h: TILE_H };
+      tile = Object.assign({}, TILE_LAYOUTS[Math.min(raw.length, MAX_TILES)][i]);
     }
     const start = Number(m.start) || 0;
     return { clipId: String(m.clipId), tile, toShotSec: (clipSec) => (clipSec - start) / speed };

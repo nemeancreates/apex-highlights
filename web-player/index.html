@@ -1465,8 +1465,8 @@
      <div style="width:100%;font-size:11.5px;line-height:1.55;color:#7a9686;">
        <strong style="color:#c8d6cd;">Cut down to the good parts.</strong>
        AI picks the strongest moments across your selected clips, trims to the length you choose, and
-       decides shot by shot whether to show one angle full-frame, two side by side, or a four-up grid.
-       Use Style notes to steer it. Best for sharing.
+       decides shot by shot whether to show one angle full-frame, a split screen, or a four-up grid.
+       Pick a Style and add notes (players to focus on, moments to keep) to steer it. Best for sharing.
      </div>
      <div>
        <label style="font-size:11px;color:#7a9686;display:block;">Length</label>
@@ -1496,6 +1496,10 @@
          <option value="longer holds">Longer holds</option>
          <option value="no effects">Plain: no slow-mo, zoom or speed-ups</option>
        </select>
+     </div>
+     <div style="flex-basis:100%;">
+       <label style="font-size:11px;color:#7a9686;display:block;">Notes for the editor (optional)</label>
+       <textarea id="aireelNotes" rows="2" maxlength="300" placeholder="e.g. focus on Morgan, more slow-mo on the kills, keep the whole boss fight" style="background:#0c1c14;color:#c8d6cd;border:1px solid #24402e;border-radius:4px;padding:6px 8px;width:100%;box-sizing:border-box;font:inherit;font-size:13px;resize:vertical;"></textarea>
      </div>
      <button class="btn btn-small" id="aireelBtn" onclick="startAiReel()">🤖 Generate AI Reel</button>
      <button class="btn btn-small btn-secondary" id="aireelCancelBtn" onclick="cancelAiReel()" style="display:none;">Stop Reel</button>
@@ -4588,7 +4592,9 @@
       }
       const targetSec = parseInt(document.getElementById('aireelLength').value);
       const game = document.getElementById('aireelGame').value.trim();
-      const styleNotes = document.getElementById('aireelStyle').value.trim();
+      // The style choice and the free-text notes go to the editor together.
+      const styleNotes = [document.getElementById('aireelStyle').value.trim(), document.getElementById('aireelNotes').value.trim()]
+        .filter(Boolean).join('. ').slice(0, 500);
 
       const uploadIds = Array.from(selectedExportClips).filter(id => {
         const u = allUploads.find(x => x.uploadId === id);
