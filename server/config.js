@@ -236,9 +236,9 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 const PRIVACY_POLICY_VERSION = '2026-09-07';
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.95',
-  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.95.exe',
-    releaseNotes: "Peakabu is free while we test. Every feature is unlocked for every account, with room for up to 100 players, 30 sessions a month and 20 hours per session, and a banner at the top says so. Paid monthly plans start after testing, and accounts made during testing get free months when it ends."
+  version: '0.1.96',
+  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.96.exe',
+    releaseNotes: "Monitor capture always records the monitor you picked, even on PCs with two graphics cards or monitors Windows lists in a different order. The web player button in the Session Code box is always there now, greyed out until you type a code. Logging out frees your spot, so you can stay signed in on your PC and phone at the same time. Updated to the latest Electron for security fixes."
 };
 
 

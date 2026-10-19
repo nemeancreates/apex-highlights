@@ -1788,6 +1788,96 @@ function probeCutKeyframe(filePath, offsetSec, cb) {
   });
 }
 
+// ================================
+// GPU CAPTURE MONITOR MAP
+// The GPU capture (ffmpeg ddagrab) picks a monitor by its DXGI output number
+// on one graphics adapter, while the Monitor list comes from Electron. Windows
+// doesn't promise the two are in the same order (laptops with two GPUs,
+// monitors on different cards, re-plugged displays), which could record a
+// screen the user never picked. So ask DXGI where each output sits on the
+// desktop and pick the one at the chosen monitor's position. Refreshed at
+// start-up and whenever monitors change. null = not known yet (old behaviour).
+// ================================
+let dxgiOutputs = null; // [{ adapter, output, left, top, right, bottom }]
+const DXGI_LIST_PS = `$ErrorActionPreference='Stop'
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class PeakDxgi {
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  public struct OUTPUT_DESC {
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string DeviceName;
+    public RECT DesktopCoordinates; public int AttachedToDesktop; public int Rotation; public IntPtr Monitor;
+  }
+  [ComImport, Guid("ae02eedb-c735-4690-8d52-5a8dc20213aa"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IOutput { void A(); void B(); void C(); void D(); [PreserveSig] int GetDesc(out OUTPUT_DESC d); }
+  [ComImport, Guid("29038f61-3839-4626-91fd-086879011a05"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IAdapter1 { void A(); void B(); void C(); void D(); [PreserveSig] int EnumOutputs(uint i, out IOutput o); }
+  [ComImport, Guid("770aae78-f26f-4dba-a829-253c83d1b387"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IFactory1 { void A(); void B(); void C(); void D(); void E(); void F(); void G(); void H(); void I(); [PreserveSig] int EnumAdapters1(uint i, out IAdapter1 a); }
+  [DllImport("dxgi.dll")] static extern int CreateDXGIFactory1(ref Guid riid, [MarshalAs(UnmanagedType.Interface)] out IFactory1 f);
+  public static string List() {
+    var g = new Guid("770aae78-f26f-4dba-a829-253c83d1b387");
+    IFactory1 f; if (CreateDXGIFactory1(ref g, out f) != 0) return "";
+    var sb = new System.Text.StringBuilder();
+    for (uint a = 0; a < 16; a++) {
+      IAdapter1 ad; if (f.EnumAdapters1(a, out ad) != 0) break;
+      for (uint o = 0; o < 16; o++) {
+        IOutput op; if (ad.EnumOutputs(o, out op) != 0) break;
+        OUTPUT_DESC d; if (op.GetDesc(out d) != 0) continue;
+        var r = d.DesktopCoordinates;
+        sb.AppendLine(a + "," + o + "," + r.Left + "," + r.Top + "," + r.Right + "," + r.Bottom);
+      }
+    }
+    return sb.ToString();
+  }
+}
+"@
+[PeakDxgi]::List()
+`;
+function refreshDxgiOutputs() {
+  return new Promise((resolve) => {
+    let out = '';
+    let ps;
+    try {
+      ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(DXGI_LIST_PS, 'utf16le').toString('base64')], { windowsHide: true });
+    } catch (e) { resolve(); return; }
+    const killer = setTimeout(() => { try { ps.kill(); } catch (e) {} }, 15000);
+    ps.stdout.on('data', d => { out += d.toString(); });
+    ps.on('error', () => { clearTimeout(killer); resolve(); });
+    ps.on('close', () => {
+      clearTimeout(killer);
+      const rows = out.split(/\r?\n/).map(l => l.trim()).filter(l => /^\d+,\d+,-?\d+,-?\d+,-?\d+,-?\d+$/.test(l))
+        .map(l => { const [adapter, output, left, top, right, bottom] = l.split(',').map(Number); return { adapter, output, left, top, right, bottom }; });
+      if (rows.length) {
+        dxgiOutputs = rows;
+        console.log('DXGI outputs:', rows.map(r => `a${r.adapter}/o${r.output}@${r.left},${r.top}`).join(' '));
+      }
+      resolve();
+    });
+    try { ps.stdin.end(); } catch (e) {}
+  });
+}
+// The ddagrab output number for an Electron display index, on the adapter the
+// GPU capture uses. Number = use it; -1 = that monitor isn't on this adapter
+// (skip GPU capture, the legacy engine finds it by position); null = unknown.
+function ddaOutputFor(monitor) {
+  if (!dxgiOutputs) return null;
+  const screen = require('electron').screen;
+  const displays = screen.getAllDisplays();
+  const target = monitor !== undefined && displays[monitor] ? displays[monitor] : displays[0];
+  if (!target) return null;
+  // The monitor's centre in physical pixels (what DXGI uses). dipToScreenPoint
+  // handles monitors with different Windows scaling.
+  const c = { x: Math.round(target.bounds.x + target.bounds.width / 2), y: Math.round(target.bounds.y + target.bounds.height / 2) };
+  let px = c.x * (target.scaleFactor || 1), py = c.y * (target.scaleFactor || 1);
+  try { if (screen.dipToScreenPoint) { const p = screen.dipToScreenPoint(c); px = p.x; py = p.y; } } catch (e) {}
+  const adapter = (captureAdapter !== null && captureAdapter !== undefined) ? Number(captureAdapter) : 0;
+  const hit = dxgiOutputs.find(o => o.adapter === adapter && px >= o.left && px < o.right && py >= o.top && py < o.bottom);
+  return hit ? hit.output : -1;
+}
+
 function buildCaptureArgs(engine, monitor) {
 const chunkPattern = path.join(BUFFER_DIR, `chunk_${recordingSessionTag}_%03d.mp4`);  const fpsStr = String(recordFps);
 
@@ -1831,9 +1921,13 @@ const chunkPattern = path.join(BUFFER_DIR, `chunk_${recordingSessionTag}_%03d.mp
 
   const adapterOpt = (captureAdapter !== null && captureAdapter !== undefined)
     ? `:adapter=${captureAdapter}` : '';
+  // DXGI's number for the chosen monitor (see ddaOutputFor); fall back to the
+  // list position only when the map isn't known.
+  const mapped = ddaOutputFor(monitor);
+  const ddaIdx = (mapped !== null && mapped >= 0) ? mapped : (monitor || 0);
   const ddaInput = (tenBit) => [
     '-f', 'lavfi',
-    '-i', `ddagrab=output_idx=${monitor || 0}${adapterOpt}:framerate=${recordFps}${tenBit ? ':output_fmt=10bit' : ''}`
+    '-i', `ddagrab=output_idx=${ddaIdx}${adapterOpt}:framerate=${recordFps}${tenBit ? ':output_fmt=10bit' : ''}`
   ];
 
   const ddaCpuVf = `hwdownload,format=bgra${scaleTail},format=yuv420p`;
@@ -2282,6 +2376,13 @@ function startRecording(monitor) {
     engineLadder[engineIndex].includes('nvenc')
   ) {
     engineIndex++;
+  }
+
+  // The chosen monitor isn't on the adapter the GPU capture uses: GPU capture
+  // would record a different screen (or fail), so go straight to the legacy
+  // engine, which captures by screen position.
+  if (ddaOutputFor(monitor) === -1) {
+    while (engineIndex < engineLadder.length && engineLadder[engineIndex].startsWith('dda')) engineIndex++;
   }
 
   if (engineIndex >= engineLadder.length) {
@@ -5719,6 +5820,12 @@ function createWindow() {
   });
 
   ipcMain.handle('get-windows', async () => enumerateWindowsPS());
+  // Copy text for the main window (Electron 44 has no clipboard in renderers).
+  ipcMain.handle('clipboard-write', (event, text) => {
+    if (typeof text !== 'string') return false;
+    require('electron').clipboard.writeText(text.slice(0, 4000));
+    return true;
+  });
 
   ipcMain.handle('get-storage-directory', () => CLIPS_DIR);
   ipcMain.handle('is-first-launch', () => !loadUserPreferences().hasLaunched);
@@ -6692,6 +6799,11 @@ app.whenReady().then(async () => {
   startXInputPoll();
   ensureFolders();
   sweepOrphanedFFmpeg();
+  refreshDxgiOutputs();
+  try {
+    const { screen } = require('electron');
+    for (const ev of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(ev, () => refreshDxgiOutputs());
+  } catch (e) { console.log('Display change watch skipped:', e.message); }
   createWindow();
   startupHotkeyRegistered = globalShortcut.register(customHotkey, onHotkeyPressed);
   if (startupHotkeyRegistered) console.log(`${customHotkey} hotkey registered successfully`);
