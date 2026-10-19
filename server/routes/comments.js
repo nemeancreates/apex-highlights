@@ -35,6 +35,7 @@ const {
   COMMENT_MAX_TIMESTAMP_MS
 } = require('../config');
 const { sessions } = require('../stores');
+const access = require('../session-access');
 const { requireAuth } = require('../auth');
 const db = require('../db');
 
@@ -146,6 +147,7 @@ function initCommentRoutes(app, io) {
     if (!code) return safeError(res, 400, 'Invalid session code');
     const session = sessions.get(code);
     if (!session) return safeError(res, 404, 'Session not found');
+    if (!access.canView(req, session)) return safeError(res, 403, access.MEMBERS_ONLY_MSG);
 
     let comments = [];
     try { comments = stmt.listForSession.all(code); }
@@ -165,6 +167,7 @@ function initCommentRoutes(app, io) {
     if (!code) return safeError(res, 400, 'Invalid session code');
     const session = sessions.get(code);
     if (!session) return safeError(res, 404, 'Session not found');
+    if (!access.canView(req, session)) return safeError(res, 403, access.MEMBERS_ONLY_MSG);
 
     if (!getCommentsEnabled(code)) {
       return safeError(res, 403, 'The host has turned comments off for this session.');

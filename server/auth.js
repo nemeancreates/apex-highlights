@@ -228,6 +228,17 @@ function requireAuth(req, res, next) {
   }
 }
 
+// The signed-in account on a request, or null. For routes anyone can call
+// that show more to some people (members-only sessions): never rejects.
+function userFromRequest(req) {
+  const h = req.headers['authorization'];
+  if (!h || !h.startsWith('Bearer ')) return null;
+  try {
+    const decoded = jwt.verify(h.slice(7), JWT_SECRET);
+    return tokenVersionOk(decoded) ? decoded : null;
+  } catch (e) { return null; }
+}
+
 // Same as requireAuth but also accepts the token via ?token= query param.
 // Needed for plain <a href> download links (composite/AI reel exports) —
 // those trigger a browser navigation, not a fetch, so they can't attach an
@@ -731,4 +742,4 @@ function initAuthRoutes(app) {
   });
 }
 
-module.exports = { requireAuth, requireAuthAny, socketAuth, initAuthRoutes, requireTier, requireAdmin, getEffectiveTier, getBaseTier, getTierExpiresAt, getMonthKey };
+module.exports = { requireAuth, requireAuthAny, userFromRequest, socketAuth, initAuthRoutes, requireTier, requireAdmin, getEffectiveTier, getBaseTier, getTierExpiresAt, getMonthKey };

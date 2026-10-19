@@ -6,7 +6,8 @@
 const path = require('path');
 const Database = require('better-sqlite3');
 
-const DB_PATH = path.join(__dirname, 'peakabu.db');
+// PEAKABU_DB points tests at a throwaway database; production leaves it unset.
+const DB_PATH = process.env.PEAKABU_DB || path.join(__dirname, 'peakabu.db');
 const db = new Database(DB_PATH);
 
 // WAL mode: concurrent reads don't block writes, and a crash mid-write
@@ -202,6 +203,12 @@ addColumnIfMissing('sessions', 'bannedUsernames', 'TEXT');
 // closed — host-left flag. Previously in-memory only, so it was lost on
 // every restart, silently reopening sessions to anyone holding the code.
 addColumnIfMissing('sessions', 'closed', 'INTEGER NOT NULL DEFAULT 0');
+// Who can watch (session-access.js): 'members' | 'everyone' (NULL = everyone,
+// sessions from before 0.1.97), the host's watch-link key, and everyone who
+// has ever been in the session (JSON array; live members drop off on leave).
+addColumnIfMissing('sessions', 'visibility', 'TEXT');
+addColumnIfMissing('sessions', 'watchKey', 'TEXT');
+addColumnIfMissing('sessions', 'participants', 'TEXT');
 // bannedUsernames — host-managed per-session ban list (JSON array of
 // exact-case usernames). Banned members are blocked from rejoining via
 // join-session; kicked (not banned) members can still rejoin. See

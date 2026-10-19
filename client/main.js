@@ -5222,7 +5222,9 @@ function fetchSessionUploads(code) {
     };
     const req = https.request({
       protocol: 'https:', host: 'peakabu.app', port: 443,
-      path: `/sessions/${code}/uploads`, method: 'GET'
+      path: `/sessions/${code}/uploads`, method: 'GET',
+      // Members-only sessions need to know who's asking.
+      headers: authToken ? { Authorization: `Bearer ${authToken}` } : {}
     }, (res) => {
       let body = '';
       res.on('data', chunk => body += chunk);

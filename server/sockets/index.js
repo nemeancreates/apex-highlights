@@ -207,6 +207,7 @@ function initSockets(io) {
       };
 
       session.members.push(member);
+      require('../session-access').addParticipant(session, cleanUsername);
       if (cleanUsername === session.createdBy && session.hostIdleSince === undefined) {
         session.hostIdleSince = Date.now(); // covers first-ever join, not just reconnect-after-close
       }
@@ -478,7 +479,7 @@ function initSockets(io) {
         return;
       }
 
-      const result = createSessionForUser(socket.username);
+      const result = createSessionForUser(socket.username, { visibility: session.visibility });
       if (result.error) {
         socket.emit('error-message', { message: result.error });
         return;
