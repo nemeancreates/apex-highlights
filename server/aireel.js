@@ -178,6 +178,8 @@ function registerRoutes() {
 
     const session = D.sessions.get(code);
     if (!session) return D.safeError(res, 404, 'Session not found');
+    const access = require('./session-access');
+    if (!access.canView(req, session)) return D.safeError(res, 403, access.MEMBERS_ONLY_MSG);
 
     const body = req.body || {};
     const targetSec = Number(body.targetSec);
@@ -333,6 +335,8 @@ function registerRoutes() {
     if (!code) return D.safeError(res, 400, 'Invalid session code');
     const session = D.sessions.get(code);
     if (!session) return D.safeError(res, 404, 'Session not found');
+    const access = require('./session-access');
+    if (!access.canView(req, session)) return D.safeError(res, 403, access.MEMBERS_ONLY_MSG);
 
     const body = req.body || {};
     const targetSec = Number(body.targetSec);

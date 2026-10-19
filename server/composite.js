@@ -39,6 +39,7 @@ const { log } = require('./logger');
 const { sanitizeCode, downloadToFile } = require('./utils');
 const { UPLOADS_DIR, tiersWithCapability } = require('./config');
 const { sessions } = require('./stores');
+const access = require('./session-access');
 const { requireAuth, requireAuthAny, requireTier } = require('./auth');
 const { getCommentsForSession } = require('./routes/comments');
 const { generateASS, checkAssFilter, escapeFilterPath } = require('./comment-overlay');
@@ -733,6 +734,7 @@ function initCompositeRoutes(app) {
 
     const session = sessions.get(code);
     if (!session) return res.status(404).json({ error: 'Session not found' });
+    if (!access.canView(req, session)) return res.status(403).json({ error: access.MEMBERS_ONLY_MSG });
     if (session.uploads.length === 0) return res.status(400).json({ error: 'No uploads yet' });
 
     // Which clips? The client sends the uploadIds marked with + (or, with

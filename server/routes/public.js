@@ -26,7 +26,8 @@ const { log } = require('../logger');
 const { sanitizeUsername, sanitizeCode, safeError } = require('../utils');
 const { createRateLimiter } = require('../ratelimit');
 const { JWT_SECRET } = require('../config');
-const { sessions } = require('../stores');
+const { sessions, saveSessionsToDisk } = require('../stores');
+const access = require('../session-access');
 const { requireAuth, requireAdmin } = require('../auth');
 const db = require('../db');
 const mod = require('../moderation');
@@ -302,6 +303,16 @@ function hostState(session) {
   };
 }
 
+// What the host's controls show: the listing state plus who can watch and
+// the link to share.
+function hostView(session) {
+  return {
+    ...hostState(session),
+    visibility: access.isMembersOnly(session) ? 'members' : 'everyone',
+    watchUrl: access.watchUrlFor(session)
+  };
+}
+
 // ================================
 // ROUTES
 // ================================
@@ -359,11 +370,45 @@ function initPublicRoutes(app) {
       return safeError(res, 500, 'Could not save that. Try again.');
     }
 
+    // A public listing is open to anyone, so the session stops being members-only.
+    if (want && session.visibility === 'members') { session.visibility = 'everyone'; saveSessionsToDisk(); }
     log('info', 'public_toggled', { session: code, isPublic: want, by: session.createdBy });
     // Scans run in the background; the listing appears on /browse once
     // every clip has cleared (immediately, if no scanner is configured).
     if (want) mod.scanSession(session).catch(() => {});
-    res.json(hostState(session));
+    res.json(hostView(session));
+  });
+
+  // --- Who can watch: 'members' (the people who were in it + the watch link)
+  // or 'everyone' with the code. Host only. Members takes it off Browse.
+  app.patch('/sessions/:code/visibility', requireAuth, toggleLimiter, (req, res) => {
+    const code = sanitizeCode(req.params.code);
+    if (!code) return safeError(res, 400, 'Invalid session code');
+    const session = sessions.get(code);
+    if (!session) return safeError(res, 404, 'Session not found');
+    if (session.createdBy !== sanitizeUsername(req.user.username)) return safeError(res, 403, 'Only the session host can change this.');
+    const v = req.body && req.body.visibility;
+    if (v !== 'members' && v !== 'everyone') return safeError(res, 400, "visibility must be 'members' or 'everyone'");
+    session.visibility = v;
+    if (v === 'members') {
+      const existing = stmt.get.get(code);
+      if (existing && !existing.hidden) { stmt.remove.run(code); stmt.clearReports.run(code); }
+    }
+    saveSessionsToDisk();
+    log('info', 'visibility_changed', { session: code, visibility: v, by: session.createdBy });
+    res.json(hostView(session));
+  });
+
+  // --- New watch link: the old one stops working. Host only.
+  app.post('/sessions/:code/watch-link/reset', requireAuth, toggleLimiter, (req, res) => {
+    const code = sanitizeCode(req.params.code);
+    if (!code) return safeError(res, 400, 'Invalid session code');
+    const session = sessions.get(code);
+    if (!session) return safeError(res, 404, 'Session not found');
+    if (session.createdBy !== sanitizeUsername(req.user.username)) return safeError(res, 403, 'Only the session host can change this.');
+    access.resetWatchKey(session);
+    log('info', 'watch_link_reset', { session: code, by: session.createdBy });
+    res.json(hostView(session));
   });
 
   // --- Host-only read of the toggle state (the player shows the switch).
@@ -375,7 +420,7 @@ function initPublicRoutes(app) {
     if (session.createdBy !== sanitizeUsername(req.user.username)) {
       return safeError(res, 403, 'Only the session host can see this.');
     }
-    res.json(hostState(session));
+    res.json(hostView(session));
   });
 
   // --- BROWSE: cards for the website's public page.

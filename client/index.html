@@ -840,7 +840,7 @@
               <img src="assets/kickstarter.png" alt="kickstarter" />
             </button>
           </div>
-          <span class="version-tag">v0.1.96</span>
+          <span class="version-tag">v0.1.97</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="redeem-wrap">
@@ -1290,6 +1290,11 @@
             </div>
 
             <a class="player-link" id="playerLink" href="#" onclick="openWebPlayer(event)">🌐 Open in Web Player</a>
+            <div id="watchCtrls" style="display:none;gap:6px;flex-wrap:wrap;margin-top:8px;">
+              <button class="btn-secondary btn-sm" id="watchModeClientBtn" onclick="toggleWatchMode()">👥 Members only</button>
+              <button class="btn-secondary btn-sm" id="publicClientBtn" onclick="togglePublicListing()">🌐 Public: Off</button>
+              <button class="btn-secondary btn-sm" onclick="copyWatchLink()" title="Copy the link that lets someone watch this session">🔗 Watch link</button>
+            </div>
             <div class="uc-label" style="margin-top:13px;">Squad</div>
             <div class="member-list" id="memberList"></div>
             <div class="usage-track-wrap" id="usageTrackWrap" style="display:none;"></div>
@@ -2573,7 +2578,7 @@
       // A late joiner (or a reconnect) has missed the live events — seed from
       // the session's uploads: a record with no videoFile is still pending.
       window.seedSquadPending = function(code) {
-        fetch('https://peakabu.app/sessions/' + encodeURIComponent(code) + '/uploads')
+        fetch('https://peakabu.app/sessions/' + encodeURIComponent(code) + '/uploads', { headers: window.authToken ? { 'Authorization': 'Bearer ' + window.authToken } : {} })
           .then(function(r) { return r.ok ? r.json() : null; })
           .then(function(d) {
             if (!d || !Array.isArray(d.uploads) || window.currentSessionCode !== code) return;
@@ -4866,7 +4871,9 @@
         fetch('https://peakabu.app/sessions', {
           method: 'POST',
           headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+window.authToken },
-          body: JSON.stringify({})
+          // Members only: the people in the session, plus anyone the host
+          // sends the watch link to. Changeable under the Web Player link.
+          body: JSON.stringify({ visibility: 'members' })
         })
         .then(function(res){return res.json();})
         .then(function(data) {
@@ -4924,6 +4931,7 @@
         window.socket.on('session-joined', function(data) {
           window.currentSessionCode = data.code;
           window.isSessionHost = (data.createdBy === window.authUsername);
+          loadWatchControls(data.code);
           resetSessionUploads();
           (data.members || []).forEach(function(m) { if (m && m.username) window.sessionOnline[m.username] = true; });
           seedSquadPending(data.code);
@@ -5235,6 +5243,7 @@
         window.isSessionHost = false;
         document.getElementById('sessionPanel-disconnected').style.display = 'block';
         document.getElementById('sessionPanel-connected').style.display = 'none';
+        hideWatchControls();
         var ilBtn = document.getElementById('inviteLinkHeaderBtn');
         if (ilBtn) { ilBtn.style.display = 'none'; ilBtn.classList.remove('invite-attn'); }
         clearInviteAttnTimer();
@@ -6143,6 +6152,89 @@
         if (window._inviteAttnTimer) { clearTimeout(window._inviteAttnTimer); window._inviteAttnTimer = null; }
       }
 
+      // =====================
+      // WHO CAN WATCH (host only) — same settings as the web player and
+      // peakabu.app/account. Members only: the people who were in it, plus
+      // anyone with the watch link. Public: listed on peakabu.app/browse.
+      // =====================
+      window.sessionWatch = null;
+      function renderWatchControls() {
+        var row = document.getElementById('watchCtrls');
+        if (!row) return;
+        var st = window.sessionWatch;
+        row.style.display = (window.isSessionHost && st) ? 'flex' : 'none';
+        if (!st) return;
+        var members = st.visibility === 'members';
+        var mb = document.getElementById('watchModeClientBtn');
+        mb.textContent = members ? '👥 Members only' : '🔓 Everyone';
+        mb.title = members
+          ? 'Only the people in this session, and anyone you send the watch link to. Click to let anyone with the code watch.'
+          : 'Anyone with the session code can watch. Click to make it members only.';
+        var pst = st.state || (st.isPublic ? 'live' : 'off');
+        var locked = pst === 'off' && st.canList === false;
+        var pb = document.getElementById('publicClientBtn');
+        pb.textContent = pst === 'under-review' ? '🌐 Under review' : pst === 'checking' ? '🌐 Public: Checking…' : '🌐 Public: ' + (pst === 'live' ? 'On' : 'Off');
+        pb.disabled = pst === 'under-review' || locked;
+        pb.title = pst === 'under-review' ? 'Hidden from the public page until staff review it.'
+          : locked ? (st.reason || 'Public sessions are for Creator tier and up.')
+          : pst === 'off' ? 'List this session on peakabu.app/browse (anyone can find and watch it)'
+          : 'Listed on peakabu.app/browse. Click to unlist.';
+      }
+      window.loadWatchControls = function(code) {
+        window.sessionWatch = null;
+        renderWatchControls();
+        if (!window.isSessionHost || !window.authToken || !code) return;
+        fetch('https://peakabu.app/sessions/' + encodeURIComponent(code) + '/public', { headers: { 'Authorization': 'Bearer ' + window.authToken } })
+          .then(function(r) { return r.ok ? r.json() : null; })
+          .then(function(d) { if (d && window.currentSessionCode === code) { window.sessionWatch = d; renderWatchControls(); } })
+          .catch(function() {});
+      };
+      window.hideWatchControls = function() { window.sessionWatch = null; renderWatchControls(); };
+      function watchRequest(path, method, body) {
+        return fetch('https://peakabu.app/sessions/' + encodeURIComponent(window.currentSessionCode) + path, {
+          method: method,
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + window.authToken },
+          body: body ? JSON.stringify(body) : undefined
+        }).then(function(r) {
+          return r.json().catch(function() { return {}; }).then(function(d) {
+            if (!r.ok) throw new Error(d.error || 'Couldn\u2019t change that. Try again.');
+            window.sessionWatch = d;
+            renderWatchControls();
+            return d;
+          });
+        });
+      }
+      window.toggleWatchMode = function() {
+        var st = window.sessionWatch;
+        if (!st || !window.currentSessionCode) return;
+        var want = st.visibility === 'members' ? 'everyone' : 'members';
+        var pst = st.state || (st.isPublic ? 'live' : 'off');
+        if (want === 'members' && (pst === 'live' || pst === 'checking') && !confirm('Members only takes this session off peakabu.app/browse. Continue?')) return;
+        watchRequest('/visibility', 'PATCH', { visibility: want })
+          .then(function(d) { hudLog('system', d.visibility === 'members' ? '👥 Members only: the squad, plus anyone with the watch link' : '🔓 Anyone with the session code can watch', 'info'); })
+          .catch(function(e) { hudLog('system', '\u26A0 ' + e.message, 'error'); });
+      };
+      window.togglePublicListing = function() {
+        var st = window.sessionWatch;
+        if (!st || !window.currentSessionCode) return;
+        var pst = st.state || (st.isPublic ? 'live' : 'off');
+        var want = !(pst === 'live' || pst === 'checking');
+        if (want && !confirm('Make this session public?\n\nAnyone will be able to find and watch it on peakabu.app/browse until it expires. Make sure everyone in it is OK being public. You can unlist it any time.')) return;
+        watchRequest('/public', 'PATCH', { isPublic: want, platform: 'pc' })
+          .then(function() { hudLog('system', want ? '🌐 Listed on peakabu.app/browse (shows once the safety check passes)' : '🌐 Taken off peakabu.app/browse', 'info'); })
+          .catch(function(e) { hudLog('system', '\u26A0 ' + e.message, 'error'); });
+      };
+      window.copyWatchLink = function() {
+        var st = window.sessionWatch;
+        if (!st || !st.watchUrl) return;
+        clipboard.writeText(st.watchUrl);
+        var hint = document.getElementById('sessionCodeHint');
+        if (hint) {
+          hint.textContent = st.visibility === 'members' ? '\u2705 Watch link copied: anyone with it can watch' : '\u2705 Watch link copied';
+          setTimeout(function() { hint.textContent = 'Click the code to copy to clipboard'; }, 3000);
+        }
+      };
+
       window.copyInviteLink = async function() {
         if (!window.currentSessionCode) return;
         var url = await ipcRenderer.invoke('get-join-link', window.currentSessionCode);
@@ -6853,6 +6945,7 @@
         window.currentSessionCode = null;
         document.getElementById('sessionPanel-disconnected').style.display = 'block';
         document.getElementById('sessionPanel-connected').style.display = 'none';
+        hideWatchControls();
         var ilBtnOut = document.getElementById('inviteLinkHeaderBtn');
         if (ilBtnOut) ilBtnOut.style.display = 'none';
         document.getElementById('memberList').innerHTML = '';

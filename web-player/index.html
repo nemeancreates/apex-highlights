@@ -1339,6 +1339,7 @@
       </div>
       <button class="btn" onclick="loadSession()">Load</button>
       <button class="btn btn-secondary btn-icon" id="shareBtn" onclick="copyShareLink()" title="Copy share link" style="display:none;">&#x1F517;</button>
+      <button class="btn btn-secondary btn-small" id="watchModeBtn" onclick="paToggleWatchMode()" title="Who can watch this session" style="display:none;">&#x1F465; Members</button>
       <button class="btn btn-secondary btn-small" id="publicBtn" onclick="paTogglePublic()" title="List this session on peakabu.app/browse" style="display:none;">&#x1F310; Public: Off</button>
       <button class="btn btn-secondary btn-small" id="paSignInBtn" onclick="paOpenSignIn()" title="Sign in to leave comments">&#x1F464; Sign in</button>
   
@@ -1617,6 +1618,9 @@
     // server enforces host-only regardless, this is purely UI gating.
     // ========================
     let myAuthToken = null;
+    // ?k= from a host's watch link: lets anyone holding it watch a
+    // members-only session. Sent with every request about that session.
+    let watchKey = null;
     let myUsername = null;
     let isHost = false;
     let sessionHostName = null;   // session.createdBy — host POV leads the grid
@@ -1647,6 +1651,7 @@
       const params = new URLSearchParams(window.location.search);
       myAuthToken = params.get('t') || null;
       myUsername = params.get('u') || null;
+      watchKey = params.get('k') || null;
       // No token from the desktop app? Fall back to a browser sign-in this
       // viewer may have completed earlier (paDoSignIn below). URL params
       // always win — they mean "opened from the Peakabu app," which is
@@ -2859,6 +2864,16 @@
     // SESSION LOADING
     // ========================
 
+    // Session requests carry the watch-link key and, when signed in, the
+    // account (members-only sessions check both).
+    function viewUrl(url) {
+      return watchKey ? url + (url.indexOf('?') >= 0 ? '&' : '?') + 'k=' + encodeURIComponent(watchKey) : url;
+    }
+    function viewOpts() {
+      return myAuthToken ? { headers: { 'Authorization': 'Bearer ' + myAuthToken } } : {};
+    }
+    const MEMBERS_ONLY_TEXT = 'This session is for the people who were in it. If you were, sign in (top right). Otherwise ask the host for the watch link.';
+
     async function loadSession(opts) {
       // opts.around (Peak Roulette): load only the peak at that moment.
       const around = opts && typeof opts.around === 'number' && opts.around > 0 ? opts.around : null;
@@ -2868,15 +2883,17 @@
       showSessionLoading();
 
       try {
-        const sessionRes = await fetch('/sessions/' + code);
+        const sessionRes = await fetch(viewUrl('/sessions/' + code), viewOpts());
         if (sessionRes.status === 404) {
           showExpiredState('Session not found — it may have expired or the code is incorrect.');
           return;
         }
         if (!sessionRes.ok) { hideSessionLoading(); alert('Error loading session'); return; }
         const session = await sessionRes.json();
+        if (session.restricted) { showExpiredState(MEMBERS_ONLY_TEXT); return; }
 
-        const uploadsRes = await fetch('/sessions/' + code + '/uploads' + (around ? '?around=' + around : ''));
+        const uploadsRes = await fetch(viewUrl('/sessions/' + code + '/uploads' + (around ? '?around=' + around : '')), viewOpts());
+        if (uploadsRes.status === 403) { showExpiredState(MEMBERS_ONLY_TEXT); return; }
         const uploadsData = await uploadsRes.json();
         partialSession = !!around;
         if (!uploadsData.uploads || uploadsData.uploads.length === 0) {
@@ -3032,7 +3049,7 @@
     async function refreshUploads() {
       if (!currentSessionCode || partialSession) return;
       try {
-        const uploadsRes = await fetch('/sessions/' + currentSessionCode + '/uploads');
+        const uploadsRes = await fetch(viewUrl('/sessions/' + currentSessionCode + '/uploads'), viewOpts());
 
         if (uploadsRes.status === 404) {
           if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
@@ -4154,7 +4171,9 @@
     let currentShareUrl = '';
 
     function showShareLink(code) {
-      currentShareUrl = window.location.origin + '/player?code=' + code;
+      // A members-only session's link needs the key: the host's comes from the
+      // server (paAfterSessionLoad), anyone else passes on the one they opened.
+      currentShareUrl = window.location.origin + '/player?code=' + code + (watchKey ? '&k=' + encodeURIComponent(watchKey) : '');
       const btn = document.getElementById('shareBtn');
       if (btn) btn.style.display = '';
     }
@@ -4394,7 +4413,7 @@
 
       try {
         if (!myAuthToken) throw new Error('Sign in through the Peakabu app with a paid plan to export.');
-        const res = await fetch('/sessions/' + currentSessionCode + '/composite', {
+        const res = await fetch(viewUrl('/sessions/' + currentSessionCode + '/composite'), {
           method: 'POST',
           headers: {
             'Authorization': 'Bearer ' + myAuthToken,
@@ -4585,7 +4604,7 @@
 
       try {
         if (!myAuthToken) throw new Error('Sign in through the Peakabu app with a Squad/Pro plan to generate reels.');
-        const res = await fetch('/sessions/' + currentSessionCode + '/aireel', {
+        const res = await fetch(viewUrl('/sessions/' + currentSessionCode + '/aireel'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + myAuthToken },
           body: JSON.stringify({ uploadIds, targetSec, game, styleNotes })
@@ -4940,7 +4959,7 @@
   function paFetchComments() {
     var code = paCode();
     if (!code) return Promise.resolve();
-    return fetch('/sessions/' + code + '/comments')
+    return fetch(viewUrl('/sessions/' + code + '/comments'), viewOpts())
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
         if (!d) return;
@@ -5795,7 +5814,7 @@
       if (!text) { err.textContent = 'Type something first.'; return; }
       post.disabled = true; post.textContent = 'Posting...'; err.textContent = '';
 
-      fetch('/sessions/' + paCode() + '/comments', {
+      fetch(viewUrl('/sessions/' + paCode() + '/comments'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + paToken() },
         body: JSON.stringify({ uploadId: paComposeTarget.uploadId, timestampMs: paComposeTarget.timestampMs, text: text })
@@ -6252,6 +6271,7 @@
       if (!btn) return;
       var show = !!(isHost && myAuthToken && currentSessionCode);
       btn.style.display = show ? '' : 'none';
+      renderWatchModeBtn(show);
       if (!show) return;
       var st = publicState.state || (publicState.isPublic ? 'live' : 'off');
       var locked = st === 'off' && publicState.canList === false;
@@ -6269,6 +6289,38 @@
         : locked ? (publicState.reason || 'Public sessions are for Creator tier and up.')
         : 'List this session on peakabu.app/browse';
     }
+
+    // Who can watch (host only): Members = the people who were in it plus
+    // anyone with the watch link; Everyone = anyone with the code.
+    function renderWatchModeBtn(show) {
+      var b = document.getElementById('watchModeBtn');
+      if (!b) return;
+      b.style.display = show && publicState.visibility ? '' : 'none';
+      var members = publicState.visibility === 'members';
+      b.textContent = members ? '\u{1F465} Members' : '\u{1F513} Everyone';
+      b.title = members
+        ? 'Only the people who were in it, and anyone you send the watch link to (copy it with the link button). Click to let anyone with the code watch.'
+        : 'Anyone with the session code can watch. Click to make it members-only.';
+      if (publicState.watchUrl) currentShareUrl = publicState.watchUrl;
+    }
+    window.paToggleWatchMode = async function () {
+      if (!currentSessionCode || !myAuthToken) return;
+      var want = publicState.visibility === 'members' ? 'everyone' : 'members';
+      var cur = publicState.state || (publicState.isPublic ? 'live' : 'off');
+      if (want === 'members' && (cur === 'live' || cur === 'checking') &&
+          !window.confirm('Members only takes this session off peakabu.app/browse. Continue?')) return;
+      try {
+        var res = await fetch('/sessions/' + encodeURIComponent(currentSessionCode) + '/visibility', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + myAuthToken },
+          body: JSON.stringify({ visibility: want })
+        });
+        var data = await res.json().catch(function () { return {}; });
+        if (!res.ok) { alert(data.error || 'Couldn\u2019t change that. Try again.'); return; }
+        publicState = data;
+      } catch (e) { alert('Couldn\u2019t reach the server. Try again.'); return; }
+      renderPublicBtn();
+    };
 
     async function loadPublicState(code) {
       publicState = { isPublic: false, underReview: false };

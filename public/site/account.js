@@ -229,9 +229,11 @@
           }).catch(function () {});
         });
         var tdPub = el('td'); tdPub.append(sw, note);
-        var watch = el('a', 'btn btn-ghost btn-sm', 'Watch'); watch.href = '/player?code=' + encodeURIComponent(s.code);
+        // watchUrl carries the key for members-only sessions.
+        var link = s.watchUrl || (location.origin + '/player?code=' + encodeURIComponent(s.code));
+        var watch = el('a', 'btn btn-ghost btn-sm', 'Watch'); watch.href = link;
         var copy = btn('Copy link', 'btn-ghost', function () {
-          var url = location.origin + '/player?code=' + encodeURIComponent(s.code);
+          var url = link;
           (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(
             function () { say('sessMsg', 'Link copied.', true); },
             function () { say('sessMsg', url, true); });

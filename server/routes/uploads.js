@@ -59,7 +59,9 @@ const upload = multer({
       const baseName = path.basename(file.originalname, ext)
         .replace(/[^a-zA-Z0-9_\-]/g, '_')
         .substring(0, 100);
-      const safeName = `${baseName}_${Date.now()}${ext}`;
+      // The random part keeps clip addresses unguessable even when someone
+      // knows the session code (members-only sessions rely on it).
+      const safeName = `${baseName}_${Date.now()}_${require('crypto').randomBytes(8).toString('hex')}${ext}`;
       cb(null, safeName);
     }
   }),
@@ -733,6 +735,8 @@ function initUploadRoutes(app, io) {
 
     const session = sessions.get(code);
     if (!session) return safeError(res, 404, 'Session not found');
+    const access = require('../session-access');
+    if (!access.canView(req, session)) return safeError(res, 403, access.MEMBERS_ONLY_MSG);
 
     const rec = session.uploads.find(u => u.id === req.params.uploadId);
     if (!rec) return safeError(res, 404, 'Clip not found');

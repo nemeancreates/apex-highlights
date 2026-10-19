@@ -122,11 +122,13 @@ const stmt = {
   upsertSession: db.prepare(`
     INSERT INTO sessions (
       code, id, createdBy, createdAt, clipDuration, highlightCount,
-      hostTier, expiresAt, maxMembers, maxClips, title, detectedGame, closed, bannedUsernames, commentSettings
+      hostTier, expiresAt, maxMembers, maxClips, title, detectedGame, closed, bannedUsernames, commentSettings,
+      visibility, watchKey, participants
     )
     VALUES (
       @code, @id, @createdBy, @createdAt, @clipDuration, @highlightCount,
-      @hostTier, @expiresAt, @maxMembers, @maxClips, @title, @detectedGame, @closed, @bannedUsernames, @commentSettings
+      @hostTier, @expiresAt, @maxMembers, @maxClips, @title, @detectedGame, @closed, @bannedUsernames, @commentSettings,
+      @visibility, @watchKey, @participants
     )
     ON CONFLICT(code) DO UPDATE SET
       clipDuration = excluded.clipDuration,
@@ -139,7 +141,10 @@ const stmt = {
       detectedGame = excluded.detectedGame,
       closed = excluded.closed,
       bannedUsernames = excluded.bannedUsernames,
-      commentSettings = excluded.commentSettings
+      commentSettings = excluded.commentSettings,
+      visibility = excluded.visibility,
+      watchKey = excluded.watchKey,
+      participants = excluded.participants
   `),
   deleteSession: db.prepare(`DELETE FROM sessions WHERE code = ?`),
   allSessions: db.prepare(`SELECT * FROM sessions`),
@@ -273,6 +278,9 @@ function loadSessionsFromDisk() {
       pendingHighlights: [],     // transient
       members: [],               // transient
       bannedUsernames: row.bannedUsernames ? JSON.parse(row.bannedUsernames) : [],
+      visibility: row.visibility ?? null,
+      watchKey: row.watchKey ?? null,
+      participants: row.participants ? JSON.parse(row.participants) : [],
       uploads
     };
     if (migrateLegacyCaps(migratedSession)) migratedCount++;
@@ -306,7 +314,10 @@ function saveSessionsToDisk() {
         detectedGame: s.detectedGame ?? null,
         closed: s.closed ? 1 : 0,
         bannedUsernames: JSON.stringify(s.bannedUsernames || []),
-        commentSettings: s.commentSettings ?? JSON.stringify({ filterMode: 'all', topN: 0 })
+        commentSettings: s.commentSettings ?? JSON.stringify({ filterMode: 'all', topN: 0 }),
+        visibility: s.visibility ?? null,
+        watchKey: s.watchKey ?? null,
+        participants: JSON.stringify(s.participants || [])
       });
       for (const u of s.uploads) {
         stmt.upsertUpload.run({

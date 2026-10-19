@@ -18,12 +18,13 @@ const { requireAuth, getEffectiveTier, getMonthKey } = require('../auth');
 const { listStars, getSquadCanStar } = require('./stars');
 // A session on legal hold reads as "not found" to everyone.
 const { isOnHold } = require('../moderation/legal-hold');
+const access = require('../session-access');
 
 // Shared by POST /sessions and the migrate-session socket handler.
 // Returns { session } on success or { error, status } on failure.
 const { getFlags } = require('../killswitch');
 
-function createSessionForUser(rawUsername) {
+function createSessionForUser(rawUsername, opts) {
   if (getFlags().sessionsPaused) {
     return { error: 'New sessions are temporarily paused. Existing sessions are unaffected — check back shortly.', status: 503 };
   }
@@ -76,7 +77,11 @@ function createSessionForUser(rawUsername) {
     pendingHighlights: [],
     members: [],
     uploads: [],
-    bannedUsernames: []
+    bannedUsernames: [],
+    // Set by the caller: 'members' for sessions from client 0.1.97 on.
+    visibility: (opts && opts.visibility === 'members') ? 'members' : null,
+    watchKey: null,
+    participants: [username]
   };
 
   sessions.set(code, session);
@@ -95,7 +100,10 @@ function createSessionForUser(rawUsername) {
 
 function initSessionRoutes(app) {
   app.post('/sessions', requireAuth, (req, res) => {
-    const result = createSessionForUser(req.user.username);
+    // Client 0.1.97+ asks for a members-only session; older clients send
+    // nothing and keep the old open-with-the-code behaviour.
+    const visibility = req.body && req.body.visibility === 'members' ? 'members' : null;
+    const result = createSessionForUser(req.user.username, { visibility });
     if (result.error) return safeError(res, result.status, result.error);
     const s = result.session;
     res.status(201).json({
@@ -129,8 +137,27 @@ function initSessionRoutes(app) {
     const session = sessions.get(code);
     if (!session || isOnHold(code)) return res.status(404).json({ error: 'Session not found' });
 
+    // Members-only and not one of them: enough to say it exists and who
+    // hosts it (the app's join flow needs that), but no clips.
+    if (!access.canView(req, session)) {
+      return res.json({
+        code: session.code,
+        createdBy: session.createdBy,
+        createdAt: session.createdAt,
+        expiresAt: session.expiresAt || null,
+        maxMembers: session.maxMembers || MAX_MEMBERS_PER_SESSION,
+        members: session.members.map(m => ({ username: m.username, isRecording: m.isRecording, joinedAt: m.joinedAt })),
+        visibility: 'members',
+        restricted: true,
+        message: access.MEMBERS_ONLY_MSG
+      });
+    }
+    const host = access.isHostReq(req, session);
+
     res.json({
       code: session.code,
+      visibility: access.isMembersOnly(session) ? 'members' : 'everyone',
+      ...(host ? { watchUrl: access.watchUrlFor(session) } : {}),
       createdBy: session.createdBy,
       createdAt: session.createdAt,
       expiresAt: session.expiresAt || null,
@@ -153,6 +180,7 @@ function initSessionRoutes(app) {
 
     const session = sessions.get(code);
     if (!session || isOnHold(code)) return res.status(404).json({ error: 'Session not found' });
+    if (!access.canView(req, session)) return res.status(403).json({ error: access.MEMBERS_ONLY_MSG, restricted: true });
 
     // closed/expiresAt ride along so the client can tell the three cases
     // apart without guessing: 404 = purged past retention (nothing to sync

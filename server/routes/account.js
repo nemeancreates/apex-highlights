@@ -94,7 +94,10 @@ function initAccountRoutes(app) {
         const live = sessions.get(s.code);
         let pub = { isPublic: false, state: 'off', canList: false, reason: null };
         if (live) { try { pub = hostState(live); } catch (e) {} }
-        return { ...s, kind: 'pc', public: pub };
+        // The host's own link: carries the key when the session is members-only.
+        const access = require('../session-access');
+        const watch = live ? { visibility: access.isMembersOnly(live) ? 'members' : 'everyone', watchUrl: access.watchUrlFor(live) } : {};
+        return { ...s, kind: 'pc', public: pub, ...watch };
       });
       // Peakabu Mobile parties this account hosted. Public is switched on the
       // mobile host page, so the row only shows its state.
