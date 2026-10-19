@@ -172,7 +172,7 @@ addColumnIfMissing('users', 'privacyVersionAccepted', 'TEXT');
 addColumnIfMissing('users', 'privacyAcceptedAt', 'INTEGER');
 
 // discordId — the Discord snowflake ID (not username, which people can
-// change) is the actual source of truth for "this Peak-Abu account is
+// change) is the actual source of truth for "this Peakabu account is
 // this Discord account." SQLite's ADD COLUMN can't carry a UNIQUE
 // constraint, so one-Discord-account-per-user is enforced in application
 // code at link time (see auth.js /auth/discord/callback) rather than here.

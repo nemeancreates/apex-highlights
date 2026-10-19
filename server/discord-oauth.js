@@ -1,15 +1,15 @@
 // ================================
-// DISCORD OAUTH — account linking only (not the bot). Confirms a Peak-Abu
+// DISCORD OAUTH — account linking only (not the bot). Confirms a Peakabu
 // account really controls a given Discord account before we ever trust
 // discordId for role-sync or account recovery. Bot/role-sync logic lives
 // in discord-bot.js, built separately once linking is proven out.
 //
 // Flow: client hits GET /auth/discord/link-url (behind requireAuth) ->
 // gets Discord's consent URL with a short-lived `state` tied to their
-// Peak-Abu username -> opens it in the system browser -> user approves on
+// Peakabu username -> opens it in the system browser -> user approves on
 // Discord -> Discord redirects to GET /auth/discord/callback?code&state ->
 // we exchange the code for a token, fetch the Discord user, and write
-// discordId/discordUsername/discordLinkedAt onto that Peak-Abu account.
+// discordId/discordUsername/discordLinkedAt onto that Peakabu account.
 // ================================
 const crypto = require('crypto');
 const { log } = require('./logger');

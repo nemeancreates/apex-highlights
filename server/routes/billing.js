@@ -141,7 +141,7 @@ function fulfil(session) {
 }
 
 function messageFor(out) {
-  const tail = '\n\nRedeem it while signed in to Peak-Abu: in the PC client under Redeem, or on the Peakabu Mobile host page.\n' +
+  const tail = '\n\nRedeem it while signed in to Peakabu: in the PC client under Redeem, or on the Peakabu Mobile host page.\n' +
     'Codes are single use. Keep this email until you have redeemed it.\n\n' +
     'We do not keep your email address. It was used only to send this message.';
   if (out.product === 'mobile') {

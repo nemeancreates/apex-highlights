@@ -109,7 +109,7 @@ app.use('/media', express.static(path.join(__dirname, 'uploads')));
 
 // --- Tiny inline routes ---
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'Peak-Abu server running', activeSessions: sessions.size });
+  res.json({ status: 'Peakabu server running', activeSessions: sessions.size });
 });
 
 app.get('/api/version', (req, res) => {

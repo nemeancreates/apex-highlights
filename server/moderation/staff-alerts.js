@@ -28,7 +28,7 @@ async function postStaffAlert({ title, description, level = 'info', fields = [],
   }
   const urgent = level === 'urgent' && URGENT_ROLE_ID;
   const payload = {
-    username: 'Peak-Abu Moderation',
+    username: 'Peakabu Moderation',
     content: urgent ? `<@&${URGENT_ROLE_ID}>` : undefined,
     allowed_mentions: urgent ? { roles: [URGENT_ROLE_ID] } : { parse: [] },
     embeds: [{

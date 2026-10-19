@@ -40,7 +40,7 @@ async function removeRole(discordId, roleId) {
   if (!res.ok && res.status !== 204) throw new Error(`Discord remove role failed: ${res.status}`);
 }
 
-// Syncs a Discord member's tier role to match their current Peak-Abu tier.
+// Syncs a Discord member's tier role to match their current Peakabu tier.
 // Removes any OTHER tier role they hold (covers upgrades/downgrades) and
 // adds the correct one. Only ever touches the roles listed in
 // DISCORD_ROLE_MAP — any other role the member has (mod roles, custom

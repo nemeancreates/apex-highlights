@@ -6,7 +6,7 @@
 // Deliberately narrow by design:
 //   - text only, hard length cap, no links, no markup (client renders with
 //     textContent, server strips control characters)
-//   - logged-in Peak-Abu accounts only, any tier including Free
+//   - logged-in Peakabu accounts only, any tier including Free
 //   - anchored to a single uploadId, so a note on Cabbam's POV never shows
 //     over moonfrog's
 //   - per-user rate limit + per-clip ceiling, both enforced HERE, not in

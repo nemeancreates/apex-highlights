@@ -285,7 +285,7 @@ function enumerateWindowsPS() {
         if (!Array.isArray(parsed)) parsed = [parsed];
         resolve(parsed
           .filter(w => w.MainWindowTitle && w.MainWindowTitle.trim() !== '')
-          .filter(w => w.MainWindowTitle !== 'Peak-Abu')
+          .filter(w => w.MainWindowTitle !== 'Peak-Abu' && w.MainWindowTitle !== 'Peakabu')
           .map(w => ({ processName: w.ProcessName, title: w.MainWindowTitle })));
       } catch (e) {
         resolve([]);
@@ -491,7 +491,7 @@ function openWindowedPlayer(code, token, username) {
     height: b.height,
     x: b.x + Math.round(b.width * 0.38),
     y: b.y,
-    title: 'Peak-Abu Player',
+    title: 'Peakabu Player',
     backgroundColor: '#0a1611',
     webPreferences: { nodeIntegration: false, contextIsolation: true }
   });
@@ -532,7 +532,7 @@ function openAiReelWindow(params) {
   aiReelWindow = new BrowserWindow({
     width: 660, height: 1020,
     minWidth: 520, minHeight: 700,
-    title: 'Peak-Abu — AI Reel',
+    title: 'Peakabu — AI Reel',
     backgroundColor: '#0a1611',
     webPreferences: { nodeIntegration: true, contextIsolation: false }
   });
@@ -926,7 +926,7 @@ function processXInputLine(line) {
 // HOTKEYS THAT DON'T STEAL THE KEY
 //
 // globalShortcut is Windows RegisterHotKey, which takes the key away from
-// every other app while Peak-Abu runs: with Shift+R as the hotkey, no
+// every other app while Peakabu runs: with Shift+R as the hotkey, no
 // capital R could be typed anywhere. The key watcher reads the keyboard
 // instead (GetAsyncKeyState, same PowerShell + Add-Type approach as the
 // XInput poll above) and leaves every key where it was going.
@@ -937,7 +937,7 @@ function processXInputLine(line) {
 // letter, digit, Space, Enter… alone or with Shift) is ignored while a chat
 // app, browser or other known non-game program has focus: a capital R typed
 // in Discord doesn't save a highlight. F-keys and Ctrl/Alt combos fire from
-// anywhere, as before. In Peak-Abu's own window the renderer decides (it
+// anywhere, as before. In Peakabu's own window the renderer decides (it
 // ignores the key while you type in a field or set a hotkey).
 // ================================
 const KEY_WATCHER_CS = [
@@ -955,7 +955,7 @@ const KEY_WATCHER_CS = [
   '  static bool IsDown(int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; }',
   '  public static void Run() {',
   // Commands on stdin: SET <id> <vk> <mods>, CLEAR <id>. stdin closing means
-  // Peak-Abu is gone, so the watcher never outlives it.
+  // Peakabu is gone, so the watcher never outlives it.
   '    var reader = new Thread(() => {',
   '      string line;',
   '      while ((line = Console.In.ReadLine()) != null) {',
@@ -1071,7 +1071,7 @@ function onWatchedHotkey(id, pid, procName) {
   if (!k) return;
   const inApp = pid === process.pid;
   if (inApp) {
-    // Peak-Abu itself: the main window only, and not while typing in the
+    // Peakabu itself: the main window only, and not while typing in the
     // docked web player.
     if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isFocused()) return;
     if (playerView && playerView.webContents && !playerView.webContents.isDestroyed() &&
@@ -2227,7 +2227,7 @@ function autoDropTo30(engine) {
     mainWindow.webContents.send('fps-auto-changed', 30);
     mainWindow.webContents.send('capture-health', {
       status: 'auto-30', engine,
-      message: '⚠️ Recording was dropping frames at 60 FPS, so Peak-Abu switched to 30 FPS (you can change it back under Framerate). ' +
+      message: '⚠️ Recording was dropping frames at 60 FPS, so Peakabu switched to 30 FPS (you can change it back under Framerate). ' +
                'For smoother clips, cap your game\'s frame rate (60 works for most games).'
     });
   }
@@ -4475,7 +4475,7 @@ function askQuitWithPendingUploads() {
         : `${n} highlight clips are still queued to upload.`,
       detail: 'Low Bandwidth Mode sends videos during downtime. Your squad already has the sync data — ' +
         'the clip shows as uploading in the web player until the video arrives.\n\n' +
-        'Quitting pauses the queue; it picks back up next time you open Peak-Abu.' + squadDetail
+        'Quitting pauses the queue; it picks back up next time you open Peakabu.' + squadDetail
     });
     return choice === 1 ? 'quit' : 'minimize';
   }
@@ -4489,7 +4489,7 @@ function askQuitWithPendingUploads() {
     message: n === 1
       ? 'A highlight clip is still uploading to your squad.'
       : `${n} highlight clips are still uploading to your squad.`,
-    detail: 'Closing now pauses the upload — it resumes automatically next time you open Peak-Abu, but your squad won\'t see the clip until then.' + squadDetail
+    detail: 'Closing now pauses the upload — it resumes automatically next time you open Peakabu, but your squad won\'t see the clip until then.' + squadDetail
   });
   return choice === 1 ? 'quit' : 'wait';
 }
@@ -4587,7 +4587,7 @@ function finishQuitWait() {
     };
   }
   const choice = dialog.showMessageBoxSync(mainWindow, Object.assign(opts, {
-    buttons: ['Close Peak-Abu', 'Stay open'], defaultId: 0, cancelId: 1
+    buttons: ['Close Peakabu', 'Stay open'], defaultId: 0, cancelId: 1
   }));
   if (choice === 1) { quitRequested = false; console.log('User stayed open after upload wait'); return; }
   closeNowAfterWait();
@@ -4607,7 +4607,7 @@ function onQuitWaitTimeout() {
     type: 'question',
     title: 'Upload still running',
     message: `Still uploading${pctText}${n > 1 ? ` — ${n} clips left` : ''}.`,
-    detail: 'Your connection is slow right now. Keep waiting, let it finish in the background, or quit — anything left picks back up next time you open Peak-Abu.',
+    detail: 'Your connection is slow right now. Keep waiting, let it finish in the background, or quit — anything left picks back up next time you open Peakabu.',
     buttons: ['Keep waiting', 'Minimize & keep uploading', 'Quit anyway'],
     defaultId: 0,
     cancelId: 0
@@ -5715,7 +5715,7 @@ function createWindow() {
     }
 
     const mapped = sources
-      .filter(s => s.name && s.name.trim() !== '' && s.name !== 'Peak-Abu')
+      .filter(s => s.name && s.name.trim() !== '' && s.name !== 'Peak-Abu' && s.name !== 'Peakabu')
       .map(s => {
         const proc = procByTitle.get(s.name) || '';
         const known = lookupGame(proc);

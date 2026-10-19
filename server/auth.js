@@ -297,7 +297,7 @@ function initAuthRoutes(app) {
 
       if (!matchedUser) {
         return res.status(200).send(
-          'No Peak-Abu account is linked to this Discord account. If you have an account, link Discord from Settings first, then use "Forgot password" again.'
+          'No Peakabu account is linked to this Discord account. If you have an account, link Discord from Settings first, then use "Forgot password" again.'
         );
       }
 
@@ -702,7 +702,7 @@ function initAuthRoutes(app) {
       const result = linkDiscordAccount(username, discordUser);
       if (!result.ok) {
         const message = result.error === 'already_linked_elsewhere'
-          ? 'This Discord account is already linked to a different Peak-Abu account.'
+          ? 'This Discord account is already linked to a different Peakabu account.'
           : 'Could not link this account.';
         return res.status(400).send(message);
       }
@@ -713,7 +713,7 @@ function initAuthRoutes(app) {
       // successful account link the user is actually watching for.
       const linkedUser = users.get(username.toLowerCase());
       syncRole(discordUser.id, getBaseTier(linkedUser)).catch(() => {});
-      return res.status(200).send('Discord account linked! You can close this tab and return to Peak-Abu.');
+      return res.status(200).send('Discord account linked! You can close this tab and return to Peakabu.');
     } catch (err) {
       log('warn', 'discord_link_failed', { error: err.message });
       return res.status(500).send('Something went wrong linking your Discord account. Please try again.');
