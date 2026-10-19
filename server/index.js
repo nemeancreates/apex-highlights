@@ -116,6 +116,21 @@ app.get('/api/version', (req, res) => {
   res.json(config.LATEST_CLIENT_VERSION);
 });
 
+// Testing-phase banner data for the site, the PC client and the mobile host
+// page, so the wording and dates live in one place (.env, see config.js).
+app.get('/api/testing', (req, res) => {
+  const T = config.TESTING, t6 = config.TIERS.t6;
+  res.set('Cache-Control', 'public, max-age=60');
+  res.json({
+    active: T.enabled,
+    startsAt: T.startsAt,
+    endsAt: T.endsAt,
+    bonusMonths: T.bonusMonths,
+    bonusTier: config.TIERS[T.bonusTier].label,
+    limits: { sessionsPerMonth: t6.sessionsPerMonth, hoursPerSession: t6.clipCap / 3600, playersPerSession: t6.memberCap }
+  });
+});
+
 // --- Feature routes ---
 initAuthRoutes(app);
 initSessionRoutes(app);

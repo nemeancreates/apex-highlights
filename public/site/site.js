@@ -59,6 +59,43 @@
     }).catch(function () {});
   }
 
+  // ---------- Testing phase: banner, hero notes, payment buttons off ----------
+  // Everything comes from /api/testing (server/config.js TESTING), so ending
+  // testing is a server .env change, not a site edit.
+  function wireTesting() {
+    fetch('/api/testing').then(function (r) { return r.json(); }).then(function (t) {
+      if (!t || !t.active) return;
+      var lim = t.limits || {};
+      var until = t.endsAt ? ' Testing runs until ' + new Date(t.endsAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }) + '.' : '';
+      var bonus = t.bonusMonths ? ' Make an account while we test and get ' + t.bonusMonths + ' free months of ' + t.bonusTier + ' when testing ends.' : '';
+      var detail = ' Every feature on PC and Mobile is unlocked: up to ' + lim.playersPerSession + ' players, ' + lim.sessionsPerMonth + ' sessions a month, ' + lim.hoursPerSession + ' hours per session. Paid monthly plans start after testing.' + until + bonus;
+
+      var header = document.querySelector('.site-header');
+      if (header) {
+        var bar = document.createElement('div');
+        bar.className = 'test-banner';
+        bar.setAttribute('role', 'status');
+        var b = document.createElement('strong');
+        b.textContent = 'Free during testing.';
+        bar.appendChild(b);
+        bar.appendChild(document.createTextNode(detail));
+        header.insertAdjacentElement('afterend', bar);
+      }
+      document.querySelectorAll('[data-test-note]').forEach(function (el) {
+        el.textContent = 'Free during testing: every feature, PC and Mobile.' + bonus + ' A monthly charge comes after testing.';
+        el.hidden = false;
+      });
+      document.querySelectorAll('[data-test-section]').forEach(function (el) { el.hidden = false; });
+      // Purchase links go to /billing; nothing is for sale during testing.
+      document.querySelectorAll('a[href="/billing"]').forEach(function (el) {
+        el.removeAttribute('href');
+        el.setAttribute('aria-disabled', 'true');
+        el.classList.add('is-off');
+        el.textContent = 'Free during testing';
+      });
+    }).catch(function () {});
+  }
+
   // ---------- YouTube: click to load ----------
   function wireVideos() {
     document.querySelectorAll('.video[data-yt]').forEach(function (box) {
@@ -137,6 +174,7 @@
     addSymbols();
     markSignedIn();
     wireDownloads();
+    wireTesting();
     wireVideos();
     startLeaves();
   });

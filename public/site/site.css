@@ -52,6 +52,10 @@ p{margin:0}
 .btn-lg{min-height:52px;padding:0 26px;font-size:16px}
 .btn-glow{background:linear-gradient(135deg,var(--lime),var(--teal));color:var(--ink);animation:pulse 2.4s ease-out infinite}
 .btn-glow:hover{background:linear-gradient(135deg,#d6ff86,#4fe0b0);color:var(--ink)}
+.test-banner{position:relative;z-index:4;background:rgba(198,243,107,.1);border-bottom:1px solid var(--line-hi);color:var(--head);text-align:center;padding:10px 24px;font-size:15px;line-height:1.45}
+.test-banner strong{color:var(--lime)}
+.test-note{color:var(--lime);font:600 15px/1.45 var(--body);max-width:52ch}
+a.is-off,button.is-off{opacity:.55;pointer-events:none;cursor:default}
 .btn-lime{background:var(--lime);color:var(--ink);box-shadow:0 0 0 6px rgba(198,243,107,.14)}
 .btn-lime:hover{background:#d6ff86;color:var(--ink)}
 .btn-outline{border-color:var(--lime);color:var(--lime);background:transparent}

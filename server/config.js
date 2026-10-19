@@ -130,8 +130,38 @@ const TIERS = {
   t3: { label: 'Squad',   canHost: true, memberCap: 11, clipCap: 79200,  sessionsPerMonth: 45,  retentionDays: 30, hasAiReel: true,  aiReelMaxSec: 900,  reelPriority: 0, hasAutoCapture: true, hasAiReelPro: false, aiReelProMonthlyCap: 0, hasDownload: true,  hasExport: true, canListPublic: true },
   t4: { label: 'Pro',     canHost: true, memberCap: 25, clipCap: 144000, sessionsPerMonth: 110, retentionDays: 60, hasAiReel: true,  aiReelMaxSec: 1800, reelPriority: 1, hasAutoCapture: true, hasAiReelPro: true,  aiReelProMonthlyCap: 100, hasDownload: true,  hasExport: true, canListPublic: true },
   // Founder — $1,500 lifetime Kickstarter tier.
-  t5: { label: 'Founder', canHost: true, memberCap: 41, clipCap: 144000, sessionsPerMonth: 200, retentionDays: 60, hasAiReel: true,  aiReelMaxSec: 1800, reelPriority: 2, hasAutoCapture: true, hasAiReelPro: true,  aiReelProMonthlyCap: 100, hasDownload: true,  hasExport: true, canListPublic: true }
+  t5: { label: 'Founder', canHost: true, memberCap: 41, clipCap: 144000, sessionsPerMonth: 200, retentionDays: 60, hasAiReel: true,  aiReelMaxSec: 1800, reelPriority: 2, hasAutoCapture: true, hasAiReelPro: true,  aiReelProMonthlyCap: 100, hasDownload: true,  hasExport: true, canListPublic: true },
+  // Testing — virtual tier served to every Free/Creator/Squad/Pro account while
+  // TESTING_PHASE=1 (see TESTING below). Never stored on a user. Pro features,
+  // test limits: 30 sessions a month, 20 hours of highlights a session, 100 players.
+  t6: { label: 'Testing', canHost: true, memberCap: 100, clipCap: 72000, sessionsPerMonth: 30, retentionDays: 30, hasAiReel: true, aiReelMaxSec: 1800, reelPriority: 1, hasAutoCapture: true, hasAiReelPro: true, aiReelProMonthlyCap: 100, hasDownload: true, hasExport: true, canListPublic: true }
 };
+
+// ================================
+// TESTING PHASE — all in .env, a pm2 restart applies a change.
+//   TESTING_PHASE=1            every account gets t6 (Founders keep t5 but are
+//                              raised to the t6 limits where lower); payments off
+//   TESTING_STARTS_AT / TESTING_ENDS_AT   ISO dates, e.g. 2026-10-20T00:00:00Z
+//   TESTING_BONUS_MONTHS=3     accounts CREATED between those dates get this many
+//   TESTING_BONUS_TIER=t3      months of this tier AFTER ENDS_AT (auth.js
+//                              getEffectiveTier). No ENDS_AT = no bonus yet.
+// To end testing: set TESTING_PHASE=0 and TESTING_ENDS_AT, then restart.
+// ================================
+function envDate(name) {
+  const t = Date.parse(process.env[name] || '');
+  return Number.isFinite(t) ? t : null;
+}
+const TESTING = {
+  enabled: process.env.TESTING_PHASE === '1',
+  startsAt: envDate('TESTING_STARTS_AT'),
+  endsAt: envDate('TESTING_ENDS_AT'),
+  bonusMonths: Math.max(0, parseInt(process.env.TESTING_BONUS_MONTHS || '3', 10) || 0),
+  bonusTier: TIERS[process.env.TESTING_BONUS_TIER] && process.env.TESTING_BONUS_TIER !== 't6' ? process.env.TESTING_BONUS_TIER : 't3'
+};
+if (TESTING.enabled) {
+  for (const k of ['memberCap', 'clipCap', 'sessionsPerMonth']) TIERS.t5[k] = Math.max(TIERS.t5[k], TIERS.t6[k]);
+  if (!TESTING.startsAt) console.warn('TESTING_PHASE is on but TESTING_STARTS_AT is not set: nobody will earn the post-testing bonus');
+}
 
 // Derives a tier-key array from a TIERS capability flag, e.g.
 // tiersWithCapability('hasDownload') -> ['t2','t3','t4','t5']. Keeps
@@ -206,9 +236,9 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 const PRIVACY_POLICY_VERSION = '2026-09-07';
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.94',
-  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.94.exe',
-    releaseNotes: "Your monitor choice now sticks: it's remembered by the monitor itself, a first run starts on your main monitor, and if your saved monitor isn't plugged in, Peakabu asks instead of picking another screen. Game Window capture no longer switches to recording your whole monitor when it fails; it stops and asks you to pick again."
+  version: '0.1.95',
+  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.95.exe',
+    releaseNotes: "Peakabu is free while we test. Every feature is unlocked for every account, with room for up to 100 players, 30 sessions a month and 20 hours per session, and a banner at the top says so. Paid monthly plans start after testing, and accounts made during testing get free months when it ends."
 };
 
 
@@ -252,6 +282,7 @@ module.exports = {
   TIERS,
   tiersWithCapability,
   TIER_ORDER,
+  TESTING,
   HOST_RECORDING_INACTIVITY_MS,
   HOST_NOT_RECORDING_TIMEOUT_MS,
   HOST_WATCHDOG_INTERVAL_MS,

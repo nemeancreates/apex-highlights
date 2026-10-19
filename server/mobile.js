@@ -22,12 +22,14 @@
 const crypto = require('crypto');
 const db = require('./db');
 const { log } = require('./logger');
+const { TESTING } = require('./config');
 
 // Free mobile hosts: this much live session time per UTC day, enforced by
 // the mobile server (it's the one that knows when a session is live).
 const MOBILE_FREE_DAILY_SEC = 10 * 60;
 // PC plans that include Mobile while they're active.
-const MOBILE_INCLUDED_TIERS = ['t3', 't4', 't5'];
+// t6 is the testing-phase tier (config.js TESTING): Mobile is free for everyone then.
+const MOBILE_INCLUDED_TIERS = ['t3', 't4', 't5', 't6'];
 const EVENT_MAX_HOURS = 16;
 
 db.exec(`
@@ -127,9 +129,9 @@ function addEventPass(usernameLower, startsAt, hours) {
   return { id, startsAt, endsAt };
 }
 
-// effectiveTier comes from auth.getEffectiveTier (passed in to avoid a
-// require cycle with auth.js).
-function getMobileStatus(user, effectiveTier) {
+// effectiveTier / planExpiresAt come from auth.getEffectiveTier and
+// auth.getTierExpiresAt (passed in to avoid a require cycle with auth.js).
+function getMobileStatus(user, effectiveTier, planExpiresAt) {
   const now = Date.now();
   const lower = user ? user.username.toLowerCase() : '';
   const row = lower ? stmt.getPass.get(lower) : null;
@@ -143,7 +145,10 @@ function getMobileStatus(user, effectiveTier) {
     source: passUntil ? 'pass' : (viaTier ? 'plan' : 'free'),
     passExpiresAt: passUntil,
     tier: effectiveTier,
-    planExpiresAt: viaTier ? (user.tierExpiresAt || null) : null,
+    planExpiresAt: viaTier ? (planExpiresAt === undefined ? (user.tierExpiresAt || null) : planExpiresAt) : null,
+    // Testing phase: everything is free, event passes included (the mobile
+    // server reads this to let any signed-in host run an event without a pass).
+    testing: TESTING.enabled,
     freeDailySec: MOBILE_FREE_DAILY_SEC,
     events: events.map(e => ({ id: e.id, startsAt: e.startsAt, endsAt: e.endsAt, claimedBy: e.claimedBy || null }))
   };

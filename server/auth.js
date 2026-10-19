@@ -8,7 +8,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { log } = require('./logger');
 const { safeError, getMonthKey } = require('./utils');
-const { JWT_SECRET, JWT_EXPIRY, BCRYPT_ROUNDS, TIERS, TIER_ORDER, ADMIN_SECRET,
+const { JWT_SECRET, JWT_EXPIRY, BCRYPT_ROUNDS, TIERS, TIER_ORDER, TESTING, ADMIN_SECRET,
         REDEEM_ATTEMPT_MAX, REDEEM_ATTEMPT_WINDOW,
         REGISTER_IP_MAX, REGISTER_IP_WINDOW,
         ANOMALY_REGISTER_BURST_MAX, ANOMALY_REGISTER_BURST_WINDOW } = require('./config');
@@ -25,10 +25,40 @@ const loginSlots = require('./login-slots');
 // expired tiers rather than trusting a stale field forever. tierExpiresAt
 // is null for lifetime grants (redeemed codes, manual); a future Stripe
 // integration would set a real expiry on that same field.
-function getEffectiveTier(user) {
+function getBaseTier(user) {
   if (!user || !user.tier || !TIERS[user.tier]) return 't1';
   if (user.tierExpiresAt && Date.now() > user.tierExpiresAt) return 't1';
   return user.tier;
+}
+
+// When the post-testing bonus ends for this account, or null if it has none.
+// Eligible = account created inside the testing window (createdAt, so no
+// extra stored field).
+function bonusEndsAt(user) {
+  if (!user || !TESTING.bonusMonths || !TESTING.startsAt || !TESTING.endsAt) return null;
+  const joined = Date.parse(user.createdAt);
+  if (!(joined >= TESTING.startsAt && joined <= TESTING.endsAt)) return null;
+  return TESTING.endsAt + TESTING.bonusMonths * 30 * 24 * 60 * 60 * 1000;
+}
+
+// What the account can DO right now. During the testing phase that is the
+// virtual t6 for every paid-or-free tier below Founder; after it, a tester's
+// bonus tier applies while their own plan is Free. Use getBaseTier for
+// anything about what they bought (Discord role, code stacking).
+function getEffectiveTier(user) {
+  const base = getBaseTier(user);
+  if (TESTING.enabled) return ['t1', 't2', 't3', 't4'].includes(base) ? 't6' : base;
+  if (base === 't1') {
+    const end = bonusEndsAt(user);
+    if (end && Date.now() < end) return TESTING.bonusTier;
+  }
+  return base;
+}
+
+// Expiry that goes with getEffectiveTier (what the client's "days left" shows).
+function getTierExpiresAt(user) {
+  if (getEffectiveTier(user) === getBaseTier(user)) return (user && user.tierExpiresAt) || null;
+  return TESTING.enabled ? (TESTING.endsAt || null) : bonusEndsAt(user);
 }
 
 // getMonthKey moved to utils.js so every monthly counter in the app shares
@@ -351,7 +381,7 @@ function initAuthRoutes(app) {
     });
     log('info', 'user_registered', { username: clean, ip });
     return res.status(201).json({
-      token, username: clean, tier: 't1',
+      token, username: clean, tier: getEffectiveTier(user), tierExpiresAt: getTierExpiresAt(user),
       privacyVersionAccepted: PRIVACY_POLICY_VERSION,
       recordingConsentSeen: false
     });
@@ -377,7 +407,7 @@ function initAuthRoutes(app) {
     saveUsersToDisk();
     log('info', 'user_login', { username: user.username, tier: getEffectiveTier(user) });
     return res.status(200).json({
-      token, username: user.username, tier: getEffectiveTier(user), tierExpiresAt: user.tierExpiresAt || null,
+      token, username: user.username, tier: getEffectiveTier(user), tierExpiresAt: getTierExpiresAt(user),
       privacyVersionAccepted: user.privacyVersionAccepted || null,
       privacyPolicyVersion: PRIVACY_POLICY_VERSION,
       recordingConsentSeen: !!user.recordingConsentSeen
@@ -396,7 +426,7 @@ function initAuthRoutes(app) {
     return res.json({
       username: req.user.username,
       tier: getEffectiveTier(user),
-      tierExpiresAt: user.tierExpiresAt || null,
+      tierExpiresAt: getTierExpiresAt(user),
       discordLinked: !!user.discordId,
       discordUsername: user.discordUsername || null,
       privacyVersionAccepted: user.privacyVersionAccepted || null,
@@ -410,7 +440,7 @@ function initAuthRoutes(app) {
   app.get('/auth/mobile', requireAuth, (req, res) => {
     const user = users.get(req.user.username.toLowerCase());
     if (!user) return safeError(res, 404, 'Account not found');
-    res.json(mobile.getMobileStatus(user, getEffectiveTier(user)));
+    res.json(mobile.getMobileStatus(user, getEffectiveTier(user), getTierExpiresAt(user)));
   });
 
   // Server-to-server, for the mobile server only (X-Mobile-Secret). It
@@ -420,7 +450,7 @@ function initAuthRoutes(app) {
     if (!mobile.mobileSecretOk(req)) return safeError(res, 403, 'Forbidden');
     const user = users.get(String(req.params.username || '').toLowerCase());
     if (!user) return safeError(res, 404, 'Account not found');
-    res.json(mobile.getMobileStatus(user, getEffectiveTier(user)));
+    res.json(mobile.getMobileStatus(user, getEffectiveTier(user), getTierExpiresAt(user)));
   });
 
   // Where a listed mobile session stands with moderation, for the host's switch.
@@ -511,7 +541,7 @@ function initAuthRoutes(app) {
 
     const user = users.get(usernameLower);
     if (!user) return safeError(res, 404, 'Account not found');
-    const stackErr = stackingError(preview, getEffectiveTier(user));
+    const stackErr = stackingError(preview, getBaseTier(user));
     if (stackErr) return safeError(res, 400, stackErr);
 
     return res.json({ username: req.user.username, ...describeCode(preview) });
@@ -536,7 +566,7 @@ function initAuthRoutes(app) {
     }
 
     const user = users.get(usernameLower);
-    const currentTier = getEffectiveTier(user);
+    const currentTier = getBaseTier(user);
 
     // Peakabu Mobile codes (bought on peakabu.app/billing). They don't touch
     // the PC tier, so the anti-stacking rule below doesn't apply: Mobile time
@@ -549,7 +579,7 @@ function initAuthRoutes(app) {
         return safeError(res, 400, result.error);
       }
       clearRedeemAttempts(usernameLower);
-      const base = { tier: currentTier, tierExpiresAt: user.tierExpiresAt || null, product: result.tier };
+      const base = { tier: getEffectiveTier(user), tierExpiresAt: getTierExpiresAt(user), product: result.tier };
       if (result.tier === 'mobile') {
         const mobileExpiresAt = mobile.grantMobileDays(usernameLower, result.durationDays || 30);
         log('info', 'mobile_code_redeemed', { username: req.user.username, durationDays: result.durationDays });
@@ -682,7 +712,7 @@ function initAuthRoutes(app) {
       // haven't joined the Discord server yet) shouldn't block the
       // successful account link the user is actually watching for.
       const linkedUser = users.get(username.toLowerCase());
-      syncRole(discordUser.id, getEffectiveTier(linkedUser)).catch(() => {});
+      syncRole(discordUser.id, getBaseTier(linkedUser)).catch(() => {});
       return res.status(200).send('Discord account linked! You can close this tab and return to Peak-Abu.');
     } catch (err) {
       log('warn', 'discord_link_failed', { error: err.message });
@@ -701,4 +731,4 @@ function initAuthRoutes(app) {
   });
 }
 
-module.exports = { requireAuth, requireAuthAny, socketAuth, initAuthRoutes, requireTier, requireAdmin, getEffectiveTier, getMonthKey };
+module.exports = { requireAuth, requireAuthAny, socketAuth, initAuthRoutes, requireTier, requireAdmin, getEffectiveTier, getBaseTier, getTierExpiresAt, getMonthKey };

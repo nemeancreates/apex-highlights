@@ -29,7 +29,7 @@ const { safeError, getMonthKey } = require('../utils');
 const { createRateLimiter } = require('../ratelimit');
 const { TIERS } = require('../config');
 const { users, sessions, getSessionsByUser } = require('../stores');
-const { requireAuth, getEffectiveTier } = require('../auth');
+const { requireAuth, getEffectiveTier, getTierExpiresAt } = require('../auth');
 const loginSlots = require('../login-slots');
 const mobile = require('../mobile');
 const spots = require('../spots');
@@ -71,7 +71,7 @@ function initAccountRoutes(app) {
       username: user.username,
       tier,
       tierLabel: t.label,
-      tierExpiresAt: user.tierExpiresAt || null,
+      tierExpiresAt: getTierExpiresAt(user),
       discordLinked: !!user.discordId,
       discordUsername: user.discordUsername || null,
       limits: {
@@ -83,7 +83,7 @@ function initAccountRoutes(app) {
         hasAiReel: !!t.hasAiReel
       },
       usage: { sessionsThisMonth: sameMonth ? (user.sessionsThisMonth || 0) : 0 },
-      mobile: mobile.getMobileStatus(user, tier)
+      mobile: mobile.getMobileStatus(user, tier, getTierExpiresAt(user))
     });
   });
 

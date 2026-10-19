@@ -212,6 +212,9 @@
       .tier-badge.t2 { background: #2a2145; color: #a98fe8; }
       .tier-badge.t3 { background: #14342a; color: #39d3a0; }
       .tier-badge.t4 { background: #3d2f10; color: #d8a838; }
+      .tier-badge.t6 { background: #14342a; color: #c6f36b; }
+      .test-banner { display: none; margin: 0 0 10px; padding: 9px 12px; border: 1px solid #2f5a3c; border-radius: 6px; background: rgba(198,243,107,0.08); color: #c8d6cd; font-size: 13px; line-height: 1.45; }
+      .test-banner strong { color: #c6f36b; }
       .tier-days { font-size: 10px; color: #5f7a6a; margin-left: 5px; white-space: nowrap; }
       .tier-days.soon { color: #d8a838; }
       .redeem-wrap { position: relative; }
@@ -833,11 +836,11 @@
           <div class="brand-row">
                         <span id="monkeyToggle" onclick="toggleAllSections()" style="font-size:26px;line-height:1;cursor:pointer;user-select:none;" title="Toggle all sections">🙈</span>
             <h1>PeakAbu</h1>
-            <button class="ks-btn" onclick="openKickstarter()" title="Back Peak-Abu on Kickstarter" aria-label="Back Peak-Abu on Kickstarter">
+            <button class="ks-btn" id="ksBtn" onclick="openKickstarter()" title="Back Peak-Abu on Kickstarter" aria-label="Back Peak-Abu on Kickstarter">
               <img src="assets/kickstarter.png" alt="kickstarter" />
             </button>
           </div>
-          <span class="version-tag">v0.1.94</span>
+          <span class="version-tag">v0.1.95</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="redeem-wrap">
@@ -853,6 +856,9 @@
           <button class="btn-secondary btn-sm" id="settingsBtn" onclick="openSettings()">⚙ Settings</button>
         </div>
       </div>
+
+      <!-- TESTING PHASE BANNER — filled from /api/testing; hidden unless testing is on -->
+      <div class="test-banner" id="testBanner" role="status"></div>
 
       <!-- SYNC BANNER — see Sync scan/diff logic in main.js and the
            'sync-scan-result' / 'sync-progress' listeners below. Hidden
@@ -6934,11 +6940,34 @@
       // whoever redeems one gets the tier, so a backer can hand theirs off.
       // =====================
       window.currentTier = 't1';
-      var TIER_LABELS = { t1: 'Free', t2: 'Creator', t3: 'Squad', t4: 'Pro', t5: 'Peak-Abu Founder' };
+      var TIER_LABELS = { t1: 'Free', t2: 'Creator', t3: 'Squad', t4: 'Pro', t5: 'Peak-Abu Founder', t6: 'Testing' };
+
+      // Testing phase (server /api/testing): banner on, Kickstarter button off.
+      // Nothing is for sale while we test; Redeem stays for existing codes.
+      (function loadTestingBanner() {
+        fetch('https://peakabu.app/api/testing').then(function (r) { return r.json(); }).then(function (t) {
+          if (!t || !t.active) return;
+          var el = document.getElementById('testBanner');
+          if (el) {
+            var lim = t.limits || {};
+            var strong = document.createElement('strong');
+            strong.textContent = 'Free during testing. ';
+            el.textContent = '';
+            el.appendChild(strong);
+            el.appendChild(document.createTextNode('Every feature is unlocked: up to ' + lim.playersPerSession + ' players, ' +
+              lim.sessionsPerMonth + ' sessions a month, ' + lim.hoursPerSession + ' hours per session. Paid monthly plans start after testing.' +
+              (t.endsAt ? ' Testing runs until ' + new Date(t.endsAt).toLocaleDateString() + '.' : '') +
+              (t.bonusMonths ? ' Accounts made during testing get ' + t.bonusMonths + ' free months of ' + t.bonusTier + ' when it ends.' : '')));
+            el.style.display = 'block';
+          }
+          var ks = document.getElementById('ksBtn');
+          if (ks) ks.style.display = 'none';
+        }).catch(function () {});
+      })();
 
       // Mirrors aiReelMaxSec in server/config.js — kept here so the header
       // button knows the cap to pass into the AI Reel window before it opens.
-      var AIREEL_MAX_SEC = { t3: 900, t4: 1800, t5: 1800 };
+      var AIREEL_MAX_SEC = { t3: 900, t4: 1800, t5: 1800, t6: 1800 };
 
       window.openAiReelWindow = function() {
         var max = AIREEL_MAX_SEC[window.currentTier] || 0;
