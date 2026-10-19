@@ -77,6 +77,12 @@
     form.addEventListener('submit', function (e) {
       e.preventDefault();
       var msg = form.querySelector('.msg'), b = form.querySelector('[type="submit"]');
+      // Sign-up asks for the password twice so a typo doesn't lock someone out.
+      if (form.password2 && form.password2.value !== form.password.value) {
+        msg.className = 'msg err'; msg.textContent = 'The two passwords don’t match. Type them again.';
+        form.password2.value = ''; form.password2.focus();
+        return;
+      }
       var body = Object.assign({ username: form.username.value.trim(), password: form.password.value, platform: 'web' }, extra ? extra(form) : {});
       b.disabled = true; msg.textContent = '';
       fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -453,6 +459,13 @@
   document.addEventListener('DOMContentLoaded', function () {
     authSubmit($('loginForm'), '/auth/login');
     authSubmit($('registerForm'), '/auth/register', function (f) { return { acceptedTerms: f.terms.checked }; });
+    // Show a mismatch as soon as the second box is left, not only on submit.
+    function checkMatch() {
+      var f = $('registerForm');
+      f.password2.setCustomValidity(f.password2.value && f.password2.value !== f.password.value ? 'Passwords don’t match' : '');
+    }
+    $('rePass').addEventListener('input', checkMatch);
+    $('rePass2').addEventListener('input', checkMatch);
     $('newSet').addEventListener('click', function () { openEditor(null); });
     paintSizes();
     document.querySelectorAll('#printSizes button').forEach(function (b) {
