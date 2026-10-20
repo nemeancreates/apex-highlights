@@ -797,6 +797,10 @@
       #settingsModal .modal-content { margin-top: 6vh; max-height: 88vh; overflow-y: auto; scrollbar-gutter: stable; }
       .storage-path { background: #0c1c14; padding: 10px; border-radius: 6px; margin: 8px 0; font-size: 12px; word-break: break-all; border: 1px solid #24402e; font-family: 'Consolas', monospace; }
       .welcome-icon { font-size: 40px; text-align: center; margin-bottom: 8px; }
+      .welcome-icon img { width: 64px; height: 64px; }
+      /* The monkeys (Assets/monkey-*.png): top-left toggle and the Auto-Highlight game audio / mic indicators. */
+      .brand-monkey { width: 32px; height: 32px; cursor: pointer; user-select: none; flex-shrink: 0; }
+      .ac-monkey img { width: 19px; height: 19px; display: block; }
       .welcome-title { text-align: center; color: #39d3a0; font-size: 20px; font-weight: 600; margin-bottom: 4px; }
       .welcome-subtitle { text-align: center; color: #7a9686; font-size: 13px; margin-bottom: 20px; }
       .info-row { background: #0c1c14; border-radius: 6px; padding: 10px; margin-bottom: 8px; font-size: 12px; }
@@ -834,7 +838,7 @@
       <div class="header">
         <div class="brand">
           <div class="brand-row">
-                        <span id="monkeyToggle" onclick="toggleAllSections()" style="font-size:26px;line-height:1;cursor:pointer;user-select:none;" title="Toggle all sections">🙈</span>
+                        <img id="monkeyToggle" class="brand-monkey" src="Assets/monkey-see-no-evil.png" alt="" onclick="toggleAllSections()" title="Toggle all sections" draggable="false">
             <h1>Peakabu</h1>
             <button class="ks-btn" id="ksBtn" onclick="openKickstarter()" title="Back Peakabu on Kickstarter" aria-label="Back Peakabu on Kickstarter">
               <img src="assets/kickstarter.png" alt="kickstarter" />
@@ -1133,7 +1137,7 @@
 
       <div id="firstLaunchModal" class="modal">
         <div class="modal-content">
-          <div class="welcome-icon">🙈</div>
+          <div class="welcome-icon"><img src="Assets/monkey-see-no-evil.png" alt="" draggable="false"></div>
           <div class="welcome-title">Welcome to Peakabu</div>
           <div class="welcome-subtitle">Let's get you set up before your first session.</div>
           <div class="info-row">
@@ -1458,8 +1462,8 @@
               </div>
               <div style="display:flex;align-items:center;gap:8px;">
                 <div class="ac-monkeys" title="Auto-Highlight Detection status">
-                  <span class="ac-monkey" id="acMonkeyDesktop">🙉</span>
-                  <span class="ac-monkey" id="acMonkeyMic">🙊</span>
+                  <span class="ac-monkey" id="acMonkeyDesktop"><img src="Assets/monkey-hear-no-evil.png" alt="Game audio" draggable="false"></span>
+                  <span class="ac-monkey" id="acMonkeyMic"><img src="Assets/monkey-speak-no-evil.png" alt="Microphone" draggable="false"></span>
                 </div>
                 <button class="btn-icon" id="micMenuBtn" title="Audio settings" onclick="toggleMicMenu()"
                         style="width:38px;height:36px;font-size:17px;">🎤</button>
@@ -1815,10 +1819,10 @@
         if (!targetCollapsed) {
           var monkey = document.getElementById('monkeyToggle');
           if (monkey) {
-            monkey.textContent = '🐵';
+            monkey.src = 'Assets/monkey-hear-no-evil.png';
             clearTimeout(window._monkeyRevertTimer);
             window._monkeyRevertTimer = setTimeout(function() {
-              monkey.textContent = '🙈';
+              monkey.src = 'Assets/monkey-see-no-evil.png';
             }, 1200);
           }
         }
