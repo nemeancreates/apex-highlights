@@ -33,6 +33,7 @@ const db = require('../db');
 const mod = require('../moderation');
 const { isOnHold, listHolds, releaseHold, getHold } = require('../moderation/legal-hold');
 const mobile = require('../mobile');
+const moments = require('./moments');
 const { postStaffAlert } = require('../moderation/staff-alerts');
 
 // --- Tunables ---
@@ -44,8 +45,8 @@ const BROWSE_PAGE_MAX = 48;
 const SEEN_MAX = 300;                           // roulette "already watched" list cap
 // Starred moments (PC): a session with unseen starred peaks is this many
 // times likelier to be picked, and inside it a starred peak is this many
-// times likelier than an unstarred one. Mobile has no stars yet, so its
-// listings keep plain recency weighting.
+// times likelier than an unstarred one. Mobile listings use Peak Moments
+// instead (routes/moments.js).
 const STAR_SESSION_BOOST = 3;
 const STAR_PEAK_WEIGHT = 4;
 // Mobile listings come from m.peakabu.app (see mobile.js). Their ids are
@@ -132,9 +133,6 @@ function mobileCard(l) {
     thumbnailUrl: l.thumbnailUrl || null,
     watchUrl: l.watchUrl
   };
-}
-function mobileAgeDays(l, now) {
-  return Math.max(0, (now - (l.createdAt || now)) / 86400000);
 }
 
 // moderation/ reads listings and reports through these, and hides a listing
@@ -489,14 +487,14 @@ function initPublicRoutes(app) {
       })
       .filter(x => x.unseen.length);
 
-    // Mobile: plain recency, every peak equal (unchanged weighting).
+    // Mobile: recency, boosted by Peak Moments (see routes/moments.js).
+    const counts = moments.momentCounts();
     if (!platform || platform === 'mobile') {
       for (const l of mobile.mobileListings()) {
         const key = MOBILE_PREFIX + l.id;
         const unseen = l.peaks.filter(p => Number.isFinite(p.t) && !seen.has(key + '.' + p.t));
         if (!unseen.length) continue;
-        pool.push({ kind: 'mobile', key, l, unseen,
-          weight: Math.pow(0.5, mobileAgeDays(l, now) / RECENCY_HALF_LIFE_DAYS) });
+        pool.push({ kind: 'mobile', key, l, unseen, weight: moments.listingWeight(l, unseen, counts, now) });
       }
     }
 
@@ -507,7 +505,7 @@ function initPublicRoutes(app) {
     res.set('Cache-Control', 'no-store');
 
     if (pick.kind === 'mobile') {
-      const peak = pick.unseen[crypto.randomInt(pick.unseen.length)];
+      const peak = moments.pickPeak(pick.l, pick.unseen, counts);
       const c = mobileCard(pick.l);
       const sep = c.watchUrl.includes('?') ? '&' : '?';
       return res.json({
@@ -542,38 +540,51 @@ function initPublicRoutes(app) {
     res.status(204).end();
   });
 
+  // Mobile listings: hidden here (the mobile server never decides).
+  // Child-safety hides on the first report; anything else at 3.
+  function reportMobile(res, raw, key, rawReason) {
+    const id = raw.slice(MOBILE_PREFIX.length);
+    const listing = mobile.mobileListings().find(l => l.id === id);
+    if (!/^[A-Za-z0-9_-]{4,32}$/.test(id) || !listing) return safeError(res, 404, 'That session isn\'t listed.');
+    const reason = REPORT_REASONS.includes(rawReason) ? rawReason : 'other';
+    let r;
+    try { r = mobile.reportMobileListing(id, key, reason); }
+    catch (err) { log('error', 'mobile_report_failed', { id, error: err.message }); return safeError(res, 500, 'Could not send that. Try again.'); }
+    res.json({ ok: true });
+    log(r.child ? 'warn' : 'info', 'mobile_listing_reported', { id, reports: r.n, hidden: r.hiddenNow, reason });
+    if (r.added && (r.hiddenNow || r.n === 1)) {
+      postStaffAlert({
+        title: r.child ? `Child-safety report (mobile): ${id}` : (r.hiddenNow ? `Mobile listing auto-hidden: ${id}` : `New report (mobile): ${id}`),
+        level: r.child ? 'warn' : 'info',
+        description: r.child
+          ? 'Hidden from /browse and roulette on the first report. Review promptly. If it shows a child being sexually abused or exploited, report to NCMEC; do not download or share it.'
+          : `${r.n} report(s). ${r.hiddenNow ? 'Hidden from /browse and roulette.' : 'Still listed; hides at 3 reports.'}`,
+        fields: [
+          { name: 'Listing', value: id, inline: true },
+          { name: 'Host', value: listing.host || '-', inline: true },
+          { name: 'Watch', value: listing.watchUrl },
+          { name: 'Restore / remove', value: `POST /admin/public/mobile/${id} {"action":"restore"|"hide"}` }
+        ]
+      }).catch(() => {});
+    }
+  }
+
+  // --- REPORT from the phone app's Peak feed, relayed by the mobile server
+  // (shared secret). Every relay shares the mobile server's IP, so it sends a
+  // hashed key per viewer; namespaced so it can never match a web key.
+  app.post('/internal/mobile/report', (req, res) => {
+    if (!mobile.mobileSecretOk(req)) return safeError(res, 403, 'Forbidden');
+    const code = String(req.body?.code || '');
+    const viewer = String(req.body?.viewerKey || '');
+    if (!code.startsWith(MOBILE_PREFIX) || !/^[a-f0-9]{16,64}$/.test(viewer)) return safeError(res, 400, 'Invalid report');
+    const key = crypto.createHmac('sha256', String(JWT_SECRET || 'peakabu')).update('mobile-feed:' + viewer).digest('hex').slice(0, 24);
+    reportMobile(res, code, key, req.body?.reason);
+  });
+
   // --- REPORT: no account needed.
   app.post('/api/public/sessions/:code/report', reportLimiter, async (req, res) => {
-    // Mobile listings: hidden here (the mobile server never sees reports).
-    // Child-safety hides on the first report; anything else at 3.
     const raw = String(req.params.code || '');
-    if (raw.startsWith(MOBILE_PREFIX)) {
-      const id = raw.slice(MOBILE_PREFIX.length);
-      const listing = mobile.mobileListings().find(l => l.id === id);
-      if (!/^[A-Za-z0-9_-]{4,32}$/.test(id) || !listing) return safeError(res, 404, 'That session isn\'t listed.');
-      const reason = REPORT_REASONS.includes(req.body?.reason) ? req.body.reason : 'other';
-      let r;
-      try { r = mobile.reportMobileListing(id, reporterKey(req), reason); }
-      catch (err) { log('error', 'mobile_report_failed', { id, error: err.message }); return safeError(res, 500, 'Could not send that. Try again.'); }
-      res.json({ ok: true });
-      log(r.child ? 'warn' : 'info', 'mobile_listing_reported', { id, reports: r.n, hidden: r.hiddenNow, reason });
-      if (r.added && (r.hiddenNow || r.n === 1)) {
-        postStaffAlert({
-          title: r.child ? `Child-safety report (mobile): ${id}` : (r.hiddenNow ? `Mobile listing auto-hidden: ${id}` : `New report (mobile): ${id}`),
-          level: r.child ? 'warn' : 'info',
-          description: r.child
-            ? 'Hidden from /browse and roulette on the first report. Review promptly. If it shows a child being sexually abused or exploited, report to NCMEC; do not download or share it.'
-            : `${r.n} report(s). ${r.hiddenNow ? 'Hidden from /browse and roulette.' : 'Still listed; hides at 3 reports.'}`,
-          fields: [
-            { name: 'Listing', value: id, inline: true },
-            { name: 'Host', value: listing.host || '-', inline: true },
-            { name: 'Watch', value: listing.watchUrl },
-            { name: 'Restore / remove', value: `POST /admin/public/mobile/${id} {"action":"restore"|"hide"}` }
-          ]
-        }).catch(() => {});
-      }
-      return;
-    }
+    if (raw.startsWith(MOBILE_PREFIX)) return reportMobile(res, raw, reporterKey(req), req.body?.reason);
     const code = sanitizeCode(req.params.code);
     if (!code) return safeError(res, 400, 'Invalid session code');
     const row = stmt.get.get(code);
