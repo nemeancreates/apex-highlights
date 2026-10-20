@@ -31,6 +31,7 @@ const { initUploadRoutes } = require('./routes/uploads');
 const { initCommentRoutes, startCommentCleanup } = require('./routes/comments');
 const { initStarRoutes, startStarCleanup } = require('./routes/stars');
 const { initPublicRoutes, startPublicCleanup } = require('./routes/public');
+const { initMomentRoutes, startMomentCleanup } = require('./routes/moments');
 const { initBillingWebhook, initBillingRoutes } = require('./routes/billing');
 const { initAccountRoutes } = require('./routes/account');
 const { startMobileListingSync } = require('./mobile');
@@ -139,6 +140,7 @@ initUploadRoutes(app, io);
 initCommentRoutes(app, io);
 initStarRoutes(app, io);
 initPublicRoutes(app);
+initMomentRoutes(app);
 initAccountRoutes(app);
 initBillingRoutes(app);
 initCompositeRoutes(app);
@@ -160,6 +162,7 @@ startCompositeCleanup();
 startCommentCleanup();
 startStarCleanup();
 startPublicCleanup();
+startMomentCleanup();
 startMobileListingSync();
 initAiReel({
   app,

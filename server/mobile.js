@@ -349,6 +349,13 @@ function mobileListings() {
     listingScanState(l) === 'clean');
 }
 
+// Every listing the mobile server sent (cleared or not), or null when that
+// list is stale. Peak Moments' cleanup uses it so votes survive a re-scan.
+function allMobileListingIds() {
+  if (Date.now() - listingFetchedAt > 5 * 60 * 1000) return null;
+  return listingCache.map(l => l.id);
+}
+
 // For the mobile host page's switch: 'off' | 'checking' | 'live' | 'under-review'
 function mobileListingState(id) {
   const l = listingCache.find(x => x.id === id);
@@ -393,6 +400,6 @@ function mobileSecretOk(req) {
 module.exports = {
   MOBILE_FREE_DAILY_SEC, MOBILE_INCLUDED_TIERS, EVENT_MAX_HOURS,
   grantMobileDays, addEventPass, getMobileStatus, claimEventPass,
-  startMobileListingSync, mobileListings, hostedMobileSessions, mobileListingState, reportMobileListing, setMobileListingHidden, mobileSecretOk,
+  startMobileListingSync, mobileListings, allMobileListingIds, hostedMobileSessions, mobileListingState, reportMobileListing, setMobileListingHidden, mobileSecretOk,
   _refreshForTest: refreshMobileListings
 };
