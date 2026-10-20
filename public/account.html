@@ -140,6 +140,7 @@
 <form id="loginForm" class="card stack" style="gap:16px" role="tabpanel" aria-labelledby="tabLogin">
 <div class="field"><label for="liUser">Username</label><input class="input" id="liUser" name="username" autocomplete="username" maxlength="24" required></div>
 <div class="field"><label for="liPass">Password</label><input class="input" id="liPass" name="password" type="password" autocomplete="current-password" maxlength="128" required></div>
+<label class="check"><input type="checkbox" data-show-pass="liPass"><span>Show password</span></label>
 <div class="row" style="justify-content:space-between"><button class="btn btn-lime" type="submit">Sign in</button><a href="/forgot-password.html" style="font-size:14px">Forgot it?</a></div>
 <p class="msg" role="status" aria-live="polite"></p>
 </form>
@@ -147,6 +148,7 @@
 <div class="field"><label for="reUser">Username</label><input class="input" id="reUser" name="username" autocomplete="username" minlength="2" maxlength="24" pattern="[A-Za-z0-9_\-]{2,24}" required><span class="small">2–24 characters: letters, numbers, _ or -</span></div>
 <div class="field"><label for="rePass">Password</label><input class="input" id="rePass" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required><span class="small">8 to 128 characters.</span></div>
 <div class="field"><label for="rePass2">Confirm password</label><input class="input" id="rePass2" name="password2" type="password" autocomplete="new-password" minlength="8" maxlength="128" required></div>
+<label class="check"><input type="checkbox" data-show-pass="rePass rePass2"><span>Show password</span></label>
 <label class="check"><input type="checkbox" name="terms" required><span>I agree to the <a href="/terms" target="_blank">Terms</a> and <a href="/privacy" target="_blank">Privacy Policy</a>.</span></label>
 <button class="btn btn-lime" type="submit" style="align-self:flex-start">Create account</button>
 <p class="msg" role="status" aria-live="polite"></p>
