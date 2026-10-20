@@ -16,6 +16,10 @@
 <link rel="stylesheet" href="/site/site.css">
 <script src="/site/home.js" defer></script>
 <style>
+/* Home: PC + Mobile downloads side by side (short labels on phones) */
+.dl-pair{display:flex;gap:12px;flex-wrap:nowrap}
+@media (max-width:520px){.dl-pair{width:100%}.dl-pair .btn{flex:1;padding:0 14px}.dl-pair .dl-word{display:none}}
+
 .hero{position:relative;z-index:1;padding:104px 0 150px}
 .hero .split{gap:56px}
 .hero-copy{display:flex;flex-direction:column;gap:22px;flex:1 1 420px}
@@ -73,9 +77,11 @@
 <p class="lede">Your whole squad records in the background. When anyone hits the hotkey, everyone's clip of that moment saves together, synced to the frame, ready to watch side by side.</p>
 <p class="test-note" data-test-note hidden></p>
 <div class="row" style="margin-top:6px">
-<a class="btn btn-lime btn-lg" href="/guide" data-download>Download free for Windows</a>
+<div class="dl-pair"><a class="btn btn-lime btn-lg" href="/guide" data-download title="Peakabu for Windows (free)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="13" rx="2"/><path d="M8 21h8M12 16v5"/></svg><span><span class="dl-word">Download for </span>PC</span></a>
+<a class="btn btn-lime btn-lg" href="https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peakabu-mobile.apk" download title="Peakabu Mobile for Android"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg><span><span class="dl-word">Download for </span>Mobile</span></a></div>
 <a class="btn btn-ghost btn-lg" href="/browse">Watch a public session</a>
 </div>
+<p class="small" style="margin-top:8px;max-width:60ch">PC: free for Windows. Mobile: Android app; on iPhone just open <a href="https://m.peakabu.app/host">m.peakabu.app</a> in your browser. <a href="/mobile">More about Mobile</a></p>
 <p class="mono small" style="margin-top:8px">Peakabu. We see the play, not you.<span class="fn-mark" aria-hidden="true">*</span></p>
 <p class="fn" style="margin-top:2px">*Peakabu never requires your real name, email address, or birth date. An account needs only a username and password. Purchases are handled by Stripe, which collects its own billing details. See our <a href="/privacy#not-collect">Privacy Policy</a> and <a href="/terms#section-4">Terms, section 4</a>.</p>
 </div>
