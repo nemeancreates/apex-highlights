@@ -130,7 +130,7 @@ function parseNotes(notes, players, names) {
   names = names || {};
   const n = ' ' + String(notes || '').toLowerCase().replace(/\s+/g, ' ') + ' ';
   const d = { mode: 'auto', slow: true, zoom: true, speed: true, slowCount: null, pace: 0,
-              boost: {}, understood: [] };
+              boost: {}, understood: [], followLead: false };
   if (n.trim() === '') return d;
 
   if (/\b(no|without|skip|less)\s+(the\s+)?(grids?|splits?|multi|side)|\bsolo only|\bonly solo|\bsingle pov|\bone pov\b/.test(n)) {
@@ -145,6 +145,10 @@ function parseNotes(notes, players, names) {
     else if (/\b(slow[- ]?mo(tion)?|slo-?mo|more slow)\b/.test(n)) { d.slowCount = 2; d.understood.push('more slow motion'); }
     if (/\b(no|without|skip)\s+(the\s+)?zoom/.test(n)) { d.zoom = false; d.understood.push('no zoom'); }
     if (/\b(no|without|skip)\s+(the\s+)?(speed|fast[- ]?forward|time[- ]?lapse)/.test(n)) { d.speed = false; d.understood.push('no speed-ups'); }
+  }
+  // Players keep fixed spots on screen unless the notes ask to move them.
+  if (/\b(swap|switch|shuffle|rotate|move)\s+(the\s+)?(positions?|spots?|sides?|povs?|tiles?|places?)\b|\bfollow\s+(the\s+)?(action|lead)\b|\b(lead|main|featured)\s+(player|pov)\s+(first|big|biggest|left|on the left)\b/.test(n)) {
+    d.followLead = true; d.understood.push('the player each moment is about goes first in split screens');
   }
   if (/\b(tight|quick|snappy|punchy|short cuts|fast[- ]paced|fast cuts)\b/.test(n)) { d.pace = 1; d.understood.push('tighter cuts'); }
   else if (/\b(hold|breathe|longer|long cuts|let (it|them|plays?) (play|run)|more context)\b/.test(n)) { d.pace = -1; d.understood.push('longer holds'); }
@@ -654,6 +658,15 @@ function buildPlan(ctx, choice) {
   }
 
   // --- EDL ---
+  // Each player keeps one spot on screen for the whole reel, in the order they
+  // first appear, so angles don't jump between sides from shot to shot. The
+  // sound still follows the player the moment is about (members[0] before
+  // this ordering; see segmentArgs). Notes can ask for the old way.
+  const rank = new Map();
+  for (const sh of shots) for (const m of sh.members) if (!rank.has(m.clip.player)) rank.set(m.clip.player, rank.size);
+  const placed = (sh) => (sh.members.length > 1 && !(notes && notes.followLead))
+    ? sh.members.slice().sort((x, y) => rank.get(x.clip.player) - rank.get(y.clip.player))
+    : sh.members;
   const joined = (x, y) => x && y && x.isl === y.isl && Math.abs(y.s - x.e) < 0.05;
   const edl = shots.map((sh, i) => {
     const dur = r3(sh.e - sh.s);
@@ -670,7 +683,7 @@ function buildPlan(ctx, choice) {
       at: r3(sh.s),
       clipId: sh.members[0].clip.id,
       start: r3(sh.members[0].start),
-      members: sh.members.map(m => ({ clipId: m.clip.id, start: r3(m.start) }))
+      members: placed(sh).map(m => ({ clipId: m.clip.id, start: r3(m.start) }))
     };
   });
 
@@ -795,9 +808,11 @@ function atempoChain(speed) {
 // -> ffmpeg args (without the binary), or null if no member can be read.
 function segmentArgs(seg, getClip, opts) {
   const raw = Array.isArray(seg.members) && seg.members.length ? seg.members : [{ clipId: seg.clipId, start: seg.start }];
-  const members = raw.map(m => ({ start: Math.max(0, Number(m.start) || 0), clip: getClip(m.clipId) }))
+  const members = raw.map(m => ({ clipId: String(m.clipId), start: Math.max(0, Number(m.start) || 0), clip: getClip(m.clipId) }))
     .filter(m => m.clip && m.clip.path).slice(0, MAX_TILES);
   if (!members.length) return null;
+  // The player the moment is about carries the sound, whichever tile they're in.
+  const leadIdx = Math.max(0, members.findIndex(m => m.clipId === String(seg.clipId)));
 
   const speed = seg.speed > 0 ? seg.speed : 1;
   const dur = Number(seg.duration);
@@ -845,14 +860,14 @@ function segmentArgs(seg, getClip, opts) {
   // Sound: the first member's (the player the moment is about). Padded to
   // the picture's exact length so the joined reel never drifts.
   const a = [];
-  if (members[0].clip.hasAudio) {
+  if (members[leadIdx].clip.hasAudio) {
     a.push('asetpts=PTS-STARTPTS', 'aresample=48000:async=1000');
     atempoChain(speed).forEach(p => a.push(p));
     if (speed > 1) a.push('volume=0.6');
     if (seg.fadeIn) a.push(`afade=t=in:st=0:d=${FADE}`);
     if (seg.fadeOut) a.push(`afade=t=out:st=${Math.max(0, dur / speed - FADE).toFixed(3)}:d=${FADE}`);
     a.push(`apad=whole_dur=${out}`);
-    filter += `;[0:a:0]${a.join(',')}[a]`;
+    filter += `;[${leadIdx}:a:0]${a.join(',')}[a]`;
   } else {
     filter += `;[${silentIdx}:a]anull[a]`;
   }

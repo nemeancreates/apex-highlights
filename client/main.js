@@ -2,6 +2,9 @@ const { app, BrowserWindow, globalShortcut, ipcMain, dialog, safeStorage } = req
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 const path = require('path');
+// Window/taskbar icon (the see-no-evil monkey), so no window falls back to
+// Electron's own icon, e.g. when running with npm start.
+const APP_ICON = path.join(__dirname, 'Assets', 'app-icon.ico');
 const fs = require('fs');
 const os = require('os');
 const FormData = require('form-data');
@@ -487,6 +490,7 @@ function openWindowedPlayer(code, token, username) {
 
   const b = mainWindow.getBounds();
   playerWindow = new BrowserWindow({
+    icon: APP_ICON,
     width: Math.round(b.width * 0.62),
     height: b.height,
     x: b.x + Math.round(b.width * 0.38),
@@ -530,6 +534,7 @@ function openAiReelWindow(params) {
   }
 
   aiReelWindow = new BrowserWindow({
+    icon: APP_ICON,
     width: 660, height: 1020,
     minWidth: 520, minHeight: 700,
     title: 'Peakabu — AI Reel',
@@ -5539,6 +5544,7 @@ app.commandLine.appendSwitch('enable-features', 'WebRtcAllowInputVolumeAdjustmen
 
 function createWindow() {
   mainWindow = new BrowserWindow({
+    icon: APP_ICON,
     width: 1440, height: 840,
     minWidth: 560, minHeight: 640,
     show: false,                 // avoid the un-maximized flash on launch

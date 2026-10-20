@@ -52,7 +52,7 @@
   var STEPS = [
     { els: function () { return [$('#monkeyToggle')]; },
       title: 'Welcome to Peak-Abu',
-      body: 'A quick walk through the jungle. Tap the 🙈 any time to fold every section away.' },
+      body: 'A quick walk through the jungle. Tap the monkey at the top left any time to fold every section away.' },
     { els: function () { return [$('#captureModeSelect'), $('#startBtn')]; },
       title: 'Start your buffer',
       body: 'Pick Monitor or Game Window, then Start Highlight Session. Peak-Abu keeps the last few minutes on your PC. Nothing uploads until you save.' },
