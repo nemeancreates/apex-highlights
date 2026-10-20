@@ -468,6 +468,13 @@
     }
     $('rePass').addEventListener('input', checkMatch);
     $('rePass2').addEventListener('input', checkMatch);
+    // Show password boxes (off by default): each one names the fields it reveals.
+    document.querySelectorAll('[data-show-pass]').forEach(function (cb) {
+      cb.checked = false;
+      cb.addEventListener('change', function () {
+        cb.getAttribute('data-show-pass').split(' ').forEach(function (id) { $(id).type = cb.checked ? 'text' : 'password'; });
+      });
+    });
     $('newSet').addEventListener('click', function () { openEditor(null); });
     paintSizes();
     document.querySelectorAll('#printSizes button').forEach(function (b) {

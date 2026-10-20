@@ -1217,6 +1217,10 @@
             <input type="password" id="authConfirmInput" placeholder="Re-enter password" autocomplete="new-password" />
             <div class="auth-hint" id="authConfirmHint"></div>
           </div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
+            <input type="checkbox" id="authShowPassword" style="margin:0;" onchange="var t=this.checked?'text':'password';document.getElementById('authPasswordInput').type=t;document.getElementById('authConfirmInput').type=t;">
+            <label for="authShowPassword" style="font-size:12px;color:#a9bdae;text-transform:none;letter-spacing:normal;margin:0;">Show password</label>
+          </div>
           <div id="authTermsWrap" style="display:none;align-items:flex-start;gap:6px;margin-bottom:10px;font-size:12px;color:#a9bdae;">
             <input type="checkbox" id="authTermsCheckbox" style="margin-top:2px;">
             <label for="authTermsCheckbox" style="font-size:12px;color:#a9bdae;text-transform:none;letter-spacing:normal;margin:0;">
@@ -6957,6 +6961,8 @@
         ipcRenderer.send('session-disconnected');
         document.getElementById('authPasswordInput').value = '';
         document.getElementById('authConfirmInput').value = '';
+        var showPw = document.getElementById('authShowPassword');
+        if (showPw && showPw.checked) { showPw.checked = false; showPw.onchange(); }
         setAuthMode('login');
         // The player view is a separate page holding its own copy of the
         // token/username baked into its URL at open time — logging out here
