@@ -1466,7 +1466,7 @@
        <strong style="color:#c8d6cd;">Cut down to the good parts.</strong>
        AI picks the strongest moments across your selected clips, trims to the length you choose, and
        decides shot by shot whether to show one angle full-frame, two side by side, or a four-up grid.
-       Use Style notes to steer it. Best for sharing.
+       Pick a Style and add your own Editor's notes to steer it. Best for sharing.
      </div>
      <div>
        <label style="font-size:11px;color:#7a9686;display:block;">Length</label>
@@ -1496,6 +1496,10 @@
          <option value="longer holds">Longer holds</option>
          <option value="no effects">Plain: no slow-mo, zoom or speed-ups</option>
        </select>
+     </div>
+     <div style="width:100%;">
+       <label for="aireelNotes" style="font-size:11px;color:#7a9686;display:block;">Editor's notes (optional)</label>
+       <textarea id="aireelNotes" maxlength="300" rows="2" placeholder="Tell the editor what you want, e.g. keep the clutch at 0:42, 3 POVs at once, follow the action" style="background:#0c1c14;color:#c8d6cd;border:1px solid #24402e;border-radius:4px;padding:6px 8px;width:100%;box-sizing:border-box;resize:vertical;font:inherit;font-size:12px;"></textarea>
      </div>
      <button class="btn btn-small" id="aireelBtn" onclick="startAiReel()">🤖 Generate AI Reel</button>
      <button class="btn btn-small btn-secondary" id="aireelCancelBtn" onclick="cancelAiReel()" style="display:none;">Stop Reel</button>
@@ -4588,7 +4592,9 @@
       }
       const targetSec = parseInt(document.getElementById('aireelLength').value);
       const game = document.getElementById('aireelGame').value.trim();
-      const styleNotes = document.getElementById('aireelStyle').value.trim();
+      // Style choice plus the person's own editor's notes, as one instruction.
+      const styleNotes = [document.getElementById('aireelStyle').value.trim(), document.getElementById('aireelNotes').value.trim()]
+        .filter(Boolean).join('. ').slice(0, 500);
 
       const uploadIds = Array.from(selectedExportClips).filter(id => {
         const u = allUploads.find(x => x.uploadId === id);
