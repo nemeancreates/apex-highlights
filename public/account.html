@@ -222,6 +222,17 @@
 </form>
 </div>
 
+<div id="delete" class="panel stack">
+<h2 class="h3">Delete account</h2>
+<p class="small">This signs you out everywhere now and deletes your account after 7 days. Changed your mind? Sign back in before then and it's cancelled. After that, your clips, comments, Peak Moments, passes and Swing card sets are gone for good. Sessions you hosted stay for your guests, with the host shown as "Deleted account".</p>
+<form class="stack" id="deleteForm" style="gap:12px;max-width:520px">
+<div class="field"><label for="delPass">Password</label><input class="input" id="delPass" name="password" type="password" autocomplete="current-password" maxlength="128" required></div>
+<label class="check"><input type="checkbox" data-show-pass="delPass"><span>Show password</span></label>
+<button class="btn btn-danger" type="submit" style="align-self:flex-start">Delete my account</button>
+<p class="msg" role="status" aria-live="polite"></p>
+</form>
+</div>
+
 </div>
 </div>
 </section>

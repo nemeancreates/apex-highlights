@@ -130,4 +130,17 @@ function trackBandwidth(username, bytes, users, saveUsersToDisk) {
   saveUsersToDisk();
 }
 
-module.exports = { loadCodesFromDisk, generateRedemptionCodes, redeemCode, peekCode, findCodeByNote, trackBandwidth, isProduct, PRODUCTS };
+// Account deletion (account-deletion.js): codes stay as sales records, but
+// without the username of whoever redeemed them.
+function forgetUser(username, replacement) {
+  const lower = String(username || '').toLowerCase();
+  let changed = false;
+  for (const entry of codes.values()) {
+    for (const u of entry.usedBy || []) {
+      if (u.username && u.username.toLowerCase() === lower) { u.username = replacement; changed = true; }
+    }
+  }
+  if (changed) saveCodesToDisk();
+}
+
+module.exports = { loadCodesFromDisk, generateRedemptionCodes, redeemCode, peekCode, findCodeByNote, trackBandwidth, isProduct, forgetUser, PRODUCTS };

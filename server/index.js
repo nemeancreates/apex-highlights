@@ -163,6 +163,7 @@ startCommentCleanup();
 startStarCleanup();
 startPublicCleanup();
 startMomentCleanup();
+require('./account-deletion').startAccountDeletionSweep();
 startMobileListingSync();
 initAiReel({
   app,
