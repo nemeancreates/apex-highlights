@@ -121,4 +121,10 @@ function pruneOldMonths(keepMonths = 3) {
   if (result.changes > 0) D.log('info', 'generation_usage_pruned', { rows: result.changes, cutoffKey });
 }
 
-module.exports = { initGenerationUsage, checkAndIncrement, getUsage, pruneOldMonths, COST_WEIGHTS };
+// Account deletion (account-deletion.js): drop this person's monthly counters.
+function forgetUser(userId) {
+  if (!db) return;
+  db.prepare('DELETE FROM aireel_generation_usage WHERE userId = ?').run(userId);
+}
+
+module.exports = { initGenerationUsage, checkAndIncrement, getUsage, pruneOldMonths, forgetUser, COST_WEIGHTS };

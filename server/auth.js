@@ -411,6 +411,8 @@ function initAuthRoutes(app) {
     if (!user || !valid) {
       return safeError(res, 401, 'Invalid username or password');
     }
+    // Signing in during the 7-day grace period keeps the account.
+    const deletionCancelled = require('./account-deletion').cancelDeletion(user.username.toLowerCase());
     // One login per platform (desktop app, mobile, website) at the same
     // time. Signing in again on the same platform signs out only the older
     // login there.
@@ -419,6 +421,7 @@ function initAuthRoutes(app) {
     log('info', 'user_login', { username: user.username, tier: getEffectiveTier(user) });
     return res.status(200).json({
       token, username: user.username, tier: getEffectiveTier(user), tierExpiresAt: getTierExpiresAt(user),
+      ...(deletionCancelled ? { deletionCancelled: true } : {}),
       privacyVersionAccepted: user.privacyVersionAccepted || null,
       privacyPolicyVersion: PRIVACY_POLICY_VERSION,
       recordingConsentSeen: !!user.recordingConsentSeen
@@ -430,6 +433,22 @@ function initAuthRoutes(app) {
   app.post('/auth/logout', requireAuth, (req, res) => {
     if (req.user.sid) loginSlots.closeSlot(req.user.username.toLowerCase(), req.user.sid);
     res.json({ ok: true });
+  });
+
+  // Delete my account (password to confirm). Signs out everywhere now; the
+  // account is deleted after 7 days unless they sign back in. See
+  // account-deletion.js for what goes and what stays.
+  // Per account, not per IP: phone requests all arrive from the mobile server.
+  const deleteTries = new Map(); // usernameLower -> { n, reset }
+  app.post('/auth/delete-account', requireAuth, async (req, res) => {
+    const key = req.user.username.toLowerCase();
+    const now = Date.now();
+    let t = deleteTries.get(key);
+    if (!t || now > t.reset) { t = { n: 0, reset: now + 60 * 60 * 1000 }; deleteTries.set(key, t); }
+    if (++t.n > 5) return safeError(res, 429, 'Too many tries. Try again in an hour.');
+    const r = await require('./account-deletion').requestDeletion(req.user.username, req.body && req.body.password);
+    if (!r.ok) return safeError(res, r.status, r.error);
+    res.json({ ok: true, deleteAt: r.dueAt });
   });
 
   app.get('/auth/me', requireAuth, (req, res) => {

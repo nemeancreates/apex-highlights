@@ -92,6 +92,7 @@
           if (!r.ok || !r.d.token) { msg.className = 'msg err'; msg.textContent = r.d.error || 'That did not work. Try again.'; return; }
           A.set(r.d.token, r.d.username);
           form.reset();
+          if (r.d.deletionCancelled) alert('Welcome back. Your account deletion was cancelled.');
           document.querySelectorAll('[data-signin]').forEach(function (x) { x.textContent = r.d.username; });
           start();
         })
@@ -484,6 +485,26 @@
         paintSizes();
       });
     });
+    // Delete account: 7 days to change your mind (signing back in cancels it).
+    $('deleteForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var f = $('deleteForm');
+      var m = f.querySelector('.msg');
+      if (!confirm('Delete your Peakabu account? You’ll be signed out everywhere, and it’s deleted for good in 7 days unless you sign back in.')) return;
+      var b = f.querySelector('[type="submit"]');
+      b.disabled = true; m.textContent = '';
+      api('/auth/delete-account', { method: 'POST', body: JSON.stringify({ password: f.password.value }) }).then(function (r) {
+        b.disabled = false;
+        if (!r.ok) { m.className = 'msg err'; m.textContent = r.data.error || 'That did not work. Try again.'; return; }
+        f.reset();
+        var when = new Date(r.data.deleteAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
+        signedOutNow();
+        var lm = $('loginForm').querySelector('.msg');
+        lm.className = 'msg';
+        lm.textContent = 'Your account will be deleted on ' + when + '. Sign in before then to keep it.';
+      }).catch(function () { b.disabled = false; });
+    });
+
     $('signOut').addEventListener('click', function () {
       api('/auth/logout', { method: 'POST' }).catch(function () {}).then(signedOutNow);
     });

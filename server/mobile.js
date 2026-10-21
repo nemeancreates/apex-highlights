@@ -344,8 +344,10 @@ function mobileListings() {
   if (Date.now() - listingFetchedAt > 5 * 60 * 1000) return [];
   let hidden = new Set();
   try { hidden = new Set(stmt.hiddenAll.all().map(r => r.listingId)); } catch (e) {}
+  const deletion = require('./account-deletion');
   return listingCache.filter(l => !hidden.has(l.id) &&
     !(l.host && mod().getBan(l.host)) &&
+    !(l.host && deletion.pendingDeletion(l.host)) &&
     listingScanState(l) === 'clean');
 }
 
