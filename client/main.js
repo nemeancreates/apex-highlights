@@ -31,7 +31,17 @@ const { init: sentryInit } = require('@sentry/electron/main');
 const { SENTRY_DSN } = require('./sentry-config');
 
 if (SENTRY_DSN) {
-  sentryInit({ dsn: SENTRY_DSN, release: `peak-abu@${app.getVersion()}` });
+  sentryInit({
+    dsn: SENTRY_DSN,
+    release: `peak-abu@${app.getVersion()}`,
+    // Keep to what the Privacy Policy (section 5.4) says crash reports hold.
+    // These are Sentry's defaults today; written out so a future update can't
+    // quietly change them: no IP address, cookies or request headers; no
+    // local variable values (one could hold a login token); no screenshots.
+    sendDefaultPii: false,
+    includeLocalVariables: false,
+    attachScreenshot: false
+  });
 }
 
 

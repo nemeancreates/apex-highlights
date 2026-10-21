@@ -236,9 +236,9 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 const PRIVACY_POLICY_VERSION = '2026-09-07';
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.98',
-  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.98.exe',
-    releaseNotes: "AI Reels keep every player in the same spot on screen for the whole reel, so split screens and grids no longer shuffle angles around between shots. The sound still follows whoever the moment is about. Want the old way? Write \"follow the action\" in the Notes box."
+  version: '0.1.99',
+  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.99.exe',
+    releaseNotes: "AI Reels have an Editor's notes box next to Style: tell the editor what you want, like \"keep the clutch at 0:42\" or \"3 POVs at once\". Signing in and making an account now have a Show password box. You can delete your account from Settings. Crash reporting is updated and still only sends what our Privacy Policy describes."
 };
 
 
