@@ -68,7 +68,7 @@
       var lim = t.limits || {};
       var until = t.endsAt ? ' Testing runs until ' + new Date(t.endsAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }) + '.' : '';
       var bonus = t.bonusMonths ? ' Make an account while we test and get ' + t.bonusMonths + ' free months of ' + t.bonusTier + ' when testing ends.' : '';
-      var detail = ' Every feature on PC and Mobile is unlocked: up to ' + lim.playersPerSession + ' players, ' + lim.sessionsPerMonth + ' sessions a month, ' + lim.hoursPerSession + ' hours per session. Paid monthly plans start after testing.' + until + bonus;
+      var detail = ' Every feature on PC and Mobile is unlocked: up to ' + lim.playersPerSession + ' players, ' + lim.sessionsPerMonth + ' sessions a month, ' + lim.hoursPerSession + ' hours per session. Paid monthly plans start after testing.' + until + bonus + ' Heads up: our downloads are not code-signed yet, and we are actively working on getting our certificates. Until then, Windows may show a \"Windows protected your PC\" message (choose More info, then Run anyway), and your Android phone may ask \"Are you sure?\" or to allow installs from your browser. Thank you for your patience.';
 
       var header = document.querySelector('.site-header');
       if (header) {
