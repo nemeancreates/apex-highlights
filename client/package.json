@@ -56,10 +56,10 @@
       "artifactName": "peak-abu-setup-${version}.exe"
     },
     "appx": {
-      "identityName": "PLACEHOLDER.PeakAbu",
-      "publisher": "CN=PLACEHOLDER-PUBLISHER",
-      "publisherDisplayName": "PeakAbu, LLC",
-      "displayName": "Peak-Abu",
+      "identityName": "51439PeakabuLLC.Peakabu",
+      "publisher": "CN=98E8B871-881C-4FF5-A125-AD9F14D7A586",
+      "publisherDisplayName": "PeakabuLLC",
+      "displayName": "Peakabu",
       "applicationId": "PeakAbu",
       "backgroundColor": "#175234",
       "minVersion": "10.0.17763.0",
