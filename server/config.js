@@ -133,8 +133,8 @@ const TIERS = {
   t5: { label: 'Founder', canHost: true, memberCap: 41, clipCap: 144000, sessionsPerMonth: 200, retentionDays: 60, hasAiReel: true,  aiReelMaxSec: 1800, reelPriority: 2, hasAutoCapture: true, hasAiReelPro: true,  aiReelProMonthlyCap: 100, hasDownload: true,  hasExport: true, canListPublic: true },
   // Testing — virtual tier served to every Free/Creator/Squad/Pro account while
   // TESTING_PHASE=1 (see TESTING below). Never stored on a user. Pro features,
-  // test limits: 30 sessions a month, 20 hours of highlights a session, 100 players.
-  t6: { label: 'Testing', canHost: true, memberCap: 100, clipCap: 72000, sessionsPerMonth: 30, retentionDays: 30, hasAiReel: true, aiReelMaxSec: 1800, reelPriority: 1, hasAutoCapture: true, hasAiReelPro: true, aiReelProMonthlyCap: 100, hasDownload: true, hasExport: true, canListPublic: true }
+  // test limits: 30 sessions a month, 15 hours of highlights a session, 100 players, 14 days kept.
+  t6: { label: 'Testing', canHost: true, memberCap: 100, clipCap: 54000, sessionsPerMonth: 30, retentionDays: 14, hasAiReel: true, aiReelMaxSec: 1800, reelPriority: 1, hasAutoCapture: true, hasAiReelPro: true, aiReelProMonthlyCap: 100, hasDownload: true, hasExport: true, canListPublic: true }
 };
 
 // ================================
