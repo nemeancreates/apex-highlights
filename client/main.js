@@ -6452,6 +6452,16 @@ function createWindow() {
       return { success: false, error: 'Uninstall is only available in the installed build (not dev mode).', wiped: wiped.length };
     }
 
+    // Store builds have no uninstaller; Windows removes them from Settings > Apps.
+    if (process.windowsStore) {
+      try {
+        await require('electron').shell.openExternal('ms-settings:appsfeatures');
+        return { success: true, wiped: wiped.length };
+      } catch (err) {
+        return { success: false, error: 'Use Windows Settings > Apps to remove Peak-Abu.', wiped: wiped.length };
+      }
+    }
+
     const installDir = path.dirname(process.execPath);
     const candidates = [
       'Uninstall Peak-Abu.exe',
@@ -6808,7 +6818,10 @@ app.whenReady().then(async () => {
   gamepadPrefs.triggerMode = startupPrefs.gamepadTriggerMode || 'double';
   // Register the scheme at runtime so dev builds work too. Packaged builds
   // also get it from NSIS via the electron-builder "protocols" block.
-  if (app.isPackaged) {
+  // Store (MSIX) builds get the scheme from their package manifest instead.
+  if (process.windowsStore) {
+    // nothing to register
+  } else if (app.isPackaged) {
     app.setAsDefaultProtocolClient(PROTOCOL);
   } else {
     app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1] || '.')]);
@@ -6833,7 +6846,8 @@ app.whenReady().then(async () => {
   // Takes the keys over from globalShortcut once it's running, so they stop
   // being blocked in other apps (see HOTKEYS THAT DON'T STEAL THE KEY).
   startKeyWatcher();
-  setTimeout(() => checkForUpdates(mainWindow), 3000);
+  // Store builds are updated by the Microsoft Store, never by our own installer.
+  if (!process.windowsStore) setTimeout(() => checkForUpdates(mainWindow), 3000);
 });
 
 let isCleaningUp = false;
