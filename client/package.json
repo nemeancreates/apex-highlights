@@ -6,7 +6,8 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --win"
+    "build": "electron-builder --win",
+    "build:store": "electron-builder --win appx"
   },
   "keywords": [],
   "license": "ISC",
@@ -20,7 +21,11 @@
     },
     "files": [
       "**/*",
-      "assets/**/*"
+      "assets/**/*",
+      "!ffmpeg/**",
+      "!old_main.js",
+      "!index-backup.html",
+      "!_block0.js"
     ],
     "extraResources": [
       {
@@ -49,6 +54,24 @@
       "deleteAppDataOnUninstall": false,
       "include": "build/installer.nsh",
       "artifactName": "peak-abu-setup-${version}.exe"
+    },
+    "appx": {
+      "identityName": "PLACEHOLDER.PeakAbu",
+      "publisher": "CN=PLACEHOLDER-PUBLISHER",
+      "publisherDisplayName": "PeakAbu, LLC",
+      "displayName": "Peak-Abu",
+      "applicationId": "PeakAbu",
+      "backgroundColor": "#175234",
+      "minVersion": "10.0.17763.0",
+      "maxVersionTested": "10.0.26100.0",
+      "languages": [
+        "en-US"
+      ],
+      "capabilities": [
+        "internetClient",
+        "microphone"
+      ],
+      "artifactName": "peak-abu-${version}.appx"
     }
   },
   "devDependencies": {
