@@ -243,6 +243,7 @@ function validListing(l) {
 //   'flagged' anything came back csam or review
 function listingScanState(l) {
   const conf = scanner().scannerConfigured();
+  if (!conf.hashMatch && !conf.classifier && !scanner().unscannedAllowed()) return 'pending';
   const byId = new Map(stmt.scansFor.all(PREFIX + l.id).map(r => [r.uploadId, r]));
   let pending = false;
   for (const m of l.media) {

@@ -35,6 +35,10 @@ const FLAG_CATEGORIES = ['sexual', 'violence/graphic', 'self-harm'];
 function configured() {
   return { hashMatch: !!CSAM_BASE, classifier: !!OPENAI_KEY };
 }
+// With no scanner set up, public listings stay "checking" and never show,
+// unless ALLOW_UNSCANNED_PUBLIC=1 (only for local testing).
+const ALLOW_UNSCANNED = process.env.ALLOW_UNSCANNED_PUBLIC === '1';
+function unscannedAllowed() { return ALLOW_UNSCANNED; }
 
 // Thumbnail URL as stored, plus the same object via the scanning domain.
 function thumbUrls(code, upload) {
@@ -122,8 +126,11 @@ function logStartup() {
   const c = configured();
   log('info', 'moderation_scanner_ready', {
     csamHashMatch: c.hashMatch, classifier: c.classifier,
-    note: (!c.hashMatch && !c.classifier) ? 'No scanners configured: public listings go live without automated checks' : undefined
+    note: (!c.hashMatch && !c.classifier)
+      ? (ALLOW_UNSCANNED ? 'No scanners configured and ALLOW_UNSCANNED_PUBLIC=1: public listings go live WITHOUT automated checks'
+                         : 'No scanners configured: public listings stay hidden ("checking") until OPENAI_MODERATION_KEY and/or CSAM_SCAN_BASE_URL is set')
+      : undefined
   });
 }
 
-module.exports = { scanUpload, scanImage, scannerConfigured: configured, logScannerStartup: logStartup };
+module.exports = { scanUpload, scanImage, scannerConfigured: configured, unscannedAllowed, logScannerStartup: logStartup };

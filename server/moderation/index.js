@@ -23,7 +23,7 @@ const { getEffectiveTier } = require('../auth');
 const db = require('../db');
 const { buildPdf } = require('./case-pdf');
 const { postStaffAlert } = require('./staff-alerts');
-const { scanUpload, scannerConfigured, logScannerStartup } = require('./scanner');
+const { scanUpload, scannerConfigured, unscannedAllowed, logScannerStartup } = require('./scanner');
 const { isOnHold, placeHold, getHold } = require('./legal-hold');
 
 const STRIKES_TO_BAN = 3;
@@ -156,6 +156,7 @@ function scansFor(code) { try { return stmt.scansFor.all(code); } catch (e) { re
 // 'flagged' — something was flagged (csam or review)
 function sessionScanState(session) {
   const conf = scannerConfigured();
+  if (!conf.hashMatch && !conf.classifier && !unscannedAllowed()) return 'pending';
   const clips = (session.uploads || []).filter(u => u.videoFile);
   const byId = new Map(scansFor(session.code).map(s => [s.uploadId, s]));
   let pending = false;
@@ -173,7 +174,7 @@ const scanning = new Set();   // session codes with a scan in flight
 // worst result: csam > review. Safe to call repeatedly.
 async function scanSession(session) {
   const conf = scannerConfigured();
-  if (!conf.hashMatch && !conf.classifier) return 'clean';
+  if (!conf.hashMatch && !conf.classifier) return sessionScanState(session);
   if (scanning.has(session.code)) return 'pending';
   scanning.add(session.code);
   try {

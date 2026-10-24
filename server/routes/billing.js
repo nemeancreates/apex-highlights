@@ -34,6 +34,7 @@ const { generateRedemptionCodes, findCodeByNote, findCodesByNote } = require('..
 const { EVENT_MAX_HOURS } = require('../mobile');
 const { TESTING } = require('../config');
 const entitlements = require('../entitlements');
+const accountBans = require('../moderation/account-bans');
 
 const PLANS = {
   mobile1: { cents: 500,  days: 30, label: 'Peakabu Mobile, 1 month' },
@@ -259,6 +260,25 @@ const checkoutLimiter = createRateLimiter({ windowMs: 60000, max: 10 });
 const lookupLimiter   = createRateLimiter({ windowMs: 60000, max: 40 });
 const emailLimiter    = createRateLimiter({ windowMs: 60000, max: 6 });
 
+// The paying card's Stripe fingerprint, kept with each code from the checkout
+// so a closed account's card can't buy a way back in (moderation/
+// account-bans.js). It's Stripe's one-way id for the card (the same card
+// always gives the same value), never the card number. Best effort: a
+// payment without a card fingerprint (some wallets) just isn't linked.
+const fingerprinted = new Set();
+async function recordFingerprint(checkoutId, codes) {
+  if (!stripe || !codes || !codes.length || fingerprinted.has(checkoutId)) return;
+  try {
+    const s = await stripe.checkout.sessions.retrieve(checkoutId, { expand: ['payment_intent.payment_method', 'subscription.default_payment_method'] });
+    const pm = (s.payment_intent && s.payment_intent.payment_method) || (s.subscription && s.subscription.default_payment_method);
+    const fp = pm && typeof pm === 'object' && pm.card && pm.card.fingerprint;
+    for (const code of codes) accountBans.recordCodePayment(code, checkoutId, fp || null);
+    fingerprinted.add(checkoutId);
+  } catch (err) {
+    log('warn', 'billing_fingerprint_failed', { checkout: checkoutId, error: err.message });
+  }
+}
+
 // Must be mounted BEFORE app.use(express.json()) — Stripe signs the raw body.
 function initBillingWebhook(app) {
   app.post('/api/billing/webhook', express.raw({ type: '*/*', limit: '1mb' }), (req, res) => {
@@ -273,6 +293,7 @@ function initBillingWebhook(app) {
     if (evt.type === 'checkout.session.completed' || evt.type === 'checkout.session.async_payment_succeeded') {
       const session = evt.data.object;
       const out = fulfil(session);
+      if (out) recordFingerprint(session.id, out.codes);
       const to = session.customer_details && session.customer_details.email;
       const row = stmt.get.get(session.id);
       // Email only when the buyer asked for it on OUR page (sendEmail=1).
@@ -386,6 +407,7 @@ function initBillingRoutes(app) {
       const session = await stripe.checkout.sessions.retrieve(id, { expand: ['subscription'] });
       const out = fulfil(session);
       if (!out) return res.json({ status: 'pending' });
+      recordFingerprint(session.id, out.codes);
       res.json({ status: 'ready', ...out });
     } catch (err) {
       safeError(res, 404, 'Not found');
@@ -448,4 +470,19 @@ async function cancelSubscriptionsFor(usernameLower) {
   buyerStmt.forget.run(usernameLower);
 }
 
-module.exports = { initBillingWebhook, initBillingRoutes, initBillingPortal, cancelSubscriptionsFor, fulfil, _messageForTest: messageFor, PLANS, PC_PLANS, EVENT_CENTS, _setStripeForTest: (s) => { stripe = s; }, _setMailerForTest: (m) => { mailer = m; } };
+// Account closed for breaking the Terms (moderation/account-bans.js): stop
+// every charge now. No refund (Terms section 19). The link is kept, so the
+// record shows what was cancelled and why.
+async function stopBillingForBan(usernameLower) {
+  for (const sub of entitlements.liveSubsFor(usernameLower)) {
+    if (!stripe) { log('warn', 'ban_subscription_not_cancelled', { username: usernameLower, subId: sub.id, reason: 'stripe not configured' }); continue; }
+    try {
+      await stripe.subscriptions.cancel(sub.id);
+      log('info', 'subscription_cancelled_for_ban', { username: usernameLower, subId: sub.id, gift: sub.gift });
+    } catch (err) {
+      log('error', 'ban_subscription_cancel_failed', { username: usernameLower, subId: sub.id, error: err.message });
+    }
+  }
+}
+
+module.exports = { stopBillingForBan, initBillingWebhook, initBillingRoutes, initBillingPortal, cancelSubscriptionsFor, fulfil, _messageForTest: messageFor, PLANS, PC_PLANS, EVENT_CENTS, _setStripeForTest: (s) => { stripe = s; }, _setMailerForTest: (m) => { mailer = m; } };

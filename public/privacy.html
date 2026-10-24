@@ -65,7 +65,7 @@ main.legal{position:relative;z-index:1;padding-bottom:96px}
 <div class="doc-hero"><div class="doc">
 <span class="eyebrow lime">Legal</span>
 <h1>Privacy Policy</h1>
-<div class="doc-meta"><span>Peakabu, LLC</span><span><b>Effective</b> October 18, 2026</span><span><b>Last updated</b> October 23, 2026</span></div>
+<div class="doc-meta"><span>Peakabu, LLC</span><span><b>Effective</b> October 18, 2026</span><span><b>Last updated</b> October 24, 2026</span></div>
 <p class="doc-lead">This policy explains what information Peakabu collects through the desktop application, Peakabu Mobile (m.peakabu.app), the peakabu.app website and web player, and our servers (together, the "Service"), how we use it, who we share it with, and what control you have over it. It should be read alongside our <a href="/terms.html">Terms of Service</a>.</p>
 
 <nav class="toc" aria-label="Table of contents">
@@ -125,6 +125,7 @@ main.legal{position:relative;z-index:1;padding-bottom:96px}
       <p><strong>Codes bought on peakabu.app.</strong> Peakabu Mobile plans and event passes are sold on our website through Stripe Checkout and delivered as a redemption code; no account is needed to buy one. Stripe's checkout page asks for an email address for its own receipt, and Stripe keeps that as the payment processor. On our side we record only the code, what it grants, and the Stripe checkout ID it was issued for.</p>
       <p><strong>Optional code delivery by email.</strong> When you buy a code you may enter an email address, before checkout or on the confirmation page, and ask us to send the code there. We use that address only to send that message (through our email provider, see Section 9). We do not save it to your account or any database, add it to a mailing list, use it for marketing, or share it with anyone else. We keep only a count of how many times a code was emailed, so the feature can't be abused. If you leave the field blank, your code is shown on screen only and we never receive an address from you.</p>
       <p><strong>Redemption codes and subscriptions.</strong> If you redeem a crowdfunding, promotional, or purchased code, we record which code was redeemed, by which account, and when. If you buy on peakabu.app while signed in and leave "Save the codes I buy to my account" on, we also record which account bought the code, so it appears under My codes; we keep that link on our servers and do not send your username to Stripe. For a monthly subscription, we store Stripe's subscription and customer IDs with the account that redeemed its code (and the account that bought it, if different), so renewals and cancellations update the right plan.</p>
+      <p><strong>Card fingerprint (to keep closed accounts closed).</strong> For each purchase, Stripe gives us its card fingerprint: a one-way code Stripe makes for a card, so the same card always gives the same code. It is not your card number and can't be turned back into one. We keep it with the codes from that purchase, and with the account that redeems one. We use it only to recognise a card that paid for an account we closed for breaking our Terms, so that person can't buy their way back in on a new account.</p>
       <p><strong>Support and correspondence.</strong> If you email us or report a bug, we keep the message and any logs, screenshots, or files you attach.</p>
       <p><strong>User-entered content.</strong> Session names, clip titles, notes, and similar text you type into the Service.</p>
     </section>
@@ -150,11 +151,16 @@ main.legal{position:relative;z-index:1;padding-bottom:96px}
         <li><strong>Hosts</strong> sign in with their Peakabu account. Your username and password go straight to our main server to sign you in; the mobile server keeps only the resulting sign-in token in a cookie on your browser. To enforce the free plan's daily hosting time, we keep a per-account count of minutes used, for today and yesterday only.</li>
         <li><strong>Guests</strong> don't need an account. We store the display name you type, the times you were filming or paused, and which Swing card (area QR code) you joined from, if any.</li>
         <li><strong>Recordings.</strong> Your phone keeps a short rolling buffer in its own memory. It is only uploaded when someone in the session taps PEAK, and only the part covering that moment. Photos you take with the in-app shutter are uploaded when you take them. Clips and photos may include anyone and anything your camera sees and hears.</li>
-        <li><strong>Safety checks.</strong> If the host lists the session publicly, its clip thumbnails and photos go through the same automated checks as PC clips before it can appear (see Section 10).</li>
+        <li><strong>Safety checks.</strong> If the host lists the session publicly, its clip thumbnails, a still from every couple of seconds of each clip, and its photos go through the same automated checks as PC clips before anyone outside the session can see it (see Section 10). Private sessions are not scanned.</li>
+        <li><strong>Phone ID.</strong> m.peakabu.app gives each phone or browser a random ID in a cookie. It isn't tied to your name, number, or the phone's own identifiers. A one-way hash of it is used to make blocks and closed-account rules stick to a person rather than a display name, and the app sends that hash to our main server when you sign in.</li>
+        <li><strong>Age range (Android app).</strong> The Peakabu Mobile app asks Google Play for your age range. We never ask for your birth date, and we keep only which range you fall in (under 13, 13 to 17, or 18 and over) for that phone, for up to 30 days. It's used only to give teens a safer experience in the app: no adults-only sessions, no public posts, joining Peak Spot parties only through an adult's Share QR. It isn't shared with anyone or used for ads.</li>
+        <li><strong>Blocks.</strong> If you block someone, we keep that you blocked them, as hashed IDs plus the display name shown at the time, so it can be enforced and you can undo it.</li>
+        <li><strong>Adults-only sessions.</strong> If a host marks a session 18+, guests confirm they are 18 or older to join. We record that they confirmed, not their age.</li>
+        <li><strong>Moderation log.</strong> Safety actions (reports, blocks, footage pulled from public view, removals, sessions made public or 18+, legal holds) are logged with session IDs and hashed person tags, never names or footage, and kept for 2 years. Daily counts (sessions, joins, reports and so on) are kept for 400 days.</li>
         <li><strong>Who can watch.</strong> By default, only members of the session, or people the host gives the watch link to. If the host makes the session public, anyone with the link can watch. If the host also lists it on Peakabu public sessions, its saved peaks can appear on peakabu.app/browse and in Peak Roulette for anyone to find.</li>
         <li><strong>Peak feed and Peak Moments.</strong> The app's Peak feed plays saved peaks from publicly listed sessions. If you're signed in, you can give a peak a Peak Moment. We store which account gave which Peak Moment, so each account counts once and you can take it back; everyone else only sees the total, never who gave it. Peak Moments make a peak come up more often in the Peak feed and in Peak Roulette. Which peaks you've already watched is kept only on your phone. If you report a peak from the feed, the mobile server sends us a one-way hashed code made from your network address, not the address itself, so repeat reports from one phone count once.</li>
         <li><strong>Retention.</strong> Sessions, clips, photos, and comments are permanently deleted 60 days after the session ends.</li>
-        <li><strong>Cookies.</strong> m.peakabu.app sets a few essential cookies: a guest pass that keeps you in a session you joined, a host pass for the browser that started it, and the host's sign-in token. They are HttpOnly, used only by m.peakabu.app, and are not used for analytics or advertising.</li>
+        <li><strong>Cookies.</strong> m.peakabu.app sets a few essential cookies: a guest pass that keeps you in a session you joined, a host pass for the browser that started it, the host's sign-in token, and the random phone ID above. They are HttpOnly, used only by m.peakabu.app, and are not used for analytics or advertising.</li>
       </ul>
     </section>
 
@@ -209,6 +215,12 @@ main.legal{position:relative;z-index:1;padding-bottom:96px}
         <tr><td>Local buffer</td><td>Rolling; overwritten continuously, cleared when capture stops</td></tr>
         <tr><td>Peakabu Mobile sessions, clips, photos, comments</td><td>60 days after the session ends</td></tr>
         <tr><td>Peakabu Mobile daily hosting-minutes count</td><td>Today and yesterday only</td></tr>
+        <tr><td>Peakabu Mobile age range for a phone (under 13, 13 to 17, 18+)</td><td>30 days, refreshed each time the app starts</td></tr>
+        <tr><td>Blocks (hashed IDs and the display name)</td><td>Until you unblock</td></tr>
+        <tr><td>Moderation log (session IDs, hashed person tags, what was done)</td><td>2 years; daily counts 400 days</td></tr>
+        <tr><td>Card fingerprint of a purchase</td><td>With the purchase record (as required by tax and accounting law)</td></tr>
+        <tr><td>Card fingerprints and phone-ID hashes linked to an account</td><td>Until you delete the account; for an account closed for breaking our Terms, as long as the closure stands</td></tr>
+        <tr><td>Material reported to NCMEC and its account details</td><td>At least 1 year, or longer if the law or an investigation requires it</td></tr>
         <tr><td>Peak Moments (which account gave which)</td><td>Until you take it back, the session is unlisted or its footage is deleted, or you delete your account</td></tr>
         <tr><td>Email address entered for code delivery</td><td>Not stored; used once to send the message</td></tr>
         <tr><td>Purchased codes (code, what it grants, Stripe checkout ID)</td><td>As required by tax and accounting law</td></tr>
@@ -300,7 +312,7 @@ main.legal{position:relative;z-index:1;padding-bottom:96px}
 
     <section class="clause" id="children">
       <h2>13. Children</h2>
-      <p>The Service is not directed to children under 13, and we do not knowingly collect their personal information. In the EEA, UK, and other jurisdictions with a higher digital-consent age, the minimum age is 16 without verifiable parental consent. If you believe a child has provided us personal information, contact <a href="mailto:report@peakabu.app">report@peakabu.app</a> and we will delete the account and its data.</p>
+      <p>The Service is not directed to children under 13, and we do not knowingly collect their personal information. In the Peakabu Mobile Android app, if Google Play reports a user as under 13, the app closes to them and we keep only that range for that phone (see Section 4A). In the EEA, UK, and other jurisdictions with a higher digital-consent age, the minimum age is 16 without verifiable parental consent. If you believe a child has provided us personal information, contact <a href="mailto:report@peakabu.app">report@peakabu.app</a> and we will delete the account and its data.</p>
     </section>
 
     <section class="clause" id="transfers">

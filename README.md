@@ -172,6 +172,25 @@ Peakabu Mobile (m.peakabu.app) is a separate small server. Hosts sign in with th
 
 ---
 
+## Safety: scanning, closed accounts, ban evasion
+
+**Scanners are required for anything public.** With neither `OPENAI_MODERATION_KEY` (free OpenAI Moderation API) nor `CSAM_SCAN_BASE_URL` (Cloudflare's free CSAM Scanning Tool) set, PC and Mobile public listings stay "checking" and never show. The startup log line `moderation_scanner_ready` says which are on. `ALLOW_UNSCANNED_PUBLIC=1` turns that off for local testing only.
+
+**Closed accounts** (`moderation/account-bans.js`, Terms section 19): signed out everywhere, every sign-in refused with a message saying why, banned from public posting, subscriptions cancelled with no refund.
+
+**Ban evasion:** each purchase's Stripe card fingerprint is stored with its codes, and the Mobile server sends a hashed phone ID at sign-in. A new account that redeems a code paid with a closed account's card, or signs in on a closed account's phone, is closed automatically (code not applied) and staff get a Discord alert. A phone tied to a closed account also can't join Mobile sessions.
+
+Staff commands (on the droplet):
+
+```
+curl -s localhost:3000/admin/accounts -H "X-Admin-Secret: $ADMIN_SECRET"
+curl -s localhost:3000/admin/accounts/NAME -H "X-Admin-Secret: $ADMIN_SECRET"
+curl -s -X POST localhost:3000/admin/accounts/NAME -H "X-Admin-Secret: $ADMIN_SECRET" -H "Content-Type: application/json" -d '{"action":"ban","reason":"..."}'
+curl -s -X POST localhost:3000/admin/accounts/NAME -H "X-Admin-Secret: $ADMIN_SECRET" -H "Content-Type: application/json" -d '{"action":"unban"}'
+```
+
+Lifting a ban also marks the account as checked, so a shared card or second-hand phone won't close it again automatically.
+
 ## Feature Roadmap
 
 ### Current (v0.1.78)
