@@ -39,6 +39,9 @@
   .note{ font-size:13px; color:var(--text-muted); margin-top:10px; }
   .agree{ display:flex; gap:10px; align-items:flex-start; margin-top:14px; font-size:14px; color:var(--text-soft); cursor:pointer; }
   .agree input{ width:auto; margin-top:3px; accent-color:var(--teal); }
+  .qty{ display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; margin:10px 0 4px; }
+  .qty label{ margin:0; }
+  .qty select{ width:auto; min-width:76px; padding:8px 10px; }
   .sub-kind{ font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.06em; }
 </style>
 </head>
@@ -64,6 +67,7 @@
   <div class="err" id="subErr"></div>
 
   <h2>Mobile passes (one-time)</h2>
+  <div class="qty"><label for="planQty">How many codes</label><select id="planQty"></select><span class="muted small">Each code is separate, so you can give them to different people.</span></div>
   <div class="grid" id="plans"></div>
   <ul class="inc">
     <li>No daily time limit on sessions you host</li>
@@ -81,6 +85,7 @@
     </div>
     <label for="hours">Length: <b id="hoursLabel">4</b> hours (up to <span id="maxH">16</span>)</label>
     <input type="range" id="hours" min="1" max="16" step="1" value="4">
+    <div class="qty"><label for="eventQty">How many passes</label><select id="eventQty"></select><span class="muted small">Same date and window on each.</span></div>
     <button class="buy" id="eventBtn">Buy event pass</button>
     <div class="err" id="eventErr"></div>
   </div>
@@ -133,6 +138,8 @@
         '<div class="muted small">' + (SUB_NOTES[p.id] || '') + '</div>' +
         '<button class="buy" data-sub="' + p.id + '"' + (cfg.enabled ? '' : ' disabled') + '>Subscribe</button></div>';
     }).join('');
+    var opts = ''; for (var i = 1; i <= (cfg.maxQuantity || 1); i++) opts += '<option value="' + i + '">' + i + '</option>';
+    $('planQty').innerHTML = opts; $('eventQty').innerHTML = opts;
     $('eventPrice').textContent = money(cfg.event.cents);
     $('hours').max = cfg.event.maxHours; $('maxH').textContent = cfg.event.maxHours;
     $('eventBtn').disabled = !cfg.enabled;
@@ -141,7 +148,7 @@
   $('plans').addEventListener('click', async function (e) {
     var id = e.target.dataset && e.target.dataset.plan; if (!id) return;
     e.target.disabled = true; $('planErr').textContent = '';
-    try { location.href = (await post('/api/billing/checkout', { product: 'mobile', plan: id, email: email() })).url; }
+    try { location.href = (await post('/api/billing/checkout', { product: 'mobile', plan: id, quantity: +$('planQty').value || 1, email: email() })).url; }
     catch (err) { $('planErr').textContent = err.message; e.target.disabled = false; }
   });
 
@@ -161,7 +168,7 @@
     if (!$('date').value || !$('time').value) { $('eventErr').textContent = 'Pick a date and start time.'; return; }
     var startsAt = new Date($('date').value + 'T' + $('time').value).getTime();
     $('eventBtn').disabled = true;
-    try { location.href = (await post('/api/billing/checkout', { product: 'event', startsAt: startsAt, hours: +$('hours').value, email: email() })).url; }
+    try { location.href = (await post('/api/billing/checkout', { product: 'event', startsAt: startsAt, hours: +$('hours').value, quantity: +$('eventQty').value || 1, email: email() })).url; }
     catch (err) { $('eventErr').textContent = err.message; $('eventBtn').disabled = false; }
   };
 })();

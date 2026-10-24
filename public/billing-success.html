@@ -36,23 +36,26 @@
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
   function render(j) {
+    var codes = j.codes && j.codes.length ? j.codes : [j.code];
+    var many = codes.length > 1;
     var what = j.product === 'sub'
       ? 'Your code for ' + j.label + ' ($' + (j.cents / 100).toFixed(2) + '/month):'
       : j.product === 'mobile'
-      ? 'Your ' + j.days + '-day Peakabu Mobile code:'
-      : 'Your event pass (' + j.hours + 'h from ' + new Date(j.startsAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) + '):';
+      ? (many ? 'Your ' + codes.length + ' Peakabu Mobile codes (' + j.days + ' days each):' : 'Your ' + j.days + '-day Peakabu Mobile code:')
+      : (many ? 'Your ' + codes.length + ' event passes' : 'Your event pass') + ' (' + j.hours + 'h from ' + new Date(j.startsAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) + '):';
     var auth = signedIn();
-    box.innerHTML = '<h2>Payment received</h2><p>' + esc(what) + '</p><div class="code">' + esc(j.code) + '</div>' +
-      (auth ? '<button id="addBtn">Add to my account (' + esc(auth.username) + ')</button> <div id="addMsg" class="note" style="margin:8px 0"></div>' : '') +
-      '<button id="cp"' + (auth ? ' style="background:transparent;color:var(--teal);border:1px solid var(--teal)"' : '') + '>Copy code</button>' +
+    box.innerHTML = '<h2>Payment received</h2><p>' + esc(what) + '</p><div class="code">' + codes.map(esc).join('<br>') + '</div>' +
+      (auth ? '<button id="addBtn">' + (many ? 'Use one on my account (' : 'Add to my account (') + esc(auth.username) + ')</button> <div id="addMsg" class="note" style="margin:8px 0"></div>' : '') +
+      '<button id="cp"' + (auth ? ' style="background:transparent;color:var(--teal);border:1px solid var(--teal)"' : '') + '>' + (many ? 'Copy all codes' : 'Copy code') + '</button>' +
+      (many ? '<p>Each code is single use, so you can give them to different people. Whoever redeems a code first gets it. If you were signed in when you bought them, they\u2019re also under <a href="/account#codes" style="color:var(--teal)">My codes</a>.</p>' : '') +
       (j.product === 'sub' ? '<p>Redeeming it links this subscription to your Peakabu account. It renews every month until you cancel, which you can do any time on your <a href="/account" style="color:var(--teal)">account page</a>. You keep the plan until the end of the month you paid for.</p>' : '') +
       '<p>' + (auth ? 'Or sign in on another device' : 'Sign in to your Peakabu account') + ' and redeem it, in the PC client under Redeem, on the <a href="/pricing#redeem" style="color:var(--teal)">pricing page</a>, or on the Mobile host page.' +
       (j.product === 'event' ? ' Then pick the pass when you start a Mobile session to bring your Swing cards to life.' : '') +
       ' <b>Save it now.</b> Unless you email it to yourself, this page is the only copy.</p>' +
-      (emailEnabled ? '<div class="send"><b>Email me this code</b><input type="email" id="em" autocomplete="email" placeholder="you@example.com">' +
+      (emailEnabled ? '<div class="send"><b>' + (many ? 'Email me these codes' : 'Email me this code') + '</b><input type="email" id="em" autocomplete="email" placeholder="you@example.com">' +
         '<button id="emBtn">Send</button> <span id="emMsg" class="note"></span>' +
         '<div class="note">Used once to send this code. Not saved or used for anything else.</div></div>' : '');
-    document.getElementById('cp').onclick = function (e) { navigator.clipboard.writeText(j.code); e.target.textContent = 'Copied'; };
+    document.getElementById('cp').onclick = function (e) { navigator.clipboard.writeText(codes.join('\n')); e.target.textContent = 'Copied'; };
     // Signed in on this browser already: redeem in one tap, no email needed.
     var add = document.getElementById('addBtn');
     if (add) add.onclick = async function () {
@@ -60,9 +63,9 @@
       add.disabled = true; msg.textContent = 'Adding…';
       var r = await fetch('/auth/redeem', { method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + auth.token },
-        body: JSON.stringify({ code: j.code }) });
+        body: JSON.stringify({ code: codes[0] }) });
       var k = await r.json().catch(function () { return {}; });
-      if (r.ok) { msg.textContent = k.message || 'Added to your account.'; add.textContent = 'Added'; return; }
+      if (r.ok) { msg.textContent = (k.message || 'Added to your account.') + (many ? ' (Used ' + codes[0] + '; the rest are yours to give.)' : ''); add.textContent = 'Added'; return; }
       msg.textContent = r.status === 401 ? 'Your sign-in expired. Sign in again on the account page, or copy the code.' : (k.error || 'Couldn’t add it. Copy the code instead.');
       add.disabled = false;
     };

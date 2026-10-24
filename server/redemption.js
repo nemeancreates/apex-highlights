@@ -110,6 +110,11 @@ function redeemCode(rawCode, username) {
 
 // Billing looks codes up by the Stripe checkout that paid for them, so a
 // retried webhook or a refreshed success page never mints a second code.
+// Every code a multi-quantity checkout issued, in the order they were made.
+function findCodesByNote(note) {
+  return Array.from(codes.values()).filter(c => c.note === note).map(c => c.code);
+}
+
 function findCodeByNote(note) {
   for (const c of codes.values()) if (c.note === note) return c.code;
   return null;
@@ -155,4 +160,4 @@ function forgetUser(username, replacement) {
   if (changed) saveCodesToDisk();
 }
 
-module.exports = { loadCodesFromDisk, generateRedemptionCodes, redeemCode, peekCode, findCodeByNote, codesBoughtBy, trackBandwidth, isProduct, forgetUser, PRODUCTS };
+module.exports = { loadCodesFromDisk, generateRedemptionCodes, redeemCode, peekCode, findCodeByNote, findCodesByNote, codesBoughtBy, trackBandwidth, isProduct, forgetUser, PRODUCTS };

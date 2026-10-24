@@ -29,7 +29,7 @@ const db = require('../db');
 const { log } = require('../logger');
 const { safeError } = require('../utils');
 const { createRateLimiter } = require('../ratelimit');
-const { generateRedemptionCodes, findCodeByNote } = require('../redemption');
+const { generateRedemptionCodes, findCodeByNote, findCodesByNote } = require('../redemption');
 const { EVENT_MAX_HOURS } = require('../mobile');
 const { TESTING } = require('../config');
 const entitlements = require('../entitlements');
@@ -40,6 +40,11 @@ const PLANS = {
 };
 const EVENT_CENTS = 300;
 const MAX_EMAILS_PER_PURCHASE = 3;
+// One-time codes can be bought in bulk (gifts, a team, an event crew):
+// one checkout, one payment, this many separate single-use codes.
+// Subscriptions are always one per checkout: each one links to one account.
+const MAX_QUANTITY = 20;
+const qtyOf = (v) => Math.max(1, Math.min(MAX_QUANTITY, parseInt(v, 10) || 1));
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
@@ -137,7 +142,9 @@ function cleanEmail(e) {
   return EMAIL_RE.test(s) && s.length <= 254 ? s : null; // null = invalid
 }
 
-// One code per paid checkout. Returns { code, product, days?, startsAt?, hours? } or null.
+// Codes for a paid checkout (one per unit bought), made once: a retried
+// webhook or a refreshed success page finds the same ones by note.
+// Returns { code, codes, quantity, product, days?, startsAt?, hours? } or null.
 function fulfil(session) {
   if (!session || session.payment_status !== 'paid') return null;
   const md = session.metadata || {};
@@ -161,33 +168,39 @@ function fulfil(session) {
       [code] = generateRedemptionCodes({ tier: 'sub', note, maxUses: 1, quantity: 1, meta: { subId }, buyer });
       log('info', 'billing_code_issued', { checkout: session.id, product: 'sub', plan: md.plan });
     }
-    return { code, product: 'sub', plan: md.plan, label: p.label, cents: p.cents };
+    return { code, codes: [code], quantity: 1, product: 'sub', plan: md.plan, label: p.label, cents: p.cents };
   }
   if (md.product === 'mobile') {
     const plan = PLANS[md.plan];
     if (!plan) return null;
-    if (!code) {
-      [code] = generateRedemptionCodes({ tier: 'mobile', note, maxUses: 1, quantity: 1, durationDays: plan.days, buyer });
-      log('info', 'billing_code_issued', { checkout: session.id, product: 'mobile', days: plan.days });
+    const quantity = qtyOf(md.quantity);
+    let codes = findCodesByNote(note);
+    if (!codes.length) {
+      codes = generateRedemptionCodes({ tier: 'mobile', note, maxUses: 1, quantity, durationDays: plan.days, buyer });
+      log('info', 'billing_code_issued', { checkout: session.id, product: 'mobile', days: plan.days, quantity });
     }
-    return { code, product: 'mobile', days: plan.days };
+    return { code: codes[0], codes, quantity: codes.length, product: 'mobile', days: plan.days };
   }
   if (md.product === 'event') {
     const startsAt = Number(md.startsAt), hours = Number(md.hours);
     if (!Number.isFinite(startsAt) || !Number.isFinite(hours)) return null;
-    if (!code) {
-      [code] = generateRedemptionCodes({ tier: 'event', note, maxUses: 1, quantity: 1, meta: { startsAt, hours }, buyer });
-      log('info', 'billing_code_issued', { checkout: session.id, product: 'event', startsAt, hours });
+    const quantity = qtyOf(md.quantity);
+    let codes = findCodesByNote(note);
+    if (!codes.length) {
+      codes = generateRedemptionCodes({ tier: 'event', note, maxUses: 1, quantity, meta: { startsAt, hours }, buyer });
+      log('info', 'billing_code_issued', { checkout: session.id, product: 'event', startsAt, hours, quantity });
     }
-    return { code, product: 'event', startsAt, hours };
+    return { code: codes[0], codes, quantity: codes.length, product: 'event', startsAt, hours };
   }
   return null;
 }
 
 function messageFor(out) {
-  const tail = '\n\nRedeem it while signed in to Peakabu: in the PC client under Redeem, or on the Peakabu Mobile host page.\n' +
-    'Codes are single use. Keep this email until you have redeemed it.\n\n' +
-    'We do not keep your email address. It was used only to send this message.';
+  const many = (out.codes || []).length > 1;
+  const list = (out.codes || [out.code]).map(c => '    ' + c).join('\n');
+  const tail = `\n\nRedeem ${many ? 'each one' : 'it'} while signed in to Peakabu: in the PC client under Redeem, on peakabu.app/pricing, or on the Peakabu Mobile host page.\n` +
+    (many ? 'Each code is single use, so you can give them to different people. Whoever redeems a code first gets it.\n' : 'Codes are single use. Keep this email until you have redeemed it.\n') +
+    '\nWe do not keep your email address. It was used only to send this message.';
   if (out.product === 'sub') {
     return { subject: 'Your Peakabu subscription code',
       text: `Your code for ${out.label} ($${(out.cents / 100).toFixed(2)}/month):\n\n    ${out.code}${tail}\n\n` +
@@ -196,11 +209,12 @@ function messageFor(out) {
         'You keep your plan until the end of the month you paid for.' };
   }
   if (out.product === 'mobile') {
-    return { subject: 'Your Peakabu Mobile code', text: `Your Peakabu Mobile code (${out.days} days):\n\n    ${out.code}${tail}` };
+    return { subject: many ? `Your ${out.codes.length} Peakabu Mobile codes` : 'Your Peakabu Mobile code',
+      text: `Your Peakabu Mobile code${many ? 's' : ''} (${out.days} days each):\n\n${list}${tail}` };
   }
   return {
-    subject: 'Your Peakabu event pass',
-    text: `Your Peakabu event pass (${out.hours}h starting ${new Date(out.startsAt).toUTCString()}):\n\n    ${out.code}` +
+    subject: many ? `Your ${out.codes.length} Peakabu event passes` : 'Your Peakabu event pass',
+    text: `Your Peakabu event pass${many ? 'es' : ''} (${out.hours}h starting ${new Date(out.startsAt).toUTCString()}):\n\n${list}` +
       `${tail}\n\nOnce redeemed, pick the pass when you start a Mobile session to bring your Swing cards to life for the event.`
   };
 }
@@ -265,6 +279,7 @@ function initBillingRoutes(app) {
       emailEnabled: !!mailer,
       plans: Object.entries(PLANS).map(([id, p]) => ({ id, cents: p.cents, days: p.days, label: p.label })),
       event: { cents: EVENT_CENTS, maxHours: EVENT_MAX_HOURS },
+      maxQuantity: MAX_QUANTITY,
       subscriptions: Object.entries(entitlements.SUB_PLANS).map(([id, p]) => ({ id, kind: p.kind, cents: p.cents, label: p.label }))
     });
   });
@@ -277,6 +292,7 @@ function initBillingRoutes(app) {
     if (email === null) return safeError(res, 400, 'That email doesn\'t look right. Fix it or leave it blank.');
 
     let item, metadata, recurring = false;
+    const quantity = qtyOf(req.body?.quantity);
     if (product === 'sub') {
       const p = entitlements.SUB_PLANS[plan];
       if (!p) return safeError(res, 400, 'Unknown plan');
@@ -290,7 +306,7 @@ function initBillingRoutes(app) {
       const p = PLANS[plan];
       if (!p) return safeError(res, 400, 'Unknown plan');
       item = { name: p.label, cents: p.cents };
-      metadata = { product: 'mobile', plan };
+      metadata = { product: 'mobile', plan, quantity: String(quantity) };
     } else if (product === 'event') {
       const start = Number(startsAt);
       const h = Number(hours);
@@ -299,7 +315,7 @@ function initBillingRoutes(app) {
       }
       if (!Number.isFinite(h) || h < 0.5 || h > EVENT_MAX_HOURS) return safeError(res, 400, `Events run up to ${EVENT_MAX_HOURS} hours.`);
       item = { name: `Peakabu event pass (${h}h)`, cents: EVENT_CENTS };
-      metadata = { product: 'event', startsAt: String(Math.round(start)), hours: String(h) };
+      metadata = { product: 'event', startsAt: String(Math.round(start)), hours: String(h), quantity: String(quantity) };
     } else {
       return safeError(res, 400, 'Unknown product');
     }
@@ -311,7 +327,8 @@ function initBillingRoutes(app) {
     try {
       const session = await stripe.checkout.sessions.create({
         mode: recurring ? 'subscription' : 'payment',
-        line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: item.cents, product_data: { name: item.name },
+        // Stripe charges price x quantity; fulfil() issues that many codes.
+        line_items: [{ quantity: recurring ? 1 : quantity, price_data: { currency: 'usd', unit_amount: item.cents, product_data: { name: item.name },
           ...(recurring ? { recurring: { interval: 'month' } } : {}) } }],
         metadata,
         // The plan rides on the subscription too, so renewal webhooks know
@@ -401,4 +418,4 @@ async function cancelSubscriptionsFor(usernameLower) {
   buyerStmt.forget.run(usernameLower);
 }
 
-module.exports = { initBillingWebhook, initBillingRoutes, initBillingPortal, cancelSubscriptionsFor, fulfil, PLANS, EVENT_CENTS, _setStripeForTest: (s) => { stripe = s; }, _setMailerForTest: (m) => { mailer = m; } };
+module.exports = { initBillingWebhook, initBillingRoutes, initBillingPortal, cancelSubscriptionsFor, fulfil, _messageForTest: messageFor, PLANS, EVENT_CENTS, _setStripeForTest: (s) => { stripe = s; }, _setMailerForTest: (m) => { mailer = m; } };
