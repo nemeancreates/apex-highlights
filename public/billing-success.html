@@ -40,6 +40,8 @@
     var many = codes.length > 1;
     var what = j.product === 'sub'
       ? 'Your code for ' + j.label + ' ($' + (j.cents / 100).toFixed(2) + '/month):'
+      : j.product === 'pc'
+      ? (many ? 'Your ' + codes.length + ' ' + j.label + ' codes:' : 'Your ' + j.label + ' code:') + ' a one-time payment, it does not renew.'
       : j.product === 'mobile'
       ? (many ? 'Your ' + codes.length + ' Peakabu Mobile codes (' + j.days + ' days each):' : 'Your ' + j.days + '-day Peakabu Mobile code:')
       : (many ? 'Your ' + codes.length + ' event passes' : 'Your event pass') + ' (' + j.hours + 'h from ' + new Date(j.startsAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) + '):';

@@ -78,6 +78,12 @@
   <div class="warn" id="subWarn"></div>
   <div class="err" id="subErr"></div>
 
+  <h2>PC codes <span class="badge once">pay once</span></h2>
+  <p class="muted small">One payment for 30 days of a PC plan. When the 30 days are up it ends, and you are never charged again. Prefer it to continue by itself? Use the monthly subscription above. Codes you buy for the same plan add their days together.</p>
+  <div class="qty"><label for="pcQty">How many codes</label><select id="pcQty"></select><span class="muted small">Each code is a separate one-time purchase, so you can give them to different people.</span></div>
+  <div class="grid" id="pcplans"></div>
+  <div class="err" id="pcErr"></div>
+
   <h2>Mobile codes <span class="badge once">pay once</span></h2>
   <p class="muted small">One payment, no renewal. Each code adds the days shown to your Mobile hosting, then ends. You are never charged again. Want it to continue by itself? Choose the Mobile monthly subscription above instead.</p>
   <div class="qty"><label for="planQty">How many codes</label><select id="planQty"></select><span class="muted small">Each code is a separate one-time purchase, so you can give them to different people.</span></div>
@@ -147,6 +153,12 @@
         '<div class="price">' + money(p.cents) + '</div><div class="muted small">one payment for ' + p.days + ' days · ' + money(perMonth) + ' / month equivalent · does not renew</div>' +
         '<button class="buy" data-plan="' + p.id + '"' + (cfg.enabled ? '' : ' disabled') + '>Pay once ' + money(p.cents) + '</button></div>';
     }).join('');
+    $('pcplans').innerHTML = (cfg.pcPlans || []).map(function (p) {
+      var name = p.label.replace(/^Peakabu /, '').replace(/, 30 days$/, '');
+      return '<div class="card"><div class="sub-kind">PC plan</div><b>' + name + '</b>' +
+        '<div class="price">' + money(p.cents) + '</div><div class="muted small">one payment for ' + p.days + ' days · does not renew</div>' +
+        '<button class="buy" data-pc="' + p.id + '"' + (cfg.enabled ? '' : ' disabled') + '>Pay once ' + money(p.cents) + '</button></div>';
+    }).join('');
     var SUB_NOTES = { t2: 'Auto capture, downloads, small squads', t3: 'AI Reel and Peakabu Mobile included', t4: 'Big lobbies, longest storage, Mobile included', mobile: 'Host Mobile parties any time' };
     window.__subs = cfg.subscriptions || [];
     $('subs').innerHTML = (cfg.subscriptions || []).map(function (p) {
@@ -158,7 +170,7 @@
         '<button class="buy" data-sub="' + p.id + '"' + (cfg.enabled ? '' : ' disabled') + '>Subscribe ' + money(p.cents) + '/month</button></div>';
     }).join('');
     var opts = ''; for (var i = 1; i <= (cfg.maxQuantity || 1); i++) opts += '<option value="' + i + '">' + i + '</option>';
-    $('planQty').innerHTML = opts; $('eventQty').innerHTML = opts;
+    $('planQty').innerHTML = opts; $('pcQty').innerHTML = opts; $('eventQty').innerHTML = opts;
     $('eventPrice').textContent = money(cfg.event.cents);
     $('hours').max = cfg.event.maxHours; $('maxH').textContent = cfg.event.maxHours;
     $('eventBtn').disabled = !cfg.enabled;
@@ -169,6 +181,13 @@
     e.target.disabled = true; $('planErr').textContent = '';
     try { location.href = (await post('/api/billing/checkout', { product: 'mobile', plan: id, quantity: +$('planQty').value || 1, email: email() })).url; }
     catch (err) { $('planErr').textContent = err.message; e.target.disabled = false; }
+  });
+
+  $('pcplans').addEventListener('click', async function (e) {
+    var id = e.target.dataset && e.target.dataset.pc; if (!id) return;
+    e.target.disabled = true; $('pcErr').textContent = '';
+    try { location.href = (await post('/api/billing/checkout', { product: 'pc', plan: id, quantity: +$('pcQty').value || 1, email: email() })).url; }
+    catch (err) { $('pcErr').textContent = err.message; e.target.disabled = false; }
   });
 
   $('subs').addEventListener('click', async function (e) {
