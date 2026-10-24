@@ -1,242 +1,147 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#061009">
 <title>Peakabu Support</title>
-<meta name="description" content="Help with Peakabu and Peakabu Mobile: redeeming access codes, refunds, uploads, reporting content, and deleting your account.">
-<link rel="icon" href="/site/img/badge-see-no-evil.png">
+<meta name="description" content="Help with Peakabu and Peakabu Mobile: redeeming codes, refunds, uploads, reporting content, and deleting your account.">
+<meta property="og:title" content="Peakabu Support">
+<meta property="og:description" content="Help with Peakabu and Peakabu Mobile: redeeming codes, refunds, uploads, reporting content, and deleting your account.">
+<meta property="og:image" content="https://peakabu.app/site/img/badge-open.png">
+<meta name="theme-color" content="#061009">
+<link rel="icon" type="image/png" href="/site/img/badge-see-no-evil.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Work+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&amp;family=Work+Sans:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<link rel="stylesheet" href="/site/site.css">
 <style>
-  /* Tokens copied from peakabu.app/site/site.css */
-  :root {
-    --bg: #061009; --bg-deep: #050d08; --card: #0c1a12; --card-hi: #0f2318;
-    --line: #1e3527; --line-hi: #2f5a3c; --line-strong: #3f6b4a;
-    --text: #c8d6cd; --dim: #a9bfb1; --muted: #9fb5a7; --faint: #6f8c7c;
-    --head: #eaffd0; --white: #e8f5ec; --lime: #c6f36b; --teal: #39d3a0;
-    --amber: #ffd23f; --ink: #0a1f12; --discord: #5865F2;
-    --display: 'Bricolage Grotesque','Segoe UI',system-ui,sans-serif;
-    --body: 'Work Sans','Segoe UI',system-ui,sans-serif;
-    --mono: 'JetBrains Mono',Consolas,ui-monospace,monospace;
-  }
-  * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.55 var(--body); -webkit-font-smoothing: antialiased; }
-  a { color: var(--lime); text-underline-offset: 3px; }
-  a:hover { color: var(--head); }
-
-  .top { border-bottom: 1px solid var(--line); background: rgba(8,21,13,.82); }
-  .top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 14px; padding-bottom: 14px; }
-  .brand { display: flex; align-items: center; gap: 10px; color: var(--head); text-decoration: none; font: 800 20px var(--display); }
-  .brand img { width: 32px; height: 32px; }
-  .back { font: 600 13px var(--mono); color: var(--muted); text-decoration: none; }
-  .back:hover { color: var(--lime); }
-
-  .wrap { max-width: 820px; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
-  main { padding-top: 56px; padding-bottom: 72px; }
-  .eyebrow { font: 600 13px var(--mono); color: var(--lime); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 10px; }
-  h1 { font: 800 clamp(34px, 6vw, 44px)/1.1 var(--display); color: var(--head); margin: 0 0 14px; }
-  h2 { font: 700 24px/1.2 var(--display); color: var(--head); margin: 48px 0 14px; }
-  .lead { color: var(--dim); margin: 0 0 32px; max-width: 620px; }
-
-  .contact { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px 22px; }
-  .card .label { font: 600 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--faint); }
-  .card .value { font: 700 20px var(--display); margin: 6px 0; word-break: break-word; }
-  .card .value a { color: var(--head); text-decoration: none; }
-  .card .value a:hover { color: var(--lime); }
-  .card .note { font-size: 15px; color: var(--muted); margin: 0; }
-  .tip { background: var(--card-hi); border: 1px solid var(--line-hi); border-left: 3px solid var(--lime); border-radius: 12px; padding: 14px 18px; margin: 16px 0 0; font-size: 15px; color: var(--dim); }
-  .tip strong { color: var(--head); }
-
-  details { background: var(--card); border: 1px solid var(--line); border-radius: 14px; margin-bottom: 10px; transition: border-color .15s; }
-  details:hover, details[open] { border-color: var(--line-hi); }
-  summary { cursor: pointer; padding: 16px 20px; font-weight: 600; color: var(--white); list-style: none; display: flex; justify-content: space-between; gap: 16px; }
-  summary::-webkit-details-marker { display: none; }
-  summary::after { content: "+"; font: 600 18px var(--mono); color: var(--lime); line-height: 1.3; }
-  details[open] summary::after { content: "–"; }
-  summary:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; border-radius: 14px; }
-  details > div { padding: 0 20px 16px; color: var(--text); }
-  details p { margin: 0 0 10px; }
-  details ul { padding-left: 20px; margin: 6px 0 10px; }
-  details li { margin-bottom: 4px; }
-  strong { color: var(--white); }
-  code { font: 14px var(--mono); color: var(--lime); }
-
-  table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; font-size: 15px; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
-  th { font: 600 12px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--faint); }
-  td:last-child { color: var(--lime); font-family: var(--mono); }
-
-  footer { border-top: 1px solid var(--line); color: var(--faint); font-size: 14px; }
-  footer .wrap { padding-top: 24px; padding-bottom: 32px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; }
-  footer nav a { color: var(--muted); text-decoration: none; margin-right: 18px; }
-  footer nav a:hover { color: var(--lime); }
+.support-contact .value{font:700 22px var(--display);color:var(--head);text-decoration:none;word-break:break-word}
+.support-contact .value:hover{color:var(--lime)}
+.faq-list{display:flex;flex-direction:column;gap:10px}
+details.faq > div{padding-bottom:6px}
+details.faq ul{margin:0 0 18px;padding-left:20px;color:var(--muted);font-size:15px;display:flex;flex-direction:column;gap:6px}
+details.faq b{color:var(--white)}
+.refund-table{width:100%;border-collapse:collapse;margin:0 0 18px;font-size:15px}
+.refund-table th,.refund-table td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+.refund-table th{font:600 12px var(--mono);text-transform:uppercase;letter-spacing:.06em;color:var(--faint)}
+.refund-table td:last-child{font-family:var(--mono);color:var(--lime)}
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><symbol id="fl-banana" viewBox="0 0 320 120"><path d="M8 62 C 80 4, 220 0, 314 50 C 226 108, 84 118, 8 62 Z" fill="currentColor"/><path d="M8 62 C 120 52, 220 50, 314 50" fill="none" stroke="#04100a" stroke-opacity="0.45" stroke-width="3"/></symbol><symbol id="fl-monstera" viewBox="0 0 220 220"><mask id="fl-mcut"><rect width="220" height="220" fill="#fff"/><path d="M-4 104 L-4 122 L74 150 Z M10 54 L2 70 L80 120 Z M54 4 L40 14 L96 96 Z M224 104 L224 122 L146 150 Z M210 54 L218 70 L140 120 Z M166 4 L180 14 L124 96 Z" fill="#000"/><ellipse cx="74" cy="100" rx="8" ry="13" fill="#000"/><ellipse cx="146" cy="100" rx="8" ry="13" fill="#000"/></mask><path mask="url(#fl-mcut)" d="M110 214 C 30 192, 0 122, 10 78 C 22 26, 76 6, 110 30 C 144 6, 198 26, 210 78 C 220 122, 190 192, 110 214 Z" fill="currentColor"/></symbol><symbol id="fl-small" viewBox="0 0 100 100"><path d="M10 90 C 10 40, 40 10, 92 8 C 90 60, 60 90, 10 90 Z" fill="currentColor"/><path d="M10 90 L 80 20" stroke="#04100a" stroke-opacity="0.35" stroke-width="3"/></symbol><symbol id="fl-palm" viewBox="0 0 320 320"><g fill="none" stroke="currentColor" stroke-linecap="round"><path d="M20 300 C 100 220, 200 120, 300 30" stroke-width="5"/><g stroke-width="12"><path d="M60 262 Q38 230 34 196"/><path d="M60 262 Q92 270 124 262"/><path d="M95 228 Q72 192 70 152"/><path d="M95 228 Q132 236 166 226"/><path d="M130 192 Q108 156 108 116"/><path d="M130 192 Q168 198 202 188"/><path d="M165 156 Q146 122 148 84"/><path d="M165 156 Q200 160 232 150"/><path d="M200 120 Q184 90 188 58"/><path d="M200 120 Q230 122 258 112"/></g></g></symbol></defs></svg>
+<div class="page">
+<header class="site-header"><div class="wrap">
+<a class="brand" href="/" aria-label="Peakabu home"><span class="peek" aria-hidden="true"><span class="peek-in"><img class="peek-a" src="/site/img/badge-see-no-evil.png" alt="" width="40" height="40"><img class="peek-b" src="/site/img/badge-open.png" alt="" width="40" height="40"></span></span><span class="brand-name">Peakabu</span></a>
+<nav class="nav-links" aria-label="Main"><a href="/#how">How it works</a><a href="/browse">Browse sessions</a><a href="/mobile">Mobile</a><a href="/guide">Guide</a><a href="/pricing">Pricing</a></nav>
+<div class="nav-actions"><a class="discord-link" href="https://discord.gg/HRepEcKWpM" target="_blank" rel="noopener">Discord</a><a class="btn btn-glow" href="/account" data-signin>Sign in</a><a class="btn btn-outline" href="/guide" data-download>Download</a></div>
+</div></header>
 
-<header class="top">
-  <div class="wrap">
-    <a class="brand" href="/"><img src="/site/img/badge-see-no-evil.png" alt="">Peakabu</a>
-    <a class="back" href="/">← peakabu.app</a>
-  </div>
-</header>
+<section class="section" style="padding-top:104px;padding-bottom:72px">
+<div class="wrap stack" style="gap:22px;max-width:820px">
+<p class="eyebrow">Support</p>
+<h1 class="h1">How can we help?</h1>
+<p class="lede">Help for Peakabu on PC and Peakabu Mobile. Most answers are below. If yours isn't, reach out and a real person will get back to you.</p>
 
-<main class="wrap">
-  <p class="eyebrow">Support</p>
-  <h1>How can we help?</h1>
-  <p class="lead">Help for Peakabu on PC and Peakabu Mobile. Most answers are below. If yours isn't, reach out and a real person will get back to you.</p>
+<div class="grid support-contact" style="--min:240px">
+<div class="card"><p class="eyebrow lime">Email · fastest</p><a class="value" href="mailto:report@peakabu.app">report@peakabu.app</a><p>We reply within 2 business days.</p></div>
+<div class="card"><p class="eyebrow lime">Phone</p><a class="value" href="tel:+19713193264">(971) 319-3264</a><p>Mon–Fri, 10am–5pm Pacific. Leave a voicemail and we'll call back.</p></div>
+</div>
+<div class="card hi"><p><b style="color:var(--head)">Help us help you faster:</b> include your Peakabu username, whether you're on PC or Mobile, and the session link if your question is about one. We never need your password.</p></div>
 
-  <section class="contact" aria-label="Contact us">
-    <div class="card">
-      <div class="label">Email · fastest</div>
-      <div class="value"><a href="mailto:reports@peakabu.app">reports@peakabu.app</a></div>
-      <p class="note">We reply within 2 business days.</p>
-    </div>
-    <div class="card">
-      <div class="label">Phone</div>
-      <div class="value"><a href="tel:+19713193264">(971) 319-3264</a></div>
-      <p class="note">Mon–Fri, 10am–5pm Pacific. Leave a voicemail and we'll call back.</p>
-    </div>
-  </section>
-  <p class="tip"><strong>Help us help you faster:</strong> include your Peakabu username, whether you're on PC or Mobile, and the session link if your question is about one. We never need your password.</p>
+<h2 class="h3" style="margin-top:28px">Codes &amp; accounts</h2>
+<div class="faq-list">
+<details class="faq"><summary>How do I redeem a code?</summary><div>
+<ul><li><b>PC:</b> open the Peakabu app and use the Redeem section, or redeem on the <a href="/pricing#redeem">pricing page</a> while signed in.</li>
+<li><b>Mobile:</b> sign in to Peakabu Mobile and enter your code where it asks to redeem.</li></ul>
+<p>If a code says it's invalid, check for extra spaces or look-alike characters (O vs 0, I vs 1). Still stuck? Email us the code and your username.</p>
+</div></details>
 
-  <h2>Access codes &amp; accounts</h2>
+<details class="faq"><summary>I bought a code but never got the email</summary><div>
+<p>Check your spam or promotions folder first. Emailing the code is optional at checkout, so if you didn't enter an email, nothing was sent.</p>
+<p>Either way, contact us with the purchase date, the amount, and the last 4 digits of the card you used, and we'll find your code.</p>
+</div></details>
 
-  <details>
-    <summary>How do I redeem an access code?</summary>
-    <div>
-      <ul>
-        <li><strong>PC:</strong> open the Peakabu app, go to the Redeem section, and enter your code.</li>
-        <li><strong>Mobile:</strong> sign in to Peakabu Mobile and enter your code where it asks to redeem.</li>
-      </ul>
-      <p><strong>Mobile codes stack:</strong> redeeming one while you still have Mobile time adds its days on top. <strong>PC plan codes don't stack:</strong> you can't redeem one while a same-or-higher plan is active. Wait until it ends, or redeem a higher-tier code to upgrade.</p>
-      <p>If a code says it's invalid, check for extra spaces or look-alike characters (O vs 0, I vs 1). Still stuck? Email us the code and your username.</p>
-    </div>
-  </details>
+<details class="faq"><summary>I forgot my password</summary><div>
+<p>Peakabu accounts only need a username and password, with no email on file. That means we can only recover an account that has Discord linked.</p>
+<p>If you've linked Discord, contact us and we'll help you back in. If you haven't, we have no way to prove the account is yours. Link Discord on your <a href="/account">account page</a> to protect yourself.</p>
+</div></details>
 
-  <details>
-    <summary>I bought a code but never got the email</summary>
-    <div>
-      <p>Check your spam or promotions folder first. Emailing the code is optional at checkout, so if you didn't enter an email, nothing was sent.</p>
-      <p>Either way, contact us with the purchase date, the amount, and the last 4 digits of the card you used, and we'll find your code.</p>
-    </div>
-  </details>
+<details class="faq"><summary>Do PC and Mobile use the same account?</summary><div>
+<p>Yes. Sign in to Peakabu Mobile with the same username and password you use on PC. Squad and Pro plans include Peakabu Mobile hosting for as long as the plan runs.</p>
+</div></details>
 
-  <details>
-    <summary>I forgot my password</summary>
-    <div>
-      <p>Peakabu accounts only need a username and password, with no email on file. That means we can only recover an account that has a Discord account linked.</p>
-      <p>If you've linked Discord, contact us and we'll help you back in. If you haven't, we have no way to prove the account is yours, so we may not be able to recover it. Link Discord in your account settings to protect yourself.</p>
-    </div>
-  </details>
+<details class="faq"><summary>Can I use Peakabu Mobile for free?</summary><div>
+<p>Yes. Free accounts can host one session of up to 10 minutes per day. Guests who join by QR code are always free. Paid access removes the time limit.</p>
+</div></details>
+</div>
 
-  <details>
-    <summary>Do PC and Mobile use the same account?</summary>
-    <div>
-      <p>Yes. Sign in to Peakabu Mobile with the same username and password you use on PC. Squad and Pro plans include Peakabu Mobile hosting for as long as the plan runs.</p>
-    </div>
-  </details>
+<h2 class="h3" style="margin-top:28px">Billing &amp; refunds</h2>
+<div class="faq-list">
+<details class="faq" id="refunds"><summary>Can I get a refund?</summary><div>
+<p>Yes, on your first purchase, if you've barely used it. You can get a <b>full refund within 14 days</b> of buying, as long as you haven't gone past the usage limit for your plan:</p>
+<table class="refund-table">
+<thead><tr><th>Plan</th><th>Refundable until you've created</th></tr></thead>
+<tbody>
+<tr><td>Creator</td><td>2 sessions</td></tr>
+<tr><td>Squad</td><td>4 sessions</td></tr>
+<tr><td>Pro</td><td>11 sessions</td></tr>
+<tr><td>Mobile host (1 or 3 months)</td><td>3 hosted sessions</td></tr>
+</tbody>
+</table>
+<p>Whichever comes first, the 14 days or the usage limit, ends the refund window. Haven't used it at all? You qualify. Renewals are not refundable. We always honor any refund rights your local consumer law gives you.</p>
+<p>To request one, email <a href="mailto:report@peakabu.app?subject=Refund%20request">report@peakabu.app</a> with your username, the purchase date, the amount, and the last 4 card digits. Full details are in <a href="/terms#section-5">Terms, section 5.5</a>.</p>
+</div></details>
 
-  <details>
-    <summary>Can I use Peakabu Mobile for free?</summary>
-    <div>
-      <p>Yes. Free accounts can host one session of up to 10 minutes per day. Guests who join a session by QR code are always free. Paid access removes the time limit.</p>
-    </div>
-  </details>
+<details class="faq" id="event-pass-refunds"><summary>Can I cancel an event pass?</summary><div>
+<p>Yes. Cancel any time <b>before your event window starts</b> for a full refund, even if you picked the wrong date. Email us with your username and the event date.</p>
+<p>Once the window starts, the pass can't be refunded. If Peakabu didn't work during your event, tell us and we'll make it right.</p>
+</div></details>
 
-  <h2>Billing &amp; refunds</h2>
+<details class="faq"><summary>Will I be charged again automatically?</summary><div>
+<p>No. Every purchase is a one-time payment for a code with a fixed amount of time. Nothing renews and there's nothing to cancel. When your time runs out, buy another code if you want to keep going.</p>
+</div></details>
 
-  <details id="refunds">
-    <summary>Can I get a refund?</summary>
-    <div>
-      <p>Yes, on your first purchase, if you've barely used it. You can get a <strong>full refund within 14 days</strong> of buying an access code or starting a subscription, as long as you haven't created more than 10% of your plan's monthly session allowance in that time (always at least 1 session).</p>
-      <table>
-        <thead><tr><th>Plan</th><th>Sessions you can create and still get a refund</th></tr></thead>
-        <tbody>
-          <tr><td>Creator</td><td>2</td></tr>
-          <tr><td>Squad</td><td>4</td></tr>
-          <tr><td>Pro</td><td>11</td></tr>
-        </tbody>
-      </table>
-      <p><strong>Peakabu Mobile host plans</strong> (1 or 3 months) qualify if you've hosted no more than 1 session.</p>
-      <p>Haven't used Peakabu at all since buying? You qualify. Renewals, and codes redeemed after your first 14 days, are not refundable. We always honor any refund rights your local consumer law gives you.</p>
-      <p>To request one, email <a href="mailto:reports@peakabu.app?subject=Refund%20request">reports@peakabu.app</a> with your username, the purchase date, the amount, and the last 4 card digits. Full details are in <a href="/terms#section-5">Terms, section 5.5</a>.</p>
-    </div>
-  </details>
+<details class="faq"><summary>Who handles my payment?</summary><div>
+<p>Stripe. Peakabu never sees or stores your full card number. See our <a href="/privacy">Privacy Policy</a> for exactly what Stripe shares with us.</p>
+</div></details>
+</div>
 
-  <details id="event-pass-refunds">
-    <summary>Can I cancel an event pass?</summary>
-    <div>
-      <p>Yes. Cancel any time <strong>before your event window starts</strong> for a full refund, even if you picked the wrong date. Email us with your username and the event date.</p>
-      <p>Once the window starts, the pass can't be refunded. If Peakabu didn't work during your event, tell us and we'll make it right.</p>
-    </div>
-  </details>
+<h2 class="h3" style="margin-top:28px">Recording &amp; uploads</h2>
+<div class="faq-list">
+<details class="faq"><summary>My upload is slow or failed</summary><div>
+<ul><li>Keep the Peakabu app open until the upload queue finishes.</li>
+<li>On a weak connection, switch to <b>Low Bandwidth (Turtle) mode</b>.</li>
+<li>If one player's view is missing from a session, have that player check that their upload finished.</li></ul>
+<p>If it keeps happening, email us your capture mode (Monitor, Screen Capture, or Low Bandwidth), your Windows version, and the session link.</p>
+</div></details>
 
-  <details>
-    <summary>Will I be charged again automatically?</summary>
-    <div>
-      <p>No. Every purchase is a one-time payment for a code with a fixed amount of time. Nothing renews and there's nothing to cancel. When your time runs out, buy another code if you want to keep going.</p>
-    </div>
-  </details>
+<details class="faq"><summary>How long are my clips kept?</summary><div>
+<p>It depends on your plan: 24 hours on Free, 30 days on Creator and Squad, 60 days on Pro. Peakabu Mobile sessions are kept for 60 days. After that they're permanently deleted and can't be recovered, so download anything you want to keep.</p>
+</div></details>
+</div>
 
-  <details>
-    <summary>Who handles my payment?</summary>
-    <div>
-      <p>Stripe. Peakabu never sees or stores your full card number. See our <a href="/privacy">Privacy Policy</a> for exactly what Stripe shares with us.</p>
-    </div>
-  </details>
+<h2 class="h3" style="margin-top:28px">Safety, privacy &amp; your data</h2>
+<div class="faq-list">
+<details class="faq"><summary>Report a session, clip, or user</summary><div>
+<p>Use the <b>Report</b> button on any session or clip, or email <a href="mailto:report@peakabu.app">report@peakabu.app</a> with the link and a short description.</p>
+<p>If you appear in someone else's recording and want it taken down, email us the link. For copyright claims, see <a href="/terms#section-24">Terms, section 24</a>.</p>
+</div></details>
 
-  <h2>Recording &amp; uploads</h2>
+<details class="faq" id="delete-account"><summary>Delete your account and data</summary><div>
+<p>Delete it yourself from your <a href="/account#delete">account page</a>: scroll to Delete account, enter your password, and confirm. It covers PC, Mobile, and the website, and you have 7 days to change your mind by signing back in.</p>
+<p>Can't sign in? Email <a href="mailto:report@peakabu.app?subject=Account%20deletion%20request">report@peakabu.app</a> with your username. See <a href="/delete-account">what gets deleted and what stays</a>.</p>
+</div></details>
+</div>
 
-  <details>
-    <summary>My upload is slow or failed</summary>
-    <div>
-      <ul>
-        <li>Keep the Peakabu app open until the upload queue finishes.</li>
-        <li>On a weak connection, switch to <strong>Low Bandwidth (Turtle) mode</strong>.</li>
-        <li>If one player's view is missing from a session, have that player check that their upload finished.</li>
-      </ul>
-      <p>If it keeps happening, email us your capture mode (Monitor, Screen Capture, or Low Bandwidth), your Windows version, and the session link.</p>
-    </div>
-  </details>
+</div>
+</section>
 
-  <details>
-    <summary>How long are my clips kept?</summary>
-    <div>
-      <p>It depends on your plan: 24 hours on Free, 30 days on Creator and Squad, 60 days on Pro. Peakabu Mobile sessions are kept for 60 days. After that they're permanently deleted and can't be recovered, so download anything you want to keep.</p>
-    </div>
-  </details>
-
-  <h2>Safety, privacy &amp; your data</h2>
-
-  <details>
-    <summary>Report a session, clip, or user</summary>
-    <div>
-      <p>Use the <strong>Report</strong> button on any session or clip, or email <a href="mailto:reports@peakabu.app">reports@peakabu.app</a> with the link and a short description.</p>
-      <p>If you appear in someone else's recording and want it taken down, email us the link. For copyright claims, see <a href="/terms#section-24">Terms, section 24</a>.</p>
-    </div>
-  </details>
-
-  <details id="delete-account">
-    <summary>Delete your account and data</summary>
-    <div>
-      <p>You can delete your account yourself from your <a href="/account">account page</a>: scroll to Delete account, enter your password, and confirm. It removes your account on PC, Mobile, and the website. You have 7 days to change your mind by signing back in.</p>
-      <p>Can't sign in? Email <a href="mailto:reports@peakabu.app?subject=Account%20deletion%20request">reports@peakabu.app</a> with your username. See <a href="/delete-account">what gets deleted and what stays</a>.</p>
-    </div>
-  </details>
-</main>
-
-<footer>
-  <div class="wrap">
-    <span>Peakabu, LLC · Portland, Oregon</span>
-    <nav><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="https://discord.gg/HRepEcKWpM">Discord</a></nav>
-  </div>
-</footer>
-
+<footer class="site-footer"><div class="wrap">
+<span class="brand-name" style="font-size:20px;color:var(--text)">Peakabu</span><span>We see the play, not you.<span class="fn-mark" aria-hidden="true">*</span> · Patent pending · Peak-Abu LLC</span>
+<nav aria-label="Footer"><a class="discord-link" href="https://discord.gg/HRepEcKWpM" target="_blank" rel="noopener">Discord</a><a href="/guide">Guide</a><a href="/pricing">Pricing</a><a href="/account">Account</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a></nav>
+<p class="fn">*Peakabu never requires your real name, email address, or birth date. An account needs only a username and password. Purchases are handled by Stripe, which collects its own billing details. See our <a href="/privacy#not-collect">Privacy Policy</a> and <a href="/terms#section-4">Terms, section 4</a>.</p>
+</div></footer>
+</div>
+<script src="/site/site.js"></script>
 </body>
 </html>
