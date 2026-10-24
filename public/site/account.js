@@ -131,8 +131,42 @@
       else if (m.source === 'pass') { $('mobName').textContent = 'Host pass'; $('mobLine').textContent = 'Active until ' + day(m.passExpiresAt) + '.'; }
       else { $('mobName').textContent = 'Free'; $('mobLine').textContent = 'Host up to ' + Math.round((m.freeDailySec || 600) / 60) + ' minutes a day.'; }
       if (m.events && m.events.length) $('mobLine').textContent += ' ' + m.events.length + ' event pass' + (m.events.length === 1 ? '' : 'es') + ' ready.';
+      showSubscriptions(a);
       $('discName').textContent = a.discordLinked ? (a.discordUsername || 'Linked') : 'Not linked';
       $('linkDiscord').hidden = !!a.discordLinked;
+    });
+  }
+
+  // Monthly subscriptions: what renews when, a Manage button (Stripe's
+  // portal: cancel, change card, receipts), and any time saved for later.
+  function showSubscriptions(a) {
+    var subs = a.subscriptions || [], banked = a.banked || [];
+    [['pc', 'planLine'], ['mobile', 'mobLine']].forEach(function (pair) {
+      var kind = pair[0], line = $(pair[1]);
+      var row = line.parentNode.querySelector('.row');
+      var old = row.querySelector('[data-manage]'); if (old) old.remove();
+      var sub = subs.filter(function (x) { return x.kind === kind; })[0];
+      if (sub) {
+        if (kind === 'mobile') $('mobName').textContent = 'Monthly';
+        line.textContent = (sub.endsAt ? 'Subscription cancelled. Ends ' + day(sub.endsAt) + '.'
+          : 'Monthly subscription' + (sub.cents ? ' ($' + (sub.cents / 100).toFixed(2) + ')' : '') + ', renews ' + day(sub.renewsAt) + '.') +
+          (sub.status === 'past_due' ? ' Your last payment didn\u2019t go through; update your card to keep it.' : '') +
+          (kind === 'pc' && a.limits ? ' Clips kept ' + a.limits.retentionDays + ' days.' : '');
+        var b = btn('Manage subscription', 'btn-lime', function () {
+          b.disabled = true;
+          api('/api/billing/portal', { method: 'POST', body: JSON.stringify({ subscriptionId: sub.id }) }).then(function (x) {
+            if (x.ok && x.data.url) { location.href = x.data.url; return; }
+            b.disabled = false; say('loadErr', x.data.error || 'Could not open subscription settings.');
+          }).catch(function () { b.disabled = false; });
+        });
+        b.setAttribute('data-manage', '');
+        row.prepend(b);
+      }
+      var saved = banked.filter(function (x) { return x.kind === kind; });
+      if (saved.length) {
+        line.textContent += ' Saved for later: ' + saved.map(function (x) { return x.days + ' days of ' + x.label; }).join(', ') +
+          ', starting when your subscription ends.';
+      }
     });
   }
 

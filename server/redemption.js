@@ -13,7 +13,9 @@ const codes = new Map(); // code -> { code, tier, note, maxUses, useCount, usedB
 // Non-tier products a code can carry instead of a PC tier (Peakabu Mobile).
 //   mobile: durationDays of Mobile on the redeeming account (stacks)
 //   event:  one $3 event pass, meta = { startsAt, hours }
-const PRODUCTS = ['mobile', 'event'];
+// 'sub' = a code issued for a Stripe subscription; redeeming it links that
+// subscription to the account (entitlements.js). meta.subId says which.
+const PRODUCTS = ['mobile', 'event', 'sub'];
 const isProduct = (t) => PRODUCTS.includes(t);
 
 function loadCodesFromDisk() {

@@ -29,21 +29,43 @@
   var emailEnabled = false, tries = 0;
   var cfg = fetch('/api/billing/config').then(function (r) { return r.json(); }).then(function (c) { emailEnabled = !!c.emailEnabled; }).catch(function () {});
 
+  // Same sign-in the rest of peakabu.app uses (site.js, key pa_browser_auth).
+  function signedIn() {
+    try { var a = JSON.parse(localStorage.getItem('pa_browser_auth') || 'null'); return a && a.token && a.username ? a : null; } catch (e) { return null; }
+  }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
   function render(j) {
-    var what = j.product === 'mobile'
+    var what = j.product === 'sub'
+      ? 'Your code for ' + j.label + ' ($' + (j.cents / 100).toFixed(2) + '/month):'
+      : j.product === 'mobile'
       ? 'Your ' + j.days + '-day Peakabu Mobile code:'
       : 'Your event pass (' + j.hours + 'h from ' + new Date(j.startsAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) + '):';
+    var auth = signedIn();
     box.innerHTML = '<h2>Payment received</h2><p>' + esc(what) + '</p><div class="code">' + esc(j.code) + '</div>' +
-      '<button id="cp">Copy code</button>' +
-      '<p>Sign in to your Peakabu account and redeem it, in the PC client under Redeem or on the Mobile host page.' +
+      (auth ? '<button id="addBtn">Add to my account (' + esc(auth.username) + ')</button> <div id="addMsg" class="note" style="margin:8px 0"></div>' : '') +
+      '<button id="cp"' + (auth ? ' style="background:transparent;color:var(--teal);border:1px solid var(--teal)"' : '') + '>Copy code</button>' +
+      (j.product === 'sub' ? '<p>Redeeming it links this subscription to your Peakabu account. It renews every month until you cancel, which you can do any time on your <a href="/account" style="color:var(--teal)">account page</a>. You keep the plan until the end of the month you paid for.</p>' : '') +
+      '<p>' + (auth ? 'Or sign in on another device' : 'Sign in to your Peakabu account') + ' and redeem it, in the PC client under Redeem, on the <a href="/pricing#redeem" style="color:var(--teal)">pricing page</a>, or on the Mobile host page.' +
       (j.product === 'event' ? ' Then pick the pass when you start a Mobile session to bring your Swing cards to life.' : '') +
       ' <b>Save it now.</b> Unless you email it to yourself, this page is the only copy.</p>' +
       (emailEnabled ? '<div class="send"><b>Email me this code</b><input type="email" id="em" autocomplete="email" placeholder="you@example.com">' +
         '<button id="emBtn">Send</button> <span id="emMsg" class="note"></span>' +
         '<div class="note">Used once to send this code. Not saved or used for anything else.</div></div>' : '');
     document.getElementById('cp').onclick = function (e) { navigator.clipboard.writeText(j.code); e.target.textContent = 'Copied'; };
+    // Signed in on this browser already: redeem in one tap, no email needed.
+    var add = document.getElementById('addBtn');
+    if (add) add.onclick = async function () {
+      var msg = document.getElementById('addMsg');
+      add.disabled = true; msg.textContent = 'Adding…';
+      var r = await fetch('/auth/redeem', { method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + auth.token },
+        body: JSON.stringify({ code: j.code }) });
+      var k = await r.json().catch(function () { return {}; });
+      if (r.ok) { msg.textContent = k.message || 'Added to your account.'; add.textContent = 'Added'; return; }
+      msg.textContent = r.status === 401 ? 'Your sign-in expired. Sign in again on the account page, or copy the code.' : (k.error || 'Couldn’t add it. Copy the code instead.');
+      add.disabled = false;
+    };
     var b = document.getElementById('emBtn');
     if (b) b.onclick = async function () {
       var msg = document.getElementById('emMsg');

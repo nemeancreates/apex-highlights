@@ -32,6 +32,7 @@ const { users, sessions, getSessionsByUser } = require('../stores');
 const { requireAuth, getEffectiveTier, getTierExpiresAt } = require('../auth');
 const loginSlots = require('../login-slots');
 const mobile = require('../mobile');
+const entitlements = require('../entitlements');
 const spots = require('../spots');
 const { hostState } = require('./public');
 
@@ -83,7 +84,9 @@ function initAccountRoutes(app) {
         hasAiReel: !!t.hasAiReel
       },
       usage: { sessionsThisMonth: sameMonth ? (user.sessionsThisMonth || 0) : 0 },
-      mobile: mobile.getMobileStatus(user, tier, getTierExpiresAt(user))
+      mobile: mobile.getMobileStatus(user, tier, getTierExpiresAt(user)),
+      // Monthly subscriptions and any time saved to start after them.
+      ...entitlements.subscriptionsFor(user.username.toLowerCase())
     });
   });
 

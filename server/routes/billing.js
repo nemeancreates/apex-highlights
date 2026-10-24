@@ -8,6 +8,13 @@
 //   mobile3  $12 -> 90 days of Mobile
 //   event    $3  -> one event pass: a date + window of up to 16h
 //
+// Monthly subscriptions (auto-renew until cancelled), entitlements.js SUB_PLANS:
+//   Creator $10, Squad $20, Pro $40, Mobile host $5
+// Checkout issues one code; redeeming it links the subscription to the
+// account, and each paid renewal extends the plan with no new code. The
+// buyer cancels in Stripe's customer portal (POST /api/billing/portal,
+// from the account page).
+//
 // Email is optional. If the buyer types one in (before checkout, or on the
 // success page) we send the code there once and never store the address.
 // Stripe's own checkout page always asks for an email for its receipt;
@@ -25,6 +32,7 @@ const { createRateLimiter } = require('../ratelimit');
 const { generateRedemptionCodes, findCodeByNote } = require('../redemption');
 const { EVENT_MAX_HOURS } = require('../mobile');
 const { TESTING } = require('../config');
+const entitlements = require('../entitlements');
 
 const PLANS = {
   mobile1: { cents: 500,  days: 30, label: 'Peakabu Mobile, 1 month' },
@@ -119,6 +127,25 @@ function fulfil(session) {
   const md = session.metadata || {};
   const note = 'stripe:' + session.id;
   let code = findCodeByNote(note);
+  if (md.product === 'sub') {
+    const p = entitlements.SUB_PLANS[md.plan];
+    const sub = session.subscription;
+    const subId = sub && (typeof sub === 'string' ? sub : sub.id);
+    if (!p || !subId) return null;
+    entitlements.recordCheckout({
+      subId, plan: md.plan, checkoutId: session.id,
+      customerId: typeof session.customer === 'string' ? session.customer : (session.customer && session.customer.id),
+      status: (typeof sub === 'object' && sub.status) || 'active',
+      // Exact end when Stripe gave us the subscription; otherwise a safe
+      // placeholder that the invoice.paid webhook replaces.
+      periodEnd: (typeof sub === 'object' && entitlements.periodEndOf(sub)) || Date.now() + 28 * 86400000
+    });
+    if (!code) {
+      [code] = generateRedemptionCodes({ tier: 'sub', note, maxUses: 1, quantity: 1, meta: { subId } });
+      log('info', 'billing_code_issued', { checkout: session.id, product: 'sub', plan: md.plan });
+    }
+    return { code, product: 'sub', plan: md.plan, label: p.label, cents: p.cents };
+  }
   if (md.product === 'mobile') {
     const plan = PLANS[md.plan];
     if (!plan) return null;
@@ -144,6 +171,13 @@ function messageFor(out) {
   const tail = '\n\nRedeem it while signed in to Peakabu: in the PC client under Redeem, or on the Peakabu Mobile host page.\n' +
     'Codes are single use. Keep this email until you have redeemed it.\n\n' +
     'We do not keep your email address. It was used only to send this message.';
+  if (out.product === 'sub') {
+    return { subject: 'Your Peakabu subscription code',
+      text: `Your code for ${out.label} ($${(out.cents / 100).toFixed(2)}/month):\n\n    ${out.code}${tail}\n\n` +
+        'Redeeming it links the subscription to your Peakabu account. It renews every month until you cancel. ' +
+        'To cancel, sign in at https://peakabu.app/account and choose Manage subscription. ' +
+        'You keep your plan until the end of the month you paid for.' };
+  }
   if (out.product === 'mobile') {
     return { subject: 'Your Peakabu Mobile code', text: `Your Peakabu Mobile code (${out.days} days):\n\n    ${out.code}${tail}` };
   }
@@ -191,12 +225,17 @@ function initBillingWebhook(app) {
         stmt.auto.run(session.id);
         sendCode(session.id, out, to).catch(err => log('warn', 'billing_email_failed', { error: err.message }));
       }
+    } else if (/^customer\.subscription\.(created|updated|deleted)$/.test(evt.type)) {
+      entitlements.onStripeSubscription(evt.data.object);
+    } else if (evt.type === 'invoice.paid') {
+      entitlements.onInvoicePaid(evt.data.object);
     }
     res.json({ received: true });
   });
 }
 
 function initBillingRoutes(app) {
+  initBillingPortal(app, require('../auth').requireAuth);
   app.get('/billing', (req, res) => {
     res.set('Cache-Control', 'no-cache');
     res.sendFile(require('path').join(__dirname, '..', '..', 'public', 'billing.html'));
@@ -208,7 +247,8 @@ function initBillingRoutes(app) {
       testing: TESTING.enabled,
       emailEnabled: !!mailer,
       plans: Object.entries(PLANS).map(([id, p]) => ({ id, cents: p.cents, days: p.days, label: p.label })),
-      event: { cents: EVENT_CENTS, maxHours: EVENT_MAX_HOURS }
+      event: { cents: EVENT_CENTS, maxHours: EVENT_MAX_HOURS },
+      subscriptions: Object.entries(entitlements.SUB_PLANS).map(([id, p]) => ({ id, kind: p.kind, cents: p.cents, label: p.label }))
     });
   });
 
@@ -219,8 +259,17 @@ function initBillingRoutes(app) {
     const email = cleanEmail(req.body?.email);
     if (email === null) return safeError(res, 400, 'That email doesn\'t look right. Fix it or leave it blank.');
 
-    let item, metadata;
-    if (product === 'mobile') {
+    let item, metadata, recurring = false;
+    if (product === 'sub') {
+      const p = entitlements.SUB_PLANS[plan];
+      if (!p) return safeError(res, 400, 'Unknown plan');
+      // Auto-renewal needs the buyer's clear yes, given on our page before
+      // Stripe's (the box on /billing says the price, monthly, and how to cancel).
+      if (req.body?.agreeRenewal !== true) return safeError(res, 400, 'Tick the box to agree that this renews every month until you cancel.');
+      item = { name: p.label, cents: p.cents };
+      metadata = { product: 'sub', plan };
+      recurring = true;
+    } else if (product === 'mobile') {
       const p = PLANS[plan];
       if (!p) return safeError(res, 400, 'Unknown plan');
       item = { name: p.label, cents: p.cents };
@@ -241,9 +290,13 @@ function initBillingRoutes(app) {
 
     try {
       const session = await stripe.checkout.sessions.create({
-        mode: 'payment',
-        line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: item.cents, product_data: { name: item.name } } }],
+        mode: recurring ? 'subscription' : 'payment',
+        line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: item.cents, product_data: { name: item.name },
+          ...(recurring ? { recurring: { interval: 'month' } } : {}) } }],
         metadata,
+        // The plan rides on the subscription too, so renewal webhooks know
+        // what it is even if they arrive before checkout.session.completed.
+        ...(recurring ? { subscription_data: { metadata: { plan } } } : {}),
         ...(email ? { customer_email: email } : {}),
         success_url: `${BILLING_BASE_URL}/billing-success.html?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${BILLING_BASE_URL}/billing`
@@ -262,7 +315,7 @@ function initBillingRoutes(app) {
     const id = String(req.params.id || '');
     if (!/^cs_[A-Za-z0-9_]{10,200}$/.test(id)) return safeError(res, 400, 'Bad session');
     try {
-      const session = await stripe.checkout.sessions.retrieve(id);
+      const session = await stripe.checkout.sessions.retrieve(id, { expand: ['subscription'] });
       const out = fulfil(session);
       if (!out) return res.json({ status: 'pending' });
       res.json({ status: 'ready', ...out });
@@ -279,7 +332,7 @@ function initBillingRoutes(app) {
     const to = cleanEmail(req.body?.email);
     if (!to) return safeError(res, 400, 'Check the email address.');
     let session;
-    try { session = await stripe.checkout.sessions.retrieve(id); } catch (e) { return safeError(res, 404, 'Not found'); }
+    try { session = await stripe.checkout.sessions.retrieve(id, { expand: ['subscription'] }); } catch (e) { return safeError(res, 404, 'Not found'); }
     const out = fulfil(session);
     if (!out) return safeError(res, 409, 'Payment not confirmed yet.');
     try {
@@ -293,4 +346,34 @@ function initBillingRoutes(app) {
   });
 }
 
-module.exports = { initBillingWebhook, initBillingRoutes, fulfil, PLANS, EVENT_CENTS, _setStripeForTest: (s) => { stripe = s; }, _setMailerForTest: (m) => { mailer = m; } };
+// --- Manage / cancel a subscription: Stripe's customer portal. Turn on
+// "Cancel subscriptions" (at period end) and "Update payment methods" in
+// Stripe Dashboard > Settings > Billing > Customer portal. Leave plan
+// switching off: a new plan is a new subscription and code.
+function initBillingPortal(app, requireAuth) {
+  const portalLimiter = createRateLimiter({ windowMs: 60000, max: 10 });
+  app.post('/api/billing/portal', requireAuth, portalLimiter, async (req, res) => {
+    if (!stripe) return safeError(res, 503, 'Payments aren\'t set up yet.');
+    const customer = entitlements.customerFor(req.user.username.toLowerCase(), String(req.body?.subscriptionId || ''));
+    if (!customer) return safeError(res, 404, 'That subscription isn\'t on this account.');
+    try {
+      const portal = await stripe.billingPortal.sessions.create({ customer, return_url: `${BILLING_BASE_URL}/account` });
+      res.json({ url: portal.url });
+    } catch (err) {
+      log('error', 'billing_portal_failed', { error: err.message });
+      safeError(res, 502, 'Couldn\'t open subscription settings. Try again, or email report@peakabu.app.');
+    }
+  });
+}
+
+// Account deletion: stop charging right away, then forget the link.
+async function cancelSubscriptionsFor(usernameLower) {
+  for (const id of entitlements.liveSubIdsFor(usernameLower)) {
+    if (!stripe) throw new Error('stripe not configured; cannot cancel ' + id);
+    await stripe.subscriptions.cancel(id);
+    log('info', 'subscription_cancelled_for_deletion', { username: usernameLower, subId: id });
+  }
+  entitlements.forgetUser(usernameLower);
+}
+
+module.exports = { initBillingWebhook, initBillingRoutes, initBillingPortal, cancelSubscriptionsFor, fulfil, PLANS, EVENT_CENTS, _setStripeForTest: (s) => { stripe = s; }, _setMailerForTest: (m) => { mailer = m; } };
