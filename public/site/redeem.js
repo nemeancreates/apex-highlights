@@ -11,6 +11,7 @@
   // "Squad (30 days)", "Founder (lifetime)", "a Peakabu Mobile event pass (6 hours)"
   function planText(d) {
     if (d.kind === 'event') return 'a ' + d.label + (d.hours ? ' (' + d.hours + ' hours)' : '');
+    if (d.kind === 'subscription') return 'the ' + d.label;
     return d.label + ' (' + (d.durationDays ? d.durationDays + ' days' : 'lifetime') + ')';
   }
 
@@ -73,6 +74,8 @@
           var plan = document.createElement('strong');
           plan.textContent = planText(r.data);
           q.replaceChildren('Are you sure you want to use ', plan, ' for ', who, '?');
+          // What it will do, e.g. "Added 30 days" or "Saved for later..."
+          if (r.data.outcome) { var o = document.createElement('span'); o.className = 'small'; o.style.display = 'block'; o.style.marginTop = '6px'; o.textContent = r.data.outcome; q.append(o); }
           box.hidden = false;
           refresh();
           yes.focus();

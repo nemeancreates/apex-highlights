@@ -175,6 +175,11 @@ function tiersWithCapability(flag) {
 // "stacking" on top of an equal-or-higher active subscription (see
 // auth.js /auth/redeem). Lifetime codes bypass this check entirely.
 const TIER_ORDER = ['t1', 't2', 't3', 't4', 't5'];
+// What a month of each paid PC tier costs, in cents. Used to convert
+// leftover days fairly when someone upgrades: 30 unused Creator days
+// ($10/mo) become 15 Squad days ($20/mo). Founder has no monthly price;
+// it's valued like Pro so a (rare) timed Founder code converts sensibly.
+const TIER_MONTHLY_CENTS = { t2: 1000, t3: 2000, t4: 4000, t5: 4000 };
 // --- Admin (redemption code generation only — never exposed to the client) ---
 const ADMIN_SECRET = process.env.ADMIN_SECRET || null;
 
@@ -282,6 +287,7 @@ module.exports = {
   TIERS,
   tiersWithCapability,
   TIER_ORDER,
+  TIER_MONTHLY_CENTS,
   TESTING,
   HOST_RECORDING_INACTIVITY_MS,
   HOST_NOT_RECORDING_TIMEOUT_MS,

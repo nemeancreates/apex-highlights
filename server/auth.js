@@ -15,6 +15,7 @@ const { JWT_SECRET, JWT_EXPIRY, BCRYPT_ROUNDS, TIERS, TIER_ORDER, TESTING, ADMIN
 const { users, saveUsersToDisk } = require('./stores');
 const { generateRedemptionCodes, redeemCode, peekCode, isProduct } = require('./redemption');
 const mobile = require('./mobile');
+const entitlements = require('./entitlements');
 const { getFlags, setFlags } = require('./killswitch');
 const { DISCORD_ENABLED, DISCORD_RECOVERY_REDIRECT_URI, PRIVACY_POLICY_VERSION } = require('./config');
 const { buildAuthorizeUrl, exchangeCodeForUser, consumeState, linkDiscordAccount, buildRecoveryUrl, consumeRecoveryState } = require('./discord-oauth');
@@ -521,20 +522,15 @@ function initAuthRoutes(app) {
     return res.json({ success: true });
   });
 
-  // Anti-stacking: a TIMED code can't be redeemed on top of an active
-  // subscription at the same or higher tier — this is what stops one
-  // account from buying five 30-day codes and chaining them into five
-  // months. It CAN be used to upgrade (t2 active -> redeem t3 timed
-  // code is fine) and lifetime codes always bypass this entirely, since
-  // those are hand-issued (friends/family, big backers) not sold in bulk.
-  // Mobile/event codes never touch the PC tier, so they're never blocked.
-  function stackingError(preview, currentTier) {
-    if (isProduct(preview.tier)) return null;
-    if (preview.durationDays && currentTier !== 't1' &&
-        TIER_ORDER.indexOf(preview.tier) <= TIER_ORDER.indexOf(currentTier)) {
-      return `You already have an active ${TIERS[currentTier].label} plan. Timed codes can't stack on an active subscription — wait for it to expire, or redeem a code for a higher tier to upgrade now.`;
-    }
-    return null;
+  // What a code would do to this account (stacking, upgrades, banking,
+  // subscription linking) lives in entitlements.js, so the "are you sure?"
+  // check and the real redeem always agree. Returns { ok, message } or
+  // { ok: false, error }. Event passes always just land on the account.
+  function planFor(user, preview) {
+    if (preview.tier === 'event') return { ok: true, action: 'event' };
+    if (preview.tier === 'mobile') return entitlements.planMobileCode(user, preview.durationDays);
+    if (preview.tier === 'sub') return entitlements.planLink(user, (preview.meta || {}).subId);
+    return entitlements.planPcCode(user, preview.tier, preview.durationDays);
   }
 
   // What a code grants, in words the site can show ("Squad", 30 days).
@@ -545,6 +541,9 @@ function initAuthRoutes(app) {
     }
     if (preview.tier === 'mobile') {
       return { kind: 'mobile', label: 'Peakabu Mobile', durationDays: preview.durationDays || 30 };
+    }
+    if (preview.tier === 'sub') {
+      return { kind: 'subscription', label: 'Monthly subscription', durationDays: null };
     }
     return { kind: 'pc', label: (TIERS[preview.tier] || {}).label || preview.tier, durationDays: preview.durationDays || null };
   }
@@ -571,10 +570,12 @@ function initAuthRoutes(app) {
 
     const user = users.get(usernameLower);
     if (!user) return safeError(res, 404, 'Account not found');
-    const stackErr = stackingError(preview, getBaseTier(user));
-    if (stackErr) return safeError(res, 400, stackErr);
+    const plan = planFor(user, preview);
+    if (!plan.ok) return safeError(res, 400, plan.error);
 
-    return res.json({ username: req.user.username, ...describeCode(preview) });
+    const desc = describeCode(preview);
+    if (preview.tier === 'sub' && plan.label) desc.label = `${plan.label} subscription`;
+    return res.json({ username: req.user.username, ...desc, outcome: plan.message || null });
   });
 
   app.post('/auth/redeem', requireAuth, (req, res) => {
@@ -596,76 +597,57 @@ function initAuthRoutes(app) {
     }
 
     const user = users.get(usernameLower);
-    const currentTier = getBaseTier(user);
+    if (!user) return safeError(res, 404, 'Account not found');
 
-    // Peakabu Mobile codes (bought on peakabu.app/billing). They don't touch
-    // the PC tier, so the anti-stacking rule below doesn't apply: Mobile time
-    // stacks, and an event pass just lands on the account until it's used.
-    // The PC client and the mobile host page both redeem through here.
-    if (isProduct(preview.tier)) {
-      const result = redeemCode(code, req.user.username);
-      if (!result.ok) {
-        recordRedeemFailure(usernameLower);
-        return safeError(res, 400, result.error);
-      }
-      clearRedeemAttempts(usernameLower);
-      const base = { tier: getEffectiveTier(user), tierExpiresAt: getTierExpiresAt(user), product: result.tier };
-      if (result.tier === 'mobile') {
-        const mobileExpiresAt = mobile.grantMobileDays(usernameLower, result.durationDays || 30);
-        log('info', 'mobile_code_redeemed', { username: req.user.username, durationDays: result.durationDays });
-        return res.json({ ...base, mobileExpiresAt, durationDays: result.durationDays,
-          message: `Peakabu Mobile is active until ${new Date(mobileExpiresAt).toDateString()}.` });
-      }
-      const m = result.meta || {};
-      const ev = mobile.addEventPass(usernameLower, Number(m.startsAt) || Date.now(), m.hours);
-      log('info', 'event_code_redeemed', { username: req.user.username, eventId: ev.id });
-      return res.json({ ...base, event: ev,
-        message: 'Event pass added. Pick it when you start a session in Peakabu Mobile.' });
-    }
-
-    // Anti-stacking (see stackingError above). Not a brute-force signal —
-    // a legitimate code the user simply can't apply yet, so it doesn't
-    // count against the limiter.
-    const stackErr = stackingError(preview, currentTier);
-    if (stackErr) return safeError(res, 400, stackErr);
+    // Decide first, consume second: a code that can't apply right now
+    // (lower tier during a higher plan, subscription already linked...)
+    // is left unused for later. That's not a brute-force signal, so it
+    // doesn't count against the limiter.
+    const plan = planFor(user, preview);
+    if (!plan.ok) return safeError(res, 400, plan.error);
 
     const result = redeemCode(code, req.user.username);
     if (!result.ok) {
       recordRedeemFailure(usernameLower);
       return safeError(res, 400, result.error);
     }
-
     clearRedeemAttempts(usernameLower);
+    const base = () => ({ tier: getEffectiveTier(user), tierExpiresAt: getTierExpiresAt(user), product: result.tier });
 
-    // Carry over unused time from the current plan on an upgrade — the user
-    // already paid for those remaining days via their prior code, so an
-    // upgrade shouldn't silently forfeit them. Only applies when the new
-    // grant is timed; a lifetime grant makes carryover moot.
-    const remainingMs = (user.tierExpiresAt && user.tierExpiresAt > Date.now())
-      ? user.tierExpiresAt - Date.now()
-      : 0;
-
-    user.tier = result.tier;
-    user.tierSource = 'redeemed';
-    user.tierExpiresAt = result.durationDays
-      ? Date.now() + result.durationDays * 24 * 60 * 60 * 1000 + remainingMs
-      : null; // null = lifetime
-
-    saveUsersToDisk();
-    log('info', 'tier_granted', {
-      username: req.user.username, tier: result.tier, source: 'redeemed',
-      durationDays: result.durationDays, tierExpiresAt: user.tierExpiresAt,
-      carriedOverMs: remainingMs
-    });
-    // Same fire-and-forget-with-logging pattern as the link callback —
-    // a Discord sync failure shouldn't fail the redemption response.
-    if (user.discordId) {
-      syncRole(user.discordId, result.tier).catch(() => {});
+    // Subscription code: link the Stripe subscription to this account.
+    if (result.tier === 'sub') {
+      const linked = entitlements.link(user, (result.meta || {}).subId);
+      if (!linked.ok) return safeError(res, 409, linked.error);
+      log('info', 'subscription_code_redeemed', { username: req.user.username, kind: linked.kind, tier: linked.tier });
+      return res.json({ ...base(), subscription: { kind: linked.kind, tier: linked.tier }, message: linked.message });
     }
+
+    // Peakabu Mobile time (bought on peakabu.app/billing). Never touches the PC tier.
+    if (result.tier === 'mobile') {
+      const out = entitlements.applyMobileCode(user, entitlements.planMobileCode(user, result.durationDays));
+      log('info', 'mobile_code_redeemed', { username: req.user.username, durationDays: result.durationDays, banked: !out.mobileExpiresAt });
+      return res.json({ ...base(), ...out, durationDays: result.durationDays });
+    }
+
+    // Event pass: lands on the account until it's picked for a session.
+    if (result.tier === 'event') {
+      const m = result.meta || {};
+      const ev = mobile.addEventPass(usernameLower, Number(m.startsAt) || Date.now(), m.hours);
+      log('info', 'event_code_redeemed', { username: req.user.username, eventId: ev.id });
+      return res.json({ ...base(), event: ev,
+        message: 'Event pass added. Pick it when you start a session in Peakabu Mobile.' });
+    }
+
+    // PC plan code. Re-plan now that the code is consumed (nothing else
+    // can have changed in between: this all runs synchronously).
+    const pcPlan = entitlements.planPcCode(user, result.tier, result.durationDays);
+    if (!pcPlan.ok) return safeError(res, 400, pcPlan.error);
+    entitlements.applyPcCode(user, pcPlan);
     return res.json({
-      tier: result.tier,
-      tierExpiresAt: user.tierExpiresAt,
-      daysCarriedOver: remainingMs > 0 ? Math.round(remainingMs / (24 * 60 * 60 * 1000)) : 0
+      ...base(),
+      banked: pcPlan.action === 'bank',
+      daysCarriedOver: pcPlan.carriedMs ? Math.round(pcPlan.carriedMs / (24 * 60 * 60 * 1000)) : 0,
+      message: pcPlan.message
     });
   });
 

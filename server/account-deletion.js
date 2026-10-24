@@ -9,6 +9,8 @@
 //   - its own clips (files and records), comments and Peak Moments
 //   - Mobile passes, event passes, Swing card sets, AI Reel usage
 //   - its Peakabu Mobile data (the mobile server is told over the secret)
+//   - monthly subscriptions: cancelled in Stripe FIRST, so charges stop
+//     (a renewal that lands during the 7 days is not cancelled; refund it)
 // Kept on purpose:
 //   - sessions it hosted, so guests keep their clips; the host shows as
 //     "Deleted account" (a name registration can never produce, since sign-up
@@ -122,6 +124,9 @@ async function performDeletion(row) {
   const name = row.username;
   const lower = row.usernameLower;
   const same = (u) => typeof u === 'string' && u.toLowerCase() === lower;
+  // Stop any monthly charges first. If Stripe can't be reached this throws,
+  // nothing is deleted yet, and the hourly sweep tries again.
+  await require('./routes/billing').cancelSubscriptionsFor(lower);
   let clips = 0;
   for (const [code, s] of sessions) {
     if (isOnHold(code)) continue;
