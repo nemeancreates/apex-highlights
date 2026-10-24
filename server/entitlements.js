@@ -72,6 +72,9 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_plan_bank_user ON plan_bank(usernameLower);
 `);
+// Who paid, when they bought it signed in: lets them manage (cancel) a
+// subscription they gave someone else as a gift.
+try { db.exec(`ALTER TABLE subscriptions ADD COLUMN buyerLower TEXT`); } catch (e) { /* already there */ }
 
 const stmt = {
   get:        db.prepare(`SELECT * FROM subscriptions WHERE subId = ?`),
@@ -82,7 +85,7 @@ const stmt = {
                 cancelAtPeriodEnd = @cancelAtPeriodEnd, updatedAt = @now WHERE subId = @subId`),
   // A paid checkout settles an 'incomplete' row an early webhook created.
   fill:       db.prepare(`UPDATE subscriptions SET checkoutId = COALESCE(checkoutId, @checkoutId),
-                customerId = COALESCE(customerId, @customerId),
+                customerId = COALESCE(customerId, @customerId), buyerLower = COALESCE(buyerLower, @buyerLower),
                 status = CASE WHEN status = 'incomplete' AND @status = 'active' THEN 'active' ELSE status END,
                 periodEnd = MAX(periodEnd, @periodEnd) WHERE subId = @subId`),
   link:       db.prepare(`UPDATE subscriptions SET usernameLower = ?, linkedAt = ?, updatedAt = ? WHERE subId = ? AND usernameLower IS NULL`),
@@ -93,6 +96,7 @@ const stmt = {
   bankFor:    db.prepare(`SELECT * FROM plan_bank WHERE usernameLower = ? AND kind = ?`),
   bankClear:  db.prepare(`DELETE FROM plan_bank WHERE usernameLower = ? AND kind = ?`),
   forget:     db.prepare(`UPDATE subscriptions SET usernameLower = NULL WHERE usernameLower = ?`),
+  forgetBuyer: db.prepare(`UPDATE subscriptions SET buyerLower = NULL WHERE buyerLower = ?`),
   forgetBank: db.prepare(`DELETE FROM plan_bank WHERE usernameLower = ?`)
 };
 
@@ -215,12 +219,12 @@ function periodEndOf(sub) {
 }
 
 // Checkout finished: remember the subscription so its code can link it.
-function recordCheckout({ subId, customerId, plan, checkoutId, status, periodEnd }) {
+function recordCheckout({ subId, customerId, plan, checkoutId, status, periodEnd, buyerLower }) {
   const p = SUB_PLANS[plan];
   if (!p || !subId) return null;
   stmt.insert.run({ subId, customerId: customerId || null, kind: p.kind, tier: p.tier, status: status || 'active',
     periodEnd: periodEnd || 0, cancelAtPeriodEnd: 0, checkoutId: checkoutId || null, now: Date.now() });
-  stmt.fill.run({ subId, checkoutId: checkoutId || null, customerId: customerId || null, status: status || 'active', periodEnd: periodEnd || 0 });
+  stmt.fill.run({ subId, checkoutId: checkoutId || null, customerId: customerId || null, status: status || 'active', periodEnd: periodEnd || 0, buyerLower: buyerLower || null });
   return stmt.get.get(subId);
 }
 
@@ -364,17 +368,36 @@ function subscriptionsFor(usernameLower) {
 }
 
 // The Stripe customer behind one of this account's subscriptions (for the portal).
+// The account using it, or the account that paid for it (a gift), may manage it.
 function customerFor(usernameLower, subId) {
   const row = stmt.get.get(subId);
-  return row && row.usernameLower === usernameLower ? row.customerId : null;
+  return row && (row.usernameLower === usernameLower || row.buyerLower === usernameLower) ? row.customerId : null;
 }
 
-// Account deletion: the subscription IDs to cancel, then unlink everything.
-function liveSubIdsFor(usernameLower) {
-  return stmt.forUser.all(usernameLower).filter(r => LIVE_STATUSES.includes(r.status)).map(r => r.subId);
+const subscriptionTier = (subId) => (stmt.get.get(subId) || {}).tier || null;
+
+// One subscription's state, for the "My codes" list.
+function subscriptionState(subId) {
+  const row = stmt.get.get(subId);
+  if (!row) return null;
+  const live = LIVE_STATUSES.includes(row.status);
+  return { live, linked: !!row.usernameLower, status: row.status,
+    renewsAt: live && !row.cancelAtPeriodEnd ? row.periodEnd : null,
+    endsAt: live ? (row.cancelAtPeriodEnd ? row.periodEnd : null) : (row.periodEnd || row.updatedAt) };
 }
+
+// Account deletion: live subscriptions this account uses or pays for.
+// gift = someone else uses it (the deleted account only paid).
+const stmtPaidFor = db.prepare(`SELECT * FROM subscriptions WHERE buyerLower = ? AND (usernameLower IS NULL OR usernameLower != ?)`);
+function liveSubsFor(usernameLower) {
+  const mine = stmt.forUser.all(usernameLower).map(r => ({ id: r.subId, gift: false, status: r.status }));
+  const gifts = stmtPaidFor.all(usernameLower, usernameLower).map(r => ({ id: r.subId, gift: !!r.usernameLower, status: r.status }));
+  return [...mine, ...gifts].filter(r => LIVE_STATUSES.includes(r.status));
+}
+const liveSubIdsFor = (u) => liveSubsFor(u).map(r => r.id);
 function forgetUser(usernameLower) {
   stmt.forget.run(usernameLower);
+  stmt.forgetBuyer.run(usernameLower);
   stmt.forgetBank.run(usernameLower);
 }
 
@@ -382,5 +405,5 @@ module.exports = {
   SUB_PLANS, GRACE_MS,
   planPcCode, applyPcCode, planMobileCode, applyMobileCode,
   recordCheckout, planLink, link, onStripeSubscription, onInvoicePaid,
-  subscriptionsFor, customerFor, liveSubIdsFor, forgetUser, periodEndOf
+  subscriptionsFor, subscriptionState, subscriptionTier, customerFor, liveSubIdsFor, liveSubsFor, forgetUser, periodEndOf
 };

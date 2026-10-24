@@ -105,6 +105,22 @@ db.exec(`
     autoSent   INTEGER NOT NULL DEFAULT 0
   );
 `);
+// Signed-in buyers: which account a checkout belongs to, kept here (never
+// sent to Stripe) so its code shows in that account's "My codes" list.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS billing_buyers (
+    checkoutId    TEXT PRIMARY KEY,
+    usernameLower TEXT NOT NULL,
+    createdAt     INTEGER NOT NULL
+  );
+`);
+const buyerStmt = {
+  add:    db.prepare(`INSERT OR IGNORE INTO billing_buyers (checkoutId, usernameLower, createdAt) VALUES (?, ?, ?)`),
+  get:    db.prepare(`SELECT usernameLower FROM billing_buyers WHERE checkoutId = ?`),
+  forget: db.prepare(`DELETE FROM billing_buyers WHERE usernameLower = ?`)
+};
+const buyerOf = (checkoutId) => (buyerStmt.get.get(checkoutId) || {}).usernameLower || null;
+
 const stmt = {
   get:    db.prepare(`SELECT * FROM billing_email_sends WHERE checkoutId = ?`),
   bump:   db.prepare(`INSERT INTO billing_email_sends (checkoutId, sends) VALUES (?, 1)
@@ -126,6 +142,7 @@ function fulfil(session) {
   if (!session || session.payment_status !== 'paid') return null;
   const md = session.metadata || {};
   const note = 'stripe:' + session.id;
+  const buyer = buyerOf(session.id) || undefined;
   let code = findCodeByNote(note);
   if (md.product === 'sub') {
     const p = entitlements.SUB_PLANS[md.plan];
@@ -133,7 +150,7 @@ function fulfil(session) {
     const subId = sub && (typeof sub === 'string' ? sub : sub.id);
     if (!p || !subId) return null;
     entitlements.recordCheckout({
-      subId, plan: md.plan, checkoutId: session.id,
+      subId, plan: md.plan, checkoutId: session.id, buyerLower: buyer,
       customerId: typeof session.customer === 'string' ? session.customer : (session.customer && session.customer.id),
       status: (typeof sub === 'object' && sub.status) || 'active',
       // Exact end when Stripe gave us the subscription; otherwise a safe
@@ -141,7 +158,7 @@ function fulfil(session) {
       periodEnd: (typeof sub === 'object' && entitlements.periodEndOf(sub)) || Date.now() + 28 * 86400000
     });
     if (!code) {
-      [code] = generateRedemptionCodes({ tier: 'sub', note, maxUses: 1, quantity: 1, meta: { subId } });
+      [code] = generateRedemptionCodes({ tier: 'sub', note, maxUses: 1, quantity: 1, meta: { subId }, buyer });
       log('info', 'billing_code_issued', { checkout: session.id, product: 'sub', plan: md.plan });
     }
     return { code, product: 'sub', plan: md.plan, label: p.label, cents: p.cents };
@@ -150,7 +167,7 @@ function fulfil(session) {
     const plan = PLANS[md.plan];
     if (!plan) return null;
     if (!code) {
-      [code] = generateRedemptionCodes({ tier: 'mobile', note, maxUses: 1, quantity: 1, durationDays: plan.days });
+      [code] = generateRedemptionCodes({ tier: 'mobile', note, maxUses: 1, quantity: 1, durationDays: plan.days, buyer });
       log('info', 'billing_code_issued', { checkout: session.id, product: 'mobile', days: plan.days });
     }
     return { code, product: 'mobile', days: plan.days };
@@ -159,7 +176,7 @@ function fulfil(session) {
     const startsAt = Number(md.startsAt), hours = Number(md.hours);
     if (!Number.isFinite(startsAt) || !Number.isFinite(hours)) return null;
     if (!code) {
-      [code] = generateRedemptionCodes({ tier: 'event', note, maxUses: 1, quantity: 1, meta: { startsAt, hours } });
+      [code] = generateRedemptionCodes({ tier: 'event', note, maxUses: 1, quantity: 1, meta: { startsAt, hours }, buyer });
       log('info', 'billing_code_issued', { checkout: session.id, product: 'event', startsAt, hours });
     }
     return { code, product: 'event', startsAt, hours };
@@ -287,6 +304,9 @@ function initBillingRoutes(app) {
       return safeError(res, 400, 'Unknown product');
     }
     metadata.sendEmail = email ? '1' : '0';
+    // Signed in on peakabu.app? Save the code to that account too (they can
+    // untick it). Anyone can still buy without an account.
+    const signedIn = req.body?.saveToAccount !== false ? require('../auth').userFromRequest(req) : null;
 
     try {
       const session = await stripe.checkout.sessions.create({
@@ -301,6 +321,7 @@ function initBillingRoutes(app) {
         success_url: `${BILLING_BASE_URL}/billing-success.html?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${BILLING_BASE_URL}/billing`
       });
+      if (signedIn && signedIn.username) buyerStmt.add.run(session.id, String(signedIn.username).toLowerCase(), Date.now());
       res.json({ url: session.url });
     } catch (err) {
       log('error', 'billing_checkout_failed', { error: err.message });
@@ -368,12 +389,16 @@ function initBillingPortal(app, requireAuth) {
 
 // Account deletion: stop charging right away, then forget the link.
 async function cancelSubscriptionsFor(usernameLower) {
-  for (const id of entitlements.liveSubIdsFor(usernameLower)) {
-    if (!stripe) throw new Error('stripe not configured; cannot cancel ' + id);
-    await stripe.subscriptions.cancel(id);
-    log('info', 'subscription_cancelled_for_deletion', { username: usernameLower, subId: id });
+  for (const sub of entitlements.liveSubsFor(usernameLower)) {
+    if (!stripe) throw new Error('stripe not configured; cannot cancel ' + sub.id);
+    // Their own plan stops now. A gift they pay for runs out the month the
+    // recipient already has, then stops (no further charges either way).
+    if (sub.gift) await stripe.subscriptions.update(sub.id, { cancel_at_period_end: true });
+    else await stripe.subscriptions.cancel(sub.id);
+    log('info', 'subscription_cancelled_for_deletion', { username: usernameLower, subId: sub.id, gift: sub.gift });
   }
   entitlements.forgetUser(usernameLower);
+  buyerStmt.forget.run(usernameLower);
 }
 
 module.exports = { initBillingWebhook, initBillingRoutes, initBillingPortal, cancelSubscriptionsFor, fulfil, PLANS, EVENT_CENTS, _setStripeForTest: (s) => { stripe = s; }, _setMailerForTest: (m) => { mailer = m; } };

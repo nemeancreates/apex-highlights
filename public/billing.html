@@ -48,7 +48,10 @@
   <h1>Peakabu plans</h1>
   <p class="lead">Buy here, get a code, redeem it on your Peakabu account: in the PC client, on the <a href="/pricing#redeem">pricing page</a>, or on the Mobile host page. No account details needed to buy. Free Mobile hosts get 10 minutes of live session time a day, and Mobile comes included with Squad, Pro and Founder plans.</p>
 
-  <div class="card" id="emailBox" style="margin-top:20px;display:none">
+  <div class="card" id="saveBox" style="margin-top:20px;display:none">
+    <label class="agree" style="margin-top:0"><input type="checkbox" id="saveToAccount" checked> <span>Save the codes I buy to my account, <b id="saveName"></b>. They show under My codes, where you can redeem them or copy them to give away.</span></label>
+  </div>
+  <div class="card" id="emailBox" style="margin-top:12px;display:none">
     <label for="email" style="margin-top:0">Email (optional)</label>
     <input type="email" id="email" autocomplete="email" placeholder="you@example.com">
     <p class="note">If you add an email, we send your code there once. We don't save it, add it to a list, or use it for anything else. Leave it blank and your code shows on screen only. Stripe's checkout also asks for an email for its receipt; that copy is kept by Stripe as the payment processor.</p>
@@ -88,8 +91,16 @@
 (function () {
   var $ = function (id) { return document.getElementById(id); };
   var money = function (c) { return '$' + (c / 100).toFixed(2).replace(/\.00$/, ''); };
+  // Signed in on peakabu.app (same storage as the rest of the site)? Then
+  // the codes can also be saved to that account. Buying never needs one.
+  var auth = (function () { try { var a = JSON.parse(localStorage.getItem('pa_browser_auth') || 'null'); return a && a.token && a.username ? a : null; } catch (e) { return null; } })();
+  if (auth) { $('saveBox').style.display = ''; $('saveName').textContent = auth.username; }
   async function post(url, body) {
-    var r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    var save = auth && $('saveToAccount').checked;
+    body.saveToAccount = !!save;
+    var headers = { 'Content-Type': 'application/json' };
+    if (save) headers.Authorization = 'Bearer ' + auth.token;
+    var r = await fetch(url, { method: 'POST', headers: headers, body: JSON.stringify(body) });
     var j = await r.json().catch(function () { return {}; });
     if (!r.ok) throw new Error(j.error || 'Couldn’t start checkout. Try again.');
     return j;

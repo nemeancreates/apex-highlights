@@ -281,6 +281,54 @@
       });
   }
 
+  // My codes: bought on peakabu.app while signed in. Unused ones can be
+  // redeemed here or copied to give away; the server drops expired ones a
+  // month after they end.
+  function codeKind(label) { return /^Event/.test(label) ? 'EVT' : /monthly/i.test(label) ? 'SUB' : /Mobile/.test(label) ? 'MOB' : 'PC'; }
+  function codeStatus(c) {
+    var by = c.redeemedByYou ? 'by you' : 'by someone else';
+    if (c.status === 'unused') return 'Not redeemed yet' + (c.expiresAt ? ' · window ends ' + day(c.expiresAt) : '') + (c.renewsAt ? ' · next charge ' + day(c.renewsAt) : '');
+    if (c.status === 'active') return 'Linked ' + by + ' · ' + (c.expiresAt ? 'cancelled, ends ' + day(c.expiresAt) : 'renews ' + day(c.renewsAt));
+    if (c.status === 'ended') return 'Subscription ended' + (c.expiresAt ? ' ' + day(c.expiresAt) : '');
+    if (c.status === 'expired') return (c.redeemedAt ? 'Redeemed ' + by + ' · ' : 'Not redeemed · ') + 'expired ' + day(c.expiresAt);
+    return 'Redeemed ' + by + ' on ' + day(c.redeemedAt) + (c.expiresAt ? ' · runs until ' + day(c.expiresAt) : ' · never expires');
+  }
+  function loadCodes() {
+    return api('/api/account/codes').then(function (r) {
+      var box = $('codeList');
+      box.replaceChildren();
+      var list = (r.ok && r.data.codes) || [];
+      if (!list.length) { box.append(el('p', 'small', 'No codes yet. Buy one on the plans page while signed in and it shows up here.')); return; }
+      list.forEach(function (c) {
+        var row = el('div', 'dev'), info = el('div');
+        info.style.flex = '1 1 240px';
+        info.append(el('strong', null, c.label), el('div', 'small', codeStatus(c)), el('div', 'small mono', c.code));
+        row.append(el('span', 'ic', codeKind(c.label)), info);
+        if (c.status === 'unused') {
+          row.append(btn('Redeem here', 'btn-lime', function () {
+            var input = $('redeemCode'); input.value = c.code;
+            $('redeem').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            var f = input.form; if (f.requestSubmit) f.requestSubmit(); else f.dispatchEvent(new Event('submit', { cancelable: true }));
+          }), ' ', btn('Copy to gift', 'btn-ghost', function () {
+            (navigator.clipboard ? navigator.clipboard.writeText(c.code) : Promise.reject()).then(
+              function () { say('codeMsg', 'Copied ' + c.code + '. Whoever redeems it first gets it.', true); },
+              function () { say('codeMsg', c.code, true); });
+          }));
+        }
+        if (c.subscriptionId) {
+          row.append(' ', btn('Manage', 'btn-ghost', function (e) {
+            e.target.disabled = true;
+            api('/api/billing/portal', { method: 'POST', body: JSON.stringify({ subscriptionId: c.subscriptionId }) }).then(function (x) {
+              if (x.ok && x.data.url) { location.href = x.data.url; return; }
+              e.target.disabled = false; say('codeMsg', x.data.error || 'Could not open subscription settings.');
+            }).catch(function () { e.target.disabled = false; });
+          }));
+        }
+        box.append(row);
+      });
+    });
+  }
+
   var PLATFORM = { pc: ['PC', 'Desktop app'], mobile: ['MOB', 'Phone · Peakabu Mobile'], web: ['WEB', 'Web browser'] };
   function loadDevices() {
     return api('/api/account/devices').then(function (r) {
@@ -488,7 +536,7 @@
     $('signedOut').hidden = true;
     $('signedIn').hidden = false;
     $('who').textContent = A.get().username;
-    Promise.all([loadOverview(), loadSessions(), loadSets(), loadDevices()]).then(function () {
+    Promise.all([loadOverview(), loadSessions(), loadSets(), loadDevices(), loadCodes()]).then(function () {
       if (location.hash) { var t = document.querySelector(location.hash.replace(/[^#\w-]/g, '')); if (t) t.scrollIntoView(); }
     }).catch(function () {});
   }
@@ -549,7 +597,7 @@
       }).catch(function () {});
     });
     var redeem = document.querySelector('#redeem form');
-    if (redeem) redeem.addEventListener('redeemed', function () { loadOverview().catch(function () {}); });
+    if (redeem) redeem.addEventListener('redeemed', function () { loadOverview().catch(function () {}); loadCodes().catch(function () {}); });
     start();
   });
 })();

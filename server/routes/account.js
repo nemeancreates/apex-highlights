@@ -4,6 +4,7 @@
 //   GET  /account                         the page (public/account.html)
 //   GET  /api/account                     plan, limits, this month's usage, Mobile status
 //   GET  /api/account/sessions            hosted sessions + their Public state
+//   GET  /api/account/codes               codes this account bought (to use or gift)
 //   GET  /api/account/devices             where this account is signed in
 //   POST /api/account/devices/:sid/signout   sign one of them out
 //
@@ -33,6 +34,7 @@ const { requireAuth, getEffectiveTier, getTierExpiresAt } = require('../auth');
 const loginSlots = require('../login-slots');
 const mobile = require('../mobile');
 const entitlements = require('../entitlements');
+const { codesBoughtBy } = require('../redemption');
 const spots = require('../spots');
 const { hostState } = require('./public');
 
@@ -88,6 +90,48 @@ function initAccountRoutes(app) {
       // Monthly subscriptions and any time saved to start after them.
       ...entitlements.subscriptionsFor(user.username.toLowerCase())
     });
+  });
+
+  // --- Codes bought on peakabu.app while signed in: unused ones to copy or
+  // gift, and what happened to the rest. A code drops off this list a month
+  // after it expired (the record itself stays as a sales record).
+  app.get('/api/account/codes', requireAuth, accountLimiter, (req, res) => {
+    const user = userFor(req);
+    if (!user) return safeError(res, 404, 'Account not found');
+    const me = user.username.toLowerCase();
+    const now = Date.now();
+    const DAY = 86400000;
+    const list = codesBoughtBy(me).map((c) => {
+      const use = (c.usedBy || [])[0] || null;
+      const redeemedAt = use ? Date.parse(use.redeemedAt) : null;
+      const m = c.meta || {};
+      let label, expiresAt = null, status = use ? 'redeemed' : 'unused', subscriptionId = null, renewsAt = null;
+      if (c.tier === 'sub') {
+        const st = entitlements.subscriptionState(m.subId) || {};
+        const plan = Object.values(entitlements.SUB_PLANS).find(p => p.tier === (entitlements.subscriptionTier(m.subId) || ''));
+        label = plan ? plan.label.replace(', monthly', '') + ' (monthly)' : 'Monthly subscription';
+        subscriptionId = st.live ? m.subId : null;
+        renewsAt = st.renewsAt || null;
+        expiresAt = st.endsAt || null; // set once cancelled or ended
+        status = !st.live ? 'ended' : (use ? 'active' : 'unused');
+      } else if (c.tier === 'event') {
+        label = `Event pass (${m.hours}h)`;
+        expiresAt = Number(m.startsAt) + Math.round(Number(m.hours) * 3600000); // the window ends either way
+      } else if (c.tier === 'mobile') {
+        label = `Peakabu Mobile, ${c.durationDays || 30} days`;
+        if (redeemedAt) expiresAt = redeemedAt + (c.durationDays || 30) * DAY;
+      } else {
+        label = `${(TIERS[c.tier] || {}).label || c.tier}, ${c.durationDays ? c.durationDays + ' days' : 'lifetime'}`;
+        if (redeemedAt && c.durationDays) expiresAt = redeemedAt + c.durationDays * DAY;
+      }
+      if (expiresAt && expiresAt <= now && status !== 'ended') status = 'expired';
+      return {
+        code: c.code, label, status, boughtAt: c.createdAt,
+        redeemedAt, redeemedByYou: !!(use && String(use.username).toLowerCase() === me),
+        expiresAt, renewsAt, subscriptionId
+      };
+    }).filter(x => !(x.expiresAt && x.expiresAt + 30 * DAY < now));
+    res.json({ codes: list });
   });
 
   // --- Hosted sessions with their Public switch state, in one call.
