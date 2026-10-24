@@ -167,6 +167,7 @@
 <a href="#spots">Swing cards</a>
 <a href="#devices">Devices</a>
 <a href="#redeem">Redeem a code</a>
+<a href="#codes">My codes</a>
 <button class="btn btn-ghost btn-sm" id="signOut" type="button">Sign out</button>
 </nav>
 <div>
@@ -220,6 +221,13 @@
 <button class="btn btn-lime" type="submit" style="align-self:flex-start">Redeem</button>
 <p class="msg" role="status" aria-live="polite"></p>
 </form>
+</div>
+
+<div id="codes" class="panel stack">
+<div class="row" style="justify-content:space-between"><h2 class="h3">My codes</h2><a class="btn btn-ghost btn-sm" href="/billing">Buy codes</a></div>
+<p class="small">Codes you buy on peakabu.app while signed in land here. Redeem one yourself or copy it to give to a friend. Expired codes drop off this list a month after they end.</p>
+<div class="card" id="codeList" style="padding:4px 20px"></div>
+<p class="msg" id="codeMsg" role="status" aria-live="polite"></p>
 </div>
 
 <div id="delete" class="panel stack">

@@ -120,6 +120,20 @@ function grantMobileDays(usernameLower, days) {
   return expiresAt;
 }
 
+// Subscriptions (entitlements.js) set the pass end directly: each paid
+// renewal moves it to the new period end, and when the subscription ends
+// it drops to "now" plus any Mobile time that was banked meanwhile.
+function setMobilePassUntil(usernameLower, expiresAt) {
+  stmt.upsertPass.run(usernameLower, expiresAt, Date.now());
+  log('info', 'mobile_pass_set', { username: usernameLower, expiresAt });
+}
+
+// Unused bought Mobile time, in ms (0 when there's no active pass).
+function mobilePassRemainingMs(usernameLower) {
+  const row = stmt.getPass.get(usernameLower);
+  return row && row.expiresAt > Date.now() ? row.expiresAt - Date.now() : 0;
+}
+
 function addEventPass(usernameLower, startsAt, hours) {
   const h = Math.max(0.5, Math.min(EVENT_MAX_HOURS, Number(hours) || 0));
   const id = crypto.randomBytes(8).toString('base64url');
@@ -401,7 +415,7 @@ function mobileSecretOk(req) {
 
 module.exports = {
   MOBILE_FREE_DAILY_SEC, MOBILE_INCLUDED_TIERS, EVENT_MAX_HOURS,
-  grantMobileDays, addEventPass, getMobileStatus, claimEventPass,
+  grantMobileDays, setMobilePassUntil, mobilePassRemainingMs, addEventPass, getMobileStatus, claimEventPass,
   startMobileListingSync, mobileListings, allMobileListingIds, hostedMobileSessions, mobileListingState, reportMobileListing, setMobileListingHidden, mobileSecretOk,
   _refreshForTest: refreshMobileListings
 };

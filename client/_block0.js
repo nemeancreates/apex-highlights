@@ -2697,7 +2697,9 @@
           updateTierBadge(data.tier);
           input.value = '';
           msg.className = 'redeem-msg ok';
-          msg.textContent = '✅ ' + (TIER_LABELS[data.tier] || data.tier) + ' unlocked!';
+          // The server says what happened (added days, upgrade, saved for
+          // later, subscription linked); fall back to the plan name.
+          msg.textContent = '✅ ' + (data.message || ((TIER_LABELS[data.tier] || data.tier) + ' unlocked!'));
           hudLog('system', '🎟 Code redeemed — ' + (TIER_LABELS[data.tier] || data.tier) + ' tier active', 'success');
           setTimeout(function() { document.getElementById('redeemPanel').classList.remove('show'); }, 2500);
         } catch (e) {

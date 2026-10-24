@@ -13,7 +13,9 @@ const codes = new Map(); // code -> { code, tier, note, maxUses, useCount, usedB
 // Non-tier products a code can carry instead of a PC tier (Peakabu Mobile).
 //   mobile: durationDays of Mobile on the redeeming account (stacks)
 //   event:  one $3 event pass, meta = { startsAt, hours }
-const PRODUCTS = ['mobile', 'event'];
+// 'sub' = a code issued for a Stripe subscription; redeeming it links that
+// subscription to the account (entitlements.js). meta.subId says which.
+const PRODUCTS = ['mobile', 'event', 'sub'];
 const isProduct = (t) => PRODUCTS.includes(t);
 
 function loadCodesFromDisk() {
@@ -46,7 +48,9 @@ function generateOneCode(tier) {
 // durationDays: omit/null for a LIFETIME code (never expires — for
 // friends/family, $1500+ backers, manual grants). Set a number for a
 // TIMED subscription code (e.g. 30 for a monthly Kickstarter tier).
-function generateRedemptionCodes({ tier, note, maxUses, quantity, durationDays, meta }) {
+// buyer: lowercased username of whoever bought it on peakabu.app while
+// signed in, so it shows in their account's "My codes" list (gifts too).
+function generateRedemptionCodes({ tier, note, maxUses, quantity, durationDays, meta, buyer }) {
   if (!TIERS[tier] && !isProduct(tier)) throw new Error(`Unknown tier "${tier}"`);
   const uses = Math.max(1, Math.min(100000, parseInt(maxUses, 10) || 1));
   const qty = Math.max(1, Math.min(500, parseInt(quantity, 10) || 1));
@@ -62,6 +66,7 @@ function generateRedemptionCodes({ tier, note, maxUses, quantity, durationDays, 
       maxUses: uses, useCount: 0, usedBy: [],
       durationDays: duration, // null = lifetime
       ...(meta ? { meta } : {}),
+      ...(buyer ? { buyer } : {}),
       createdAt: new Date().toISOString()
     });
     generated.push(code);
@@ -105,6 +110,11 @@ function redeemCode(rawCode, username) {
 
 // Billing looks codes up by the Stripe checkout that paid for them, so a
 // retried webhook or a refreshed success page never mints a second code.
+// Every code a multi-quantity checkout issued, in the order they were made.
+function findCodesByNote(note) {
+  return Array.from(codes.values()).filter(c => c.note === note).map(c => c.code);
+}
+
 function findCodeByNote(note) {
   for (const c of codes.values()) if (c.note === note) return c.code;
   return null;
@@ -130,12 +140,19 @@ function trackBandwidth(username, bytes, users, saveUsersToDisk) {
   saveUsersToDisk();
 }
 
+// Codes this account bought, newest first (for the account page).
+function codesBoughtBy(usernameLower) {
+  return Array.from(codes.values()).filter(c => c.buyer === usernameLower)
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+}
+
 // Account deletion (account-deletion.js): codes stay as sales records, but
-// without the username of whoever redeemed them.
+// without the username of whoever bought or redeemed them.
 function forgetUser(username, replacement) {
   const lower = String(username || '').toLowerCase();
   let changed = false;
   for (const entry of codes.values()) {
+    if (entry.buyer === lower) { delete entry.buyer; changed = true; }
     for (const u of entry.usedBy || []) {
       if (u.username && u.username.toLowerCase() === lower) { u.username = replacement; changed = true; }
     }
@@ -143,4 +160,4 @@ function forgetUser(username, replacement) {
   if (changed) saveCodesToDisk();
 }
 
-module.exports = { loadCodesFromDisk, generateRedemptionCodes, redeemCode, peekCode, findCodeByNote, trackBandwidth, isProduct, forgetUser, PRODUCTS };
+module.exports = { loadCodesFromDisk, generateRedemptionCodes, redeemCode, peekCode, findCodeByNote, findCodesByNote, codesBoughtBy, trackBandwidth, isProduct, forgetUser, PRODUCTS };

@@ -131,8 +131,42 @@
       else if (m.source === 'pass') { $('mobName').textContent = 'Host pass'; $('mobLine').textContent = 'Active until ' + day(m.passExpiresAt) + '.'; }
       else { $('mobName').textContent = 'Free'; $('mobLine').textContent = 'Host up to ' + Math.round((m.freeDailySec || 600) / 60) + ' minutes a day.'; }
       if (m.events && m.events.length) $('mobLine').textContent += ' ' + m.events.length + ' event pass' + (m.events.length === 1 ? '' : 'es') + ' ready.';
+      showSubscriptions(a);
       $('discName').textContent = a.discordLinked ? (a.discordUsername || 'Linked') : 'Not linked';
       $('linkDiscord').hidden = !!a.discordLinked;
+    });
+  }
+
+  // Monthly subscriptions: what renews when, a Manage button (Stripe's
+  // portal: cancel, change card, receipts), and any time saved for later.
+  function showSubscriptions(a) {
+    var subs = a.subscriptions || [], banked = a.banked || [];
+    [['pc', 'planLine'], ['mobile', 'mobLine']].forEach(function (pair) {
+      var kind = pair[0], line = $(pair[1]);
+      var row = line.parentNode.querySelector('.row');
+      var old = row.querySelector('[data-manage]'); if (old) old.remove();
+      var sub = subs.filter(function (x) { return x.kind === kind; })[0];
+      if (sub) {
+        if (kind === 'mobile') $('mobName').textContent = 'Monthly';
+        line.textContent = (sub.endsAt ? 'Subscription cancelled. Ends ' + day(sub.endsAt) + '.'
+          : 'Monthly subscription' + (sub.cents ? ' ($' + (sub.cents / 100).toFixed(2) + ')' : '') + ', renews ' + day(sub.renewsAt) + '.') +
+          (sub.status === 'past_due' ? ' Your last payment didn\u2019t go through; update your card to keep it.' : '') +
+          (kind === 'pc' && a.limits ? ' Clips kept ' + a.limits.retentionDays + ' days.' : '');
+        var b = btn('Manage subscription', 'btn-lime', function () {
+          b.disabled = true;
+          api('/api/billing/portal', { method: 'POST', body: JSON.stringify({ subscriptionId: sub.id }) }).then(function (x) {
+            if (x.ok && x.data.url) { location.href = x.data.url; return; }
+            b.disabled = false; say('loadErr', x.data.error || 'Could not open subscription settings.');
+          }).catch(function () { b.disabled = false; });
+        });
+        b.setAttribute('data-manage', '');
+        row.prepend(b);
+      }
+      var saved = banked.filter(function (x) { return x.kind === kind; });
+      if (saved.length) {
+        line.textContent += ' Saved for later: ' + saved.map(function (x) { return x.days + ' days of ' + x.label; }).join(', ') +
+          ', starting when your subscription ends.';
+      }
     });
   }
 
@@ -245,6 +279,54 @@
         tr.append(th, tdClips, tdExp, tdPub, tdAct);
         body.append(tr);
       });
+  }
+
+  // My codes: bought on peakabu.app while signed in. Unused ones can be
+  // redeemed here or copied to give away; the server drops expired ones a
+  // month after they end.
+  function codeKind(label) { return /^Event/.test(label) ? 'EVT' : /monthly/i.test(label) ? 'SUB' : /Mobile/.test(label) ? 'MOB' : 'PC'; }
+  function codeStatus(c) {
+    var by = c.redeemedByYou ? 'by you' : 'by someone else';
+    if (c.status === 'unused') return 'Not redeemed yet' + (c.expiresAt ? ' · window ends ' + day(c.expiresAt) : '') + (c.renewsAt ? ' · next charge ' + day(c.renewsAt) : '');
+    if (c.status === 'active') return 'Linked ' + by + ' · ' + (c.expiresAt ? 'cancelled, ends ' + day(c.expiresAt) : 'renews ' + day(c.renewsAt));
+    if (c.status === 'ended') return 'Subscription ended' + (c.expiresAt ? ' ' + day(c.expiresAt) : '');
+    if (c.status === 'expired') return (c.redeemedAt ? 'Redeemed ' + by + ' · ' : 'Not redeemed · ') + 'expired ' + day(c.expiresAt);
+    return 'Redeemed ' + by + ' on ' + day(c.redeemedAt) + (c.expiresAt ? ' · runs until ' + day(c.expiresAt) : ' · never expires');
+  }
+  function loadCodes() {
+    return api('/api/account/codes').then(function (r) {
+      var box = $('codeList');
+      box.replaceChildren();
+      var list = (r.ok && r.data.codes) || [];
+      if (!list.length) { box.append(el('p', 'small', 'No codes yet. Buy one on the plans page while signed in and it shows up here.')); return; }
+      list.forEach(function (c) {
+        var row = el('div', 'dev'), info = el('div');
+        info.style.flex = '1 1 240px';
+        info.append(el('strong', null, c.label), el('div', 'small', codeStatus(c)), el('div', 'small mono', c.code));
+        row.append(el('span', 'ic', codeKind(c.label)), info);
+        if (c.status === 'unused') {
+          row.append(btn('Redeem here', 'btn-lime', function () {
+            var input = $('redeemCode'); input.value = c.code;
+            $('redeem').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            var f = input.form; if (f.requestSubmit) f.requestSubmit(); else f.dispatchEvent(new Event('submit', { cancelable: true }));
+          }), ' ', btn('Copy to gift', 'btn-ghost', function () {
+            (navigator.clipboard ? navigator.clipboard.writeText(c.code) : Promise.reject()).then(
+              function () { say('codeMsg', 'Copied ' + c.code + '. Whoever redeems it first gets it.', true); },
+              function () { say('codeMsg', c.code, true); });
+          }));
+        }
+        if (c.subscriptionId) {
+          row.append(' ', btn('Manage', 'btn-ghost', function (e) {
+            e.target.disabled = true;
+            api('/api/billing/portal', { method: 'POST', body: JSON.stringify({ subscriptionId: c.subscriptionId }) }).then(function (x) {
+              if (x.ok && x.data.url) { location.href = x.data.url; return; }
+              e.target.disabled = false; say('codeMsg', x.data.error || 'Could not open subscription settings.');
+            }).catch(function () { e.target.disabled = false; });
+          }));
+        }
+        box.append(row);
+      });
+    });
   }
 
   var PLATFORM = { pc: ['PC', 'Desktop app'], mobile: ['MOB', 'Phone · Peakabu Mobile'], web: ['WEB', 'Web browser'] };
@@ -454,7 +536,7 @@
     $('signedOut').hidden = true;
     $('signedIn').hidden = false;
     $('who').textContent = A.get().username;
-    Promise.all([loadOverview(), loadSessions(), loadSets(), loadDevices()]).then(function () {
+    Promise.all([loadOverview(), loadSessions(), loadSets(), loadDevices(), loadCodes()]).then(function () {
       if (location.hash) { var t = document.querySelector(location.hash.replace(/[^#\w-]/g, '')); if (t) t.scrollIntoView(); }
     }).catch(function () {});
   }
@@ -515,7 +597,7 @@
       }).catch(function () {});
     });
     var redeem = document.querySelector('#redeem form');
-    if (redeem) redeem.addEventListener('redeemed', function () { loadOverview().catch(function () {}); });
+    if (redeem) redeem.addEventListener('redeemed', function () { loadOverview().catch(function () {}); loadCodes().catch(function () {}); });
     start();
   });
 })();
