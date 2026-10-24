@@ -246,7 +246,8 @@ function planLink(user, subId) {
   }
   const what = row.kind === 'mobile' ? 'Peakabu Mobile' : label(row.tier);
   return { ok: true, row, label: what,
-    message: `${what} subscription linked. It renews monthly until you cancel on your account page.` };
+    message: `${what} subscription linked. It renews monthly until you cancel on your account page.`,
+    previewMessage: `This will link your ${what} subscription to your account. It renews monthly until you cancel on your account page.` };
 }
 
 // Link the subscription and switch the plan on. Any time the account

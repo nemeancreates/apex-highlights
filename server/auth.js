@@ -575,7 +575,7 @@ function initAuthRoutes(app) {
 
     const desc = describeCode(preview);
     if (preview.tier === 'sub' && plan.label) desc.label = `${plan.label} subscription`;
-    return res.json({ username: req.user.username, ...desc, outcome: plan.message || null });
+    return res.json({ username: req.user.username, ...desc, outcome: plan.previewMessage || plan.message || null });
   });
 
   app.post('/auth/redeem', requireAuth, (req, res) => {
