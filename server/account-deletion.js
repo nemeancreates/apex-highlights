@@ -156,6 +156,10 @@ async function performDeletion(row) {
   run(`DELETE FROM mobile_event_passes WHERE usernameLower = ?`, lower);
   run(`DELETE FROM spot_cards WHERE setId IN (SELECT id FROM spot_sets WHERE usernameLower = ?)`, lower);
   run(`DELETE FROM spot_sets WHERE usernameLower = ?`, lower);
+  // Card and phone links go with the account, unless it was closed for
+  // breaking the Terms (then they stay, so the person can't come straight back).
+  run(`DELETE FROM ban_signals WHERE usernameLower = ? AND usernameLower NOT IN (SELECT usernameLower FROM account_bans)`, lower);
+  run(`DELETE FROM ban_cleared WHERE usernameLower = ?`, lower);
   try { require('./generation-usage').forgetUser(name); } catch (e) { /* not set up here */ }
   try { require('./redemption').forgetUser(name, DELETED_NAME); } catch (e) { log('warn', 'account_delete_codes_failed', { error: e.message }); }
   loginSlots.clearSlots(lower);

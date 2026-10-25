@@ -22,6 +22,7 @@ const { buildAuthorizeUrl, exchangeCodeForUser, consumeState, linkDiscordAccount
 const { syncRole } = require('./discord-bot');
 const { recordEvent } = require('./anomaly');
 const loginSlots = require('./login-slots');
+const accountBans = require('./moderation/account-bans');
 // A user's tier as of right now — falls back to t1 for missing/unknown/
 // expired tiers rather than trusting a stale field forever. tierExpiresAt
 // is null for lifetime grants (redeemed codes, manual); a future Stripe
@@ -219,6 +220,8 @@ function requireAuth(req, res, next) {
   }
   try {
     const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET);
+    const ban = accountBans.getAccountBan(decoded.username);
+    if (ban) return res.status(403).json({ error: accountBans.banMessage(ban), accountClosed: true });
     if (!tokenVersionOk(decoded)) {
       return safeError(res, 401, 'You signed in on another device of the same kind, so this one was signed out. Please log in again.');
     }
@@ -236,6 +239,7 @@ function userFromRequest(req) {
   if (!h || !h.startsWith('Bearer ')) return null;
   try {
     const decoded = jwt.verify(h.slice(7), JWT_SECRET);
+    if (accountBans.getAccountBan(decoded.username)) return null;
     return tokenVersionOk(decoded) ? decoded : null;
   } catch (e) { return null; }
 }
@@ -253,6 +257,8 @@ function requireAuthAny(req, res, next) {
   if (!token) return safeError(res, 401, 'Authentication required');
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+    const ban = accountBans.getAccountBan(decoded.username);
+    if (ban) return res.status(403).json({ error: accountBans.banMessage(ban), accountClosed: true });
     if (!tokenVersionOk(decoded)) {
       return safeError(res, 401, 'You signed in on another device of the same kind, so this one was signed out. Please log in again.');
     }
@@ -269,6 +275,7 @@ function socketAuth(socket, next) {
   if (!token) return next(new Error('auth_required'));
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+    if (accountBans.getAccountBan(decoded.username)) return next(new Error('account_closed'));
     if (!tokenVersionOk(decoded)) return next(new Error('auth_invalid'));
     socket.user = decoded;
     next();
@@ -411,6 +418,17 @@ function initAuthRoutes(app) {
     const valid = await bcrypt.compare(password, hashToCheck);
     if (!user || !valid) {
       return safeError(res, 401, 'Invalid username or password');
+    }
+    // Closed accounts (Terms section 19) can't sign in. The Peakabu Mobile
+    // server passes its per-phone tag, so a new account on a banned phone is
+    // closed too (moderation/account-bans.js).
+    let ban = accountBans.getAccountBan(user.username);
+    const rawTag = (req.body || {}).deviceTag;
+    const deviceTag = typeof rawTag === 'string' && /^d:[a-f0-9]{20}$/.test(rawTag) ? rawTag : null;
+    if (!ban && deviceTag) ban = accountBans.recordSignal('device', deviceTag, user.username);
+    if (ban) {
+      log('warn', 'login_refused_closed_account', { username: user.username });
+      return res.status(403).json({ error: accountBans.banMessage(ban), accountClosed: true });
     }
     // Signing in during the 7-day grace period keeps the account.
     const deletionCancelled = require('./account-deletion').cancelDeletion(user.username.toLowerCase());
@@ -588,6 +606,14 @@ function initAuthRoutes(app) {
       return safeError(res, 429, 'Too many failed code attempts. Try again in an hour.');
     }
 
+    // A code paid for with a card that a closed account used closes this
+    // account too, and the code isn't applied (no refund: Terms section 19).
+    const cardFp = accountBans.codeFingerprint(code);
+    if (cardFp) {
+      const ban = accountBans.recordSignal('card', cardFp, req.user.username);
+      if (ban) return res.status(403).json({ error: accountBans.banMessage(ban), accountClosed: true });
+    }
+
     // Peek first (no mutation) — "is this code even usable" has to be
     // answered before "does this tier make sense for this account".
     const preview = peekCode(code, req.user.username);
@@ -649,6 +675,42 @@ function initAuthRoutes(app) {
       daysCarriedOver: pcPlan.carriedMs ? Math.round(pcPlan.carriedMs / (24 * 60 * 60 * 1000)) : 0,
       message: pcPlan.message
     });
+  });
+
+  // Is this phone (the mobile server's per-phone tag) tied to a closed
+  // account? The mobile server asks before letting a phone join a session.
+  app.get('/internal/mobile/device-banned/:tag', (req, res) => {
+    if (!mobile.mobileSecretOk(req)) return safeError(res, 403, 'Forbidden');
+    const tag = String(req.params.tag || '');
+    if (!/^d:[a-f0-9]{20}$/.test(tag)) return safeError(res, 400, 'Invalid tag');
+    res.json({ banned: accountBans.isDeviceBanned(tag) });
+  });
+
+  // Closed accounts (Terms section 19). Run on the droplet:
+  //   curl -s localhost:3000/admin/accounts -H "X-Admin-Secret: $ADMIN_SECRET"
+  //   curl -s localhost:3000/admin/accounts/NAME -H "X-Admin-Secret: $ADMIN_SECRET"
+  //   curl -s -X POST localhost:3000/admin/accounts/NAME -H "X-Admin-Secret: $ADMIN_SECRET" \
+  //     -H "Content-Type: application/json" -d '{"action":"ban","reason":"Harassment, 3 confirmed reports"}'
+  //   ... -d '{"action":"unban"}'
+  app.get('/admin/accounts', requireAdmin, (req, res) => res.json({ bans: accountBans.listAccountBans() }));
+  app.get('/admin/accounts/:username', requireAdmin, (req, res) => {
+    const name = String(req.params.username || '').trim();
+    if (!/^[A-Za-z0-9_-]{2,24}$/.test(name)) return safeError(res, 400, 'Invalid username');
+    res.json({ username: name, exists: users.has(name.toLowerCase()), ban: accountBans.getAccountBan(name), signals: accountBans.signalsFor(name) });
+  });
+  app.post('/admin/accounts/:username', requireAdmin, (req, res) => {
+    const name = String(req.params.username || '').trim();
+    if (!/^[A-Za-z0-9_-]{2,24}$/.test(name)) return safeError(res, 400, 'Invalid username');
+    const action = req.body && req.body.action;
+    if (action === 'ban') {
+      const reason = String((req.body && req.body.reason) || '').trim();
+      if (!reason) return safeError(res, 400, 'Give a reason (it goes in the log and the case file, not to the person)');
+      const user = users.get(name.toLowerCase());
+      const banned = accountBans.banAccount(user ? user.username : name, { reason, issuedBy: 'staff' });
+      return res.json({ ok: true, banned, ban: accountBans.getAccountBan(name) });
+    }
+    if (action === 'unban') return res.json({ ok: true, unbanned: accountBans.unbanAccount(name) });
+    return safeError(res, 400, 'action must be "ban" or "unban"');
   });
 
   // Admin-only — generate codes for Kickstarter batches etc. Not for
