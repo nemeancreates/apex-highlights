@@ -12,7 +12,7 @@
   "type": "commonjs",
   "dependencies": {
     "@aws-sdk/client-s3": "3.1152.0",
-    "@sentry/node": "^10.74.0",
+    "@sentry/node": "^11.9.0",
     "bcrypt": "6.0.0",
     "better-sqlite3": "13.0.3",
     "cors": "2.8.6",
