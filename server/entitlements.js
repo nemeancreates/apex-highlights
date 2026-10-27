@@ -42,7 +42,7 @@ const SUB_PLANS = {
   t2:     { kind: 'pc',     tier: 't2',     cents: 1000, label: 'Peakabu Creator, monthly' },
   t3:     { kind: 'pc',     tier: 't3',     cents: 2000, label: 'Peakabu Squad, monthly' },
   t4:     { kind: 'pc',     tier: 't4',     cents: 4000, label: 'Peakabu Pro, monthly' },
-  mobile: { kind: 'mobile', tier: 'mobile', cents: 500,  label: 'Peakabu Mobile host, monthly' }
+  mobile: { kind: 'mobile', tier: 'mobile', cents: 700,  label: 'Peakabu Mobile host, monthly' }
 };
 const LIVE_STATUSES = ['active', 'trialing', 'past_due'];
 

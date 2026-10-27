@@ -30,7 +30,7 @@ const MOBILE_FREE_DAILY_SEC = 10 * 60;
 // PC plans that include Mobile while they're active.
 // t6 is the testing-phase tier (config.js TESTING): Mobile is free for everyone then.
 const MOBILE_INCLUDED_TIERS = ['t3', 't4', 't5', 't6'];
-const EVENT_MAX_HOURS = 16;
+const EVENT_MAX_HOURS = 20; // four 5-hour blocks ($3 each, routes/billing.js)
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS mobile_passes (

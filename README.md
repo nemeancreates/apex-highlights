@@ -160,9 +160,9 @@ Peakabu Mobile (m.peakabu.app) is a separate small server. Hosts sign in with th
 |---|---|
 | Who pays for Mobile | An active Mobile pass, or an active T3 Squad / T4 Pro / T5 Founder plan (Mobile included) |
 | Free hosts | 10 minutes of live session time per UTC day (`MOBILE_FREE_DAILY_SEC` in `server/mobile.js`) |
-| Retention | Mobile sessions and footage are kept 60 days after they end |
+| Retention | Mobile sessions and footage are kept 45 days after they end (60 for sessions made before Oct 27, 2026). Storage cap 200 GB per host account, 60 GB per 5 hours of an event pass (enforced by the mobile server) |
 
-**Prices** (`server/routes/billing.js`): Mobile 1 month $5 (30 days), 3 months $12 (90 days), one-time event pass $3 (a date plus a window of up to 16 hours, which unlocks Peak Spots and no time limit for that window). Buying needs no account. The buyer gets a code (`PA-MOBILE-…` / `PA-EVENT-…`) and redeems it through `POST /auth/redeem`. Mobile time stacks; it never touches the PC tier. Email delivery is optional and the address is never stored.
+**Prices** (`server/routes/billing.js`): Mobile 1 month $7 (30 days; the 3-month code was dropped Oct 2026), monthly Mobile host subscription $7, one-time event pass $3 per 5 hours (a date plus a window of up to 20 hours: $3 / $6 / $9 / $12, which unlocks Peak Spots and no time limit for that window). Buying needs no account. The buyer gets a code (`PA-MOBILE-…` / `PA-EVENT-…`) and redeems it through `POST /auth/redeem`. Mobile time stacks; it never touches the PC tier. Email delivery is optional and the address is never stored.
 
 **Routes added:** `GET /billing`, `POST /api/billing/checkout`, `GET /api/billing/session/:id`, `POST /api/billing/session/:id/email`, `POST /api/billing/webhook`, `GET /auth/mobile`, plus `/internal/mobile/*` (shared secret only) and `POST /admin/public/mobile/:id {"action":"restore"|"hide"}`.
 

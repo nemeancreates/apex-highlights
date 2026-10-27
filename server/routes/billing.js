@@ -4,13 +4,13 @@
 // redemption code (redemption.js) and redeems it in the PC client or the
 // mobile host page, both of which go through POST /auth/redeem.
 //
-//   mobile1  $5  -> 30 days of Mobile
-//   mobile3  $12 -> 90 days of Mobile
+//   mobile1  $7  -> 30 days of Mobile
 //   pc2/pc3/pc4  $10/$20/$40 -> 30 days of Creator/Squad/Pro, one time
-//   event    $3  -> one event pass: a date + window of up to 16h
+//   event    $3 per 5 hours -> one event pass: a date + window of up to 20h
+//            (1-5h $3, 6-10h $6, 11-15h $9, 16-20h $12)
 //
 // Monthly subscriptions (auto-renew until cancelled), entitlements.js SUB_PLANS:
-//   Creator $10, Squad $20, Pro $40, Mobile host $5
+//   Creator $10, Squad $20, Pro $40, Mobile host $7
 // Checkout issues one code; redeeming it links the subscription to the
 // account, and each paid renewal extends the plan with no new code. The
 // buyer cancels in Stripe's customer portal (POST /api/billing/portal,
@@ -37,7 +37,11 @@ const entitlements = require('../entitlements');
 const accountBans = require('../moderation/account-bans');
 
 const PLANS = {
-  mobile1: { cents: 500,  days: 30, label: 'Peakabu Mobile, 1 month' },
+  mobile1: { cents: 700, days: 30, label: 'Peakabu Mobile, 1 month' }
+};
+// No longer sold, but a checkout paid before it was dropped must still get
+// its code (fulfil runs again from the success page or a webhook retry).
+const RETIRED_PLANS = {
   mobile3: { cents: 1200, days: 90, label: 'Peakabu Mobile, 3 months' }
 };
 // One-time PC codes: 30 days of a plan, paid once, never renewing. Same
@@ -48,7 +52,10 @@ const PC_PLANS = {
   pc3: { tier: 't3', cents: 2000, days: 30, label: 'Peakabu Squad, 30 days' },
   pc4: { tier: 't4', cents: 4000, days: 30, label: 'Peakabu Pro, 30 days' }
 };
-const EVENT_CENTS = 300;
+// Event passes are priced in 5-hour blocks: $3 for each block started.
+const EVENT_BLOCK_HOURS = 5;
+const EVENT_CENTS = 300; // per block
+const eventCents = (hours) => Math.max(1, Math.ceil(hours / EVENT_BLOCK_HOURS - 1e-9)) * EVENT_CENTS;
 const MAX_EMAILS_PER_PURCHASE = 3;
 // One-time codes can be bought in bulk (gifts, a team, an event crew):
 // one checkout, one payment, this many separate single-use codes.
@@ -181,7 +188,7 @@ function fulfil(session) {
     return { code, codes: [code], quantity: 1, product: 'sub', plan: md.plan, label: p.label, cents: p.cents };
   }
   if (md.product === 'mobile') {
-    const plan = PLANS[md.plan];
+    const plan = PLANS[md.plan] || RETIRED_PLANS[md.plan];
     if (!plan) return null;
     const quantity = qtyOf(md.quantity);
     let codes = findCodesByNote(note);
@@ -323,7 +330,7 @@ function initBillingRoutes(app) {
       testing: TESTING.enabled,
       emailEnabled: !!mailer,
       plans: Object.entries(PLANS).map(([id, p]) => ({ id, cents: p.cents, days: p.days, label: p.label })),
-      event: { cents: EVENT_CENTS, maxHours: EVENT_MAX_HOURS },
+      event: { cents: EVENT_CENTS, blockHours: EVENT_BLOCK_HOURS, maxHours: EVENT_MAX_HOURS },
       maxQuantity: MAX_QUANTITY,
       pcPlans: Object.entries(PC_PLANS).map(([id, p]) => ({ id, cents: p.cents, days: p.days, label: p.label })),
       subscriptions: Object.entries(entitlements.SUB_PLANS).map(([id, p]) => ({ id, kind: p.kind, cents: p.cents, label: p.label }))
@@ -365,7 +372,7 @@ function initBillingRoutes(app) {
         return safeError(res, 400, 'Pick a start time in the future (within a year).');
       }
       if (!Number.isFinite(h) || h < 0.5 || h > EVENT_MAX_HOURS) return safeError(res, 400, `Events run up to ${EVENT_MAX_HOURS} hours.`);
-      item = { name: `Peakabu event pass (${h}h)`, cents: EVENT_CENTS };
+      item = { name: `Peakabu event pass (${h}h)`, cents: eventCents(h) };
       metadata = { product: 'event', startsAt: String(Math.round(start)), hours: String(h), quantity: String(quantity) };
     } else {
       return safeError(res, 400, 'Unknown product');
@@ -485,4 +492,4 @@ async function stopBillingForBan(usernameLower) {
   }
 }
 
-module.exports = { stopBillingForBan, initBillingWebhook, initBillingRoutes, initBillingPortal, cancelSubscriptionsFor, fulfil, _messageForTest: messageFor, PLANS, PC_PLANS, EVENT_CENTS, _setStripeForTest: (s) => { stripe = s; }, _setMailerForTest: (m) => { mailer = m; } };
+module.exports = { stopBillingForBan, initBillingWebhook, initBillingRoutes, initBillingPortal, cancelSubscriptionsFor, fulfil, _messageForTest: messageFor, PLANS, PC_PLANS, EVENT_CENTS, EVENT_BLOCK_HOURS, eventCents, _setStripeForTest: (s) => { stripe = s; }, _setMailerForTest: (m) => { mailer = m; } };

@@ -91,7 +91,7 @@
   <ul class="inc">
     <li>No daily time limit on sessions you host</li>
     <li>List sessions on Browse and Peak Roulette</li>
-    <li>Footage kept 60 days</li>
+    <li>Footage kept 45 days, up to 200 GB</li>
   </ul>
   <div class="err" id="planErr"></div>
 
@@ -102,8 +102,8 @@
       <div><label for="date">Date</label><input type="date" id="date"></div>
       <div><label for="time">Start time</label><input type="time" id="time" value="18:00"></div>
     </div>
-    <label for="hours">Length: <b id="hoursLabel">4</b> hours (up to <span id="maxH">16</span>)</label>
-    <input type="range" id="hours" min="1" max="16" step="1" value="4">
+    <label for="hours">Length: <b id="hoursLabel">4</b> hours (up to <span id="maxH">20</span>) · <b id="eventTotal">$3</b></label>
+    <input type="range" id="hours" min="1" max="20" step="1" value="4">
     <div class="qty"><label for="eventQty">How many passes</label><select id="eventQty"></select><span class="muted small">Same date and window on each.</span></div>
     <button class="buy" id="eventBtn">Buy event pass</button>
     <div class="err" id="eventErr"></div>
@@ -171,8 +171,10 @@
     }).join('');
     var opts = ''; for (var i = 1; i <= (cfg.maxQuantity || 1); i++) opts += '<option value="' + i + '">' + i + '</option>';
     $('planQty').innerHTML = opts; $('pcQty').innerHTML = opts; $('eventQty').innerHTML = opts;
-    $('eventPrice').textContent = money(cfg.event.cents);
+    evt = cfg.event;
+    $('eventPrice').textContent = money(cfg.event.cents) + ' per ' + (cfg.event.blockHours || 5) + ' hours';
     $('hours').max = cfg.event.maxHours; $('maxH').textContent = cfg.event.maxHours;
+    showEventTotal();
     $('eventBtn').disabled = !cfg.enabled;
   });
 
@@ -203,7 +205,15 @@
   });
   var d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   $('date').value = d.toISOString().slice(0, 10);
-  $('hours').oninput = function () { $('hoursLabel').textContent = $('hours').value; };
+  // Event passes cost $3 for each 5-hour block (the server works out the same).
+  var evt = { cents: 300, blockHours: 5 };
+  function showEventTotal() {
+    var h = +$('hours').value, q = +$('eventQty').value || 1;
+    var each = Math.max(1, Math.ceil(h / evt.blockHours)) * evt.cents;
+    $('eventTotal').textContent = money(each) + (q > 1 ? ' each, ' + money(each * q) + ' total' : '');
+  }
+  $('hours').oninput = function () { $('hoursLabel').textContent = $('hours').value; showEventTotal(); };
+  $('eventQty').onchange = showEventTotal;
   $('eventBtn').onclick = async function () {
     $('eventErr').textContent = '';
     if (!$('date').value || !$('time').value) { $('eventErr').textContent = 'Pick a date and start time.'; return; }
