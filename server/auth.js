@@ -658,7 +658,7 @@ function initAuthRoutes(app) {
     // Event pass: lands on the account until it's picked for a session.
     if (result.tier === 'event') {
       const m = result.meta || {};
-      const ev = mobile.addEventPass(usernameLower, Number(m.startsAt) || Date.now(), m.hours);
+      const ev = mobile.addEventPass(usernameLower, Number(m.startsAt) || Date.now(), m.hours, m.size);
       log('info', 'event_code_redeemed', { username: req.user.username, eventId: ev.id });
       return res.json({ ...base(), event: ev,
         message: 'Event pass added. Pick it when you start a session in Peakabu Mobile.' });
@@ -729,7 +729,7 @@ function initAuthRoutes(app) {
     if (!TIERS[tier] && !isProduct(tier)) return safeError(res, 400, 'Invalid tier');
     try {
       const generated = generateRedemptionCodes({ tier, note, maxUses, quantity, durationDays,
-        meta: tier === 'event' && meta ? { startsAt: Number(meta.startsAt) || Date.now(), hours: Number(meta.hours) || 4 } : undefined });
+        meta: tier === 'event' && meta ? { startsAt: Number(meta.startsAt) || Date.now(), hours: Number(meta.hours) || 4, size: mobile.eventSize(meta.size) } : undefined });
       return res.status(201).json({ codes: generated });
     } catch (err) {
       log('warn', 'redemption_code_generation_failed', { error: err.message });

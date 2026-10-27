@@ -6,8 +6,9 @@
 //
 //   mobile1  $7  -> 30 days of Mobile
 //   pc2/pc3/pc4  $10/$20/$40 -> 30 days of Creator/Squad/Pro, one time
-//   event    $3 per 5 hours -> one event pass: a date + window of up to 20h
-//            (1-5h $3, 6-10h $6, 11-15h $9, 16-20h $12)
+//   event    one event pass: a date + window of up to 20h, priced per 5-hour
+//            block by group size: Small (15 phones) $5, Medium (40) $8,
+//            Large (80) $10. E.g. a 10h Large event is $20.
 //
 // Monthly subscriptions (auto-renew until cancelled), entitlements.js SUB_PLANS:
 //   Creator $10, Squad $20, Pro $40, Mobile host $7
@@ -31,7 +32,7 @@ const { log } = require('../logger');
 const { safeError } = require('../utils');
 const { createRateLimiter } = require('../ratelimit');
 const { generateRedemptionCodes, findCodeByNote, findCodesByNote } = require('../redemption');
-const { EVENT_MAX_HOURS } = require('../mobile');
+const { EVENT_MAX_HOURS, EVENT_SIZES, eventSize } = require('../mobile');
 const { TESTING } = require('../config');
 const entitlements = require('../entitlements');
 const accountBans = require('../moderation/account-bans');
@@ -52,10 +53,12 @@ const PC_PLANS = {
   pc3: { tier: 't3', cents: 2000, days: 30, label: 'Peakabu Squad, 30 days' },
   pc4: { tier: 't4', cents: 4000, days: 30, label: 'Peakabu Pro, 30 days' }
 };
-// Event passes are priced in 5-hour blocks: $3 for each block started.
+// Event passes are priced per 5-hour block started, by group size (how many
+// phones can be in the session; the mobile server sizes storage by it too).
 const EVENT_BLOCK_HOURS = 5;
-const EVENT_CENTS = 300; // per block
-const eventCents = (hours) => Math.max(1, Math.ceil(hours / EVENT_BLOCK_HOURS - 1e-9)) * EVENT_CENTS;
+const EVENT_BLOCK_CENTS = { s: 500, m: 800, l: 1000 };
+const EVENT_CENTS = EVENT_BLOCK_CENTS.s; // the "from" price
+const eventCents = (hours, size = 's') => Math.max(1, Math.ceil(hours / EVENT_BLOCK_HOURS - 1e-9)) * EVENT_BLOCK_CENTS[eventSize(size)];
 const MAX_EMAILS_PER_PURCHASE = 3;
 // One-time codes can be bought in bulk (gifts, a team, an event crew):
 // one checkout, one payment, this many separate single-use codes.
@@ -210,15 +213,15 @@ function fulfil(session) {
     return { code: codes[0], codes, quantity: codes.length, product: 'pc', plan: md.plan, label: plan.label, days: plan.days };
   }
   if (md.product === 'event') {
-    const startsAt = Number(md.startsAt), hours = Number(md.hours);
+    const startsAt = Number(md.startsAt), hours = Number(md.hours), size = eventSize(md.size);
     if (!Number.isFinite(startsAt) || !Number.isFinite(hours)) return null;
     const quantity = qtyOf(md.quantity);
     let codes = findCodesByNote(note);
     if (!codes.length) {
-      codes = generateRedemptionCodes({ tier: 'event', note, maxUses: 1, quantity, meta: { startsAt, hours }, buyer });
+      codes = generateRedemptionCodes({ tier: 'event', note, maxUses: 1, quantity, meta: { startsAt, hours, size }, buyer });
       log('info', 'billing_code_issued', { checkout: session.id, product: 'event', startsAt, hours, quantity });
     }
-    return { code: codes[0], codes, quantity: codes.length, product: 'event', startsAt, hours };
+    return { code: codes[0], codes, quantity: codes.length, product: 'event', startsAt, hours, size, phones: EVENT_SIZES[size].phones };
   }
   return null;
 }
@@ -246,7 +249,7 @@ function messageFor(out) {
   }
   return {
     subject: many ? `Your ${out.codes.length} Peakabu event passes` : 'Your Peakabu event pass',
-    text: `Your Peakabu event pass${many ? 'es' : ''} (${out.hours}h starting ${new Date(out.startsAt).toUTCString()}):\n\n${list}` +
+    text: `Your Peakabu event pass${many ? 'es' : ''} (${out.hours}h starting ${new Date(out.startsAt).toUTCString()}, up to ${out.phones || 15} phones):\n\n${list}` +
       `${tail}\n\nOnce redeemed, pick the pass when you start a Mobile session to bring your Swing cards to life for the event.`
   };
 }
@@ -330,7 +333,8 @@ function initBillingRoutes(app) {
       testing: TESTING.enabled,
       emailEnabled: !!mailer,
       plans: Object.entries(PLANS).map(([id, p]) => ({ id, cents: p.cents, days: p.days, label: p.label })),
-      event: { cents: EVENT_CENTS, blockHours: EVENT_BLOCK_HOURS, maxHours: EVENT_MAX_HOURS },
+      event: { cents: EVENT_CENTS, blockHours: EVENT_BLOCK_HOURS, maxHours: EVENT_MAX_HOURS,
+        sizes: Object.entries(EVENT_SIZES).map(([id, z]) => ({ id, name: z.name, phones: z.phones, blockCents: EVENT_BLOCK_CENTS[id] })) },
       maxQuantity: MAX_QUANTITY,
       pcPlans: Object.entries(PC_PLANS).map(([id, p]) => ({ id, cents: p.cents, days: p.days, label: p.label })),
       subscriptions: Object.entries(entitlements.SUB_PLANS).map(([id, p]) => ({ id, kind: p.kind, cents: p.cents, label: p.label }))
@@ -340,7 +344,7 @@ function initBillingRoutes(app) {
   app.post('/api/billing/checkout', checkoutLimiter, async (req, res) => {
     if (TESTING.enabled) return safeError(res, 503, 'Peakabu is free while we test, so purchases are switched off for now.');
     if (!stripe) return safeError(res, 503, 'Payments aren\'t set up yet.');
-    const { product, plan, startsAt, hours } = req.body || {};
+    const { product, plan, startsAt, hours, size } = req.body || {};
     const email = cleanEmail(req.body?.email);
     if (email === null) return safeError(res, 400, 'That email doesn\'t look right. Fix it or leave it blank.');
 
@@ -372,8 +376,10 @@ function initBillingRoutes(app) {
         return safeError(res, 400, 'Pick a start time in the future (within a year).');
       }
       if (!Number.isFinite(h) || h < 0.5 || h > EVENT_MAX_HOURS) return safeError(res, 400, `Events run up to ${EVENT_MAX_HOURS} hours.`);
-      item = { name: `Peakabu event pass (${h}h)`, cents: eventCents(h) };
-      metadata = { product: 'event', startsAt: String(Math.round(start)), hours: String(h), quantity: String(quantity) };
+      if (size != null && !EVENT_SIZES[size]) return safeError(res, 400, 'Pick a group size.');
+      const sz = eventSize(size);
+      item = { name: `Peakabu event pass (${h}h, ${EVENT_SIZES[sz].name}, up to ${EVENT_SIZES[sz].phones} phones)`, cents: eventCents(h, sz) };
+      metadata = { product: 'event', startsAt: String(Math.round(start)), hours: String(h), size: sz, quantity: String(quantity) };
     } else {
       return safeError(res, 400, 'Unknown product');
     }
@@ -492,4 +498,4 @@ async function stopBillingForBan(usernameLower) {
   }
 }
 
-module.exports = { stopBillingForBan, initBillingWebhook, initBillingRoutes, initBillingPortal, cancelSubscriptionsFor, fulfil, _messageForTest: messageFor, PLANS, PC_PLANS, EVENT_CENTS, EVENT_BLOCK_HOURS, eventCents, _setStripeForTest: (s) => { stripe = s; }, _setMailerForTest: (m) => { mailer = m; } };
+module.exports = { stopBillingForBan, initBillingWebhook, initBillingRoutes, initBillingPortal, cancelSubscriptionsFor, fulfil, _messageForTest: messageFor, PLANS, PC_PLANS, EVENT_CENTS, EVENT_BLOCK_CENTS, EVENT_BLOCK_HOURS, eventCents, _setStripeForTest: (s) => { stripe = s; }, _setMailerForTest: (m) => { mailer = m; } };

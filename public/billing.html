@@ -91,7 +91,7 @@
   <ul class="inc">
     <li>No daily time limit on sessions you host</li>
     <li>List sessions on Browse and Peak Roulette</li>
-    <li>Footage kept 45 days, up to 200 GB</li>
+    <li>175 GB of new footage every 30 days, each kept 45 days</li>
   </ul>
   <div class="err" id="planErr"></div>
 
@@ -102,7 +102,9 @@
       <div><label for="date">Date</label><input type="date" id="date"></div>
       <div><label for="time">Start time</label><input type="time" id="time" value="18:00"></div>
     </div>
-    <label for="hours">Length: <b id="hoursLabel">4</b> hours (up to <span id="maxH">20</span>) · <b id="eventTotal">$3</b></label>
+    <label for="evSize">Group size (phones in the session)</label>
+    <select id="evSize"><option value="s">Small, up to 15 phones · $5 per 5 hours</option><option value="m">Medium, up to 40 phones · $8 per 5 hours</option><option value="l">Large, up to 80 phones · $10 per 5 hours</option></select>
+    <label for="hours">Length: <b id="hoursLabel">4</b> hours (up to <span id="maxH">20</span>) · <b id="eventTotal">$5</b></label>
     <input type="range" id="hours" min="1" max="20" step="1" value="4">
     <div class="qty"><label for="eventQty">How many passes</label><select id="eventQty"></select><span class="muted small">Same date and window on each.</span></div>
     <button class="buy" id="eventBtn">Buy event pass</button>
@@ -172,7 +174,12 @@
     var opts = ''; for (var i = 1; i <= (cfg.maxQuantity || 1); i++) opts += '<option value="' + i + '">' + i + '</option>';
     $('planQty').innerHTML = opts; $('pcQty').innerHTML = opts; $('eventQty').innerHTML = opts;
     evt = cfg.event;
-    $('eventPrice').textContent = money(cfg.event.cents) + ' per ' + (cfg.event.blockHours || 5) + ' hours';
+    $('eventPrice').textContent = 'from ' + money(cfg.event.cents) + ' per ' + (cfg.event.blockHours || 5) + ' hours';
+    if (cfg.event.sizes) {
+      $('evSize').innerHTML = cfg.event.sizes.map(function (z) {
+        return '<option value="' + z.id + '">' + z.name + ', up to ' + z.phones + ' phones · ' + money(z.blockCents) + ' per ' + (cfg.event.blockHours || 5) + ' hours</option>';
+      }).join('');
+    }
     $('hours').max = cfg.event.maxHours; $('maxH').textContent = cfg.event.maxHours;
     showEventTotal();
     $('eventBtn').disabled = !cfg.enabled;
@@ -205,21 +212,24 @@
   });
   var d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   $('date').value = d.toISOString().slice(0, 10);
-  // Event passes cost $3 for each 5-hour block (the server works out the same).
-  var evt = { cents: 300, blockHours: 5 };
+  // Event passes cost a set price for each 5-hour block, by group size (the
+  // server works out the same).
+  var evt = { cents: 500, blockHours: 5, sizes: [{ id: 's', blockCents: 500 }, { id: 'm', blockCents: 800 }, { id: 'l', blockCents: 1000 }] };
   function showEventTotal() {
     var h = +$('hours').value, q = +$('eventQty').value || 1;
-    var each = Math.max(1, Math.ceil(h / evt.blockHours)) * evt.cents;
+    var z = (evt.sizes || []).filter(function (x) { return x.id === $('evSize').value; })[0] || { blockCents: evt.cents };
+    var each = Math.max(1, Math.ceil(h / evt.blockHours)) * z.blockCents;
     $('eventTotal').textContent = money(each) + (q > 1 ? ' each, ' + money(each * q) + ' total' : '');
   }
   $('hours').oninput = function () { $('hoursLabel').textContent = $('hours').value; showEventTotal(); };
   $('eventQty').onchange = showEventTotal;
+  $('evSize').onchange = showEventTotal;
   $('eventBtn').onclick = async function () {
     $('eventErr').textContent = '';
     if (!$('date').value || !$('time').value) { $('eventErr').textContent = 'Pick a date and start time.'; return; }
     var startsAt = new Date($('date').value + 'T' + $('time').value).getTime();
     $('eventBtn').disabled = true;
-    try { location.href = (await post('/api/billing/checkout', { product: 'event', startsAt: startsAt, hours: +$('hours').value, quantity: +$('eventQty').value || 1, email: email() })).url; }
+    try { location.href = (await post('/api/billing/checkout', { product: 'event', startsAt: startsAt, hours: +$('hours').value, size: $('evSize').value, quantity: +$('eventQty').value || 1, email: email() })).url; }
     catch (err) { $('eventErr').textContent = err.message; $('eventBtn').disabled = false; }
   };
 })();

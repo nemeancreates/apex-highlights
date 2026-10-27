@@ -115,7 +115,7 @@ function initAccountRoutes(app) {
         expiresAt = st.endsAt || null; // set once cancelled or ended
         status = !st.live ? 'ended' : (use ? 'active' : 'unused');
       } else if (c.tier === 'event') {
-        label = `Event pass (${m.hours}h)`;
+        label = `Event pass (${m.hours}h, up to ${(mobile.EVENT_SIZES[mobile.eventSize(m.size)] || {}).phones || 15} phones)`;
         expiresAt = Number(m.startsAt) + Math.round(Number(m.hours) * 3600000); // the window ends either way
       } else if (c.tier === 'mobile') {
         label = `Peakabu Mobile, ${c.durationDays || 30} days`;
