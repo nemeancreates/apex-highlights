@@ -8,7 +8,7 @@ Peak-Abu takes security seriously. This document outlines our security posture, 
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Instead, email: **peakabullc@gmail.com** with:
+Instead, email: **report@peakabu.app** with:
 - Vulnerability description
 - Steps to reproduce
 - Potential impact
@@ -212,7 +212,7 @@ Peak-Abu is designed with OWASP Top 10 and Microsoft SDL categories in mind. Mar
 
 ## Contact
 
-- **Security inquiries:** peakabullc@gmail.com
+- **Security inquiries:** report@peakabu.app
 - **General support:** GitHub Issues or Discord
 
 ---
