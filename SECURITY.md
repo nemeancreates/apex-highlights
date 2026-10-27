@@ -43,6 +43,9 @@ We will:
 - The public web player (viewing a shared session by code) requires no login at all, by design. Account-gated actions — uploads, exports, AI Reel, admin routes — go through JWT bearer tokens verified by middleware on both HTTP requests and the Socket.IO handshake
 - **Discord OAuth account linking:** a short-lived, signed `state` value ties the OAuth flow to the already-authenticated Peak-Abu account; a Discord account can only be linked to one Peak-Abu account
 - **Discord-based password recovery (no email collection):** uses a separate state map from the linking flow, so a link-state token can never be replayed as a recovery token or vice versa. An unlinked or non-matching Discord account gets a generic "no linked account" response — no username enumeration. Reset tokens are 32 random bytes, single-use, 15-minute expiry, in-memory only. A successful reset bumps `tokenVersion`, ending all existing sessions on that account
+- **Per-platform sign-in slots:** an account can be signed in once each on PC, Mobile and web. A new login on the same platform replaces the older one, and a password reset still signs the account out everywhere
+- **Account deletion:** users can delete their own account; it signs them out everywhere, starts a 7-day grace period (signing back in cancels it), then removes their clips, comments, passes and Mobile data and cancels any subscription. Ban records and anything under legal hold are kept on purpose
+- **Closed accounts:** a banned account is signed out everywhere, refused at sign-in and barred from public posting. Ban-evasion checks (card fingerprint on redeemed codes, hashed phone ID on Mobile) close lookalike accounts automatically and alert staff
 - Placeholder secrets have been caught and rotated in the past (`JWT_SECRET` and `ADMIN_SECRET` were briefly literal placeholder strings during early setup); `.env` is confirmed untracked and gitignored
 
 ### Authorization & Access Control
@@ -87,6 +90,10 @@ We will:
 - A separate bandwidth alert flags any single account pushing more than 500GB in a calendar month, so outliers get caught before they skew cost projections
 - Discord recovery failures are logged with error detail, but the recovery code/token itself is never logged
 - **Crash and unhandled-exception logging is implemented on both sides** — the client (Electron process) and server (Node process) both catch and log unhandled exceptions/crashes instead of failing silently. This closes what was, as of the last review, the most significant observability gap in the product. Field validation (confirming it surfaces a real crash end-to-end, not just that the hooks exist) is an ongoing part of the beta process rather than a one-time check.
+
+### Public Content Safety
+- Public listings (PC and Mobile) stay hidden until clip thumbnails and photos pass the scanners (CSAM hash match plus a content classifier); with no scanner configured they never go public
+- A CSAM match hides the listing, bans the host from public posting, places a legal hold and sends an urgent staff alert; a classifier flag hides it for staff review
 
 ### API & Network
 - REST endpoints require a valid JWT; Socket.IO connections are authenticated during the handshake
@@ -210,6 +217,6 @@ Peak-Abu is designed with OWASP Top 10 and Microsoft SDL categories in mind. Mar
 
 ---
 
-**Last Updated:** September 2026, verified against client v0.1.77
+**Last Updated:** October 2026 (client v0.1.99). Account, sign-in-slot and public-safety sections added against current code; the remaining controls were last reviewed in full at client v0.1.77
 
 Peak-Abu is maintained by a single developer with security as a core priority. Your trust is essential — thank you for helping us keep Peak-Abu safe. 🔐

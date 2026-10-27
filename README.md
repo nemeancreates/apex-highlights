@@ -38,7 +38,7 @@ Peak-Abu
 │   ├── db.js                   # SQLite connection + schema + migrations
 │   ├── stores.js               # Users and sessions state, write-through to SQLite
 │   ├── auth.js                 # JWT, bcrypt, Discord OAuth, tier gates
-│   ├── routes/                 # sessions.js, join.js, uploads.js, comments.js
+│   ├── routes/                 # sessions.js, join.js, uploads.js, comments.js, stars.js, moments.js, public.js, account.js, billing.js
 │   ├── sockets/                # index.js, highlights.js (coordinated save), autocapture.js
 │   ├── aireel.js               # AI highlight reel pipeline (Anthropic API + heuristic fallback)
 │   ├── composite.js            # Server-side FFmpeg grid export (xstack + ASS overlay)
@@ -193,7 +193,7 @@ Lifting a ban also marks the account as checked, so a shared card or second-hand
 
 ## Feature Roadmap
 
-### Current (v0.1.78)
+### Current (v0.1.99)
 - ✅ Multi-POV capture (Windows Electron) — DDagrab, GDI, and window-capture engines with automatic fallback
 - ✅ Coordinated save with clock sync
 - ✅ Web-based synchronized replay, no account needed to view
@@ -211,6 +211,13 @@ Lifting a ban also marks the account as checked, so a shared card or second-hand
 - ✅ Upload throttling, so a clip upload doesn't saturate upstream and spike in-game ping
 - ✅ Public sessions: `/browse` and Peak Roulette (roulette leans toward starred moments)
 - ✅ Web billing for Peakabu Mobile (Stripe Checkout, codes redeem in the PC client or on the Mobile host page)
+- ✅ Stars and chapters — favorite highlight moments with a star hotkey; the web player groups highlight pills into chapters (v0.1.87)
+- ✅ Clip folders — clips save as `<Game>\<date> · <CODE>`, with an Organize Clips tool for older flat clips (v0.1.87)
+- ✅ Upload queue with a low-bandwidth mode for slower connections
+- ✅ AI Reel Editor's notes — tell the editor what to keep or how many POVs to show
+- ✅ Account deletion from Settings and `peakabu.app/delete-account`, with a 7-day grace period (signing back in cancels it)
+- ✅ Per-platform sign-in slots — one login each on PC, Mobile and web at the same time
+- ✅ Public-listing safety: content scanning, closed-account handling and ban-evasion checks (see Safety above)
 
 ### Planned (v0.2+)
 - 🔄 Adaptive bitrate streaming (HLS/DASH for bandwidth savings)
@@ -282,6 +289,6 @@ Peak-Abu bundles FFmpeg, which is distributed under its own licence — see `THI
 
 ---
 
-**Last verified against live code:** 18 September 2026, client v0.1.78
+**Last verified against live code:** 27 October 2026, client v0.1.99
 
 **Built with care by a single developer. If Peak-Abu saves your squad time, consider subscribing to help fund development.** ❤️
