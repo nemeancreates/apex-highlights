@@ -22,7 +22,7 @@
 const crypto = require('crypto');
 const db = require('./db');
 const { log } = require('./logger');
-const { TESTING } = require('./config');
+const { TESTING, TIERS } = require('./config');
 
 // Free mobile hosts: no time limit, this much new footage per 30 days. The
 // mobile server enforces it (its FREE_CAP_GB, default 10); this is for display.
@@ -163,12 +163,16 @@ function getMobileStatus(user, effectiveTier, planExpiresAt) {
   const row = lower ? stmt.getPass.get(lower) : null;
   const passUntil = row && row.expiresAt > now ? row.expiresAt : null;
   const viaTier = MOBILE_INCLUDED_TIERS.includes(effectiveTier);
+  // Lifetime accounts: a paid PC plan with no expiry (Founder, or a lifetime
+  // code). Mobile has no storage limit and up to 100 phones a session for them.
+  const lifetime = !!(user && user.tier && user.tier !== 't1' && TIERS[user.tier] && !user.tierExpiresAt);
   let events = [];
   try { events = lower ? stmt.eventsFor.all(lower, now) : []; } catch (e) {}
   return {
     username: user ? user.username : null,
-    paying: !!passUntil || viaTier,
-    source: passUntil ? 'pass' : (viaTier ? 'plan' : 'free'),
+    paying: !!passUntil || viaTier || lifetime,
+    lifetime,
+    source: passUntil ? 'pass' : (viaTier ? 'plan' : (lifetime ? 'lifetime' : 'free')),
     passExpiresAt: passUntil,
     tier: effectiveTier,
     planExpiresAt: viaTier ? (planExpiresAt === undefined ? (user.tierExpiresAt || null) : planExpiresAt) : null,
