@@ -105,6 +105,7 @@ const stmt = {
   getHidden:   db.prepare(`SELECT * FROM mobile_listing_hidden WHERE listingId = ?`),
   claimEvent:  db.prepare(`UPDATE mobile_event_passes SET claimedBy = ?, claimedAt = ? WHERE id = ? AND (claimedBy IS NULL OR claimedBy = ?)`),
   dropOldEvents: db.prepare(`DELETE FROM mobile_event_passes WHERE endsAt < ?`),
+  upcomingEvents: db.prepare(`SELECT startsAt, endsAt, size FROM mobile_event_passes WHERE startsAt < ? AND endsAt > ? ORDER BY startsAt ASC LIMIT 500`),
 
   addReport:   db.prepare(`INSERT OR IGNORE INTO mobile_listing_reports (listingId, reporterKey, reason, createdAt) VALUES (?, ?, ?, ?)`),
   countReports: db.prepare(`SELECT COUNT(*) AS n FROM mobile_listing_reports WHERE listingId = ?`),
@@ -177,6 +178,15 @@ function getMobileStatus(user, effectiveTier, planExpiresAt) {
     freeDailySec: MOBILE_FREE_DAILY_SEC,
     events: events.map(e => ({ id: e.id, startsAt: e.startsAt, endsAt: e.endsAt, size: eventSize(e.size), phones: EVENT_SIZES[eventSize(e.size)].phones, claimedBy: e.claimedBy || null }))
   };
+}
+
+// Event passes starting within `hours` (or running now), any account: times and
+// group size only, no names. The mobile server starts worker servers ahead of
+// Medium and Large events (its lib/scaler.js).
+function upcomingEvents(hours = 26) {
+  const now = Date.now();
+  const h = Math.max(1, Math.min(72, Number(hours) || 26));
+  return stmt.upcomingEvents.all(now + h * 3600000, now).map(e => ({ startsAt: e.startsAt, endsAt: e.endsAt, size: eventSize(e.size) }));
 }
 
 // One pass = one session. Re-claiming for the same session is fine (the
@@ -426,7 +436,7 @@ function mobileSecretOk(req) {
 }
 
 module.exports = {
-  MOBILE_FREE_DAILY_SEC, MOBILE_INCLUDED_TIERS, EVENT_MAX_HOURS, EVENT_SIZES, eventSize,
+  MOBILE_FREE_DAILY_SEC, MOBILE_INCLUDED_TIERS, EVENT_MAX_HOURS, EVENT_SIZES, eventSize, upcomingEvents,
   grantMobileDays, setMobilePassUntil, mobilePassRemainingMs, addEventPass, getMobileStatus, claimEventPass,
   startMobileListingSync, mobileListings, allMobileListingIds, hostedMobileSessions, mobileListingState, reportMobileListing, setMobileListingHidden, mobileSecretOk,
   _refreshForTest: refreshMobileListings

@@ -502,6 +502,12 @@ function initAuthRoutes(app) {
     res.json(mobile.getMobileStatus(user, getEffectiveTier(user), getTierExpiresAt(user)));
   });
 
+  // Upcoming event passes (times and sizes only), for the mobile server's worker scaler.
+  app.get('/internal/mobile/upcoming-events', (req, res) => {
+    if (!mobile.mobileSecretOk(req)) return safeError(res, 403, 'Forbidden');
+    res.json({ events: mobile.upcomingEvents(req.query.hours) });
+  });
+
   // Where a listed mobile session stands with moderation, for the host's switch.
   app.get('/internal/mobile/listing-state/:id', (req, res) => {
     if (!mobile.mobileSecretOk(req)) return safeError(res, 403, 'Forbidden');
