@@ -30,7 +30,12 @@ const MOBILE_FREE_DAILY_SEC = 10 * 60;
 // PC plans that include Mobile while they're active.
 // t6 is the testing-phase tier (config.js TESTING): Mobile is free for everyone then.
 const MOBILE_INCLUDED_TIERS = ['t3', 't4', 't5', 't6'];
-const EVENT_MAX_HOURS = 16;
+const EVENT_MAX_HOURS = 20; // four 5-hour blocks (routes/billing.js)
+// Event pass group sizes: how many phones can be in the session. The mobile
+// server sizes the pass's storage by it (lib/caps.js there). Passes from
+// before sizes existed are Small.
+const EVENT_SIZES = { s: { name: 'Small', phones: 15 }, m: { name: 'Medium', phones: 40 }, l: { name: 'Large', phones: 80 } };
+const eventSize = (v) => (EVENT_SIZES[v] ? v : 's');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS mobile_passes (
@@ -71,6 +76,11 @@ db.exec(`
   );
 `);
 
+if (!db.prepare(`PRAGMA table_info(mobile_event_passes)`).all().some((c) => c.name === 'size')) {
+  db.exec(`ALTER TABLE mobile_event_passes ADD COLUMN size TEXT NOT NULL DEFAULT 's'`);
+  console.log('DB migration: added mobile_event_passes.size');
+}
+
 const stmt = {
   getPass:     db.prepare(`SELECT * FROM mobile_passes WHERE usernameLower = ?`),
   upsertPass:  db.prepare(`
@@ -78,7 +88,7 @@ const stmt = {
     ON CONFLICT(usernameLower) DO UPDATE SET expiresAt = excluded.expiresAt, updatedAt = excluded.updatedAt
   `),
   addEvent:    db.prepare(`
-    INSERT INTO mobile_event_passes (id, usernameLower, startsAt, endsAt, createdAt) VALUES (?, ?, ?, ?, ?)
+    INSERT INTO mobile_event_passes (id, usernameLower, startsAt, endsAt, createdAt, size) VALUES (?, ?, ?, ?, ?, ?)
   `),
   eventsFor:   db.prepare(`SELECT * FROM mobile_event_passes WHERE usernameLower = ? AND endsAt > ? ORDER BY startsAt ASC`),
   getEvent:    db.prepare(`SELECT * FROM mobile_event_passes WHERE id = ?`),
@@ -95,6 +105,7 @@ const stmt = {
   getHidden:   db.prepare(`SELECT * FROM mobile_listing_hidden WHERE listingId = ?`),
   claimEvent:  db.prepare(`UPDATE mobile_event_passes SET claimedBy = ?, claimedAt = ? WHERE id = ? AND (claimedBy IS NULL OR claimedBy = ?)`),
   dropOldEvents: db.prepare(`DELETE FROM mobile_event_passes WHERE endsAt < ?`),
+  upcomingEvents: db.prepare(`SELECT startsAt, endsAt, size FROM mobile_event_passes WHERE startsAt < ? AND endsAt > ? ORDER BY startsAt ASC LIMIT 500`),
 
   addReport:   db.prepare(`INSERT OR IGNORE INTO mobile_listing_reports (listingId, reporterKey, reason, createdAt) VALUES (?, ?, ?, ?)`),
   countReports: db.prepare(`SELECT COUNT(*) AS n FROM mobile_listing_reports WHERE listingId = ?`),
@@ -134,13 +145,14 @@ function mobilePassRemainingMs(usernameLower) {
   return row && row.expiresAt > Date.now() ? row.expiresAt - Date.now() : 0;
 }
 
-function addEventPass(usernameLower, startsAt, hours) {
+function addEventPass(usernameLower, startsAt, hours, size) {
   const h = Math.max(0.5, Math.min(EVENT_MAX_HOURS, Number(hours) || 0));
   const id = crypto.randomBytes(8).toString('base64url');
   const endsAt = startsAt + Math.round(h * 3600000);
-  stmt.addEvent.run(id, usernameLower, startsAt, endsAt, Date.now());
-  log('info', 'mobile_event_pass_granted', { username: usernameLower, id, startsAt, endsAt });
-  return { id, startsAt, endsAt };
+  const sz = eventSize(size);
+  stmt.addEvent.run(id, usernameLower, startsAt, endsAt, Date.now(), sz);
+  log('info', 'mobile_event_pass_granted', { username: usernameLower, id, startsAt, endsAt, size: sz });
+  return { id, startsAt, endsAt, size: sz, phones: EVENT_SIZES[sz].phones };
 }
 
 // effectiveTier / planExpiresAt come from auth.getEffectiveTier and
@@ -164,8 +176,17 @@ function getMobileStatus(user, effectiveTier, planExpiresAt) {
     // server reads this to let any signed-in host run an event without a pass).
     testing: TESTING.enabled,
     freeDailySec: MOBILE_FREE_DAILY_SEC,
-    events: events.map(e => ({ id: e.id, startsAt: e.startsAt, endsAt: e.endsAt, claimedBy: e.claimedBy || null }))
+    events: events.map(e => ({ id: e.id, startsAt: e.startsAt, endsAt: e.endsAt, size: eventSize(e.size), phones: EVENT_SIZES[eventSize(e.size)].phones, claimedBy: e.claimedBy || null }))
   };
+}
+
+// Event passes starting within `hours` (or running now), any account: times and
+// group size only, no names. The mobile server starts worker servers ahead of
+// Medium and Large events (its lib/scaler.js).
+function upcomingEvents(hours = 26) {
+  const now = Date.now();
+  const h = Math.max(1, Math.min(72, Number(hours) || 26));
+  return stmt.upcomingEvents.all(now + h * 3600000, now).map(e => ({ startsAt: e.startsAt, endsAt: e.endsAt, size: eventSize(e.size) }));
 }
 
 // One pass = one session. Re-claiming for the same session is fine (the
@@ -176,7 +197,7 @@ function claimEventPass(usernameLower, id, sessionId) {
   if (row.endsAt <= Date.now()) return { ok: false, error: 'That event pass has already ended.' };
   const changed = stmt.claimEvent.run(sessionId, Date.now(), id, sessionId).changes;
   if (!changed) return { ok: false, error: 'That event pass is already used by another session.' };
-  return { ok: true, startsAt: row.startsAt, endsAt: row.endsAt };
+  return { ok: true, startsAt: row.startsAt, endsAt: row.endsAt, size: eventSize(row.size), phones: EVENT_SIZES[eventSize(row.size)].phones };
 }
 
 // --- Public listings from the mobile server --------------------------------
@@ -415,7 +436,7 @@ function mobileSecretOk(req) {
 }
 
 module.exports = {
-  MOBILE_FREE_DAILY_SEC, MOBILE_INCLUDED_TIERS, EVENT_MAX_HOURS,
+  MOBILE_FREE_DAILY_SEC, MOBILE_INCLUDED_TIERS, EVENT_MAX_HOURS, EVENT_SIZES, eventSize, upcomingEvents,
   grantMobileDays, setMobilePassUntil, mobilePassRemainingMs, addEventPass, getMobileStatus, claimEventPass,
   startMobileListingSync, mobileListings, allMobileListingIds, hostedMobileSessions, mobileListingState, reportMobileListing, setMobileListingHidden, mobileSecretOk,
   _refreshForTest: refreshMobileListings
