@@ -127,7 +127,8 @@
       $('sessBar').style.width = (cap ? Math.min(100, used / cap * 100) : 0).toFixed(1) + '%';
       $('limitsLine').textContent = 'Up to ' + l.memberCap + ' players per session. Resets on the 1st.';
       var m = a.mobile || {};
-      if (m.source === 'plan') { $('mobName').textContent = 'Included'; $('mobLine').textContent = 'Comes with your ' + a.tierLabel + ' plan.'; }
+      if (m.lifetime) { $('mobName').textContent = 'Lifetime'; $('mobLine').textContent = 'Comes with your lifetime ' + a.tierLabel + ' plan: up to 100 phones a session, no storage limit.'; }
+      else if (m.source === 'plan') { $('mobName').textContent = 'Included'; $('mobLine').textContent = 'Comes with your ' + a.tierLabel + ' plan.'; }
       else if (m.source === 'pass') { $('mobName').textContent = 'Host pass'; $('mobLine').textContent = 'Active until ' + day(m.passExpiresAt) + '.'; }
       else { $('mobName').textContent = 'Free'; $('mobLine').textContent = 'Host with no time limit, up to ' + (m.freeStorageGB || 10) + ' GB of footage a month.'; }
       if (m.events && m.events.length) $('mobLine').textContent += ' ' + m.events.length + ' event pass' + (m.events.length === 1 ? '' : 'es') + ' ready.';

@@ -159,6 +159,7 @@ Peakabu Mobile (m.peakabu.app) is a separate small server. Hosts sign in with th
 | | |
 |---|---|
 | Who pays for Mobile | An active Mobile pass, or an active T3 Squad / T4 Pro / T5 Founder plan (Mobile included) |
+| Lifetime accounts | A paid PC plan with no expiry (Founder, lifetime codes): status sends `lifetime: true` and `paying: true`; the mobile server gives them no storage allowance and up to 100 phones a session (`LIFETIME_MAX_PHONES`), event pass or not |
 | Free hosts | No time limit; up to 6 phones a session (the host and 5 others, `FREE_MAX_PHONES`); 10 GB of new footage per rolling 30 days (enforced by the mobile server's `FREE_CAP_GB`; shown from `MOBILE_FREE_STORAGE_GB` in `server/mobile.js`) |
 | Retention | Mobile sessions and footage are kept 45 days after they end (60 for sessions made before Oct 27, 2026). Storage: 120 GB of new footage per host account per rolling 30 days; sessions without an event pass hold up to 30 phones for paying hosts; event passes 60 / 120 / 200 GB per 5 hours for Small / Medium / Large (15 / 40 / 80 phones), enforced by the mobile server |
 
