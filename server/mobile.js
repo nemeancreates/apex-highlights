@@ -24,9 +24,9 @@ const db = require('./db');
 const { log } = require('./logger');
 const { TESTING } = require('./config');
 
-// Free mobile hosts: this much live session time per UTC day, enforced by
-// the mobile server (it's the one that knows when a session is live).
-const MOBILE_FREE_DAILY_SEC = 10 * 60;
+// Free mobile hosts: no time limit, this much new footage per 30 days. The
+// mobile server enforces it (its FREE_CAP_GB, default 10); this is for display.
+const MOBILE_FREE_STORAGE_GB = 10;
 // PC plans that include Mobile while they're active.
 // t6 is the testing-phase tier (config.js TESTING): Mobile is free for everyone then.
 const MOBILE_INCLUDED_TIERS = ['t3', 't4', 't5', 't6'];
@@ -175,7 +175,7 @@ function getMobileStatus(user, effectiveTier, planExpiresAt) {
     // Testing phase: everything is free, event passes included (the mobile
     // server reads this to let any signed-in host run an event without a pass).
     testing: TESTING.enabled,
-    freeDailySec: MOBILE_FREE_DAILY_SEC,
+    freeStorageGB: MOBILE_FREE_STORAGE_GB,
     events: events.map(e => ({ id: e.id, startsAt: e.startsAt, endsAt: e.endsAt, size: eventSize(e.size), phones: EVENT_SIZES[eventSize(e.size)].phones, claimedBy: e.claimedBy || null }))
   };
 }
@@ -436,7 +436,7 @@ function mobileSecretOk(req) {
 }
 
 module.exports = {
-  MOBILE_FREE_DAILY_SEC, MOBILE_INCLUDED_TIERS, EVENT_MAX_HOURS, EVENT_SIZES, eventSize, upcomingEvents,
+  MOBILE_FREE_STORAGE_GB, MOBILE_INCLUDED_TIERS, EVENT_MAX_HOURS, EVENT_SIZES, eventSize, upcomingEvents,
   grantMobileDays, setMobilePassUntil, mobilePassRemainingMs, addEventPass, getMobileStatus, claimEventPass,
   startMobileListingSync, mobileListings, allMobileListingIds, hostedMobileSessions, mobileListingState, reportMobileListing, setMobileListingHidden, mobileSecretOk,
   _refreshForTest: refreshMobileListings

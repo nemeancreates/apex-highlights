@@ -129,7 +129,7 @@
       var m = a.mobile || {};
       if (m.source === 'plan') { $('mobName').textContent = 'Included'; $('mobLine').textContent = 'Comes with your ' + a.tierLabel + ' plan.'; }
       else if (m.source === 'pass') { $('mobName').textContent = 'Host pass'; $('mobLine').textContent = 'Active until ' + day(m.passExpiresAt) + '.'; }
-      else { $('mobName').textContent = 'Free'; $('mobLine').textContent = 'Host up to ' + Math.round((m.freeDailySec || 600) / 60) + ' minutes a day.'; }
+      else { $('mobName').textContent = 'Free'; $('mobLine').textContent = 'Host with no time limit, up to ' + (m.freeStorageGB || 10) + ' GB of footage a month.'; }
       if (m.events && m.events.length) $('mobLine').textContent += ' ' + m.events.length + ' event pass' + (m.events.length === 1 ? '' : 'es') + ' ready.';
       showSubscriptions(a);
       $('discName').textContent = a.discordLinked ? (a.discordUsername || 'Linked') : 'Not linked';
