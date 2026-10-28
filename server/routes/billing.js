@@ -7,8 +7,8 @@
 //   mobile1  $7  -> 30 days of Mobile
 //   pc2/pc3/pc4  $10/$20/$40 -> 30 days of Creator/Squad/Pro, one time
 //   event    one event pass: a date + window of up to 20h, priced per 5-hour
-//            block by group size: Small (15 phones) $5, Medium (40) $8,
-//            Large (80) $10. E.g. a 10h Large event is $20.
+//            block by group size: Small (15 phones) $5, Medium (40) $12,
+//            Large (80) $20. E.g. a 10h Large event is $40.
 //
 // Monthly subscriptions (auto-renew until cancelled), entitlements.js SUB_PLANS:
 //   Creator $10, Squad $20, Pro $40, Mobile host $7
@@ -56,7 +56,7 @@ const PC_PLANS = {
 // Event passes are priced per 5-hour block started, by group size (how many
 // phones can be in the session; the mobile server sizes storage by it too).
 const EVENT_BLOCK_HOURS = 5;
-const EVENT_BLOCK_CENTS = { s: 500, m: 800, l: 1000 };
+const EVENT_BLOCK_CENTS = { s: 500, m: 1200, l: 2000 };
 const EVENT_CENTS = EVENT_BLOCK_CENTS.s; // the "from" price
 const eventCents = (hours, size = 's') => Math.max(1, Math.ceil(hours / EVENT_BLOCK_HOURS - 1e-9)) * EVENT_BLOCK_CENTS[eventSize(size)];
 const MAX_EMAILS_PER_PURCHASE = 3;

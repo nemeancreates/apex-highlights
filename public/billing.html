@@ -78,13 +78,13 @@
   <div class="warn" id="subWarn"></div>
   <div class="err" id="subErr"></div>
 
-  <h2>PC codes <span class="badge once">pay once</span></h2>
+  <h2 id="pc-codes">PC codes <span class="badge once">pay once</span></h2>
   <p class="muted small">One payment for 30 days of a PC plan. When the 30 days are up it ends, and you are never charged again. Prefer it to continue by itself? Use the monthly subscription above. Codes you buy for the same plan add their days together.</p>
   <div class="qty"><label for="pcQty">How many codes</label><select id="pcQty"></select><span class="muted small">Each code is a separate one-time purchase, so you can give them to different people.</span></div>
   <div class="grid" id="pcplans"></div>
   <div class="err" id="pcErr"></div>
 
-  <h2>Mobile codes <span class="badge once">pay once</span></h2>
+  <h2 id="mobile-codes">Mobile codes <span class="badge once">pay once</span></h2>
   <p class="muted small">One payment, no renewal. Each code adds the days shown to your Mobile hosting, then ends. You are never charged again. Want it to continue by itself? Choose the Mobile monthly subscription above instead.</p>
   <div class="qty"><label for="planQty">How many codes</label><select id="planQty"></select><span class="muted small">Each code is a separate one-time purchase, so you can give them to different people.</span></div>
   <div class="grid" id="plans"></div>
@@ -103,7 +103,7 @@
       <div><label for="time">Start time</label><input type="time" id="time" value="18:00"></div>
     </div>
     <label for="evSize">Group size (phones in the session)</label>
-    <select id="evSize"><option value="s">Small, up to 15 phones · $5 per 5 hours</option><option value="m">Medium, up to 40 phones · $8 per 5 hours</option><option value="l">Large, up to 80 phones · $10 per 5 hours</option></select>
+    <select id="evSize"><option value="s">Small, up to 15 phones · $5 per 5 hours</option><option value="m">Medium, up to 40 phones · $12 per 5 hours</option><option value="l">Large, up to 80 phones · $20 per 5 hours</option></select>
     <label for="hours">Length: <b id="hoursLabel">4</b> hours (up to <span id="maxH">20</span>) · <b id="eventTotal">$5</b></label>
     <input type="range" id="hours" min="1" max="20" step="1" value="4">
     <div class="qty"><label for="eventQty">How many passes</label><select id="eventQty"></select><span class="muted small">Same date and window on each.</span></div>
@@ -214,7 +214,7 @@
   $('date').value = d.toISOString().slice(0, 10);
   // Event passes cost a set price for each 5-hour block, by group size (the
   // server works out the same).
-  var evt = { cents: 500, blockHours: 5, sizes: [{ id: 's', blockCents: 500 }, { id: 'm', blockCents: 800 }, { id: 'l', blockCents: 1000 }] };
+  var evt = { cents: 500, blockHours: 5, sizes: [{ id: 's', blockCents: 500 }, { id: 'm', blockCents: 1200 }, { id: 'l', blockCents: 2000 }] };
   function showEventTotal() {
     var h = +$('hours').value, q = +$('eventQty').value || 1;
     var z = (evt.sizes || []).filter(function (x) { return x.id === $('evSize').value; })[0] || { blockCents: evt.cents };
