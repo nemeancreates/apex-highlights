@@ -11,6 +11,7 @@ const { safeError, getMonthKey } = require('./utils');
 const { JWT_SECRET, JWT_EXPIRY, BCRYPT_ROUNDS, TIERS, TIER_ORDER, TESTING, ADMIN_SECRET,
         REDEEM_ATTEMPT_MAX, REDEEM_ATTEMPT_WINDOW,
         REGISTER_IP_MAX, REGISTER_IP_WINDOW,
+        LOGIN_FAIL_MAX, LOGIN_FAIL_WINDOW, LOGIN_LOCK_MS, RESERVED_USERNAMES,
         ANOMALY_REGISTER_BURST_MAX, ANOMALY_REGISTER_BURST_WINDOW } = require('./config');
 const { users, saveUsersToDisk } = require('./stores');
 const { generateRedemptionCodes, redeemCode, peekCode, isProduct } = require('./redemption');
@@ -119,6 +120,38 @@ function recordRegistration(ip) {
   if (entry) entry.count++;
 }
 
+// Wrong passwords per account. Too many in a window locks the account's
+// logins for a while, right password or not, so guessing gets nowhere.
+// Keyed by account (not IP): logins the mobile server passes on all come
+// from 127.0.0.1. Only real accounts are counted, so made-up names can't
+// fill the map. A correct login clears it.
+const loginFails = new Map(); // usernameLower -> { count, resetAt, lockedUntil }
+
+function loginLocked(usernameLower) {
+  const entry = loginFails.get(usernameLower);
+  return !!(entry && entry.lockedUntil > Date.now());
+}
+
+function recordLoginFail(usernameLower) {
+  const now = Date.now();
+  let entry = loginFails.get(usernameLower);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + LOGIN_FAIL_WINDOW, lockedUntil: 0 };
+    loginFails.set(usernameLower, entry);
+  }
+  if (++entry.count >= LOGIN_FAIL_MAX) {
+    entry.lockedUntil = now + LOGIN_LOCK_MS;
+    entry.resetAt = entry.lockedUntil; // a fresh count once the lock ends
+    log('warn', 'login_locked', { username: usernameLower });
+  }
+}
+
+// Reserved names, and anything that could pass for Peakabu itself.
+function reservedUsername(name) {
+  const lower = name.toLowerCase();
+  return RESERVED_USERNAMES.includes(lower) || /peak[-_]?abu/.test(lower);
+}
+
 // Stale entry cleanup for both maps — same pattern as the socket rate
 // limiter. Without this, every IP/account that ever hit these endpoints
 // stays resident for the life of the process.
@@ -126,6 +159,7 @@ setInterval(() => {
   const now = Date.now();
   for (const [k, v] of redeemAttempts) if (now > v.resetAt) redeemAttempts.delete(k);
   for (const [k, v] of registerAttempts) if (now > v.resetAt) registerAttempts.delete(k);
+  for (const [k, v] of loginFails) if (now > v.resetAt && now > v.lockedUntil) loginFails.delete(k);
 }, 10 * 60 * 1000);
 
 // ================================
@@ -367,6 +401,9 @@ function initAuthRoutes(app) {
     if (!clean || clean.length < 2 || clean.length > 24) {
       return safeError(res, 400, 'Username must be 2-24 characters: letters, numbers, _ or -');
     }
+    if (reservedUsername(clean)) {
+      return safeError(res, 400, 'That username is reserved. Please pick another.');
+    }
     if (!password || password.length < 8 || password.length > 128) {
       return safeError(res, 400, 'Password must be 8-128 characters');
     }
@@ -413,12 +450,18 @@ function initAuthRoutes(app) {
       return safeError(res, 400, 'Username and password required');
     }
     const user = users.get(clean.toLowerCase());
+    // Locked after too many wrong passwords: refused before bcrypt runs.
+    if (user && loginLocked(clean.toLowerCase())) {
+      return safeError(res, 429, `Too many wrong passwords for this account. Try again in ${Math.ceil(LOGIN_LOCK_MS / 60000)} minutes, or reset your password with Discord.`);
+    }
     // Timing-safe: always run bcrypt.compare even for unknown usernames
     const hashToCheck = user ? user.passwordHash : '$2b$12$invalidhashfortimingprotection000000000000000000000000';
     const valid = await bcrypt.compare(password, hashToCheck);
     if (!user || !valid) {
+      if (user) recordLoginFail(clean.toLowerCase());
       return safeError(res, 401, 'Invalid username or password');
     }
+    loginFails.delete(clean.toLowerCase());
     // Closed accounts (Terms section 19) can't sign in. The Peakabu Mobile
     // server passes its per-phone tag, so a new account on a banned phone is
     // closed too (moderation/account-bans.js).

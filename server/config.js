@@ -97,6 +97,16 @@ const REDEEM_ATTEMPT_WINDOW = 3600000;   // 1 hour
 const REGISTER_IP_MAX = 5;               // new accounts per window, per IP
 const REGISTER_IP_WINDOW = 86400000;     // 24 hours
 
+// --- Login limiting (per account; there's no reliable client IP yet for
+// logins the mobile server passes on) ---
+const LOGIN_FAIL_MAX = 10;               // wrong passwords per window, per ACCOUNT
+const LOGIN_FAIL_WINDOW = 15 * 60000;    // 15 minutes
+const LOGIN_LOCK_MS = 15 * 60000;        // then locked this long
+
+// Names nobody can register (any capitalisation). Names containing
+// "peakabu" / "peak-abu" / "peak_abu" are refused too (auth.js).
+const RESERVED_USERNAMES = ['null', 'undefined', 'nan', 'none', 'admin', 'administrator', 'root', 'system', 'support', 'moderator', 'mod', 'staff', 'official', 'deleted', 'anonymous'];
+
 // --- Anomaly monitoring (soft alerts layered on the hard limits above) ---
 const ANOMALY_SESSION_BURST_MAX = 6;            // sessions created by one user within window
 const ANOMALY_SESSION_BURST_WINDOW = 600000;    // 10 minutes
@@ -310,6 +320,10 @@ module.exports = {
   REDEEM_ATTEMPT_WINDOW,
   REGISTER_IP_MAX,
   REGISTER_IP_WINDOW,
+  LOGIN_FAIL_MAX,
+  LOGIN_FAIL_WINDOW,
+  LOGIN_LOCK_MS,
+  RESERVED_USERNAMES,
   ANOMALY_SESSION_BURST_MAX,
   ANOMALY_SESSION_BURST_WINDOW,
   ANOMALY_UPLOAD_BURST_MAX,
