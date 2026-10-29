@@ -102,6 +102,7 @@ const REGISTER_IP_WINDOW = 86400000;     // 24 hours
 const LOGIN_FAIL_MAX = 10;               // wrong passwords per window, per ACCOUNT
 const LOGIN_FAIL_WINDOW = 15 * 60000;    // 15 minutes
 const LOGIN_LOCK_MS = 15 * 60000;        // then locked this long
+const LOGIN_IP_FAIL_MAX = 30;            // wrong passwords per window, per ADDRESS (any accounts)
 
 // Names nobody can register (any capitalisation). Names containing
 // "peakabu" / "peak-abu" / "peak_abu" are refused too (auth.js).
@@ -323,6 +324,7 @@ module.exports = {
   LOGIN_FAIL_MAX,
   LOGIN_FAIL_WINDOW,
   LOGIN_LOCK_MS,
+  LOGIN_IP_FAIL_MAX,
   RESERVED_USERNAMES,
   ANOMALY_SESSION_BURST_MAX,
   ANOMALY_SESSION_BURST_WINDOW,

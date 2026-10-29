@@ -11,7 +11,7 @@ const { safeError, getMonthKey } = require('./utils');
 const { JWT_SECRET, JWT_EXPIRY, BCRYPT_ROUNDS, TIERS, TIER_ORDER, TESTING, ADMIN_SECRET,
         REDEEM_ATTEMPT_MAX, REDEEM_ATTEMPT_WINDOW,
         REGISTER_IP_MAX, REGISTER_IP_WINDOW,
-        LOGIN_FAIL_MAX, LOGIN_FAIL_WINDOW, LOGIN_LOCK_MS, RESERVED_USERNAMES,
+        LOGIN_FAIL_MAX, LOGIN_FAIL_WINDOW, LOGIN_LOCK_MS, LOGIN_IP_FAIL_MAX, RESERVED_USERNAMES,
         ANOMALY_REGISTER_BURST_MAX, ANOMALY_REGISTER_BURST_WINDOW } = require('./config');
 const { users, saveUsersToDisk } = require('./stores');
 const { generateRedemptionCodes, redeemCode, peekCode, isProduct } = require('./redemption');
@@ -146,6 +146,29 @@ function recordLoginFail(usernameLower) {
   }
 }
 
+// Wrong passwords per address, across any accounts: one address trying many
+// accounts. Requests from this machine (the mobile server, if it ever sends
+// no visitor address) aren't counted, so they can't lock every phone out.
+const loginIpFails = new Map(); // ip -> { count, resetAt }
+const isLocalAddress = (ip) => ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+
+function loginIpBlocked(ip) {
+  if (!ip || isLocalAddress(ip)) return false;
+  const entry = loginIpFails.get(ip);
+  return !!(entry && Date.now() <= entry.resetAt && entry.count >= LOGIN_IP_FAIL_MAX);
+}
+
+function recordLoginIpFail(ip) {
+  if (!ip || isLocalAddress(ip)) return;
+  const now = Date.now();
+  let entry = loginIpFails.get(ip);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + LOGIN_FAIL_WINDOW };
+    loginIpFails.set(ip, entry);
+  }
+  if (++entry.count === LOGIN_IP_FAIL_MAX) log('warn', 'login_ip_limited', { ip });
+}
+
 // Reserved names, and anything that could pass for Peakabu itself.
 function reservedUsername(name) {
   const lower = name.toLowerCase();
@@ -160,6 +183,7 @@ setInterval(() => {
   for (const [k, v] of redeemAttempts) if (now > v.resetAt) redeemAttempts.delete(k);
   for (const [k, v] of registerAttempts) if (now > v.resetAt) registerAttempts.delete(k);
   for (const [k, v] of loginFails) if (now > v.resetAt && now > v.lockedUntil) loginFails.delete(k);
+  for (const [k, v] of loginIpFails) if (now > v.resetAt) loginIpFails.delete(k);
 }, 10 * 60 * 1000);
 
 // ================================
@@ -450,6 +474,9 @@ function initAuthRoutes(app) {
       return safeError(res, 400, 'Username and password required');
     }
     const user = users.get(clean.toLowerCase());
+    if (loginIpBlocked(req.ip)) {
+      return safeError(res, 429, `Too many wrong passwords from this network. Try again in ${Math.ceil(LOGIN_FAIL_WINDOW / 60000)} minutes.`);
+    }
     // Locked after too many wrong passwords: refused before bcrypt runs.
     if (user && loginLocked(clean.toLowerCase())) {
       return safeError(res, 429, `Too many wrong passwords for this account. Try again in ${Math.ceil(LOGIN_LOCK_MS / 60000)} minutes, or reset your password with Discord.`);
@@ -459,6 +486,7 @@ function initAuthRoutes(app) {
     const valid = await bcrypt.compare(password, hashToCheck);
     if (!user || !valid) {
       if (user) recordLoginFail(clean.toLowerCase());
+      recordLoginIpFail(req.ip);
       return safeError(res, 401, 'Invalid username or password');
     }
     loginFails.delete(clean.toLowerCase());
