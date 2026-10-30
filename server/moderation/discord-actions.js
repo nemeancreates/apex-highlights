@@ -130,6 +130,25 @@ function modalValue(it, customId) {
   return walk(it.data && it.data.components) || '';
 }
 
+// Fills in the "thinking…" reply. A fast action can finish before Discord has
+// registered our acknowledgement, which makes it answer 404, so a refusal is
+// retried a few times and logged if it never goes through.
+async function answer(it, content) {
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    try {
+      const res = await fetch(`${API}/webhooks/${it.application_id}/${it.token}/messages/@original`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }), signal: AbortSignal.timeout(15000)
+      });
+      if (res.ok) return;
+      log('warn', 'discord_answer_failed', { status: res.status, attempt });
+    } catch (err) {
+      log('warn', 'discord_answer_failed', { error: err.message, attempt });
+    }
+    await new Promise(r => setTimeout(r, 400 * attempt));
+  }
+}
+
 // --- The decision, after Discord has been answered.
 async function finish(it, { action, kind, id, extra, alertId, by }) {
   let reply;
@@ -165,10 +184,7 @@ async function finish(it, { action, kind, id, extra, alertId, by }) {
     }
   }
   log('info', 'discord_staff_action', { action, kind, id, by: by.tag, ok: !!decision });
-  await fetch(`${API}/webhooks/${it.application_id}/${it.token}/messages/@original`, {
-    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content: reply }), signal: AbortSignal.timeout(15000)
-  }).catch(() => {});
+  await answer(it, reply);
   if (decision && alertId) await markAlert(alertId, decision, keepButtons);
 }
 
