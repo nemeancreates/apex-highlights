@@ -164,6 +164,7 @@
 <nav class="side" aria-label="Account">
 <a href="#overview">Overview</a>
 <a href="#sessions">My sessions</a>
+<a href="#gopro">Go-Pro footage</a>
 <a href="#spots">Swing cards</a>
 <a href="#devices">Devices</a>
 <a href="#redeem">Redeem a code</a>
@@ -181,6 +182,13 @@
 <div class="card"><span class="eyebrow">Peakabu Mobile</span><span class="stat" id="mobName">…</span><p id="mobLine"></p><div class="row" style="margin-top:auto"><a class="btn btn-ghost btn-sm" href="/billing">Mobile passes</a></div></div>
 <div class="card"><span class="eyebrow">Discord</span><span class="stat" id="discName" style="font-size:24px">…</span><p>Discord is how you reset a forgotten password and get your server role. Keep it linked.</p><div class="row" style="margin-top:auto"><button class="btn btn-discord btn-sm" id="linkDiscord" type="button" hidden>Link Discord</button></div><p class="msg" id="discMsg" role="status"></p></div>
 </div>
+</div>
+
+<div id="gopro" class="panel stack">
+<h2 class="h3">Go-Pro footage</h2>
+<p class="small">Add your action-camera footage (GoPro and others) to your Go-Pro sessions from this computer. Put the camera&rsquo;s SD card in, then drag the files straight off it. Big files go up in pieces and carry on where they stopped if the connection drops.</p>
+<div class="row"><button class="btn btn-primary btn-sm" id="goproOpen" type="button">Add footage from this computer</button></div>
+<p class="msg" id="goproMsg" role="status" aria-live="polite"></p>
 </div>
 
 <div id="sessions" class="panel stack">

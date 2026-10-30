@@ -7,6 +7,7 @@
 //   GET  /api/account/codes               codes this account bought (to use or gift)
 //   GET  /api/account/devices             where this account is signed in
 //   POST /api/account/devices/:sid/signout   sign one of them out
+//   POST /api/account/footage-handoff     a one-time link to add Go-Pro footage on m.peakabu.app
 //
 //   GET    /api/spots/sets                my Spot card sets
 //   POST   /api/spots/sets                new set { name, spots: [{ name, color }] }
@@ -22,8 +23,10 @@
 //   POST /internal/mobile/spots/attach    { username, setId, joinUrl, until }
 //   POST /internal/mobile/spots/detach    { username, setId }
 //   GET  /internal/mobile/spots/card/:token
+//   GET  /internal/mobile/footage-handoff/:code   redeem a footage handoff (username)
 // ================================
 const path = require('path');
+const crypto = require('crypto');
 const QRCode = require('qrcode');
 const { log } = require('../logger');
 const { safeError, getMonthKey } = require('../utils');
@@ -305,6 +308,32 @@ function initAccountRoutes(app) {
     if (!hit) return safeError(res, 404, 'Card not found');
     res.json({ setId: hit.set.id, owner: hit.set.usernameLower, spotId: hit.card.id, spotName: hit.card.name, color: hit.card.color });
   });
+
+  // --- Go-Pro footage from this computer: a one-time code that opens
+  // m.peakabu.app's footage page already signed in. The mobile server redeems
+  // it (with the shared secret) for the username only and gives that browser
+  // a footage-only sign-in there, so no Mobile login token is minted and the
+  // person's phone stays signed in.
+  app.post('/api/account/footage-handoff', requireAuth, accountLimiter, (req, res) => {
+    const user = userFor(req);
+    if (!user) return safeError(res, 404, 'Account not found');
+    if (!MOBILE_PUBLIC_URL) return safeError(res, 503, 'Peakabu Mobile isn’t set up on this server.');
+    const code = crypto.randomBytes(24).toString('base64url');
+    footageHandoffs.set(code, { username: user.username, exp: Date.now() + HANDOFF_MS });
+    for (const [k, v] of footageHandoffs) if (v.exp < Date.now()) footageHandoffs.delete(k);
+    res.json({ url: `${MOBILE_PUBLIC_URL}/footage?h=${code}` });
+  });
+  app.get('/internal/mobile/footage-handoff/:code', (req, res) => {
+    if (!mobile.mobileSecretOk(req)) return safeError(res, 403, 'Forbidden');
+    const h = footageHandoffs.get(String(req.params.code || ''));
+    footageHandoffs.delete(String(req.params.code || ''));
+    if (!h || h.exp < Date.now()) return safeError(res, 404, 'That link has expired. Open it again from your account page.');
+    res.json({ username: h.username });
+  });
 }
+
+// One-time footage handoff codes (in memory: a restart only means clicking again).
+const HANDOFF_MS = 2 * 60000;
+const footageHandoffs = new Map(); // code -> { username, exp }
 
 module.exports = { initAccountRoutes };
