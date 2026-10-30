@@ -331,6 +331,7 @@ async function actOnFlag(l, worst) {
     kind: 'scan-review', level: 'warn',
     title: `Scan flagged Peakabu Mobile session ${l.id} for review`,
     trigger: 'Automated content classifier', detail,
+    links: [{ label: `Flagged ${worst.item.kind}`, url: worst.item.url }],
     actions: ['Hidden from /browse and roulette pending staff review.']
   }).catch(() => {});
 }

@@ -23,7 +23,7 @@ const { getEffectiveTier } = require('../auth');
 const db = require('../db');
 const { buildPdf } = require('./case-pdf');
 const { postStaffAlert } = require('./staff-alerts');
-const { scanUpload, scannerConfigured, unscannedAllowed, logScannerStartup } = require('./scanner');
+const { scanUpload, scannerConfigured, unscannedAllowed, logScannerStartup, thumbUrls } = require('./scanner');
 const { isOnHold, placeHold, getHold } = require('./legal-hold');
 
 const STRIKES_TO_BAN = 3;
@@ -245,6 +245,7 @@ async function scanSession(session) {
         title: `Scan flagged ${session.code} for review`,
         trigger: 'Automated content classifier',
         detail: `${worst.detail} (clip by ${worst.upload.username})`,
+        links: [{ label: 'Flagged clip (thumbnail)', url: thumbUrls(session.code, worst.upload).url }],
         actions: ['Listing hidden from /browse and roulette pending staff review.']
       });
     }
@@ -422,7 +423,13 @@ function buildCaseFile(session, { caseId, kind, trigger, detail, actions }) {
 }
 
 // Builds the case file, records it, and posts it to the staff channel.
-async function sendCase(session, { caseId, kind, level, title, trigger, detail, actions }) {
+// Markdown links for the alert's "Look at it" field. Alerts for apparent CSAM
+// never get these: nobody should open that content from Discord.
+function linkLines(links) {
+  return (links || []).filter(x => x && /^https:\/\//.test(x.url || '')).map(x => `[${x.label}](${x.url})`);
+}
+
+async function sendCase(session, { caseId, kind, level, title, trigger, detail, actions, links }) {
   caseId = caseId || newCaseId();
   let pdf = null;
   try { pdf = buildCaseFile(session, { caseId, kind, trigger, detail, actions }); }
@@ -442,7 +449,9 @@ async function sendCase(session, { caseId, kind, level, title, trigger, detail, 
   if (kind === 'csam') {
     fields.push({ name: 'Report it', value: `Do not open, download or share the content. File with NCMEC CyberTipline: ${NCMEC_URL}\nSteps are in the attached case file.` });
   } else {
-    fields.push({ name: 'Review', value: `Watch: https://peakabu.app/player?code=${session.code}\nApprove, remove or report it with the buttons, or the commands in the case file.` });
+    const look = [`[Watch the session](https://peakabu.app/player?code=${session.code})`, ...linkLines(links)];
+    fields.push({ name: 'Look at it', value: look.join('\n') });
+    fields.push({ name: 'Decide', value: 'Approve, remove or report it with the buttons, or the commands in the case file.' });
   }
   await postStaffAlert({ title, level, fields, pdf, pdfName: `${caseId}.pdf`,
     description: `Case **${caseId}**`, buttons: { kind: 'pc', id: session.code, caseId, csam: kind === 'csam' } });
@@ -526,7 +535,7 @@ function buildMobileCaseFile(l, { caseId, kind, trigger, detail, actions, report
 }
 
 // sendCase for a Peakabu Mobile listing: case file, record, staff alert.
-async function sendMobileCase(l, { caseId, kind, level, title, trigger, detail, actions, reports = 0 }) {
+async function sendMobileCase(l, { caseId, kind, level, title, trigger, detail, actions, links, reports = 0 }) {
   caseId = caseId || newCaseId();
   const code = 'm-' + l.id;
   let pdf = null;
@@ -546,7 +555,9 @@ async function sendMobileCase(l, { caseId, kind, level, title, trigger, detail, 
   if (kind === 'csam') {
     fields.push({ name: 'Report it', value: `Do not open, download or share the content. File with NCMEC CyberTipline: ${NCMEC_URL}\nSteps are in the attached case file.` });
   } else {
-    fields.push({ name: 'Review', value: `Look at it on m.peakabu.app/mod.\nApprove, remove or report it with the buttons, or the commands in the case file.` });
+    const look = [`[Watch the session](${l.watchUrl})`, ...linkLines(links)];
+    fields.push({ name: 'Look at it', value: look.join('\n') });
+    fields.push({ name: 'Decide', value: 'Approve, remove or report it with the buttons, or the commands in the case file.' });
   }
   await postStaffAlert({ title, level, fields, pdf, pdfName: `${caseId}.pdf`,
     description: `Case **${caseId}**`, buttons: { kind: 'm', id: l.id, caseId, csam: kind === 'csam' } });

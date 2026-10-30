@@ -133,4 +133,4 @@ function logStartup() {
   });
 }
 
-module.exports = { scanUpload, scanImage, scannerConfigured: configured, unscannedAllowed, logScannerStartup: logStartup };
+module.exports = { scanUpload, scanImage, thumbUrls, scannerConfigured: configured, unscannedAllowed, logScannerStartup: logStartup };
