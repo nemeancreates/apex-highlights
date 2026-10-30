@@ -102,6 +102,7 @@ const stmt = {
   hasCsam:     db.prepare(`SELECT 1 FROM moderation_scans WHERE sessionCode = ? AND verdict = 'csam' LIMIT 1`),
   mobileScanCodes: db.prepare(`SELECT DISTINCT sessionCode FROM moderation_scans WHERE sessionCode LIKE 'm-%'`),
   dropScans:   db.prepare(`DELETE FROM moderation_scans WHERE sessionCode = ?`),
+  lastScanAt:  db.prepare(`SELECT MAX(scannedAt) AS at FROM moderation_scans WHERE sessionCode = ?`),
   getHidden:   db.prepare(`SELECT * FROM mobile_listing_hidden WHERE listingId = ?`),
   claimEvent:  db.prepare(`UPDATE mobile_event_passes SET claimedBy = ?, claimedAt = ? WHERE id = ? AND (claimedBy IS NULL OR claimedBy = ?)`),
   dropOldEvents: db.prepare(`DELETE FROM mobile_event_passes WHERE endsAt < ?`),
@@ -111,6 +112,10 @@ const stmt = {
   countReports: db.prepare(`SELECT COUNT(*) AS n FROM mobile_listing_reports WHERE listingId = ?`),
   clearReports: db.prepare(`DELETE FROM mobile_listing_reports WHERE listingId = ?`),
   hide:        db.prepare(`INSERT OR IGNORE INTO mobile_listing_hidden (listingId, reason, hiddenAt) VALUES (?, ?, ?)`),
+  hideCsam:    db.prepare(`
+    INSERT INTO mobile_listing_hidden (listingId, reason, hiddenAt) VALUES (?, 'csam', ?)
+    ON CONFLICT(listingId) DO UPDATE SET reason = 'csam'
+  `),
   unhide:      db.prepare(`DELETE FROM mobile_listing_hidden WHERE listingId = ?`),
   isHidden:    db.prepare(`SELECT 1 FROM mobile_listing_hidden WHERE listingId = ?`),
   hiddenAll:   db.prepare(`SELECT listingId FROM mobile_listing_hidden`)
@@ -296,12 +301,16 @@ async function scanMobileListings() {
         // The mobile server serves these through m.peakabu.app, which sits
         // behind Cloudflare, so the same URL is what the CSAM tool sees.
         const r = await scanner().scanImage({ url: m.url, scanUrl: process.env.MOBILE_CSAM_SCAN === '1' ? m.url : null });
-        if (r.verdict === 'unscanned') continue;
+        if (r.verdict === 'unscanned') { mod().noteUnscanned(code, m.id, r.detail); continue; }
         stmt.putScan.run({ uploadId: itemKey(l, m), sessionCode: code, verdict: r.verdict, detail: r.detail, scannedAt: Date.now() });
         if (r.verdict === 'csam') { worst = { verdict: 'csam', item: m, detail: r.detail }; break; }
         if (r.verdict === 'review' && !worst) worst = { verdict: 'review', item: m, detail: r.detail };
       }
       if (worst) await actOnFlag(l, worst);
+      await mod().checkStuck(code, listingScanState(l) === 'pending', {
+        title: `Peakabu Mobile session ${l.id} stuck on "checking"`,
+        fields: [{ name: 'Watch', value: l.watchUrl }, { name: 'Host', value: l.host || '-', inline: true }]
+      });
     }
   } catch (err) {
     log('warn', 'mobile_scan_failed', { error: err.message });
@@ -311,50 +320,52 @@ async function scanMobileListings() {
 }
 
 // Same outcomes as PC (moderation/index.js handleCsam / scan-review):
-//   csam   -> hidden, host banned from public posting, legal hold on the
-//             mobile server (kept past retention, hidden from everyone),
-//             urgent staff alert
-//   review -> hidden pending staff review, staff alert; nobody is banned
+//   csam   -> escalateMobileListing below
+//   review -> hidden pending staff review, case + staff alert; nobody is banned
 async function actOnFlag(l, worst) {
-  const code = PREFIX + l.id;
-  if (worst.verdict === 'csam') {
-    stmt.hide.run(l.id, 'csam', Date.now());
-    if (l.host) mod().banFromPublic(l.host, 'Apparent CSAM (Peakabu Mobile)', 'scanner');
-    let held = false;
-    try {
-      const r = await fetch(`${MOBILE_API_URL}/api/internal/hold/${encodeURIComponent(l.id)}`, {
-        method: 'POST', headers: { 'X-Mobile-Secret': MOBILE_SHARED_SECRET, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: 'Apparent CSAM: automated scan' }), signal: AbortSignal.timeout(8000)
-      });
-      held = r.ok;
-    } catch (e) {}
-    log('warn', 'mobile_csam_flag', { listing: l.id, host: l.host, held });
-    await require('./moderation/staff-alerts').postStaffAlert({
-      title: `URGENT: apparent CSAM in Peakabu Mobile session ${l.id}`,
-      level: 'urgent',
-      description: `${worst.detail} (${worst.item.kind} ${worst.item.id}). Do not download or share it. Report to NCMEC: https://report.cybertip.org/`,
-      fields: [
-        { name: 'Session', value: l.id, inline: true },
-        { name: 'Host', value: l.host || '-', inline: true },
-        { name: 'Legal hold', value: held ? 'Placed on the mobile server: kept past retention, hidden from everyone.' : 'FAILED to reach the mobile server. Place it by hand.' },
-        { name: 'Actions taken', value: 'Listing removed from /browse and roulette. Host banned from public posting.' }
-      ]
-    }).catch(() => {});
-  } else {
-    stmt.hide.run(l.id, 'scan-review', Date.now());
-    log('warn', 'mobile_scan_review', { listing: l.id, host: l.host });
-    await require('./moderation/staff-alerts').postStaffAlert({
-      title: `Scan flagged Peakabu Mobile session ${l.id} for review`,
-      level: 'warn',
-      description: `${worst.detail} (${worst.item.kind} ${worst.item.id}). Hidden from /browse and roulette pending staff review.`,
-      fields: [
-        { name: 'Watch', value: l.watchUrl },
-        { name: 'Host', value: l.host || '-', inline: true },
-        { name: 'Restore', value: `POST /admin/public/mobile/${l.id} {"action":"restore"}` }
-      ]
-    }).catch(() => {});
-  }
+  const detail = `${worst.detail} (${worst.item.kind} ${worst.item.id})`;
+  if (worst.verdict === 'csam') return escalateMobileListing(l, { trigger: 'Automated scan', detail, by: 'scanner' });
+  stmt.hide.run(l.id, 'scan-review', Date.now());
+  log('warn', 'mobile_scan_review', { listing: l.id, host: l.host });
+  await mod().sendMobileCase(l, {
+    kind: 'scan-review', level: 'warn',
+    title: `Scan flagged Peakabu Mobile session ${l.id} for review`,
+    trigger: 'Automated content classifier', detail,
+    actions: ['Hidden from /browse and roulette pending staff review.']
+  }).catch(() => {});
 }
+
+// Apparent CSAM in a mobile listing (a scanner match, or staff confirmed it
+// from Discord): hidden for good, host banned from public posting, legal
+// hold on the mobile server (kept past retention, hidden from everyone),
+// urgent case with its PDF. Returns whether the hold was placed.
+async function escalateMobileListing(l, { trigger, detail, by }) {
+  stmt.hideCsam.run(l.id, Date.now());
+  if (l.host) mod().banFromPublic(l.host, 'Apparent CSAM (Peakabu Mobile)', by);
+  let held = false;
+  try {
+    const r = await fetch(`${MOBILE_API_URL}/api/internal/hold/${encodeURIComponent(l.id)}`, {
+      method: 'POST', headers: { 'X-Mobile-Secret': MOBILE_SHARED_SECRET, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: `Apparent CSAM: ${trigger}` }), signal: AbortSignal.timeout(8000)
+    });
+    held = r.ok;
+  } catch (e) {}
+  log('warn', 'mobile_csam_flag', { listing: l.id, host: l.host, held, by });
+  await mod().sendMobileCase(l, {
+    kind: 'csam', level: 'urgent',
+    title: `URGENT: apparent CSAM in Peakabu Mobile session ${l.id}`,
+    trigger, detail,
+    actions: [
+      held ? 'Legal hold placed on the mobile server: kept past retention, hidden from everyone.' : 'Legal hold FAILED to reach the mobile server. Place it by hand.',
+      'Listing removed from /browse and roulette.',
+      l.host ? `Host "${l.host}" is banned from public posting.` : 'No host account to ban.'
+    ]
+  }).catch(() => {});
+  return held;
+}
+
+// One listing from the last copy of the mobile server's list (hidden or not).
+function mobileListingById(id) { return listingCache.find(l => l.id === id) || null; }
 
 function startMobileListingSync() {
   if (!MOBILE_API_URL || !MOBILE_SHARED_SECRET) {
@@ -365,13 +376,16 @@ function startMobileListingSync() {
   setInterval(refreshMobileListings, 60 * 1000);
   setInterval(() => {
     try { stmt.dropOldEvents.run(Date.now() - 30 * 86400000); } catch (e) {}
-    // Drop scan rows for listings that are gone (unlisted or expired),
-    // except anything that hit the CSAM path, which is kept as evidence.
+    // Drop scan rows for listings gone for 60 days (expired; mobile footage
+    // lasts 45 days after a session ends), except anything that hit the CSAM
+    // path, which is kept as evidence. Switching a session private and
+    // public again keeps its results, so it isn't scanned all over again.
     try {
       if (Date.now() - listingFetchedAt > 5 * 60 * 1000) return;
       const live = new Set(listingCache.map(l => PREFIX + l.id));
       for (const { sessionCode } of stmt.mobileScanCodes.all()) {
-        if (!live.has(sessionCode) && !stmt.hasCsam.get(sessionCode)) stmt.dropScans.run(sessionCode);
+        if (live.has(sessionCode) || stmt.hasCsam.get(sessionCode)) continue;
+        if ((stmt.lastScanAt.get(sessionCode).at || 0) < Date.now() - 60 * 86400000) stmt.dropScans.run(sessionCode);
       }
     } catch (e) {}
   }, 6 * 60 * 60 * 1000);
@@ -426,7 +440,8 @@ function reportMobileListing(listingId, reporterKey, reason) {
 // Staff. Restore never overrides a CSAM verdict (same rule as PC legal holds).
 function setMobileListingHidden(listingId, hidden) {
   if (hidden) { stmt.hide.run(listingId, 'staff', Date.now()); return { ok: true }; }
-  if (stmt.hasCsam.get(PREFIX + listingId)) return { ok: false, error: 'A scan matched known CSAM for this session. It stays hidden.' };
+  const h = stmt.getHidden.get(listingId);
+  if (stmt.hasCsam.get(PREFIX + listingId) || (h && h.reason === 'csam')) return { ok: false, error: 'This session was reported as apparent CSAM. It stays hidden.' };
   stmt.unhide.run(listingId);
   stmt.clearReports.run(listingId);
   stmt.clearReview.run(PREFIX + listingId);
@@ -443,5 +458,6 @@ module.exports = {
   MOBILE_FREE_STORAGE_GB, MOBILE_INCLUDED_TIERS, EVENT_MAX_HOURS, EVENT_SIZES, eventSize, upcomingEvents,
   grantMobileDays, setMobilePassUntil, mobilePassRemainingMs, addEventPass, getMobileStatus, claimEventPass,
   startMobileListingSync, mobileListings, allMobileListingIds, hostedMobileSessions, mobileListingState, reportMobileListing, setMobileListingHidden, mobileSecretOk,
+  mobileListingById, escalateMobileListing,
   _refreshForTest: refreshMobileListings
 };

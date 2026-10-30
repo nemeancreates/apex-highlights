@@ -21,11 +21,11 @@ const COLORS = { info: 0x39d3a0, warn: 0xd8a838, urgent: 0xd8405a };
 function enabled() { return !!WEBHOOK; }
 
 // fields: [{ name, value, inline? }] — values are trimmed to Discord's limits.
-async function postStaffAlert({ title, description, level = 'info', fields = [], pdf = null, pdfName = 'case.pdf' }) {
-  if (!WEBHOOK) {
-    log('warn', 'staff_alert_skipped', { reason: 'DISCORD_STAFF_WEBHOOK_URL not set', title });
-    return false;
-  }
+// buttons: { kind: 'pc' | 'm', id, caseId, csam } for alerts staff decide on.
+// With the Discord bot set up (discord-actions.js) those go out from the bot
+// with Approve / Remove / Report buttons; everything else, and any bot
+// failure, goes through the webhook.
+async function postStaffAlert({ title, description, level = 'info', fields = [], pdf = null, pdfName = 'case.pdf', buttons = null }) {
   const urgent = level === 'urgent' && URGENT_ROLE_ID;
   const payload = {
     username: 'Peakabu Moderation',
@@ -43,6 +43,15 @@ async function postStaffAlert({ title, description, level = 'info', fields = [],
       timestamp: new Date().toISOString()
     }]
   };
+
+  if (buttons) {
+    const actions = require('./discord-actions');
+    if (actions.enabled() && await actions.postAlert(payload, { pdf, pdfName, buttons })) return true;
+  }
+  if (!WEBHOOK) {
+    log('warn', 'staff_alert_skipped', { reason: 'DISCORD_STAFF_WEBHOOK_URL not set', title });
+    return false;
+  }
 
   try {
     let res;

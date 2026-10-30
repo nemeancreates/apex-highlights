@@ -147,6 +147,7 @@ const stmt = {
       participants = excluded.participants
   `),
   deleteSession: db.prepare(`DELETE FROM sessions WHERE code = ?`),
+  deleteUpload: db.prepare(`DELETE FROM uploads WHERE id = ?`),
   allSessions: db.prepare(`SELECT * FROM sessions`),
 
   upsertUpload: db.prepare(`
@@ -349,6 +350,13 @@ function saveSessionsToDisk() {
   }
 }
 
+// A clip removed for good (host delete, dropped placeholder). The save above
+// only upserts, so without this its row came back on the next restart: a
+// clip with no video or thumbnail that held public listings on "checking".
+function forgetUpload(id) {
+  try { stmt.deleteUpload.run(id); } catch (err) { log('warn', 'upload_forget_failed', { id, error: err.message }); }
+}
+
 // --- Re-upload anything that never made it to Spaces ---
 //
 // Used to run once, at boot. A push that failed while the server was up
@@ -489,6 +497,7 @@ module.exports = {
   saveUsersToDisk,
   loadSessionsFromDisk,
   saveSessionsToDisk,
+  forgetUpload,
   retryPendingSpacesUploads,
   startSessionPurge,
   clipWeightForDuration,

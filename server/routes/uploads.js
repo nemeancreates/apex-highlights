@@ -18,7 +18,7 @@ const {
   MAX_HIGHLIGHTS_PER_SESSION,
   tiersWithCapability
 } = require('../config');
-const { sessions, saveSessionsToDisk, users, saveUsersToDisk, clipWeightForDuration } = require('../stores');
+const { sessions, saveSessionsToDisk, forgetUpload, users, saveUsersToDisk, clipWeightForDuration } = require('../stores');
 const { isSpacesEnabled, uploadToSpaces, deleteFromSpaces } = require('../spaces');
 const { enqueueThumbnail } = require('../media');
 const { requireAuth, requireTier } = require('../auth');
@@ -790,6 +790,7 @@ function initUploadRoutes(app, io) {
       } catch (e) {}
     }
     session.uploads.splice(idx, 1);
+    forgetUpload(rec.id);
     log('info', 'placeholder_dropped', { session: code, uploadId: rec.id, username: rec.username, reason });
     io.to(code).emit('highlight-deleted', { uploadId: rec.id });
     return true;
@@ -875,6 +876,7 @@ function initUploadRoutes(app, io) {
     });
 
     session.uploads.splice(idx, 1);
+    forgetUpload(rec.id);
     // That player's leftover placeholder for the same moment goes with it.
     if (rec.videoFile) {
       placeholdersFor(session, rec.username, rec.coordinatedTimestamp)

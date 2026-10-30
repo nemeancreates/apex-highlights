@@ -35,6 +35,7 @@ const { initMomentRoutes, startMomentCleanup } = require('./routes/moments');
 const { initBillingWebhook, initBillingRoutes } = require('./routes/billing');
 const { initAccountRoutes } = require('./routes/account');
 const { startMobileListingSync } = require('./mobile');
+const { initDiscordInteractions } = require('./moderation/discord-actions');
 const { initCompositeRoutes, startCompositeCleanup } = require('./composite');
 const { initSockets } = require('./sockets');
 const { initAiReel } = require('./aireel');
@@ -87,6 +88,7 @@ app.get('/privacy', (req, res) => {
 });
 app.use(cors({ origin: config.ALLOWED_ORIGINS }));
 initBillingWebhook(app);                        // raw body for Stripe — must stay above express.json
+initDiscordInteractions(app);                   // staff alert buttons; raw body for Discord's signature, same rule
 app.use(express.json({ limit: '1mb' }));
 app.use(rateLimit);
 

@@ -553,18 +553,14 @@ function initPublicRoutes(app) {
     res.json({ ok: true });
     log(r.child ? 'warn' : 'info', 'mobile_listing_reported', { id, reports: r.n, hidden: r.hiddenNow, reason });
     if (r.added && (r.hiddenNow || r.n === 1)) {
-      postStaffAlert({
+      mod.sendMobileCase(listing, {
+        kind: 'report', level: r.child ? 'warn' : 'info', reports: r.n,
         title: r.child ? `Child-safety report (mobile): ${id}` : (r.hiddenNow ? `Mobile listing auto-hidden: ${id}` : `New report (mobile): ${id}`),
-        level: r.child ? 'warn' : 'info',
-        description: r.child
-          ? 'Hidden from /browse and roulette on the first report. Review promptly. If it shows a child being sexually abused or exploited, report to NCMEC; do not download or share it.'
+        trigger: r.child ? 'User report: involves a minor' : `User report (${reason})`,
+        detail: r.child
+          ? 'Hidden from /browse and roulette on the first report. Review promptly. If it shows a child being sexually abused or exploited, report it as CSAM; do not download or share it.'
           : `${r.n} report(s). ${r.hiddenNow ? 'Hidden from /browse and roulette.' : 'Still listed; hides at 3 reports.'}`,
-        fields: [
-          { name: 'Listing', value: id, inline: true },
-          { name: 'Host', value: listing.host || '-', inline: true },
-          { name: 'Watch', value: listing.watchUrl },
-          { name: 'Restore / remove', value: `POST /admin/public/mobile/${id} {"action":"restore"|"hide"}` }
-        ]
+        actions: r.hiddenNow ? ['Hidden from /browse and roulette until staff review.'] : []
       }).catch(() => {});
     }
   }
@@ -653,57 +649,22 @@ function initPublicRoutes(app) {
     res.json({ reports: stmt.reported.all() });
   });
 
-  // Mobile listings: restore after a report, or hide by hand.
+  // Mobile listings: restore after a report, hide by hand, remove (+ strike)
+  // or confirm CSAM.
   //   curl -s -X POST localhost:3000/admin/public/mobile/ID -H "X-Admin-Secret: $ADMIN_SECRET" \
   //        -H "Content-Type: application/json" -d '{"action":"restore"}'
-  app.post('/admin/public/mobile/:id', requireAdmin, (req, res) => {
-    const id = String(req.params.id || '');
-    if (!/^[A-Za-z0-9_-]{4,32}$/.test(id)) return safeError(res, 400, 'Invalid id');
-    const action = req.body?.action;
-    if (action !== 'restore' && action !== 'hide') return safeError(res, 400, 'action must be "restore" or "hide"');
-    const r = mobile.setMobileListingHidden(id, action === 'hide');
-    if (!r.ok) return safeError(res, 409, r.error);
-    log('info', 'mobile_listing_admin_action', { id, action });
-    res.json({ ok: true });
+  app.post('/admin/public/mobile/:id', requireAdmin, async (req, res) => {
+    const note = typeof req.body?.note === 'string' ? req.body.note.slice(0, 200) : null;
+    const { ok, status, error, ...rest } = await mobileStaffAction(req.params.id, req.body?.action, { note });
+    if (!ok) return safeError(res, status, error);
+    res.json({ ok: true, ...rest });
   });
 
   app.post('/admin/public/:code', requireAdmin, async (req, res) => {
-    const code = sanitizeCode(req.params.code);
-    if (!code) return safeError(res, 400, 'Invalid session code');
-    const action = req.body?.action;
-    const session = sessions.get(code);
     const note = typeof req.body?.note === 'string' ? req.body.note.slice(0, 200) : null;
-
-    if (action === 'restore') {
-      if (isOnHold(code)) return safeError(res, 409, 'Session is on legal hold. Release the hold first if that was a mistake.');
-      stmt.unhide.run(code); stmt.clearReports.run(code);
-      mod.clearReviewFlags(code);
-      log('info', 'public_admin_action', { session: code, action });
-      return res.json({ ok: true, restored: true });
-    }
-    if (action === 'remove') {
-      if (!session) return safeError(res, 404, 'Session not found');
-      stmt.hide.run(code);
-      const r = mod.addStrike(session.createdBy, code, note || 'Public listing removed by staff', 'staff');
-      log('info', 'public_admin_action', { session: code, action, strikes: r.count, banned: r.banned });
-      // Keep the staff channel's record complete: every strike, and the ban.
-      require('../moderation/staff-alerts').postStaffAlert({
-        title: r.banned ? `${session.createdBy} banned from public posting (${r.count} strikes)` : `Strike ${r.count}/${mod.STRIKES_TO_BAN}: ${session.createdBy}`,
-        level: r.banned ? 'warn' : 'info',
-        fields: [
-          { name: 'Session', value: code, inline: true },
-          { name: 'Host', value: session.createdBy, inline: true },
-          { name: 'Note', value: note || 'Public listing removed by staff' }
-        ]
-      }).catch(() => {});
-      return res.json({ ok: true, host: session.createdBy, strikes: r.count, bannedFromPublic: r.banned || !!mod.getBan(session.createdBy) });
-    }
-    if (action === 'csam') {
-      if (!session) return safeError(res, 404, 'Session not found');
-      await mod.handleCsam(session, { trigger: 'Confirmed by staff', detail: note || 'Staff confirmed apparent CSAM', by: 'staff' });
-      return res.json({ ok: true, hold: getHold(code), host: session.createdBy });
-    }
-    return safeError(res, 400, 'action must be "restore", "remove" or "csam"');
+    const { ok, status, error, ...rest } = await pcStaffAction(req.params.code, req.body?.action, { note });
+    if (!ok) return safeError(res, status, error);
+    res.json({ ok: true, ...rest });
   });
 
   // Strikes / public ban for one account.
@@ -754,4 +715,80 @@ function initPublicRoutes(app) {
   });
 }
 
-module.exports = { initPublicRoutes, startPublicCleanup, isPublic, hostState };
+// ================================
+// STAFF DECISIONS — shared by the admin routes above and the Discord buttons
+// (moderation/discord-actions.js). by: who decided, kept on strikes, bans
+// and holds. Returns { ok: true, ... } or { ok: false, status, error }.
+// ================================
+function strikeAlert(host, code, note, r) {
+  // Keep the staff channel's record complete: every strike, and the ban.
+  postStaffAlert({
+    title: r.banned ? `${host} banned from public posting (${r.count} strikes)` : `Strike ${r.count}/${mod.STRIKES_TO_BAN}: ${host}`,
+    level: r.banned ? 'warn' : 'info',
+    fields: [
+      { name: 'Session', value: code, inline: true },
+      { name: 'Host', value: host, inline: true },
+      { name: 'Note', value: note }
+    ]
+  }).catch(() => {});
+}
+
+async function pcStaffAction(rawCode, action, { note = null, by = 'staff' } = {}) {
+  const code = sanitizeCode(rawCode);
+  if (!code) return { ok: false, status: 400, error: 'Invalid session code' };
+  const session = sessions.get(code);
+  if (action === 'restore') {
+    if (isOnHold(code)) return { ok: false, status: 409, error: 'Session is on legal hold. Release the hold first if that was a mistake.' };
+    stmt.unhide.run(code); stmt.clearReports.run(code);
+    mod.clearReviewFlags(code);
+    log('info', 'public_admin_action', { session: code, action, by });
+    return { ok: true, restored: true };
+  }
+  if (action === 'remove') {
+    if (!session) return { ok: false, status: 404, error: 'Session not found' };
+    stmt.hide.run(code);
+    const reason = note || 'Public listing removed by staff';
+    const r = mod.addStrike(session.createdBy, code, reason, by);
+    log('info', 'public_admin_action', { session: code, action, by, strikes: r.count, banned: r.banned });
+    strikeAlert(session.createdBy, code, reason, r);
+    return { ok: true, host: session.createdBy, strikes: r.count, bannedFromPublic: r.banned || !!mod.getBan(session.createdBy) };
+  }
+  if (action === 'csam') {
+    if (!session) return { ok: false, status: 404, error: 'Session not found' };
+    await mod.handleCsam(session, { trigger: 'Confirmed by staff', detail: note || 'Staff confirmed apparent CSAM', by });
+    return { ok: true, hold: getHold(code), host: session.createdBy };
+  }
+  return { ok: false, status: 400, error: 'action must be "restore", "remove" or "csam"' };
+}
+
+async function mobileStaffAction(rawId, action, { note = null, by = 'staff' } = {}) {
+  const id = String(rawId || '');
+  if (!/^[A-Za-z0-9_-]{4,32}$/.test(id)) return { ok: false, status: 400, error: 'Invalid id' };
+  if (action === 'restore' || action === 'hide') {
+    const r = mobile.setMobileListingHidden(id, action === 'hide');
+    if (!r.ok) return { ok: false, status: 409, error: r.error };
+    log('info', 'mobile_listing_admin_action', { id, action, by });
+    return { ok: true };
+  }
+  const l = mobile.mobileListingById(id);
+  if (action === 'remove') {
+    mobile.setMobileListingHidden(id, true);
+    if (!l || !l.host) {
+      log('info', 'mobile_listing_admin_action', { id, action, by, strikes: null });
+      return { ok: true, host: null };
+    }
+    const reason = note || 'Public listing removed by staff';
+    const r = mod.addStrike(l.host, MOBILE_PREFIX + id, reason, by);
+    log('info', 'mobile_listing_admin_action', { id, action, by, strikes: r.count, banned: r.banned });
+    strikeAlert(l.host, MOBILE_PREFIX + id, reason, r);
+    return { ok: true, host: l.host, strikes: r.count, bannedFromPublic: r.banned || !!mod.getBan(l.host) };
+  }
+  if (action === 'csam') {
+    if (!l) return { ok: false, status: 404, error: 'That session is no longer on the mobile server\'s public list. Use /mod on m.peakabu.app.' };
+    const held = await mobile.escalateMobileListing(l, { trigger: 'Confirmed by staff', detail: note || 'Staff confirmed apparent CSAM', by });
+    return { ok: true, host: l.host, held };
+  }
+  return { ok: false, status: 400, error: 'action must be "restore", "hide", "remove" or "csam"' };
+}
+
+module.exports = { initPublicRoutes, startPublicCleanup, isPublic, hostState, pcStaffAction, mobileStaffAction };
