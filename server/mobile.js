@@ -324,7 +324,7 @@ async function scanMobileListings() {
 //   review -> hidden pending staff review, case + staff alert; nobody is banned
 async function actOnFlag(l, worst) {
   const detail = `${worst.detail} (${worst.item.kind} ${worst.item.id})`;
-  if (worst.verdict === 'csam') return escalateMobileListing(l, { trigger: 'Automated scan', detail, by: 'scanner' });
+  if (worst.verdict === 'csam') return escalateMobileListing(l, { trigger: 'Automated scan', detail, by: 'scanner', itemId: worst.item.id });
   stmt.hide.run(l.id, 'scan-review', Date.now());
   log('warn', 'mobile_scan_review', { listing: l.id, host: l.host });
   await mod().sendMobileCase(l, {
@@ -340,7 +340,7 @@ async function actOnFlag(l, worst) {
 // from Discord): hidden for good, host banned from public posting, legal
 // hold on the mobile server (kept past retention, hidden from everyone),
 // urgent case with its PDF. Returns whether the hold was placed.
-async function escalateMobileListing(l, { trigger, detail, by }) {
+async function escalateMobileListing(l, { trigger, detail, by, itemId }) {
   stmt.hideCsam.run(l.id, Date.now());
   if (l.host) mod().banFromPublic(l.host, 'Apparent CSAM (Peakabu Mobile)', by);
   let held = false;
@@ -352,7 +352,7 @@ async function escalateMobileListing(l, { trigger, detail, by }) {
     held = r.ok;
   } catch (e) {}
   log('warn', 'mobile_csam_flag', { listing: l.id, host: l.host, held, by });
-  await mod().sendMobileCase(l, {
+  const caseId = await mod().sendMobileCase(l, {
     kind: 'csam', level: 'urgent',
     title: `URGENT: apparent CSAM in Peakabu Mobile session ${l.id}`,
     trigger, detail,
@@ -361,7 +361,13 @@ async function escalateMobileListing(l, { trigger, detail, by }) {
       'Listing removed from /browse and roulette.',
       l.host ? `Host "${l.host}" is banned from public posting.` : 'No host account to ban.'
     ]
-  }).catch(() => {});
+  }).catch(() => null);
+  const max = Math.max(1, parseInt(process.env.NCMEC_MAX_FILES, 10) || 5);
+  const stills = (l.media || []).filter(m => m.url && (!itemId || m.id === itemId)).slice(0, max)
+    .map(m => ({ name: `${m.id}.jpg`, url: m.url, info: `${m.kind || 'still'} ${m.id} from the session` }));
+  await mod().fileCyberTip({
+    caseId, code: PREFIX + l.id, platform: 'Peakabu Mobile', host: l.host, url: l.watchUrl, files: stills, by, trigger
+  }).catch(err => log('error', 'ncmec_filing_failed', { code: PREFIX + l.id, error: err.message }));
   return held;
 }
 
