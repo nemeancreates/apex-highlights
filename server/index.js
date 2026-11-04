@@ -34,7 +34,8 @@ const { initPublicRoutes, startPublicCleanup } = require('./routes/public');
 const { initMomentRoutes, startMomentCleanup } = require('./routes/moments');
 const { initBillingWebhook, initBillingRoutes } = require('./routes/billing');
 const { initAccountRoutes } = require('./routes/account');
-const { startMobileListingSync } = require('./mobile');
+const { startMobileListingSync, mobileSecretOk } = require('./mobile');
+const growth = require('./growth');
 const { initDiscordInteractions } = require('./moderation/discord-actions');
 const { initCompositeRoutes, startCompositeCleanup } = require('./composite');
 const { initSockets } = require('./sockets');
@@ -78,6 +79,8 @@ app.use(helmet({
   },
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
 }));
+// Anonymous page-view counts (server/growth.js); before static so pages are seen.
+app.use(growth.pageCounter);
 // extensions: '/guide' serves public/guide.html, so site links stay clean.
 app.use(express.static(path.join(__dirname, '..', 'public'), { extensions: ['html'] }));
 
@@ -146,6 +149,7 @@ initMomentRoutes(app);
 initAccountRoutes(app);
 initBillingRoutes(app);
 initCompositeRoutes(app);
+growth.initGrowthRoutes(app, { latestClient: () => config.LATEST_CLIENT_VERSION, secretOk: mobileSecretOk });
 initSockets(io);
 
 // --- Boot ---

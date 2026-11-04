@@ -6812,6 +6812,27 @@ function createWindow() {
 }
 
 
+// The first time this install ever runs, tell the server so it can add one to
+// a daily "first launches" total. Only the platform and version number are sent:
+// no id, no account, no address kept. A marker file in the app's data folder
+// means it is sent once per install (never again, even after an update).
+function pingFirstLaunch() {
+  const marker = path.join(app.getPath('userData'), 'first-launch-sent');
+  try { if (fs.existsSync(marker)) return; } catch (e) { return; }
+  const version = app.getVersion();
+  const body = JSON.stringify({ platform: 'pc', version });
+  const req = https.request({
+    protocol: 'https:', host: 'peakabu.app', port: 443, path: '/api/ping/launch', method: 'POST', timeout: 8000,
+    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), 'User-Agent': `PeakabuClient/${version}` }
+  }, (res) => {
+    res.resume();
+    if (res.statusCode === 204) { try { fs.writeFileSync(marker, '1'); } catch (e) { /* will try again next start */ } }
+  });
+  req.on('error', () => { /* offline: try again next start */ });
+  req.on('timeout', () => req.destroy());
+  req.end(body);
+}
+
 app.whenReady().then(async () => {
   const startupPrefs = loadUserPreferences();
   gamepadPrefs.buttonIndex = (startupPrefs.gamepadButton !== null && startupPrefs.gamepadButton !== undefined) ? parseInt(startupPrefs.gamepadButton) : null;
@@ -6836,6 +6857,7 @@ app.whenReady().then(async () => {
     for (const ev of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(ev, () => refreshDxgiOutputs());
   } catch (e) { console.log('Display change watch skipped:', e.message); }
   createWindow();
+  pingFirstLaunch();
   startupHotkeyRegistered = globalShortcut.register(customHotkey, onHotkeyPressed);
   if (startupHotkeyRegistered) console.log(`${customHotkey} hotkey registered successfully`);
   else console.log(`WARNING: ${customHotkey} hotkey registration FAILED - another app may be using it`);

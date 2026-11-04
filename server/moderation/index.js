@@ -270,7 +270,7 @@ async function handleCsam(session, { trigger, detail, uploadId, by }) {
   hooks.hideListing(session.code);
   banFromPublic(session.createdBy, 'Apparent CSAM', by);
   log('warn', 'csam_case_opened', { code: session.code, host: session.createdBy, trigger, caseId });
-  await sendCase(session, {
+  const sent = await sendCase(session, {
     caseId, kind: 'csam', level: 'urgent',
     title: `URGENT: apparent CSAM in session ${session.code}`,
     trigger, detail: detail + (uploadId ? ` (clip ${uploadId})` : ''),
@@ -280,6 +280,12 @@ async function handleCsam(session, { trigger, detail, uploadId, by }) {
       'Listing removed from /browse and roulette.'
     ]
   });
+  const host = users.get(String(session.createdBy || '').toLowerCase()) || {};
+  await fileCyberTip({
+    caseId: sent, code: session.code, platform: 'Peakabu', host: session.createdBy,
+    hostNote: `Account created ${host.createdAt || 'unknown'}; Discord ${host.discordId ? `${host.discordUsername || '?'} (ID ${host.discordId})` : 'not linked'}.`,
+    url: `https://peakabu.app/player?code=${session.code}`, files: evidenceFiles(session, uploadId), by, trigger
+  }).catch(err => log('error', 'ncmec_filing_failed', { code: session.code, error: err.message }));
 }
 
 // ================================
@@ -327,6 +333,93 @@ function tipsText(code) {
 function recordTipReport(caseId, sessionCode, reportNumber, by) {
   stmt.putTip.run(caseId || `${sessionCode}-${Date.now()}`, sessionCode, reportNumber, by, Date.now());
   log('warn', 'cybertip_report_recorded', { caseId, session: sessionCode, reportNumber, by });
+}
+
+// ================================
+// NCMEC FILING (moderation/ncmec.js is the API client)
+//
+// NCMEC_FILE_MODE decides when a CSAM case is also filed with the CyberTipline:
+//   off    (default) staff file by hand on the CyberTipline form
+//   staff  file when a person confirms (the Discord report button, admin csam)
+//   auto   also when the CSAM hash match fires by itself
+// The classifier's "review" cases never file themselves. A failure never
+// blocks the case: the alert says why and staff file by hand. A session that
+// already has a CyberTip report on record is not filed twice.
+// ================================
+const ncmec = require('./ncmec');
+const MAX_EVIDENCE_BYTES = 25 * 1024 * 1024;
+
+function fileMode() {
+  const m = String(process.env.NCMEC_FILE_MODE || 'off').toLowerCase();
+  return m === 'auto' || m === 'staff' ? m : 'off';
+}
+
+async function fetchEvidence(f) {
+  try {
+    const res = await fetch(f.url, { signal: AbortSignal.timeout(30000) });
+    if (!res.ok) return null;
+    const buffer = Buffer.from(await res.arrayBuffer());
+    if (!buffer.length || buffer.length > MAX_EVIDENCE_BYTES) return null;
+    return { name: f.name, buffer, type: res.headers.get('content-type') || 'image/jpeg', info: f.info };
+  } catch (e) {
+    return null;
+  }
+}
+
+function alreadyFiled(code) {
+  try { return stmt.tipsFor.all(code).length > 0; } catch (e) { return false; }
+}
+
+// ctx: { caseId, code, platform, host, hostNote, url, files:[{name,url,info}], by, trigger }
+// Resolves { ok, reportId?, error? }, or null when nothing was attempted.
+async function fileCyberTip(ctx) {
+  const mode = fileMode();
+  if (mode === 'off' || (mode === 'staff' && ctx.by === 'scanner')) return null;
+  if (alreadyFiled(ctx.code)) return null;
+  let result;
+  try {
+    if (!ncmec.configured()) {
+      result = { ok: false, error: 'NCMEC filing is on but its settings are incomplete (NCMEC_API_BASE, NCMEC_USER, NCMEC_PASS, NCMEC_REPORTER_EMAIL)' };
+    } else {
+      const evidence = (await Promise.all((ctx.files || []).map(fetchEvidence))).filter(Boolean);
+      const info = `${ctx.platform} case ${ctx.caseId}. Session ${ctx.code}. Detection: ${ctx.trigger}. Host account: ${ctx.host || 'unknown'}. ${ctx.hostNote || ''} ` +
+        `The session is preserved under legal hold. ${evidence.length} of ${(ctx.files || []).length} attached stills could be retrieved. Staff did not view the content.`;
+      result = await ncmec.fileReport({
+        incidentAt: Date.now() - 5000, url: ctx.url, screenName: ctx.host, espIdentifier: String(ctx.host || '').toLowerCase(),
+        espService: ctx.platform, info
+      }, evidence);
+    }
+  } catch (err) {
+    result = { ok: false, error: err.message };
+  }
+  if (result.ok) recordTipReport(ctx.caseId, ctx.code, result.reportId, 'ncmec-api');
+  else log('error', 'ncmec_filing_failed', { code: ctx.code, caseId: ctx.caseId, error: result.error });
+  await postStaffAlert(result.ok ? {
+    title: `Filed with NCMEC: report ${result.reportId}`, level: 'info', description: `Case **${ctx.caseId}**`,
+    fields: [
+      { name: 'Session', value: ctx.code, inline: true },
+      { name: 'CyberTipline report', value: String(result.reportId), inline: true },
+      { name: 'Files sent', value: String(result.files), inline: true },
+      { name: 'Saved', value: 'The report number is recorded with the case.' }
+    ]
+  } : {
+    title: `Could not file with NCMEC: ${ctx.code}`, level: 'urgent', description: `Case **${ctx.caseId}**`,
+    fields: [
+      { name: 'Why', value: String(result.error).slice(0, 900) },
+      { name: 'Do this', value: `File it by hand: ${NCMEC_URL}\nThe case file has the steps. Then press Record CyberTip report on the case alert.` }
+    ]
+  }).catch(() => {});
+  return result;
+}
+
+// Stills to attach for a desktop session: the flagged clip's thumbnail when the
+// scanner found it, else the first few thumbnails.
+function evidenceFiles(session, uploadId) {
+  const max = Math.max(1, parseInt(process.env.NCMEC_MAX_FILES, 10) || 5);
+  const ups = (session.uploads || []).filter(u => u.videoFile);
+  return (uploadId ? ups.filter(u => u.id === uploadId) : ups)
+    .map(u => ({ name: `${u.id}.jpg`, url: thumbUrls(session.code, u).url, info: `Thumbnail of clip ${u.id}, uploaded by ${u.username}` }))
+    .filter(f => f.url).slice(0, max);
 }
 
 function buildCaseFile(session, { caseId, kind, trigger, detail, actions }) {
@@ -602,7 +695,7 @@ module.exports = {
   canListPublic, isHostAllowed,
   getBan, getStrikes, addStrike, banFromPublic, unban, clearStrikes, clearReviewFlags,
   sessionScanState, scanSession, noteUnscanned, checkStuck,
-  handleCsam, sendCase, buildCaseFile, newCaseId,
+  handleCsam, sendCase, buildCaseFile, newCaseId, fileCyberTip,
   sendMobileCase, buildMobileCaseFile, recordTipReport,
   startModerationSweep,
   STRIKES_TO_BAN
