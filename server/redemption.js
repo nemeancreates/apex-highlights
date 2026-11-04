@@ -160,4 +160,15 @@ function forgetUser(username, replacement) {
   if (changed) saveCodesToDisk();
 }
 
-module.exports = { loadCodesFromDisk, generateRedemptionCodes, redeemCode, peekCode, findCodeByNote, findCodesByNote, codesBoughtBy, trackBandwidth, isProduct, forgetUser, PRODUCTS };
+// Dates only, for the growth report (server/growth.js): when Stripe checkouts
+// issued codes and when codes were redeemed. No codes, no usernames.
+function codeEvents() {
+  const bought = [], redeemed = [];
+  for (const c of codes.values()) {
+    if (String(c.note || '').startsWith('stripe:')) bought.push({ at: c.createdAt, note: c.note });
+    for (const u of c.usedBy || []) redeemed.push({ at: u.redeemedAt });
+  }
+  return { bought, redeemed };
+}
+
+module.exports = { codeEvents, loadCodesFromDisk, generateRedemptionCodes, redeemCode, peekCode, findCodeByNote, findCodesByNote, codesBoughtBy, trackBandwidth, isProduct, forgetUser, PRODUCTS };

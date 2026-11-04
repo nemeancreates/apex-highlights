@@ -47,19 +47,21 @@
 
   // ---------- Download buttons ----------
   // The Microsoft Store copy is signed by Microsoft (no Windows warning); the
-  // direct .exe from /api/version stays as a secondary link.
-  var STORE_URL = 'https://apps.microsoft.com/detail/9MZFVNFQQHTP';
+  // direct .exe from /api/version stays as a secondary link. Both go through
+  // /dl/* on the server, which adds one to a daily total (no address, no
+  // cookie, nothing about you) and forwards on. The Store link itself lives in
+  // server/growth.js (MS_STORE_URL).
   function wireDownloads() {
     var links = document.querySelectorAll('[data-download]');
     if (!links.length) return;
     fetch('/api/version').then(function (r) { return r.json(); }).then(function (v) {
       if (!v || !v.downloadUrl) return;
       links.forEach(function (el) {
-        el.setAttribute('href', STORE_URL);
+        el.setAttribute('href', '/dl/pc');
         var ver = el.querySelector('[data-version]');
         if (ver && v.version) ver.textContent = 'v' + v.version;
       });
-      document.querySelectorAll('[data-download-direct]').forEach(function (el) { el.setAttribute('href', v.downloadUrl); });
+      document.querySelectorAll('[data-download-direct]').forEach(function (el) { el.setAttribute('href', '/dl/pc-direct'); });
     }).catch(function () {});
   }
 
