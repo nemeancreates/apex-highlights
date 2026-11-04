@@ -78,7 +78,12 @@ const button = (style, emoji, label, customId) =>
 
 function buttonsFor({ kind, id, caseId, csam }) {
   const t = `${kind}:${id}`;
-  if (csam) return [{ type: 1, components: [button(1, '📝', 'Record CyberTip report', `pa:tip:${t}:${caseId || ''}`)] }];
+  if (csam) {
+    const row = [];
+    if (require('./index').canFileCyberTip()) row.push(button(1, '📨', 'File with NCMEC', `pa:file:${t}:${caseId || ''}`));
+    row.push(button(2, '📝', 'Record CyberTip report', `pa:tip:${t}:${caseId || ''}`));
+    return [{ type: 1, components: row }];
+  }
   return [{ type: 1, components: [
     button(3, '✅', 'Approve', `pa:restore:${t}`),
     button(4, '❌', 'Remove', `pa:remove:${t}`),
@@ -155,7 +160,27 @@ async function finish(it, { action, kind, id, extra, alertId, by }) {
   let decision = null;
   let keepButtons = false;
   const code = (kind === 'm' ? 'm-' : '') + id;
-  if (action === 'tipsave') {
+  if (action === 'fileok') {
+    let r;
+    try {
+      if (kind === 'pc') {
+        const s = require('../stores').sessions.get(id);
+        r = s ? await require('./index').fileSessionCyberTip(s, { by: by.tag }) : { ok: false, error: 'That session is gone' };
+      } else {
+        const mobile = require('../mobile');
+        const l = mobile.mobileListingById(id);
+        r = l ? await mobile.fileMobileListingCyberTip(l, { by: by.tag }) : { ok: false, error: 'That listing is not in the mobile list any more' };
+      }
+    } catch (err) {
+      r = { ok: false, error: err.message };
+    }
+    if (r.ok) {
+      reply = `Filed. NCMEC report ${r.reportId}${r.files != null ? ` with ${r.files} file${r.files === 1 ? '' : 's'}` : ''}. It is saved with the case.`;
+      decision = `📨 Filed with NCMEC by ${by.name}: report **${r.reportId}**`;
+    } else {
+      reply = `Couldn't file it: ${r.error}. Nothing was changed. You can press the button again, or file by hand.`;
+    }
+  } else if (action === 'tipsave') {
     const number = modalValue(it, 'number').trim();
     if (!/^[A-Za-z0-9-]{3,40}$/.test(number)) {
       reply = 'That doesn\'t look like a report number (letters, digits and dashes only). Nothing was saved.';
@@ -225,6 +250,13 @@ function initDiscordInteractions(app) {
         components: [{ type: 1, components: [button(4, '🚔', 'Yes, report it', `pa:csamok:${kind}:${id}:${it.message.id}`)] }]
       } });
     }
+    if (it.type === 3 && action === 'file') {
+      return res.json({ type: 4, data: {
+        flags: EPHEMERAL,
+        content: `File a CyberTipline report with NCMEC for **${id}**? This sends the report and up to a few stills from the session to NCMEC, and it is a legal filing. Only confirm after reading the attached case file.`,
+        components: [{ type: 1, components: [button(1, '📨', 'Yes, file it', `pa:fileok:${kind}:${id}:${it.message.id}`)] }]
+      } });
+    }
     if (it.type === 3 && action === 'tip') {
       return res.json({ type: 9, data: {
         custom_id: `pa:tipsave:${kind}:${id}:${extra || ''}`.slice(0, 100),
@@ -232,13 +264,13 @@ function initDiscordInteractions(app) {
         components: [{ type: 1, components: [{ type: 4, custom_id: 'number', style: 1, label: 'Report number from NCMEC', min_length: 3, max_length: 40, required: true }] }]
       } });
     }
-    const known = it.type === 3 ? ['restore', 'remove', 'csamok'] : it.type === 5 ? ['tipsave'] : [];
+    const known = it.type === 3 ? ['restore', 'remove', 'csamok', 'fileok'] : it.type === 5 ? ['tipsave'] : [];
     if (!known.includes(action)) return say('That button is out of date.');
 
     // Answer within Discord's 3 seconds ("thinking…", only the clicker sees
     // it), then do the work and fill the answer in.
     res.json({ type: 5, data: { flags: EPHEMERAL } });
-    const alertId = action === 'csamok' ? extra : it.message && it.message.id;
+    const alertId = action === 'csamok' || action === 'fileok' ? extra : it.message && it.message.id;
     finish(it, { action, kind, id, extra, alertId, by })
       .catch(err => log('warn', 'discord_action_failed', { action, kind, id, error: err.message }));
   });

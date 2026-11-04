@@ -280,12 +280,8 @@ async function handleCsam(session, { trigger, detail, uploadId, by }) {
       'Listing removed from /browse and roulette.'
     ]
   });
-  const host = users.get(String(session.createdBy || '').toLowerCase()) || {};
-  await fileCyberTip({
-    caseId: sent, code: session.code, platform: 'Peakabu', host: session.createdBy,
-    hostNote: `Account created ${host.createdAt || 'unknown'}; Discord ${host.discordId ? `${host.discordUsername || '?'} (ID ${host.discordId})` : 'not linked'}.`,
-    url: `https://peakabu.app/player?code=${session.code}`, files: evidenceFiles(session, uploadId), by, trigger
-  }).catch(err => log('error', 'ncmec_filing_failed', { code: session.code, error: err.message }));
+  await fileCyberTip(cyberTipContext(session, { caseId: sent, uploadId, by, trigger }))
+    .catch(err => log('error', 'ncmec_filing_failed', { code: session.code, error: err.message }));
 }
 
 // ================================
@@ -377,11 +373,13 @@ async function fileCyberTip(ctx) {
   if (mode === 'off' || (mode === 'staff' && ctx.by === 'scanner')) return null;
   if (alreadyFiled(ctx.code)) return null;
   let result;
+  let sentNames = [];
   try {
     if (!ncmec.configured()) {
       result = { ok: false, error: 'NCMEC filing is on but its settings are incomplete (NCMEC_API_BASE, NCMEC_USER, NCMEC_PASS, NCMEC_REPORTER_EMAIL)' };
     } else {
       const evidence = (await Promise.all((ctx.files || []).map(fetchEvidence))).filter(Boolean);
+      sentNames = evidence.map(e => e.name);
       const info = `${ctx.platform} case ${ctx.caseId}. Session ${ctx.code}. Detection: ${ctx.trigger}. Host account: ${ctx.host || 'unknown'}. ${ctx.hostNote || ''} ` +
         `The session is preserved under legal hold. ${evidence.length} of ${(ctx.files || []).length} attached stills could be retrieved. Staff did not view the content.`;
       result = await ncmec.fileReport({
@@ -400,6 +398,9 @@ async function fileCyberTip(ctx) {
       { name: 'Session', value: ctx.code, inline: true },
       { name: 'CyberTipline report', value: String(result.reportId), inline: true },
       { name: 'Files sent', value: String(result.files), inline: true },
+      { name: 'Sent', value: sentNames.length ? sentNames.join(', ').slice(0, 900) : 'No files (report only)' },
+      { name: 'Evidence', value: 'Nothing is deleted: the session stays under legal hold, and its storage keys are in the case file.' },
+      { name: 'See the report', value: 'Log in to the CyberTipline portal with your NCMEC account: https://report.cybertip.org/cybertip/login' },
       { name: 'Saved', value: 'The report number is recorded with the case.' }
     ]
   } : {
@@ -412,12 +413,42 @@ async function fileCyberTip(ctx) {
   return result;
 }
 
-// Stills to attach for a desktop session: the flagged clip's thumbnail when the
-// scanner found it, else the first few thumbnails.
+function canFileCyberTip() { return fileMode() !== 'off' && ncmec.configured(); }
+
+function latestCsamCase(code) {
+  try {
+    const c = stmt.casesFor.all(code).filter(x => x.kind === 'csam');
+    return c.length ? c[c.length - 1].caseId : null;
+  } catch (e) { return null; }
+}
+
+function cyberTipContext(session, { caseId, uploadId, by, trigger }) {
+  const host = users.get(String(session.createdBy || '').toLowerCase()) || {};
+  return {
+    caseId, code: session.code, platform: 'Peakabu', host: session.createdBy,
+    hostNote: `Account created ${host.createdAt || 'unknown'}; Discord ${host.discordId ? `${host.discordUsername || '?'} (ID ${host.discordId})` : 'not linked'}.`,
+    url: `https://peakabu.app/player?code=${session.code}`, files: evidenceFiles(session, uploadId), by, trigger
+  };
+}
+
+// The "File with NCMEC" button on a CSAM case: a person decided, so this
+// files in both staff and auto mode. Resolves { ok, reportId?, files?, error? }.
+async function fileSessionCyberTip(session, { by }) {
+  if (!canFileCyberTip()) return { ok: false, error: 'NCMEC filing is switched off or not set up' };
+  if (alreadyFiled(session.code)) return { ok: false, error: 'A CyberTip report is already on record for this session' };
+  const r = await fileCyberTip(cyberTipContext(session, { caseId: latestCsamCase(session.code) || newCaseId(), by, trigger: 'Staff confirmed in Discord' }));
+  return r || { ok: false, error: 'Nothing was filed' };
+}
+
+// Stills to attach for a desktop session: the clips the scanner matched as
+// CSAM (the one just found, or any recorded earlier), else the first few
+// thumbnails when it was a person's call.
 function evidenceFiles(session, uploadId) {
   const max = Math.max(1, parseInt(process.env.NCMEC_MAX_FILES, 10) || 5);
   const ups = (session.uploads || []).filter(u => u.videoFile);
-  return (uploadId ? ups.filter(u => u.id === uploadId) : ups)
+  let flagged = uploadId ? [uploadId] : [];
+  if (!flagged.length) { try { flagged = scansFor(session.code).filter(s => s.verdict === 'csam').map(s => s.uploadId); } catch (e) {} }
+  return (flagged.length ? ups.filter(u => flagged.includes(u.id)) : ups)
     .map(u => ({ name: `${u.id}.jpg`, url: thumbUrls(session.code, u).url, info: `Thumbnail of clip ${u.id}, uploaded by ${u.username}` }))
     .filter(f => f.url).slice(0, max);
 }
@@ -516,6 +547,12 @@ function buildCaseFile(session, { caseId, kind, trigger, detail, actions }) {
 }
 
 // Builds the case file, records it, and posts it to the staff channel.
+function reportItText() {
+  return canFileCyberTip()
+    ? `Read the attached case file, then press File with NCMEC below. The server sends the report and a few stills; it asks you to confirm first. Do not open, download or share the content. By hand instead: ${NCMEC_URL}`
+    : `Do not open, download or share the content. File with NCMEC CyberTipline: ${NCMEC_URL}\nSteps are in the attached case file.`;
+}
+
 // Markdown links for the alert's "Look at it" field. Alerts for apparent CSAM
 // never get these: nobody should open that content from Discord.
 function linkLines(links) {
@@ -540,7 +577,7 @@ async function sendCase(session, { caseId, kind, level, title, trigger, detail, 
   ];
   if (actions && actions.length) fields.push({ name: 'Done automatically', value: actions.map(a => '- ' + a).join('\n') });
   if (kind === 'csam') {
-    fields.push({ name: 'Report it', value: `Do not open, download or share the content. File with NCMEC CyberTipline: ${NCMEC_URL}\nSteps are in the attached case file.` });
+    fields.push({ name: 'Report it', value: reportItText() });
   } else {
     const look = [`[Watch the session](https://peakabu.app/player?code=${session.code})`, ...linkLines(links)];
     fields.push({ name: 'Look at it', value: look.join('\n') });
@@ -646,7 +683,7 @@ async function sendMobileCase(l, { caseId, kind, level, title, trigger, detail, 
   ];
   if (actions && actions.length) fields.push({ name: 'Done automatically', value: actions.map(a => '- ' + a).join('\n') });
   if (kind === 'csam') {
-    fields.push({ name: 'Report it', value: `Do not open, download or share the content. File with NCMEC CyberTipline: ${NCMEC_URL}\nSteps are in the attached case file.` });
+    fields.push({ name: 'Report it', value: reportItText() });
   } else {
     const look = [`[Watch the session](${l.watchUrl})`, ...linkLines(links)];
     fields.push({ name: 'Look at it', value: look.join('\n') });
@@ -695,7 +732,7 @@ module.exports = {
   canListPublic, isHostAllowed,
   getBan, getStrikes, addStrike, banFromPublic, unban, clearStrikes, clearReviewFlags,
   sessionScanState, scanSession, noteUnscanned, checkStuck,
-  handleCsam, sendCase, buildCaseFile, newCaseId, fileCyberTip,
+  handleCsam, sendCase, buildCaseFile, newCaseId, fileCyberTip, fileSessionCyberTip, canFileCyberTip, alreadyFiled, latestCsamCase,
   sendMobileCase, buildMobileCaseFile, recordTipReport,
   startModerationSweep,
   STRIKES_TO_BAN

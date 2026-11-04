@@ -362,13 +362,34 @@ async function escalateMobileListing(l, { trigger, detail, by, itemId }) {
       l.host ? `Host "${l.host}" is banned from public posting.` : 'No host account to ban.'
     ]
   }).catch(() => null);
-  const max = Math.max(1, parseInt(process.env.NCMEC_MAX_FILES, 10) || 5);
-  const stills = (l.media || []).filter(m => m.url && (!itemId || m.id === itemId)).slice(0, max)
-    .map(m => ({ name: `${m.id}.jpg`, url: m.url, info: `${m.kind || 'still'} ${m.id} from the session` }));
-  await mod().fileCyberTip({
-    caseId, code: PREFIX + l.id, platform: 'Peakabu Mobile', host: l.host, url: l.watchUrl, files: stills, by, trigger
-  }).catch(err => log('error', 'ncmec_filing_failed', { code: PREFIX + l.id, error: err.message }));
+  await fileMobileCyberTip(l, { caseId, by, trigger, itemId })
+    .catch(err => log('error', 'ncmec_filing_failed', { code: PREFIX + l.id, error: err.message }));
   return held;
+}
+
+// File a mobile listing with NCMEC: the flagged still when the scanner found
+// one, else the first few. Whether it files is moderation's call (NCMEC_FILE_MODE).
+function fileMobileCyberTip(l, { caseId, by, trigger, itemId }) {
+  const max = Math.max(1, parseInt(process.env.NCMEC_MAX_FILES, 10) || 5);
+  let flagged = itemId ? [itemId] : [];
+  if (!flagged.length) {
+    const lead = PREFIX + l.id + ':';
+    try { flagged = stmt.scansFor.all(PREFIX + l.id).filter(r => r.verdict === 'csam').map(r => r.uploadId.slice(lead.length)); } catch (e) {}
+  }
+  const stills = (l.media || []).filter(m => m.url && (!flagged.length || flagged.includes(m.id))).slice(0, max)
+    .map(m => ({ name: `${m.id}.jpg`, url: m.url, info: `${m.kind || 'still'} ${m.id} from the session` }));
+  return mod().fileCyberTip({
+    caseId, code: PREFIX + l.id, platform: 'Peakabu Mobile', host: l.host, url: l.watchUrl, files: stills, by, trigger
+  });
+}
+
+// The "File with NCMEC" button on a mobile CSAM case: a person decided.
+async function fileMobileListingCyberTip(l, { by }) {
+  const m = mod(), code = PREFIX + l.id;
+  if (!m.canFileCyberTip()) return { ok: false, error: 'NCMEC filing is switched off or not set up' };
+  if (m.alreadyFiled(code)) return { ok: false, error: 'A CyberTip report is already on record for this session' };
+  const r = await fileMobileCyberTip(l, { caseId: m.latestCsamCase(code) || m.newCaseId(), by, trigger: 'Staff confirmed in Discord' });
+  return r || { ok: false, error: 'Nothing was filed' };
 }
 
 // One listing from the last copy of the mobile server's list (hidden or not).
@@ -464,7 +485,7 @@ function mobileSecretOk(req) {
 module.exports = {
   MOBILE_FREE_STORAGE_GB, MOBILE_INCLUDED_TIERS, EVENT_MAX_HOURS, EVENT_SIZES, eventSize, upcomingEvents,
   grantMobileDays, setMobilePassUntil, mobilePassRemainingMs, addEventPass, getMobileStatus, claimEventPass,
-  startMobileListingSync, mobileListings, allMobileListingIds, hostedMobileSessions, mobileListingState, reportMobileListing, setMobileListingHidden, mobileSecretOk,
+  startMobileListingSync, mobileListings, allMobileListingIds, hostedMobileSessions, mobileListingState, reportMobileListing, setMobileListingHidden, mobileSecretOk, fileMobileListingCyberTip,
   mobileListingById, escalateMobileListing,
   _refreshForTest: refreshMobileListings
 };
