@@ -2133,8 +2133,12 @@
     // this per clip from the renderer's live analyzer — see auto-peak-log).
     // Purely visual/navigational; never touches capture or playback logic.
     // ========================
-    const MARKER_COMBAT_BUCKET_MS = 3000;  // group desktop peaks into 3s buckets
-    const MARKER_COMBAT_MIN_PEAKS = 3;     // a bucket needs this many to count as a "cluster", not noise
+    // v1.0.0: clusters follow the peaks (a gap of MARKER_COMBAT_GAP_MS ends
+    // one) instead of fixed 3 s buckets, which split a fight at a bucket edge
+    // (often below the 3-peak minimum, so no marker) and put the ⚔️ up to
+    // 1.5 s from where it started. The marker sits at the fight's first peak.
+    const MARKER_COMBAT_GAP_MS = 2000;     // quiet this long between peaks = a new cluster
+    const MARKER_COMBAT_MIN_PEAKS = 3;     // a cluster needs this many to count, not noise
     const MARKER_MIN_GAP_PCT = 2.5;        // skip a marker that'd land within this % of an existing one
 
     function collectAudioPeaks() {
@@ -2153,7 +2157,8 @@
             masterMs: p.tMs + offsetMs,
             source: p.source,
             intensity: typeof p.intensity === 'number' ? p.intensity : null,
-            event: p.event || null
+            event: p.event || null,
+            username: v.username || null
           });
         });
       });
@@ -2161,27 +2166,23 @@
     }
 
     function buildCombatMarkers(peaks) {
-      const desktop = peaks.filter(p => p.source === 'desktop' && !p.event);
+      const desktop = peaks.filter(p => p.source === 'desktop' && !p.event)
+        .sort((a, b) => a.masterMs - b.masterMs);
       if (!desktop.length) return [];
-      const buckets = new Map();
-      desktop.forEach(p => {
-        const key = Math.floor(p.masterMs / MARKER_COMBAT_BUCKET_MS);
-        if (!buckets.has(key)) buckets.set(key, { count: 0, sum: 0 });
-        const b = buckets.get(key);
-        b.count++;
-        b.sum += (p.intensity || 0);
-      });
       const clusters = [];
-      buckets.forEach((b, key) => {
-        if (b.count < MARKER_COMBAT_MIN_PEAKS) return;
-        clusters.push({
-          masterMs: key * MARKER_COMBAT_BUCKET_MS + MARKER_COMBAT_BUCKET_MS / 2,
-          avgIntensity: b.sum / b.count,
-          count: b.count
-        });
+      let cur = null;
+      desktop.forEach(p => {
+        if (!cur || p.masterMs - cur.lastMs > MARKER_COMBAT_GAP_MS) {
+          cur = { masterMs: p.masterMs, lastMs: p.masterMs, count: 0, sum: 0 };
+          clusters.push(cur);
+        }
+        cur.lastMs = p.masterMs;
+        cur.count++;
+        cur.sum += (p.intensity || 0);
       });
-      clusters.sort((a, b) => a.masterMs - b.masterMs);
-      return clusters;
+      return clusters
+        .filter(c => c.count >= MARKER_COMBAT_MIN_PEAKS)
+        .map(c => ({ masterMs: c.masterMs, avgIntensity: c.sum / c.count, count: c.count, endMs: c.lastMs }));
     }
 
     function buildMicMarkers(peaks) {
@@ -2214,17 +2215,26 @@
         track.insertBefore(el, needle);
       }
 
+      // A moment outside what the scrub bar covers (a POV that isn't loaded
+      // yet runs longer) is skipped, not pinned to the bar's end — it appears
+      // once that POV loads and the bar grows (see the masterDuration updates).
+      const pctOf = (sec) => (sec < 0 || sec > masterDuration) ? null : (sec / masterDuration) * 100;
+
       buildCombatMarkers(peaks).forEach(c => {
         const sec = c.masterMs / 1000;
-        const pct = Math.max(0, Math.min(100, (sec / masterDuration) * 100));
-        const label = c.count + ' loud moment' + (c.count > 1 ? 's' : '') + ' around ' + formatTime(sec);
+        const pct = pctOf(sec);
+        if (pct === null) return;
+        const len = Math.max(1, Math.round((c.endMs - c.masterMs) / 1000));
+        const label = 'Action from ' + formatTime(sec) + ' (~' + len + 's)';
         place(pct, 'tm-combat', '\u2694\uFE0F', label, () => seekToFraction(sec / masterDuration));
       });
 
       buildMicMarkers(peaks).forEach(m => {
         const sec = m.masterMs / 1000;
-        const pct = Math.max(0, Math.min(100, (sec / masterDuration) * 100));
-        const label = (m.event === 'mic-start' ? 'Mic started around ' : 'Mic quieted around ') + formatTime(sec);
+        const pct = pctOf(sec);
+        if (pct === null) return;
+        const who = m.username ? m.username + ' ' : '';
+        const label = who + (m.event === 'mic-start' ? 'started talking at ' : 'stopped talking at ') + formatTime(sec);
         place(pct, 'tm-mic', '\uD83D\uDE4A', label, () => seekToFraction(sec / masterDuration));
       });
     }
@@ -3309,7 +3319,10 @@
       }
 
       const thisDuration = (v.element.duration || 0) + v.offset;
-      if (thisDuration > masterDuration) masterDuration = thisDuration;
+      if (thisDuration > masterDuration) {
+        masterDuration = thisDuration;
+        renderTimelineMarkers();   // the bar just grew (or got its first length) — re-place markers
+      }
 
       renderPOVContainer(index);
       renderMemberList();
@@ -3566,6 +3579,7 @@
               if (dur > masterDuration) masterDuration = dur;
             }
           });
+          renderTimelineMarkers();   // this POV's markers moved with it
         }
 
         btnMinus.addEventListener('click', function(e) { e.stopPropagation(); applyNudge(e.shiftKey ? -50 : -500); });

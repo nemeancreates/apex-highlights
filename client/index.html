@@ -4453,6 +4453,19 @@
       var AC_SUSTAIN_POLLS_KEEPALIVE = 5;    // much lighter bar to KEEP one open through combat lulls
       var AC_SUSTAIN_WINDOW = 12;            // ~600ms at 50ms — tolerates gaps between shots
 
+      // ===== MIC TALK DETECTOR (v1.0.0) =====
+      // Talking was judged against the mic's own rolling baseline, which
+      // turns INTO your voice after a while of steady talking — so talking
+      // stopped counting, capture windows ended mid-conversation, and the
+      // 🙊 markers flickered on and off. "Talking" is now the voice bands
+      // (200–3000 Hz) clearing a fixed step above the mic's quiet floor,
+      // with a short hangover for pauses between words. While any capture
+      // window is open (anyone's), talking keeps it going; it never opens one.
+      var AC_MIC_TALK_MIN = 0.25;            // never "talking" below this (byte-spectrum scale, ~-82 dB)
+      var AC_MIC_TALK_ABOVE_FLOOR = 0.15;    // ~10 dB over the quiet floor (p10 of the last 45 s)
+      var AC_MIC_TALK_POLLS = 3;             // voiced polls within AC_SUSTAIN_WINDOW to start talking
+      var AC_MIC_TALK_HANGOVER_MS = 1500;    // silence this long ends talking (pauses between words)
+
       // A sample 0.08% over threshold counted the same as one at double, so
       // ambient audio hovering at p97 produced a steady drip of technically-
       // true peaks. Require real headroom before a poll counts.
@@ -4527,6 +4540,7 @@
         var pct = isMic ? Math.min(0.995, profile.pct + 0.02) : profile.pct;
         var pctVal = band.sortBuf[Math.min(n - 1, Math.floor(pct * n))];
         var median = band.sortBuf[Math.floor(0.5 * n)];
+        band.noiseFloor = band.sortBuf[Math.floor(0.10 * n)];   // quiet floor for the talk detector
 
         var medMult = profile.medianMult * (isMic ? AC_MIC_EXTRA_MULTIPLIER : 1);
         var floor = isMic ? AC_FLOOR_MIC : AC_FLOOR;
@@ -4611,7 +4625,10 @@
 
         // A muted (or None) mic isn't recorded, so it mustn't flash its
         // monkey, log mic peaks or hold a capture window open either.
-        if (isMic && window.micSilenced()) return;
+        if (isMic && window.micSilenced()) {
+          if (state.talking) acSetTalking(state, false, Date.now());
+          return;
+        }
 
         acReadBands(state);
         state.sampleCount++;
@@ -4675,6 +4692,7 @@
         }
 
         acUpdateMargin(state);
+        if (isMic) acUpdateTalk(state, Date.now());
 
         var requiredBands = windowActive ? 2 : AC_BANDS_REQUIRED_OPEN;
         var sustainedPeak = warmedUp && (bandsSustaining >= requiredBands);
@@ -4700,7 +4718,7 @@
                       ' sustained=' + sustainedPeak);
         }
 
-        if (anyPeak) acFlashMonkey(sourceName);
+        if (isMic ? state.voicedNow : anyPeak) acFlashMonkey(sourceName);
 
         // ===== PEAK LOG — lightweight timeline data for the web player's
         // combat/mic markers (queued separately). Independent of the
@@ -4723,52 +4741,74 @@
           });
         }
 
-        // Mic-active transitions — independent of the desktop-gating that
-        // blocks mic from OPENING a capture window below. This is purely
-        // "is someone talking right now", for the player's speak/no-speak
-        // monkey markers, not a capture-triggering decision.
-        if (sourceName === 'mic') {
-          var micNowActive = sustainedPeak;
-          if (micNowActive !== !!state.micActiveLogged) {
-            state.micActiveLogged = micNowActive;
-            ipcRenderer.send('auto-peak-log', {
-              tLocalMs: nowLog,
-              source: 'mic',
-              event: micNowActive ? 'mic-start' : 'mic-end'
-            });
-          }
-        }
-
-        if (sustainedPeak) {
-          // The mic is a reinforcer, not an independent trigger.
-          // Human speech is, by every measure the detector has, a strong
-          // sustained broadband event — sub+low light up whenever you talk —
-          // so an independent mic gate fired on ordinary conversation without
-          // fail. The mic may only emit once DESKTOP audio has already opened
-          // a window; it then extends/reinforces, but can't open one alone.
-          var micBlocked = (sourceName === 'mic') && !window._acDesktopWindowActive;
-          if (!micBlocked) {
-            var now = Date.now();
-            if (now - state.lastEmit >= AC_EMIT_THROTTLE_MS) {
-              state.lastEmit = now;
-              if (sourceName === 'desktop') window._acDesktopOpenedRecently = Date.now();
-              acReportPeak(profile);
+        if (isMic) {
+          // The mic is a reinforcer, never a trigger: ordinary conversation
+          // would open windows constantly. Talking (MIC TALK DETECTOR) keeps
+          // an open window going — anyone's, not only one this PC's game
+          // audio opened — and the server limits how long talk alone can
+          // hold it past the last game-audio peak.
+          if (state.talking && window.autoCaptureWindowActive) {
+            var nowMic = Date.now();
+            if (nowMic - state.lastEmit >= AC_EMIT_THROTTLE_MS) {
+              state.lastEmit = nowMic;
+              acReportPeak(profile, 'mic');
             }
           }
+        } else if (sustainedPeak) {
+          var now = Date.now();
+          if (now - state.lastEmit >= AC_EMIT_THROTTLE_MS) {
+            state.lastEmit = now;
+            window._acDesktopOpenedRecently = now;
+            acReportPeak(profile, 'desktop');
+          }
         }
+      }
+
+      // Voice-band level vs the mic's quiet floor → talking on/off, logged
+      // as mic-start / mic-end for the player's 🙊 markers. The start is
+      // dated to the first voiced poll of the run, the end to the last word,
+      // not to when the detector made up its mind.
+      function acUpdateTalk(state, now) {
+        var voiced = false;
+        for (var i = 0; i < state.bands.length; i++) {
+          var b = state.bands[i];
+          if (b.name !== 'low' && b.name !== 'mid') continue;
+          if (b.lastVal > Math.max(AC_MIC_TALK_MIN, (b.noiseFloor || 0) + AC_MIC_TALK_ABOVE_FLOOR)) { voiced = true; break; }
+        }
+        state.voicedNow = voiced;
+        if (!state.voicedHist) state.voicedHist = [];
+        state.voicedHist.push(voiced ? now : 0);
+        if (state.voicedHist.length > AC_SUSTAIN_WINDOW) state.voicedHist.shift();
+        if (voiced) state.lastVoicedAt = now;
+
+        if (!state.talking) {
+          var count = 0, first = 0;
+          for (var h = 0; h < state.voicedHist.length; h++) {
+            if (state.voicedHist[h]) { count++; if (!first) first = state.voicedHist[h]; }
+          }
+          if (count >= AC_MIC_TALK_POLLS) acSetTalking(state, true, first);
+        } else if (now - (state.lastVoicedAt || 0) > AC_MIC_TALK_HANGOVER_MS) {
+          acSetTalking(state, false, state.lastVoicedAt || now);
+        }
+      }
+
+      function acSetTalking(state, talking, atMs) {
+        state.talking = talking;
+        if (!talking) state.voicedHist = [];
+        ipcRenderer.send('auto-peak-log', { tLocalMs: atMs, source: 'mic', event: talking ? 'mic-start' : 'mic-end' });
       }
 
    
 
 
-      function acReportPeak(profile) {
+      function acReportPeak(profile, source) {
         if (!window.autoCaptureEnabled) return;
         if (!window.socket || !window.currentSessionCode) return;
         if (!window.isRecordingActive || !window.bufferReady) return;
         console.log('[ac-emit] sens=' + window.autoCaptureSensitivity +
                     ' settleMs=' + profile.settleMs +
                     ' minActiveMs=' + profile.minActiveMs);
-        window.socket.emit('auto-peak', { settleMs: profile.settleMs, minActiveMs: profile.minActiveMs });
+        window.socket.emit('auto-peak', { settleMs: profile.settleMs, minActiveMs: profile.minActiveMs, source: source || 'desktop' });
       }
 
       function acFlashMonkey(sourceName) {
@@ -4814,6 +4854,7 @@
       }
       function acDetachMic() {
         if (window._acMic) {
+          if (window._acMic.talking) acSetTalking(window._acMic, false, window._acMic.lastVoicedAt || Date.now());
           clearInterval(window._acMic.timer);
           try { window._acMic.source.disconnect(); } catch (e) {}
           window._acMic = null;
