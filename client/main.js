@@ -4158,6 +4158,20 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   }
 }
 
+// AUDIO SEEK (v1.0.0) — the repair step below used to decode a highlight's
+// audio file from its very start and throw away everything before the clip
+// (-ss after -i). The game audio and mic files run for the whole recording,
+// so hours into a session every save re-decoded hours of audio, and saves
+// fell further behind the longer people played (831 highlights in 8CBJH5).
+// Now it jumps to AUDIO_SEEK_LEAD_SEC before the clip without decoding (-ss
+// before -i, the same change that sped up video extraction) and trims the
+// rest precisely after aresample, exactly as before, so sync is unchanged.
+const AUDIO_SEEK_LEAD_SEC = 10;
+function audioSeekArgs(skipSec) {
+  const coarse = Math.max(0, skipSec - AUDIO_SEEK_LEAD_SEC);
+  return { pre: coarse > 0 ? ['-ss', coarse.toFixed(3)] : [], fine: (skipSec - coarse).toFixed(3) };
+}
+
 function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVideoStartMs, cap = null) {
   // A save from a restarted recording uses that recording's audio (see RETIRED CAPTURES).
   const deskAudio = pickAudioSegment(clipVideoStartMs, clipVideoStartMs + durationMs, cap ? cap.audioSegs : hlAudioSegs);   // see GAME AUDIO SEGMENTS
@@ -4196,11 +4210,13 @@ function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVi
 
   console.log(`WGC audio sync: seg ${deskAudio.id}, skip=${audioSkipSec.toFixed(3)}s delay=${audioDelaySec.toFixed(3)}s span=${clipSpanSec.toFixed(1)}s`);
 
+  const audioSeek = audioSeekArgs(audioSkipSec);
   const repairAudio = spawn(getFFmpegPath(), [
     '-fflags', '+genpts+igndts', '-err_detect', 'ignore_err',
+    ...audioSeek.pre,
     '-i', deskAudio.path,
     '-af', 'aresample=async=1000:first_pts=0',
-    '-ss', audioSkipSec.toFixed(3), '-t', clipSpanSec.toFixed(3),
+    '-ss', audioSeek.fine, '-t', clipSpanSec.toFixed(3),
     '-c:a', 'aac', '-b:a', '192k', '-y', tempAudioPath
   ], { windowsHide: true });
 
@@ -4246,11 +4262,13 @@ function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVi
     }
 
     if (hasMic && tempMicPath) {
+      const micSeek = audioSeekArgs(micSkipSec);
       const repairMic = spawn(getFFmpegPath(), [
         '-fflags', '+genpts+igndts', '-err_detect', 'ignore_err',
+        ...micSeek.pre,
         '-i', micPath,
         '-af', 'aresample=async=1000:first_pts=0',
-        '-ss', micSkipSec.toFixed(3), '-t', clipSpanSec.toFixed(3),
+        '-ss', micSeek.fine, '-t', clipSpanSec.toFixed(3),
         '-c:a', 'aac', '-b:a', '192k', '-y', tempMicPath
       ], { windowsHide: true });
       repairMic.stderr.on('data', d => console.log('WGC RepairMic:', d.toString()));
