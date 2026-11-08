@@ -32,6 +32,10 @@ const MAX_SETTLE_MS = 20000;                    // sanity ceiling — matches th
 const BUFFER_SAFETY_MS = 25000;   // postDelay (11.5s) + partially-consumed oldest chunk (10s) + slack
 const MIN_SQUAD_CAP_MS = 30000;   // never cap below a normal manual clip
 const REARM_COOLDOWN_MS = 4000;   // ignore peaks briefly after a window closes
+// Talking (v1.0.0 clients send source:'mic') keeps an open window going, but
+// only this long past the window's last game-audio peak — so voice chat in
+// a quiet lobby can't hold every window to the hard cap. Mic never opens one.
+const MIC_EXTEND_MAX_MS = 45000;
 
 // A manual commit arriving seconds after detection opened would otherwise
 // produce a 2-second clip. Floor it at the session's normal clip length so
@@ -170,6 +174,11 @@ function registerAutoCaptureHandlers(io, socket) {
     if (!(session.members || []).some(m => m.isRecording)) return;
 
     const now = Date.now();
+    const fromMic = !!(payload && payload.source === 'mic');
+    if (fromMic) {
+      if (!session.autoCaptureActive) return;
+      if (now - (session._autoLastGamePeakTs || 0) > MIC_EXTEND_MAX_MS) return;
+    }
 
     // Brief cooldown after a window closes. Sustained combat audio otherwise
     // reopens a window milliseconds after the last one closed, chaining
@@ -206,6 +215,7 @@ function registerAutoCaptureHandlers(io, socket) {
     } else {
       session.autoCapturePeakTs = now;
     }
+    if (!fromMic) session._autoLastGamePeakTs = now;
 
     // (Re)schedule the settle timer off THIS peak — any member's peak
     // resets it, so the window only ends once EVERYONE has been quiet.
