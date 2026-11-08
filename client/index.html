@@ -4173,7 +4173,7 @@
           var elx = document.getElementById(p[1]);
           if (!elx) return;
           var tap = liveMeter.taps[p[0]];
-          var muted = (p[0] === 'mic' && window.micMuted);   // muted mic shows silent
+          var muted = (p[0] === 'mic' && window.micSilenced());   // muted / None mic shows silent
           elx.setAttribute('data-level', (tap && !muted) ? liveLevel(tap) : 0);
         });
         liveMeter.raf = requestAnimationFrame(liveTick);
@@ -4228,12 +4228,30 @@
         delete liveMeter.preview.micId;
       };
 
+      // Mic off for capture: muted, or "None" picked (v1.0.0). Picking None
+      // mid-recording used to leave the running mic recorded and feeding
+      // auto-capture (the monkey kept reacting) until the next Start.
+      window.micSilenced = function() { return !!window.micMuted || !window.micEnabled; };
+      function applyMicSilenced() {
+        ipcRenderer.send('update-mic-settings', { muted: window.micSilenced() });
+        var acMic = document.getElementById('acMonkeyMic');
+        if (acMic) acMic.classList.toggle('listening', !window.micSilenced() && !!window._acMic);
+      }
+
       window.onMicDeviceChange = function() {
        window.micHasBeenTouched = true;
        var sel = document.getElementById('micSelect');
        sel.classList.remove('mic-pulse');
        window.micDeviceId = sel.value || null;
        window.micEnabled = !!window.micDeviceId;
+       if (window.isRecordingActive) {
+         applyMicSilenced();
+         // A different mic can't be swapped into a running recording (its
+         // audio file can't change device midway) — it starts with the next Start.
+         if (window.micDeviceId && window._micCaptureDeviceId && window.micDeviceId !== window._micCaptureDeviceId) {
+           hudLog('system', '🎤 New mic is used from your next Start', 'info');
+         }
+       }
        if (liveMeter.raf) syncLiveTaps();   // popover open: meter the newly picked mic
      };
       // Debounced so dragging the slider doesn't fire a set-user-pref write
@@ -4253,9 +4271,7 @@
         var btn = document.getElementById('micMuteBtn');
         btn.textContent = window.micMuted ? 'Unmute' : 'Mute';
         btn.classList.toggle('muted', window.micMuted);
-        ipcRenderer.send('update-mic-settings', { muted: window.micMuted });
-        var acMic = document.getElementById('acMonkeyMic');   // dim the mic monkey while muted
-        if (acMic) acMic.classList.toggle('listening', !window.micMuted && !!window._acMic);
+        applyMicSilenced();   // also dims the mic monkey
       };
             // ===== Noise suppression =====
       // window.micNsBackend persists the user's engine choice; 'off' means
@@ -4306,6 +4322,7 @@
             audio: { deviceId: { exact: window.micDeviceId }, noiseSuppression: false, autoGainControl: false }
           });
           window._rawMicStream = rawStream;
+          window._micCaptureDeviceId = window.micDeviceId;
 
           var stream = rawStream;
           try {
@@ -4325,6 +4342,7 @@
           window.micRecorder.start(1000);
           ipcRenderer.send('mic-recording-started', Date.now()+20);
           if (window.autoCaptureEnabled) window.acAttachMic(stream);
+          applyMicSilenced();   // main's mute state follows this mic, not a None picked last recording
           if (liveMeter.raf) syncLiveTaps();
 
           hudLog('system','🎤 Mic capture started','success');
@@ -4591,9 +4609,9 @@
 
         var windowActive = !!window.autoCaptureWindowActive;
 
-        // A muted mic isn't recorded, so it mustn't flash its monkey, log
-        // mic peaks or hold a capture window open either.
-        if (isMic && window.micMuted) return;
+        // A muted (or None) mic isn't recorded, so it mustn't flash its
+        // monkey, log mic peaks or hold a capture window open either.
+        if (isMic && window.micSilenced()) return;
 
         acReadBands(state);
         state.sampleCount++;
@@ -4784,7 +4802,7 @@
         var state = acCreateAnalyzer(stream);
         state.timer = setInterval(function() { acPollSource('mic', state); }, AC_POLL_MS); // TEMP: was 200ms — testing sampling-gap theory
         window._acMic = state;
-        acSetMonkeyListening('mic', !window.micMuted);
+        acSetMonkeyListening('mic', !window.micSilenced());
       };
       function acDetachDesktop() {
         if (window._acDesktop) {
