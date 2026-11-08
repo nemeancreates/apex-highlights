@@ -149,11 +149,39 @@
       this.container.classList.add('pa-avc');
       this.container.innerHTML = '';
       this._buildUI();
+      // Re-open game audio when Windows' default output changes, or the
+      // test keeps recording the old device and the game take comes back
+      // silent (v1.0.0). Not mid-take or mid-playback (see _togglePlayback).
+      this._onDeviceChange = function () {
+        if (self.state === 'recording' || self.state === 'learning' || self.state === 'playing') return;
+        self._stopGame();
+        self._gameReady = self._startGame();
+      };
+      if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+        navigator.mediaDevices.addEventListener('devicechange', this._onDeviceChange);
+      }
       return this._enumerateDevices().then(function () {
-        return self._startGame();
+        self._gameReady = self._startGame();
+        return self._gameReady;
       }).then(function () {
         return self;
       });
+    },
+
+    // GAME AUDIO DURING PLAYBACK (v1.0.0) — the game-audio capture stayed
+    // open while the test played back. Windows captures the default output
+    // device; playing the game take out of that same device (speakers) came
+    // out silent, while headphones — a different device — worked. Capture
+    // closes for playback and reopens when it stops.
+    _pauseGameForPlayback: function () {
+      if (!this.gameStream) return;
+      this._stopGame();
+      this._gamePausedForPlayback = true;
+    },
+    _resumeGameAfterPlayback: function () {
+      if (!this._gamePausedForPlayback) return;
+      this._gamePausedForPlayback = false;
+      this._gameReady = this._startGame();
     },
 
     // =============================================================
@@ -788,7 +816,8 @@
       // learned engines have no per-room state, so skip it for them.
       var needsLearn = this.ns && this.ns.activeBackend &&
                        this.ns.activeBackend.id === 'dsp';
-      if (!needsLearn) return this._startRecording();
+      // Game audio may be reopening after playback — let it finish first.
+      if (!needsLearn) return Promise.resolve(this._gameReady).then(function () { self._startRecording(); });
 
       this.state = 'learning';
       var left = LEARN_SECONDS;
@@ -1160,8 +1189,10 @@
         if (this.vidUrl) e.pbVideo.pause();
         this.state = 'ready';
         e.playBtn.innerHTML = '▶ Play back';
+        this._resumeGameAfterPlayback();
         return;
       }
+      this._pauseGameForPlayback();
       // Restart everything from zero together so they stay aligned.
       this._audioRaw.currentTime = 0;
       this._audioClean.currentTime = 0;
@@ -1189,6 +1220,7 @@
       if (this.gameUrl && this._audioGame) this._audioGame.pause();
       this.state = 'ready';
       this._els.playBtn.innerHTML = '▶ Play back';
+      this._resumeGameAfterPlayback();
     },
 
     // =============================================================
@@ -1392,6 +1424,10 @@
     },
 
     destroy: function () {
+      if (this._onDeviceChange && navigator.mediaDevices && navigator.mediaDevices.removeEventListener) {
+        navigator.mediaDevices.removeEventListener('devicechange', this._onDeviceChange);
+      }
+      this._gamePausedForPlayback = false;
       this.cancel();
       this._stopMic();
       this._stopVideo();
