@@ -25,7 +25,7 @@ const {
   FIGHT_QUIET_MS, LBM_MAX_HOLD_MS, UPLOAD_MODES,
   normalizeSettings, isLowBandwidth, speedTestIsStale, measureUploadSpeed, baseThrottleBps, currentThrottleBps,
   RateThrottleStream, runSpeedTest,
-  findLandedRecord, findPendingRecord, isOverdue, decideSweepAction
+  findLandedRecord, findPendingRecord, findDeletedRecord, isOverdue, decideSweepAction
 } = require('./upload-queue');
 const { init: sentryInit } = require('@sentry/electron/main');
 const { SENTRY_DSN } = require('./sentry-config');
@@ -5401,7 +5401,8 @@ function fetchSessionUploads(code) {
             closed: !!parsed.closed,
             createdBy: typeof parsed.createdBy === 'string' ? parsed.createdBy : null,
             expiresAt: parsed.expiresAt || null,
-            stars: Array.isArray(parsed.stars) ? parsed.stars : []   // v0.1.87 server; [] before
+            stars: Array.isArray(parsed.stars) ? parsed.stars : [],   // v0.1.87 server; [] before
+            deleted: Array.isArray(parsed.deleted) ? parsed.deleted : []   // v1.0.0 server; [] before
           });
         } catch (e) {
           finish({ status: res.statusCode, error: 'unparseable_response' });
@@ -5557,10 +5558,13 @@ async function runSyncScan(code) {
     .filter(t => typeof t === 'number'));
   let adopted = 0;
   let closedOut = 0;
+  let deletedSkipped = 0;
   const syncable = local.filter(clip => {
     const key = path.basename(clip.videoPath);
     if (pendingUploads.has(key)) return false;
     if (findLandedRecord(remote.uploads, clip.videoPath, me)) return false;
+    // Deleted from the session (e.g. AFK footage): kept on this PC, never offered again.
+    if (findDeletedRecord(remote.deleted, clip.videoPath, clip.metadataPath, me)) { deletedSkipped++; return false; }
     const pend = findPendingRecord(remote.uploads, clip.metadataPath, me);
     if (pend) {
       markUploadPending(key, {
@@ -5579,6 +5583,9 @@ async function runSyncScan(code) {
   if (adopted > 0) {
     console.log(`Sync: ${adopted} clip(s) already have sync data on the server — queued to attach video only`);
     sweepPendingUploads();
+  }
+  if (deletedSkipped > 0) {
+    console.log(`Sync: ${deletedSkipped} clip(s) for ${clean} were deleted from the session — not offered (kept on this PC)`);
   }
   if (closedOut > 0) {
     console.log(`Sync: ${closedOut} clip(s) for ${clean} can't be added — session closed and they aren't from a highlight it recorded (kept on this PC)`);

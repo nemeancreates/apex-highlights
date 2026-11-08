@@ -209,6 +209,10 @@ addColumnIfMissing('sessions', 'closed', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('sessions', 'visibility', 'TEXT');
 addColumnIfMissing('sessions', 'watchKey', 'TEXT');
 addColumnIfMissing('sessions', 'participants', 'TEXT');
+// Clips deleted from the session (JSON array of { username, videoFile,
+// metadataFile, coordinatedTimestamp, deletedAt }), so the owner's desktop
+// Sync stops offering the local copy for re-upload (v1.0.0).
+addColumnIfMissing('sessions', 'deletedClips', 'TEXT');
 // bannedUsernames — host-managed per-session ban list (JSON array of
 // exact-case usernames). Banned members are blocked from rejoining via
 // join-session; kicked (not banned) members can still rejoin. See

@@ -836,6 +836,7 @@ function initUploadRoutes(app, io) {
   // session.uploads on every read, so removing the record IS the refund.
   // ================================
   const DELETE_WINDOW_MS = 4 * 60 * 60 * 1000;
+  const DELETED_CLIPS_MAX = 1000;   // per session — see deletedClips below
 
   app.delete('/sessions/:code/uploads/:uploadId', requireAuth, async (req, res) => {
     const code = sanitizeCode(req.params.code);
@@ -877,6 +878,18 @@ function initUploadRoutes(app, io) {
 
     session.uploads.splice(idx, 1);
     forgetUpload(rec.id);
+    // Remembered so the owner's desktop Sync doesn't offer the local copy
+    // back for upload (it used to — deleted AFK clips kept coming back).
+    // File names + owner only; bounded per session.
+    if (!Array.isArray(session.deletedClips)) session.deletedClips = [];
+    session.deletedClips.push({
+      username: rec.username,
+      videoFile: rec.videoFile || null,
+      metadataFile: rec.metadataFile || null,
+      coordinatedTimestamp: typeof rec.coordinatedTimestamp === 'number' ? rec.coordinatedTimestamp : null,
+      deletedAt: Date.now()
+    });
+    if (session.deletedClips.length > DELETED_CLIPS_MAX) session.deletedClips.splice(0, session.deletedClips.length - DELETED_CLIPS_MAX);
     // That player's leftover placeholder for the same moment goes with it.
     if (rec.videoFile) {
       placeholdersFor(session, rec.username, rec.coordinatedTimestamp)

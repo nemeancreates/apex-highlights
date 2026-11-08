@@ -239,6 +239,18 @@ function findPendingRecord(uploads, metadataPath, username) {
   return (uploads || []).find(u => isOwnRecord(u, username) && !u.videoFile && (u.metadataFile || '').startsWith(base)) || null;
 }
 
+// A clip deleted from the session (server's `deleted` list, v1.0.0): this
+// account's record whose video or metadata name came from this clip. Sync
+// and the retry sweep leave it alone instead of re-uploading it.
+function findDeletedRecord(deleted, videoPath, metadataPath, username) {
+  const vBase = videoPath ? serverBaseName(videoPath) + '_' : null;
+  const mBase = metadataPath ? serverBaseName(metadataPath) + '_' : null;
+  return (deleted || []).find(d => isOwnRecord(d, username) && (
+    (vBase && (d.videoFile || '').startsWith(vBase)) ||
+    (mBase && (d.metadataFile || '').startsWith(mBase))
+  )) || null;
+}
+
 // --- Sweep decision --------------------------------------------------------
 // Low Bandwidth Mode holds a video while there's action and starts it after
 // FIGHT_QUIET_MS of quiet. A busy session never gives that quiet, so held
@@ -274,6 +286,7 @@ function decideSweepAction(entry, remote, ctx) {
   const me = (ctx && ctx.username) || null;
 
   if (findLandedRecord(uploads, entry.videoPath, me)) return { action: 'done', reason: 'landed' };
+  if (findDeletedRecord(remote.deleted, entry.videoPath, entry.metadataPath, me)) return { action: 'drop', reason: 'clip-deleted' };
 
   if (entry.deferred && entry.uploadId) {
     const rec = uploads.find(u => u.id === entry.uploadId);
@@ -296,5 +309,5 @@ module.exports = {
   LOW_BW_THRESHOLD_MBPS, SPEEDTEST_BYTES, SPEEDTEST_MAX_AGE_MS, FIGHT_QUIET_MS, LBM_MAX_HOLD_MS, UPLOAD_MODES,
   normalizeSettings, isLowBandwidth, speedTestIsStale, measureUploadSpeed, baseThrottleBps, currentThrottleBps,
   RateThrottleStream, runSpeedTest,
-  serverBaseName, isOwnRecord, findLandedRecord, findPendingRecord, isOverdue, decideSweepAction
+  serverBaseName, isOwnRecord, findLandedRecord, findPendingRecord, findDeletedRecord, isOverdue, decideSweepAction
 };

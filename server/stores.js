@@ -123,12 +123,12 @@ const stmt = {
     INSERT INTO sessions (
       code, id, createdBy, createdAt, clipDuration, highlightCount,
       hostTier, expiresAt, maxMembers, maxClips, title, detectedGame, closed, bannedUsernames, commentSettings,
-      visibility, watchKey, participants
+      visibility, watchKey, participants, deletedClips
     )
     VALUES (
       @code, @id, @createdBy, @createdAt, @clipDuration, @highlightCount,
       @hostTier, @expiresAt, @maxMembers, @maxClips, @title, @detectedGame, @closed, @bannedUsernames, @commentSettings,
-      @visibility, @watchKey, @participants
+      @visibility, @watchKey, @participants, @deletedClips
     )
     ON CONFLICT(code) DO UPDATE SET
       clipDuration = excluded.clipDuration,
@@ -144,7 +144,8 @@ const stmt = {
       commentSettings = excluded.commentSettings,
       visibility = excluded.visibility,
       watchKey = excluded.watchKey,
-      participants = excluded.participants
+      participants = excluded.participants,
+      deletedClips = excluded.deletedClips
   `),
   deleteSession: db.prepare(`DELETE FROM sessions WHERE code = ?`),
   deleteUpload: db.prepare(`DELETE FROM uploads WHERE id = ?`),
@@ -282,6 +283,7 @@ function loadSessionsFromDisk() {
       visibility: row.visibility ?? null,
       watchKey: row.watchKey ?? null,
       participants: row.participants ? JSON.parse(row.participants) : [],
+      deletedClips: row.deletedClips ? JSON.parse(row.deletedClips) : [],
       uploads
     };
     if (migrateLegacyCaps(migratedSession)) migratedCount++;
@@ -318,7 +320,8 @@ function saveSessionsToDisk() {
         commentSettings: s.commentSettings ?? JSON.stringify({ filterMode: 'all', topN: 0 }),
         visibility: s.visibility ?? null,
         watchKey: s.watchKey ?? null,
-        participants: JSON.stringify(s.participants || [])
+        participants: JSON.stringify(s.participants || []),
+        deletedClips: JSON.stringify(s.deletedClips || [])
       });
       for (const u of s.uploads) {
         stmt.upsertUpload.run({
