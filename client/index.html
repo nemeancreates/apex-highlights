@@ -3065,17 +3065,42 @@
         return (ms/60000) + 'min';
       }
 
+      // CLIP LENGTH OUTSIDE A SESSION (v1.0.0) — the picker used to show
+      // only for a host inside a session. Now it shows any time: the pick is
+      // saved, used for solo saves, and applied to sessions you host.
+      var CLIP_DURATIONS = [15000, 30000, 60000, 180000];
+      window.preferredClipDuration = 30000;
+
+      function showSoloClipDuration() {
+        if (window.currentSessionCode) return;
+        updateClipDurationUI(window.preferredClipDuration, true);
+        ipcRenderer.send('session-clip-duration', window.preferredClipDuration);   // sizes the buffer
+        if (typeof updateSaveButtonLabel === 'function') updateSaveButtonLabel();
+      }
+
+      function pickClipDuration(duration) {
+        if (CLIP_DURATIONS.indexOf(duration) === -1) return;
+        window.preferredClipDuration = duration;
+        ipcRenderer.invoke('set-user-pref', 'clipDuration', duration);
+        if (window.socket && window.currentSessionCode) {
+          window.socket.emit('set-clip-duration', { duration: duration });
+        } else {
+          showSoloClipDuration();
+        }
+      }
+
       window.onClipDurationChange = function() {
-        var duration = parseInt(document.getElementById('clipDurationSelect').value);
-        if (!window.socket || !window.currentSessionCode) return;
-        window.socket.emit('set-clip-duration', { duration: duration });
+        pickClipDuration(parseInt(document.getElementById('clipDurationSelect').value));
       };
 
       window.onMiniClipDurationChange = function() {
-        var duration = parseInt(document.getElementById('miniClipDurationSelect').value);
-        if (!window.socket || !window.currentSessionCode) return;
-        window.socket.emit('set-clip-duration', { duration: duration });
+        pickClipDuration(parseInt(document.getElementById('miniClipDurationSelect').value));
       };
+
+      ipcRenderer.invoke('get-user-pref', 'clipDuration').then(function(ms) {
+        if (CLIP_DURATIONS.indexOf(ms) !== -1) window.preferredClipDuration = ms;
+        showSoloClipDuration();
+      }).catch(function() { showSoloClipDuration(); });
 
       function updateClipDurationUI(duration, isHost) {
         window.sessionClipDuration = duration;
@@ -4978,6 +5003,10 @@
           updateClipDurationUI(data.clipDuration || 30000, window.isSessionHost);
           // Main sizes its buffer to the session's clip length.
           ipcRenderer.send('session-clip-duration', data.clipDuration || 30000);
+          // Hosting: bring the session to the length picked outside it (v1.0.0).
+          if (window.isSessionHost && window.preferredClipDuration !== (data.clipDuration || 30000)) {
+            window.socket.emit('set-clip-duration', { duration: window.preferredClipDuration });
+          }
           window.sessionMemberCount = (data.members || []).length;
           updateMemberList(data.members);
           hudLog('squad','Joined session ' + data.code,'success');
@@ -5275,8 +5304,7 @@
         clearInviteAttnTimer();
         renderRejoinLastHosted();
         document.getElementById('memberList').innerHTML = '';
-        document.getElementById('clipDurationHost').style.display = 'none';
-        document.getElementById('clipDurationMember').style.display = 'none';
+        showSoloClipDuration();   // back to your own picked length (v1.0.0)
         var wrap = document.getElementById('usageTrackWrap');
         if (wrap) { wrap.style.display = 'none'; wrap.innerHTML = ''; }
         var lbl = document.getElementById('leaveUsageLabel');
@@ -6110,7 +6138,7 @@
         if (window.socket && window.currentSessionCode) {
           window.socket.emit('broadcast-save-highlight');
         } else {
-          ipcRenderer.send('save-highlight');
+          ipcRenderer.send('save-highlight', window.sessionClipDuration);
           startSaveCooldown(15);
         }
       };

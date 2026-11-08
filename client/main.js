@@ -2859,7 +2859,7 @@ function localStarDeadline() {
   const capturing = !!ffmpegProcess || Object.keys(wgcFileStreams).length > 0;
   if (!capturing) { sendStarLocal('not-recording'); return; }
   // Same clip length a highlight press would get right now.
-  const duration = (currentSession && sessionClipDurationMs) ? sessionClipDurationMs : null;
+  const duration = sessionClipDurationMs || null;   // solo too: the picked length (v1.0.0)
   // Explicit anchor (not saveHighlight's default getPreciseUTC()-at-call-time)
   // so it can't drift past w.T + STAR_WINDOW_MS if the timer fires a little
   // late — matches the server's Math.min(Date.now(), w.T + STAR_WINDOW_MS).
@@ -6032,7 +6032,8 @@ function createWindow() {
     };
   });
 
-  ipcMain.on('save-highlight', () => saveHighlight());
+  // Solo save: the renderer passes the clip length picked outside a session (v1.0.0).
+  ipcMain.on('save-highlight', (event, ms) => saveHighlight(null, [15000, 30000, 60000, 180000].includes(ms) ? ms : null));
   ipcMain.on('broadcast-save-highlight', (event, { coordinated_timestamp, clipDuration, triggerSource }) => {
     console.log(`Received broadcast save-highlight: ts=${coordinated_timestamp}, clipDuration=${clipDuration}ms, source=${triggerSource || 'manual'}`);
     saveHighlight(coordinated_timestamp, clipDuration, triggerSource);
