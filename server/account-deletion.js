@@ -142,6 +142,7 @@ async function performDeletion(row) {
     // Hosted sessions stay for the guests, under "Deleted account".
     if (same(s.createdBy)) s.createdBy = DELETED_NAME;
     if (Array.isArray(s.participants)) s.participants = s.participants.filter((p) => !same(typeof p === 'string' ? p : p && p.username));
+    if (Array.isArray(s.deletedClips)) s.deletedClips = s.deletedClips.filter((d) => !same(d && d.username));
     if (Array.isArray(s.members)) s.members = s.members.filter((m) => !same(typeof m === 'string' ? m : m && m.username));
   }
   // createdBy isn't in the sessions upsert's update list, so set it directly

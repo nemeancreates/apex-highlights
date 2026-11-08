@@ -1903,7 +1903,9 @@
     // Always re-renders, even if the entry was missing and had to be
     // created from scratch — this is what a title edit right after joining
     // (before the join's own addSessionToHistory call has settled) needs.
-    function setSessionHistoryGame(code, game, title) {
+    // byUser: the game name came from the user's own ✏ rename — kept from
+    // then on, so later detections / server syncs can't relabel it (v1.0.0).
+    function setSessionHistoryGame(code, game, title, byUser) {
       console.log('[setSessionHistoryGame] called with code:', code, 'game:', game, 'title:', title);
       if (!code) { console.log('[setSessionHistoryGame] bailed — no code'); return; }
       var history = loadSessionHistory();
@@ -1926,7 +1928,10 @@
         history.unshift(entry);
       }
 
-      if (typeof game !== 'undefined' && game !== null) entry.game = game;
+      if (typeof game !== 'undefined' && game !== null && (byUser || !entry.gameByUser)) {
+        entry.game = game;
+        if (byUser) entry.gameByUser = true;
+      }
       if (typeof title !== 'undefined' && title !== null) entry.title = title;
 
       trimSessionHistory(history);
@@ -2695,6 +2700,7 @@
           ipcRenderer.invoke('rename-clip-folder', { code: info.code, name: value }).then(function(r) {
             if (!r || !r.ok) { hudLog('system', '⚠ ' + ((r && r.error) || 'Could not rename the folder'), 'error'); return; }
             renderClipFolder(r);
+            setSessionHistoryGame(info.code, r.game, undefined, true);
             hudLog('system', '📁 Clips now save to ' + r.folder +
               (r.moved ? ' — moved ' + r.moved + ' clip' + (r.moved === 1 ? '' : 's') : '') +
               (r.waiting ? ' (' + r.waiting + ' more move' + (r.waiting === 1 ? 's' : '') + ' after uploading)' : ''), 'success');
@@ -3059,17 +3065,42 @@
         return (ms/60000) + 'min';
       }
 
+      // CLIP LENGTH OUTSIDE A SESSION (v1.0.0) — the picker used to show
+      // only for a host inside a session. Now it shows any time: the pick is
+      // saved, used for solo saves, and applied to sessions you host.
+      var CLIP_DURATIONS = [15000, 30000, 60000, 180000];
+      window.preferredClipDuration = 30000;
+
+      function showSoloClipDuration() {
+        if (window.currentSessionCode) return;
+        updateClipDurationUI(window.preferredClipDuration, true);
+        ipcRenderer.send('session-clip-duration', window.preferredClipDuration);   // sizes the buffer
+        if (typeof updateSaveButtonLabel === 'function') updateSaveButtonLabel();
+      }
+
+      function pickClipDuration(duration) {
+        if (CLIP_DURATIONS.indexOf(duration) === -1) return;
+        window.preferredClipDuration = duration;
+        ipcRenderer.invoke('set-user-pref', 'clipDuration', duration);
+        if (window.socket && window.currentSessionCode) {
+          window.socket.emit('set-clip-duration', { duration: duration });
+        } else {
+          showSoloClipDuration();
+        }
+      }
+
       window.onClipDurationChange = function() {
-        var duration = parseInt(document.getElementById('clipDurationSelect').value);
-        if (!window.socket || !window.currentSessionCode) return;
-        window.socket.emit('set-clip-duration', { duration: duration });
+        pickClipDuration(parseInt(document.getElementById('clipDurationSelect').value));
       };
 
       window.onMiniClipDurationChange = function() {
-        var duration = parseInt(document.getElementById('miniClipDurationSelect').value);
-        if (!window.socket || !window.currentSessionCode) return;
-        window.socket.emit('set-clip-duration', { duration: duration });
+        pickClipDuration(parseInt(document.getElementById('miniClipDurationSelect').value));
       };
+
+      ipcRenderer.invoke('get-user-pref', 'clipDuration').then(function(ms) {
+        if (CLIP_DURATIONS.indexOf(ms) !== -1) window.preferredClipDuration = ms;
+        showSoloClipDuration();
+      }).catch(function() { showSoloClipDuration(); });
 
       function updateClipDurationUI(duration, isHost) {
         window.sessionClipDuration = duration;
@@ -4142,7 +4173,8 @@
           var elx = document.getElementById(p[1]);
           if (!elx) return;
           var tap = liveMeter.taps[p[0]];
-          elx.setAttribute('data-level', tap ? liveLevel(tap) : 0);
+          var muted = (p[0] === 'mic' && window.micSilenced());   // muted / None mic shows silent
+          elx.setAttribute('data-level', (tap && !muted) ? liveLevel(tap) : 0);
         });
         liveMeter.raf = requestAnimationFrame(liveTick);
       }
@@ -4196,12 +4228,30 @@
         delete liveMeter.preview.micId;
       };
 
+      // Mic off for capture: muted, or "None" picked (v1.0.0). Picking None
+      // mid-recording used to leave the running mic recorded and feeding
+      // auto-capture (the monkey kept reacting) until the next Start.
+      window.micSilenced = function() { return !!window.micMuted || !window.micEnabled; };
+      function applyMicSilenced() {
+        ipcRenderer.send('update-mic-settings', { muted: window.micSilenced() });
+        var acMic = document.getElementById('acMonkeyMic');
+        if (acMic) acMic.classList.toggle('listening', !window.micSilenced() && !!window._acMic);
+      }
+
       window.onMicDeviceChange = function() {
        window.micHasBeenTouched = true;
        var sel = document.getElementById('micSelect');
        sel.classList.remove('mic-pulse');
        window.micDeviceId = sel.value || null;
        window.micEnabled = !!window.micDeviceId;
+       if (window.isRecordingActive) {
+         applyMicSilenced();
+         // A different mic can't be swapped into a running recording (its
+         // audio file can't change device midway) — it starts with the next Start.
+         if (window.micDeviceId && window._micCaptureDeviceId && window.micDeviceId !== window._micCaptureDeviceId) {
+           hudLog('system', '🎤 New mic is used from your next Start', 'info');
+         }
+       }
        if (liveMeter.raf) syncLiveTaps();   // popover open: meter the newly picked mic
      };
       // Debounced so dragging the slider doesn't fire a set-user-pref write
@@ -4221,7 +4271,7 @@
         var btn = document.getElementById('micMuteBtn');
         btn.textContent = window.micMuted ? 'Unmute' : 'Mute';
         btn.classList.toggle('muted', window.micMuted);
-        ipcRenderer.send('update-mic-settings', { muted: window.micMuted });
+        applyMicSilenced();   // also dims the mic monkey
       };
             // ===== Noise suppression =====
       // window.micNsBackend persists the user's engine choice; 'off' means
@@ -4272,6 +4322,7 @@
             audio: { deviceId: { exact: window.micDeviceId }, noiseSuppression: false, autoGainControl: false }
           });
           window._rawMicStream = rawStream;
+          window._micCaptureDeviceId = window.micDeviceId;
 
           var stream = rawStream;
           try {
@@ -4291,6 +4342,7 @@
           window.micRecorder.start(1000);
           ipcRenderer.send('mic-recording-started', Date.now()+20);
           if (window.autoCaptureEnabled) window.acAttachMic(stream);
+          applyMicSilenced();   // main's mute state follows this mic, not a None picked last recording
           if (liveMeter.raf) syncLiveTaps();
 
           hudLog('system','🎤 Mic capture started','success');
@@ -4557,6 +4609,10 @@
 
         var windowActive = !!window.autoCaptureWindowActive;
 
+        // A muted (or None) mic isn't recorded, so it mustn't flash its
+        // monkey, log mic peaks or hold a capture window open either.
+        if (isMic && window.micSilenced()) return;
+
         acReadBands(state);
         state.sampleCount++;
 
@@ -4746,7 +4802,7 @@
         var state = acCreateAnalyzer(stream);
         state.timer = setInterval(function() { acPollSource('mic', state); }, AC_POLL_MS); // TEMP: was 200ms — testing sampling-gap theory
         window._acMic = state;
-        acSetMonkeyListening('mic', true);
+        acSetMonkeyListening('mic', !window.micSilenced());
       };
       function acDetachDesktop() {
         if (window._acDesktop) {
@@ -4965,6 +5021,10 @@
           updateClipDurationUI(data.clipDuration || 30000, window.isSessionHost);
           // Main sizes its buffer to the session's clip length.
           ipcRenderer.send('session-clip-duration', data.clipDuration || 30000);
+          // Hosting: bring the session to the length picked outside it (v1.0.0).
+          if (window.isSessionHost && window.preferredClipDuration !== (data.clipDuration || 30000)) {
+            window.socket.emit('set-clip-duration', { duration: window.preferredClipDuration });
+          }
           window.sessionMemberCount = (data.members || []).length;
           updateMemberList(data.members);
           hudLog('squad','Joined session ' + data.code,'success');
@@ -5262,8 +5322,7 @@
         clearInviteAttnTimer();
         renderRejoinLastHosted();
         document.getElementById('memberList').innerHTML = '';
-        document.getElementById('clipDurationHost').style.display = 'none';
-        document.getElementById('clipDurationMember').style.display = 'none';
+        showSoloClipDuration();   // back to your own picked length (v1.0.0)
         var wrap = document.getElementById('usageTrackWrap');
         if (wrap) { wrap.style.display = 'none'; wrap.innerHTML = ''; }
         var lbl = document.getElementById('leaveUsageLabel');
@@ -5612,7 +5671,7 @@
         // handler in sockets/index.js), so an unreliable guess from one
         // member won't keep clobbering a confident match from another.
         try {
-          var detected = await ipcRenderer.invoke('detect-game');
+          var detected = await ipcRenderer.invoke('detect-game', window.currentSessionCode || null);
           if (detected && detected.name) {
             window.detectedGame = detected;
             if (window.currentSessionCode) {
@@ -6097,7 +6156,7 @@
         if (window.socket && window.currentSessionCode) {
           window.socket.emit('broadcast-save-highlight');
         } else {
-          ipcRenderer.send('save-highlight');
+          ipcRenderer.send('save-highlight', window.sessionClipDuration);
           startSaveCooldown(15);
         }
       };
@@ -6789,7 +6848,7 @@
             if (entry) {
               // Refresh server-owned fields; keep localNote and any local title.
               entry.expiresAt = (typeof s.expiresAt === 'number') ? s.expiresAt : entry.expiresAt;
-              if (s.detectedGame) entry.game = s.detectedGame;
+              if (s.detectedGame && !entry.gameByUser) entry.game = s.detectedGame;
               // Only take the server title if the user hasn't set a local one.
               if (s.title && !entry.title) entry.title = s.title;
               entry.role = entry.role || 'host';

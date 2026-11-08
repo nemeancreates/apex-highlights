@@ -25,7 +25,7 @@ const {
   FIGHT_QUIET_MS, LBM_MAX_HOLD_MS, UPLOAD_MODES,
   normalizeSettings, isLowBandwidth, speedTestIsStale, measureUploadSpeed, baseThrottleBps, currentThrottleBps,
   RateThrottleStream, runSpeedTest,
-  findLandedRecord, findPendingRecord, isOverdue, decideSweepAction
+  findLandedRecord, findPendingRecord, findDeletedRecord, isOverdue, decideSweepAction
 } = require('./upload-queue');
 const { init: sentryInit } = require('@sentry/electron/main');
 const { SENTRY_DSN } = require('./sentry-config');
@@ -196,6 +196,10 @@ const GAME_PROCESS_MAP = {
   'contentwarning':      { name: 'Content Warning', genre: 'horror' },
   'rEPO':                { name: 'R.E.P.O.', genre: 'horror' },
 
+  // --- MMO
+  'wow':                 { name: 'World of Warcraft', genre: 'mmo' },
+  'wowclassic':          { name: 'World of Warcraft Classic', genre: 'mmo' },
+
   // --- Sports / racing (near-constant audio floor)
   'rocketleague':        { name: 'Rocket League', genre: 'sports_racing' },
   'forzahorizon5':       { name: 'Forza Horizon 5', genre: 'sports_racing' },
@@ -224,7 +228,10 @@ const NON_GAME_PROCESSES = new Set([
   'riotclientservices','playnite.desktoppapp','playnite.fullscreenapp','itch',
   // Capture / streaming (avoid recursive capture)
   'obs64','obs32','streamlabs obs','streamlabs','xsplit.core','nvcontainer',
-  'nvidia share','nvidia overlay','medal','outplayed','peak-abu','electron',
+  'nvidia share','nvidia overlay','medal','outplayed','peak-abu','peakabu','electron',
+  // AI assistants / note apps — "Claude" was being picked as the game (v1.0.0)
+  'claude','chatgpt','copilot','microsoft.copilot','perplexity','cursor','windsurf',
+  'notion','obsidian','evernote',
   // Windows shell / system
   'explorer','applicationframehost','textinputhost','shellexperiencehost','searchhost',
   'searchapp','startmenuexperiencehost','systemsettings','taskmgr','lockapp',
@@ -249,6 +256,8 @@ const NON_GAME_TITLE_PATTERNS = [
   /^search$/i,
   /^start$/i,
   /^peak-abu/i,
+  /^peakabu/i,
+  /^claude$/i,
   /^new notification$/i,
   /^volume mixer$/i
 ];
@@ -613,10 +622,10 @@ let hlMicChunkCount = 0;
 // ================================
 let hlAudioSegs = [];   // { id, path, startedAt (local ms), endedAt, chunks }
 
-function pickAudioSegment(startLocal, endLocal) {
+function pickAudioSegment(startLocal, endLocal, segs = hlAudioSegs) {
   let best = null;
   let bestOverlap = -Infinity;
-  for (const s of hlAudioSegs) {
+  for (const s of segs) {
     if (!s.chunks || !fs.existsSync(s.path)) continue;
     const overlap = Math.min(endLocal, s.endedAt || Infinity) - Math.max(startLocal, s.startedAt);
     if (overlap > bestOverlap) { best = s; bestOverlap = overlap; }
@@ -681,7 +690,10 @@ function saveNeededFromLocal() {
   let min = Infinity;
   for (const h of saveWindowsWaiting) min = Math.min(min, h.start);
   if (activeSaveWindowStart !== null) min = Math.min(min, activeSaveWindowStart);
-  for (const q of pendingSaveQueue) min = Math.min(min, saveWindowLocal(q.saveTimeUTC, q.durationMs, q.triggerSource).start);
+  for (const q of pendingSaveQueue) {
+    if (q.ctx && q.ctx.capture) continue;   // cuts from a retired capture's files, not this buffer
+    min = Math.min(min, saveWindowLocal(q.saveTimeUTC, q.durationMs, q.triggerSource).start);
+  }
   return min;
 }
 
@@ -693,13 +705,89 @@ function effectiveMaxChunks() {
   return Math.max(maxChunks, forClip);
 }
 
+// ================================
+// RETIRED CAPTURES (v1.0.0)
+// Pressing Start while window-capture saves were still queued used to drop
+// every one of them: the new recording wiped the buffer and audio they cut
+// from. 204 highlights were lost that way in one WoW session (8CBJH5,
+// 11/7) after the game closed and capture was restarted. Now the old
+// recording's buffer files, game audio, mic and peak log are frozen into a
+// snapshot that the queued (and running) saves carry in ctx.capture, and
+// its files are kept until no save refers to them any more.
+// ================================
+const retiredCaptures = [];
+let activeSaveCtx = null;   // ctx of the save currently holding the pipeline
+
+function snapshotCaptureForSaves() {
+  const cap = {
+    tag: recordingSessionTag,
+    wgcFiles: wgcFiles.filter(f => f.startUTC).map(f => Object.assign({}, f, { finalized: true })),
+    trimmedBefore: wgcTrimmedBeforeUTC,
+    audioSegs: hlAudioSegs.map(s => Object.assign({}, s, { endedAt: s.endedAt || Date.now() })),
+    micPath: hlMicPath,
+    micChunks: hlMicChunkCount,
+    micFirst: micFirstChunkTime,
+    peakLog: peakLogBuffer.slice()
+  };
+  // No window-capture footage to keep: the saves have nothing to cut from.
+  if (cap.wgcFiles.length === 0) return 0;
+  let kept = 0;
+  const hold = (ctx) => { if (ctx && ctx.mode === 'wgc' && !ctx.capture) { ctx.capture = cap; kept++; } };
+  for (const q of pendingSaveQueue) hold(q.ctx);
+  hold(activeSaveCtx);
+  if (kept) {
+    retiredCaptures.push(cap);
+    console.log(`Kept the previous window capture for ${kept} queued save(s) (${cap.wgcFiles.length} buffer file(s))`);
+  }
+  return kept;
+}
+
+function retiredCapturePaths() {
+  const keep = new Set();
+  for (const cap of retiredCaptures) {
+    for (const f of cap.wgcFiles) keep.add(path.basename(f.path));
+    for (const s of cap.audioSegs) keep.add(path.basename(s.path));
+    if (cap.micPath) keep.add(path.basename(cap.micPath));
+  }
+  return keep;
+}
+
+// A file in BUFFER_DIR that a start-of-recording wipe must leave alone:
+// a retired capture's footage/audio, or a running save's temp file.
+function isRetainedBufferFile(name, keep) {
+  if (keep.has(name)) return true;
+  return pipelineBusy && name.startsWith('wgc_temp_');
+}
+
+function pruneRetiredCaptures() {
+  for (let i = retiredCaptures.length - 1; i >= 0; i--) {
+    const cap = retiredCaptures[i];
+    const inUse = (activeSaveCtx && activeSaveCtx.capture === cap) ||
+      pendingSaveQueue.some(q => q.ctx && q.ctx.capture === cap);
+    if (inUse) continue;
+    retiredCaptures.splice(i, 1);
+    const files = cap.wgcFiles.map(f => f.path)
+      .concat(cap.audioSegs.map(s => s.path))
+      .concat(cap.micPath ? [cap.micPath] : []);
+    for (const p of files) { try { fs.unlinkSync(p); } catch (e) {} }
+    console.log(`Previous window capture released (${files.length} file(s) removed)`);
+  }
+}
+
 function releaseSavePipeline() {
   if (!pipelineBusy) return; // already released, avoid double-drain
   pipelineBusy = false;
   wgcSaveInFlight = false;
   wgcActiveSave = null;
   activeSaveWindowStart = null;
+  activeSaveCtx = null;
   markFightSignal();   // quiet period restarts from the end of the save
+  if (retiredCaptures.length) {
+    // The next save takes the pipeline below; count it as in use first.
+    activeSaveCtx = pendingSaveQueue.length ? pendingSaveQueue[0].ctx : null;
+    pruneRetiredCaptures();
+    activeSaveCtx = null;
+  }
   if (pendingSaveQueue.length > 0) {
     const next = pendingSaveQueue.shift();
     console.log(`Save pipeline free — starting queued ${next.triggerSource || 'manual'} save (${pendingSaveQueue.length} still queued)`);
@@ -1575,9 +1663,14 @@ function pruneOldChunks() {
 // never steal frame time from the game. Capture already did this; the
 // save path did not, which is what made every clip cost a hitch.
 // ================================
+// Saves run below normal so they don't steal frames from the game — but
+// once SAVE_CATCHUP_QUEUE saves are waiting, a raid can starve them and the
+// queue only grows (8CBJH5). Behind that far, they run at normal priority
+// until the queue is back under it.
+const SAVE_CATCHUP_QUEUE = 3;
 function spawnFFmpegLow(args) {
   const p = spawn(getFFmpegPath(), args, { windowsHide: true });
-  if (p.pid) setBelowNormalPriority(p.pid);
+  if (p.pid && pendingSaveQueue.length < SAVE_CATCHUP_QUEUE) setBelowNormalPriority(p.pid);
   return p;
 }
 
@@ -2149,9 +2242,10 @@ function wgcRetire(reason) {
   });
 }
 
-function wgcFindCoveringFiles(startUTC, endUTC) {
-  const candidates = wgcFiles.filter(f => f.startUTC && fs.existsSync(f.path));
-  return wgcPickCovering(candidates, startUTC, endUTC, wgcTrimmedBeforeUTC);
+function wgcFindCoveringFiles(startUTC, endUTC, cap = null) {
+  const files = cap ? cap.wgcFiles : wgcFiles;
+  const candidates = files.filter(f => f.startUTC && fs.existsSync(f.path));
+  return wgcPickCovering(candidates, startUTC, endUTC, cap ? cap.trimmedBefore : wgcTrimmedBeforeUTC);
 }
 
 // Pure: which buffer file(s) hold [startUTC, endUTC]. Files are contiguous
@@ -2352,7 +2446,8 @@ function startRecording(monitor) {
 
   if (wgcCaptureMode && wgcSourceId) {
     try {
-      const staleWgc = fs.readdirSync(BUFFER_DIR).filter(f => f.startsWith('wgc_'));
+      const keep = retiredCapturePaths();
+      const staleWgc = fs.readdirSync(BUFFER_DIR).filter(f => f.startsWith('wgc_') && !isRetainedBufferFile(f, keep));
       for (const f of staleWgc) { try { fs.unlinkSync(path.join(BUFFER_DIR, f)); } catch (e) {} }
       if (staleWgc.length) console.log(`Cleaned ${staleWgc.length} stale WGC files`);
     } catch (e) {}
@@ -2764,7 +2859,7 @@ function localStarDeadline() {
   const capturing = !!ffmpegProcess || Object.keys(wgcFileStreams).length > 0;
   if (!capturing) { sendStarLocal('not-recording'); return; }
   // Same clip length a highlight press would get right now.
-  const duration = (currentSession && sessionClipDurationMs) ? sessionClipDurationMs : null;
+  const duration = sessionClipDurationMs || null;   // solo too: the picked length (v1.0.0)
   // Explicit anchor (not saveHighlight's default getPreciseUTC()-at-call-time)
   // so it can't drift past w.T + STAR_WINDOW_MS if the timer fires a little
   // late — matches the server's Math.min(Date.now(), w.T + STAR_WINDOW_MS).
@@ -2911,6 +3006,8 @@ function localDateStr(ms) {
 }
 
 function folderLockKey(code) { return code ? String(code).toUpperCase() : 'SOLO'; }
+// game-names.json entry for a name the user gave one session (✏ next to 📁).
+function sessionNameKey(key) { return 'session:' + key; }
 
 function sittingDir(key, lock) {
   return key === 'SOLO'
@@ -2965,8 +3062,11 @@ function lockClipFolder(key, detected) {
   const gameKey = detected
     ? (normalizeProcName(detected.process) || String(detected.title || '').trim().toLowerCase() || null)
     : null;
-  const game = sanitizeFolderName((gameKey && names[gameKey]) || (detected && detected.name), UNSORTED_GAME);
-  const lock = { game, gameKey, date: localDateStr(Date.now()), lastUsedAt: Date.now(), known: !!(detected && detected.known) };
+  // A name the user gave this session code wins over anything detected —
+  // reopening a session later used to re-detect (and pick e.g. "Claude").
+  const sessionName = key !== 'SOLO' ? names[sessionNameKey(key)] : null;
+  const game = sanitizeFolderName(sessionName || (gameKey && names[gameKey]) || (detected && detected.name), UNSORTED_GAME);
+  const lock = { game, gameKey, date: localDateStr(Date.now()), lastUsedAt: Date.now(), known: !!(sessionName || (detected && detected.known)) };
   folderLocks[key] = lock;
   writeJsonFile(SESSION_FOLDERS_PATH, folderLocks);
   console.log(`Clip folder for ${key}: ${path.relative(CLIPS_DIR, sittingDir(key, lock))}${lock.known ? '' : ' (game guessed)'}`);
@@ -3145,9 +3245,10 @@ function renameClipFolder(code, rawName) {
   lock.game = game;
   lock.known = true;
   writeJsonFile(SESSION_FOLDERS_PATH, folderLocks);
-  if (lock.gameKey) {
+  {
     const names = readJsonFile(GAME_NAMES_PATH, {});
-    names[lock.gameKey] = game;
+    if (lock.gameKey) names[lock.gameKey] = game;
+    names[sessionNameKey(key)] = game;   // sticks to this session code too
     writeJsonFile(GAME_NAMES_PATH, names);
   }
   const toDir = sittingDir(key, lock);
@@ -3425,8 +3526,28 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     pipelineBusy = true;
     broadcastQueueState();
   }
-  activeSaveWindowStart = saveWindowLocal(saveTimeUTC, durationMs, triggerSource).start;
-  if (ctx.mode === 'wgc' && wgcFiles.length > 0) {
+  activeSaveCtx = ctx;
+  // A save from a recording that has since been restarted cuts from that
+  // recording's kept files (see RETIRED CAPTURES), not the live buffer —
+  // so it doesn't hold the live buffer's oldest footage either.
+  const cap = ctx.capture || null;
+  activeSaveWindowStart = cap ? null : saveWindowLocal(saveTimeUTC, durationMs, triggerSource).start;
+  const capFiles = cap ? cap.wgcFiles : wgcFiles;
+  if (ctx.mode === 'wgc' && !cap && wgcFiles.length === 0) {
+    // A window capture just starting has no buffer file yet — wait for it.
+    if (wgcCaptureMode && wgcSourceId && retryCount < 4) {
+      setTimeout(() => doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs, retryCount + 1, triggerSource, ctx), 3000);
+      return;
+    }
+    // Otherwise the footage is gone entirely. Falling through to the
+    // monitor path below burned 12 s of retries per save before failing
+    // as "no buffered footage" (36 in 8CBJH5).
+    console.log('WGC save: no window-capture footage left — skipping');
+    recordSaveFailure(ctx, coordinatedTs, 'window capture footage was already cleared');
+    releaseSavePipeline();
+    return;
+  }
+  if (ctx.mode === 'wgc' && capFiles.length > 0) {
     wgcSaveInFlight = true;
 
     const durationSec = durationMs / 1000;
@@ -3438,7 +3559,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     const windowStartLocal = win.start;
     const windowEndLocal = win.end;
 
-    const covering = wgcFindCoveringFiles(windowStartLocal, windowEndLocal);
+    const covering = wgcFindCoveringFiles(windowStartLocal, windowEndLocal, cap);
     if (covering && covering.mode === 'expired') {
       const lateSec = Math.round((Date.now() - windowEndLocal) / 1000);
       console.log(`WGC save: footage for this window was already deleted (${lateSec}s after the moment) — skipping`);
@@ -3487,7 +3608,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     const outputPath = path.join(clipDir, `highlight-${timestamp}.mp4`);
     const metadataPath = path.join(clipDir, `highlight-${timestamp}.json`);
 
-    const wgcClipPeaks = peakLogBuffer
+    const wgcClipPeaks = (cap ? cap.peakLog : peakLogBuffer)
       .filter(p => p.t >= windowStartLocal && p.t <= windowEndLocal)
       .map(p => {
         const out = { tMs: Math.max(0, Math.round(p.t - windowStartLocal)), source: p.source };
@@ -3555,7 +3676,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
       extract.stderr.on('data', d => console.log('WGC extract:', d.toString()));
       extract.on('close', (code) => {
         if (code === 0 && fs.existsSync(outputPath)) {
-          wgcFinishSave(outputPath, metadataPath, metadata, durationMs, windowStartLocal);
+          wgcFinishSave(outputPath, metadataPath, metadata, durationMs, windowStartLocal, cap);
         } else {
           wgcExtractFail('Failed to extract window capture clip');
         }
@@ -3625,7 +3746,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
           concat.on('close', (codeC) => {
             cleanupParts();
             if (codeC === 0 && fs.existsSync(outputPath)) {
-              wgcFinishSave(outputPath, metadataPath, metadata, durationMs, windowStartLocal);
+              wgcFinishSave(outputPath, metadataPath, metadata, durationMs, windowStartLocal, cap);
             } else {
               wgcExtractFail('Failed to join window capture clip parts');
             }
@@ -3984,12 +4105,14 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
 
       // STEP 3: audio repair + merge (unchanged behavior, new offsets)
       console.log(`Audio sync: skip=${audioSkipSec.toFixed(3)}s delay=${audioDelaySec.toFixed(3)}s span=${clipSpanSec.toFixed(1)}s`);
+      const audioSeek = audioSeekArgs(audioSkipSec);   // see AUDIO SEEK
       const repairAudio = spawnFFmpegLow([
         '-hide_banner', '-nostats', '-loglevel', 'error',
         '-fflags', '+genpts+igndts', '-err_detect', 'ignore_err',
+        ...audioSeek.pre,
         '-i', deskAudio.path,
         '-af', 'aresample=async=1000:first_pts=0',
-        '-ss', audioSkipSec.toFixed(3), '-t', clipSpanSec.toFixed(3),
+        '-ss', audioSeek.fine, '-t', clipSpanSec.toFixed(3),
         '-c:a', 'aac', '-b:a', '192k', '-y', tempAudioPath
       ]);
       repairAudio.stderr.on('data', d => queueFFmpegLog('RepairAudio: ' + d.toString()));
@@ -4001,12 +4124,14 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
         }
 
         if (hasMic && tempMicPath) {
+          const micSeek = audioSeekArgs(micSkipSec);
           const repairMic = spawnFFmpegLow([
             '-hide_banner', '-nostats', '-loglevel', 'error',
             '-fflags', '+genpts+igndts', '-err_detect', 'ignore_err',
+            ...micSeek.pre,
             '-i', hlMicPath,
             '-af', 'aresample=async=1000:first_pts=0',
-            '-ss', micSkipSec.toFixed(3), '-t', clipSpanSec.toFixed(3),
+            '-ss', micSeek.fine, '-t', clipSpanSec.toFixed(3),
             '-c:a', 'aac', '-b:a', '192k', '-y', tempMicPath
           ]);
           repairMic.stderr.on('data', d => queueFFmpegLog('RepairMic: ' + d.toString()));
@@ -4057,10 +4182,28 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   }
 }
 
-function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVideoStartMs) {
-  const deskAudio = pickAudioSegment(clipVideoStartMs, clipVideoStartMs + durationMs);   // see GAME AUDIO SEGMENTS
+// AUDIO SEEK (v1.0.0) — the repair step below used to decode a highlight's
+// audio file from its very start and throw away everything before the clip
+// (-ss after -i). The game audio and mic files run for the whole recording,
+// so hours into a session every save re-decoded hours of audio, and saves
+// fell further behind the longer people played (831 highlights in 8CBJH5).
+// Now it jumps to AUDIO_SEEK_LEAD_SEC before the clip without decoding (-ss
+// before -i, the same change that sped up video extraction) and trims the
+// rest precisely after aresample, exactly as before, so sync is unchanged.
+const AUDIO_SEEK_LEAD_SEC = 10;
+function audioSeekArgs(skipSec) {
+  const coarse = Math.max(0, skipSec - AUDIO_SEEK_LEAD_SEC);
+  return { pre: coarse > 0 ? ['-ss', coarse.toFixed(3)] : [], fine: (skipSec - coarse).toFixed(3) };
+}
+
+function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVideoStartMs, cap = null) {
+  // A save from a restarted recording uses that recording's audio (see RETIRED CAPTURES).
+  const deskAudio = pickAudioSegment(clipVideoStartMs, clipVideoStartMs + durationMs, cap ? cap.audioSegs : hlAudioSegs);   // see GAME AUDIO SEGMENTS
+  const micPath = cap ? cap.micPath : hlMicPath;
+  const micChunks = cap ? cap.micChunks : hlMicChunkCount;
+  const micFirst = cap ? cap.micFirst : micFirstChunkTime;
   const hasAudio = !!deskAudio;
-  const hasMic = !!(hlMicPath && hlMicChunkCount > 0 && !micMuted && fs.existsSync(hlMicPath));
+  const hasMic = !!(micPath && micChunks > 0 && !micMuted && fs.existsSync(micPath));
 
   function finish(finalPath) {
     const placed = placeClip(finalPath, metadataPath, metadata.sessionId);   // see CLIP FOLDERS
@@ -4080,7 +4223,7 @@ function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVi
   const audioDeltaSec = (clipVideoStartMs - deskAudio.startedAt) / 1000;
   const audioSkipSec = Math.max(0, audioDeltaSec);
   const audioDelaySec = Math.max(0, -audioDeltaSec);
-  const micDeltaSec = micFirstChunkTime ? (clipVideoStartMs - micFirstChunkTime) / 1000 : 0;
+  const micDeltaSec = micFirst ? (clipVideoStartMs - micFirst) / 1000 : 0;
   const micSkipSec = Math.max(0, micDeltaSec);
   const micDelaySec = Math.max(0, -micDeltaSec);
 
@@ -4091,11 +4234,13 @@ function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVi
 
   console.log(`WGC audio sync: seg ${deskAudio.id}, skip=${audioSkipSec.toFixed(3)}s delay=${audioDelaySec.toFixed(3)}s span=${clipSpanSec.toFixed(1)}s`);
 
+  const audioSeek = audioSeekArgs(audioSkipSec);
   const repairAudio = spawn(getFFmpegPath(), [
     '-fflags', '+genpts+igndts', '-err_detect', 'ignore_err',
+    ...audioSeek.pre,
     '-i', deskAudio.path,
     '-af', 'aresample=async=1000:first_pts=0',
-    '-ss', audioSkipSec.toFixed(3), '-t', clipSpanSec.toFixed(3),
+    '-ss', audioSeek.fine, '-t', clipSpanSec.toFixed(3),
     '-c:a', 'aac', '-b:a', '192k', '-y', tempAudioPath
   ], { windowsHide: true });
 
@@ -4141,11 +4286,13 @@ function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVi
     }
 
     if (hasMic && tempMicPath) {
+      const micSeek = audioSeekArgs(micSkipSec);
       const repairMic = spawn(getFFmpegPath(), [
         '-fflags', '+genpts+igndts', '-err_detect', 'ignore_err',
-        '-i', hlMicPath,
+        ...micSeek.pre,
+        '-i', micPath,
         '-af', 'aresample=async=1000:first_pts=0',
-        '-ss', micSkipSec.toFixed(3), '-t', clipSpanSec.toFixed(3),
+        '-ss', micSeek.fine, '-t', clipSpanSec.toFixed(3),
         '-c:a', 'aac', '-b:a', '192k', '-y', tempMicPath
       ], { windowsHide: true });
       repairMic.stderr.on('data', d => console.log('WGC RepairMic:', d.toString()));
@@ -5254,7 +5401,8 @@ function fetchSessionUploads(code) {
             closed: !!parsed.closed,
             createdBy: typeof parsed.createdBy === 'string' ? parsed.createdBy : null,
             expiresAt: parsed.expiresAt || null,
-            stars: Array.isArray(parsed.stars) ? parsed.stars : []   // v0.1.87 server; [] before
+            stars: Array.isArray(parsed.stars) ? parsed.stars : [],   // v0.1.87 server; [] before
+            deleted: Array.isArray(parsed.deleted) ? parsed.deleted : []   // v1.0.0 server; [] before
           });
         } catch (e) {
           finish({ status: res.statusCode, error: 'unparseable_response' });
@@ -5410,10 +5558,13 @@ async function runSyncScan(code) {
     .filter(t => typeof t === 'number'));
   let adopted = 0;
   let closedOut = 0;
+  let deletedSkipped = 0;
   const syncable = local.filter(clip => {
     const key = path.basename(clip.videoPath);
     if (pendingUploads.has(key)) return false;
     if (findLandedRecord(remote.uploads, clip.videoPath, me)) return false;
+    // Deleted from the session (e.g. AFK footage): kept on this PC, never offered again.
+    if (findDeletedRecord(remote.deleted, clip.videoPath, clip.metadataPath, me)) { deletedSkipped++; return false; }
     const pend = findPendingRecord(remote.uploads, clip.metadataPath, me);
     if (pend) {
       markUploadPending(key, {
@@ -5432,6 +5583,9 @@ async function runSyncScan(code) {
   if (adopted > 0) {
     console.log(`Sync: ${adopted} clip(s) already have sync data on the server — queued to attach video only`);
     sweepPendingUploads();
+  }
+  if (deletedSkipped > 0) {
+    console.log(`Sync: ${deletedSkipped} clip(s) for ${clean} were deleted from the session — not offered (kept on this PC)`);
   }
   if (closedOut > 0) {
     console.log(`Sync: ${closedOut} clip(s) for ${clean} can't be added — session closed and they aren't from a highlight it recorded (kept on this PC)`);
@@ -5885,7 +6039,8 @@ function createWindow() {
     };
   });
 
-  ipcMain.on('save-highlight', () => saveHighlight());
+  // Solo save: the renderer passes the clip length picked outside a session (v1.0.0).
+  ipcMain.on('save-highlight', (event, ms) => saveHighlight(null, [15000, 30000, 60000, 180000].includes(ms) ? ms : null));
   ipcMain.on('broadcast-save-highlight', (event, { coordinated_timestamp, clipDuration, triggerSource }) => {
     console.log(`Received broadcast save-highlight: ts=${coordinated_timestamp}, clipDuration=${clipDuration}ms, source=${triggerSource || 'manual'}`);
     saveHighlight(coordinated_timestamp, clipDuration, triggerSource);
@@ -5919,10 +6074,19 @@ function createWindow() {
     autoFpsDroppedThisSession = false;
     if (liveRestartTimer) { clearTimeout(liveRestartTimer); liveRestartTimer = null; }
     // Saves still queued from the previous recording would cut against this
-    // recording's fresh buffer and audio — the wrong footage. Drop them
-    // (recorded, and the user is told how many); a save already running
-    // finishes on its own.
-    dropQueuedSaves('a new recording started before they ran');
+    // recording's fresh buffer and audio — the wrong footage. Window-capture
+    // saves keep the old recording's files and finish from them (see
+    // RETIRED CAPTURES); anything else is dropped (recorded, and the user is
+    // told how many). A save already running finishes on its own.
+    snapshotCaptureForSaves();
+    {
+      const keep = pendingSaveQueue.filter(q => q.ctx && q.ctx.capture);
+      const drop = pendingSaveQueue.filter(q => !(q.ctx && q.ctx.capture));
+      pendingSaveQueue.splice(0, pendingSaveQueue.length, ...drop);
+      dropQueuedSaves('a new recording started before they ran');
+      pendingSaveQueue.push(...keep);
+      if (keep.length) broadcastQueueState();
+    }
     // A queued mid-session restart would spawn a SECOND capture ~1.5s after
     // this one. ffmpegProcess is already null during that window, so the
     // kill below sees nothing to kill.
@@ -5951,8 +6115,10 @@ function createWindow() {
     } catch(e) {}
 
     try {
+      const keep = retiredCapturePaths();
       const stale = fs.readdirSync(BUFFER_DIR).filter(f =>
-        f.endsWith('.mp4') || f.startsWith('hl_audio_') || f.startsWith('hl_mic_') || f.startsWith('chunklist_')
+        (f.endsWith('.mp4') || f.startsWith('hl_audio_') || f.startsWith('hl_mic_') || f.startsWith('chunklist_')) &&
+        !isRetainedBufferFile(f, keep)
       );
       for (const f of stale) { try { fs.unlinkSync(path.join(BUFFER_DIR, f)); } catch (e) {} }
       console.log(`Buffer cleaned: removed ${stale.length} stale files`);
@@ -6634,7 +6800,15 @@ function createWindow() {
   // ================================
   // GAME DETECTION — best-effort label for session history
   // ================================
-  ipcMain.handle('detect-game', () => detectGameNow());   // see CLIP FOLDERS
+  // A session the user already named reports that name, so a fresh
+  // detection at Start can't relabel it (see CLIP FOLDERS).
+  ipcMain.handle('detect-game', async (event, code) => {
+    if (code) {
+      const named = readJsonFile(GAME_NAMES_PATH, {})[sessionNameKey(folderLockKey(code))];
+      if (named) return { name: named, genre: null, process: '', title: named, known: true, userNamed: true };
+    }
+    return detectGameNow();
+  });
 
     // ================================
   // AI REEL — LOCAL CLIP DISCOVERY

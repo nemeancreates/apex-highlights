@@ -201,8 +201,18 @@ function initSessionRoutes(app) {
     if (req.query.around !== undefined && Number.isFinite(around) && around > 0) {
       uploads = uploadsAroundMoment(session.uploads || [], around);
     }
+    // deleted: the signed-in viewer's own clips that were deleted from this
+    // session, so their desktop Sync skips the local copies (v1.0.0).
+    // Nobody else's — anonymous viewers get [].
+    const viewer = access.viewerOf(req);
+    const me = viewer && viewer.username ? String(viewer.username).toLowerCase() : null;
+    const deleted = me
+      ? (session.deletedClips || []).filter(d => String(d.username || '').toLowerCase() === me)
+          .map(d => ({ username: d.username, videoFile: d.videoFile, metadataFile: d.metadataFile }))
+      : [];
     res.json({
       uploads,
+      deleted,
       partial: uploads !== session.uploads,
       closed: !!session.closed,
       createdBy: session.createdBy,
