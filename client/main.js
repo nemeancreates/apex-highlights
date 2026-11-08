@@ -196,6 +196,10 @@ const GAME_PROCESS_MAP = {
   'contentwarning':      { name: 'Content Warning', genre: 'horror' },
   'rEPO':                { name: 'R.E.P.O.', genre: 'horror' },
 
+  // --- MMO
+  'wow':                 { name: 'World of Warcraft', genre: 'mmo' },
+  'wowclassic':          { name: 'World of Warcraft Classic', genre: 'mmo' },
+
   // --- Sports / racing (near-constant audio floor)
   'rocketleague':        { name: 'Rocket League', genre: 'sports_racing' },
   'forzahorizon5':       { name: 'Forza Horizon 5', genre: 'sports_racing' },
@@ -224,7 +228,10 @@ const NON_GAME_PROCESSES = new Set([
   'riotclientservices','playnite.desktoppapp','playnite.fullscreenapp','itch',
   // Capture / streaming (avoid recursive capture)
   'obs64','obs32','streamlabs obs','streamlabs','xsplit.core','nvcontainer',
-  'nvidia share','nvidia overlay','medal','outplayed','peak-abu','electron',
+  'nvidia share','nvidia overlay','medal','outplayed','peak-abu','peakabu','electron',
+  // AI assistants / note apps — "Claude" was being picked as the game (v1.0.0)
+  'claude','chatgpt','copilot','microsoft.copilot','perplexity','cursor','windsurf',
+  'notion','obsidian','evernote',
   // Windows shell / system
   'explorer','applicationframehost','textinputhost','shellexperiencehost','searchhost',
   'searchapp','startmenuexperiencehost','systemsettings','taskmgr','lockapp',
@@ -249,6 +256,8 @@ const NON_GAME_TITLE_PATTERNS = [
   /^search$/i,
   /^start$/i,
   /^peak-abu/i,
+  /^peakabu/i,
+  /^claude$/i,
   /^new notification$/i,
   /^volume mixer$/i
 ];
@@ -2997,6 +3006,8 @@ function localDateStr(ms) {
 }
 
 function folderLockKey(code) { return code ? String(code).toUpperCase() : 'SOLO'; }
+// game-names.json entry for a name the user gave one session (✏ next to 📁).
+function sessionNameKey(key) { return 'session:' + key; }
 
 function sittingDir(key, lock) {
   return key === 'SOLO'
@@ -3051,8 +3062,11 @@ function lockClipFolder(key, detected) {
   const gameKey = detected
     ? (normalizeProcName(detected.process) || String(detected.title || '').trim().toLowerCase() || null)
     : null;
-  const game = sanitizeFolderName((gameKey && names[gameKey]) || (detected && detected.name), UNSORTED_GAME);
-  const lock = { game, gameKey, date: localDateStr(Date.now()), lastUsedAt: Date.now(), known: !!(detected && detected.known) };
+  // A name the user gave this session code wins over anything detected —
+  // reopening a session later used to re-detect (and pick e.g. "Claude").
+  const sessionName = key !== 'SOLO' ? names[sessionNameKey(key)] : null;
+  const game = sanitizeFolderName(sessionName || (gameKey && names[gameKey]) || (detected && detected.name), UNSORTED_GAME);
+  const lock = { game, gameKey, date: localDateStr(Date.now()), lastUsedAt: Date.now(), known: !!(sessionName || (detected && detected.known)) };
   folderLocks[key] = lock;
   writeJsonFile(SESSION_FOLDERS_PATH, folderLocks);
   console.log(`Clip folder for ${key}: ${path.relative(CLIPS_DIR, sittingDir(key, lock))}${lock.known ? '' : ' (game guessed)'}`);
@@ -3231,9 +3245,10 @@ function renameClipFolder(code, rawName) {
   lock.game = game;
   lock.known = true;
   writeJsonFile(SESSION_FOLDERS_PATH, folderLocks);
-  if (lock.gameKey) {
+  {
     const names = readJsonFile(GAME_NAMES_PATH, {});
-    names[lock.gameKey] = game;
+    if (lock.gameKey) names[lock.gameKey] = game;
+    names[sessionNameKey(key)] = game;   // sticks to this session code too
     writeJsonFile(GAME_NAMES_PATH, names);
   }
   const toDir = sittingDir(key, lock);
@@ -6777,7 +6792,15 @@ function createWindow() {
   // ================================
   // GAME DETECTION — best-effort label for session history
   // ================================
-  ipcMain.handle('detect-game', () => detectGameNow());   // see CLIP FOLDERS
+  // A session the user already named reports that name, so a fresh
+  // detection at Start can't relabel it (see CLIP FOLDERS).
+  ipcMain.handle('detect-game', async (event, code) => {
+    if (code) {
+      const named = readJsonFile(GAME_NAMES_PATH, {})[sessionNameKey(folderLockKey(code))];
+      if (named) return { name: named, genre: null, process: '', title: named, known: true, userNamed: true };
+    }
+    return detectGameNow();
+  });
 
     // ================================
   // AI REEL — LOCAL CLIP DISCOVERY

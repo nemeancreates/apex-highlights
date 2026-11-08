@@ -1903,7 +1903,9 @@
     // Always re-renders, even if the entry was missing and had to be
     // created from scratch — this is what a title edit right after joining
     // (before the join's own addSessionToHistory call has settled) needs.
-    function setSessionHistoryGame(code, game, title) {
+    // byUser: the game name came from the user's own ✏ rename — kept from
+    // then on, so later detections / server syncs can't relabel it (v1.0.0).
+    function setSessionHistoryGame(code, game, title, byUser) {
       console.log('[setSessionHistoryGame] called with code:', code, 'game:', game, 'title:', title);
       if (!code) { console.log('[setSessionHistoryGame] bailed — no code'); return; }
       var history = loadSessionHistory();
@@ -1926,7 +1928,10 @@
         history.unshift(entry);
       }
 
-      if (typeof game !== 'undefined' && game !== null) entry.game = game;
+      if (typeof game !== 'undefined' && game !== null && (byUser || !entry.gameByUser)) {
+        entry.game = game;
+        if (byUser) entry.gameByUser = true;
+      }
       if (typeof title !== 'undefined' && title !== null) entry.title = title;
 
       trimSessionHistory(history);
@@ -2695,6 +2700,7 @@
           ipcRenderer.invoke('rename-clip-folder', { code: info.code, name: value }).then(function(r) {
             if (!r || !r.ok) { hudLog('system', '⚠ ' + ((r && r.error) || 'Could not rename the folder'), 'error'); return; }
             renderClipFolder(r);
+            setSessionHistoryGame(info.code, r.game, undefined, true);
             hudLog('system', '📁 Clips now save to ' + r.folder +
               (r.moved ? ' — moved ' + r.moved + ' clip' + (r.moved === 1 ? '' : 's') : '') +
               (r.waiting ? ' (' + r.waiting + ' more move' + (r.waiting === 1 ? 's' : '') + ' after uploading)' : ''), 'success');
@@ -5619,7 +5625,7 @@
         // handler in sockets/index.js), so an unreliable guess from one
         // member won't keep clobbering a confident match from another.
         try {
-          var detected = await ipcRenderer.invoke('detect-game');
+          var detected = await ipcRenderer.invoke('detect-game', window.currentSessionCode || null);
           if (detected && detected.name) {
             window.detectedGame = detected;
             if (window.currentSessionCode) {
@@ -6796,7 +6802,7 @@
             if (entry) {
               // Refresh server-owned fields; keep localNote and any local title.
               entry.expiresAt = (typeof s.expiresAt === 'number') ? s.expiresAt : entry.expiresAt;
-              if (s.detectedGame) entry.game = s.detectedGame;
+              if (s.detectedGame && !entry.gameByUser) entry.game = s.detectedGame;
               // Only take the server title if the user hasn't set a local one.
               if (s.title && !entry.title) entry.title = s.title;
               entry.role = entry.role || 'host';
