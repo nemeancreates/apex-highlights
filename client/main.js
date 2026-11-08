@@ -613,10 +613,10 @@ let hlMicChunkCount = 0;
 // ================================
 let hlAudioSegs = [];   // { id, path, startedAt (local ms), endedAt, chunks }
 
-function pickAudioSegment(startLocal, endLocal) {
+function pickAudioSegment(startLocal, endLocal, segs = hlAudioSegs) {
   let best = null;
   let bestOverlap = -Infinity;
-  for (const s of hlAudioSegs) {
+  for (const s of segs) {
     if (!s.chunks || !fs.existsSync(s.path)) continue;
     const overlap = Math.min(endLocal, s.endedAt || Infinity) - Math.max(startLocal, s.startedAt);
     if (overlap > bestOverlap) { best = s; bestOverlap = overlap; }
@@ -681,7 +681,10 @@ function saveNeededFromLocal() {
   let min = Infinity;
   for (const h of saveWindowsWaiting) min = Math.min(min, h.start);
   if (activeSaveWindowStart !== null) min = Math.min(min, activeSaveWindowStart);
-  for (const q of pendingSaveQueue) min = Math.min(min, saveWindowLocal(q.saveTimeUTC, q.durationMs, q.triggerSource).start);
+  for (const q of pendingSaveQueue) {
+    if (q.ctx && q.ctx.capture) continue;   // cuts from a retired capture's files, not this buffer
+    min = Math.min(min, saveWindowLocal(q.saveTimeUTC, q.durationMs, q.triggerSource).start);
+  }
   return min;
 }
 
@@ -693,13 +696,87 @@ function effectiveMaxChunks() {
   return Math.max(maxChunks, forClip);
 }
 
+// ================================
+// RETIRED CAPTURES (v1.0.0)
+// Pressing Start while window-capture saves were still queued used to drop
+// every one of them: the new recording wiped the buffer and audio they cut
+// from. 204 highlights were lost that way in one WoW session (8CBJH5,
+// 11/7) after the game closed and capture was restarted. Now the old
+// recording's buffer files, game audio, mic and peak log are frozen into a
+// snapshot that the queued (and running) saves carry in ctx.capture, and
+// its files are kept until no save refers to them any more.
+// ================================
+const retiredCaptures = [];
+let activeSaveCtx = null;   // ctx of the save currently holding the pipeline
+
+function snapshotCaptureForSaves() {
+  const cap = {
+    tag: recordingSessionTag,
+    wgcFiles: wgcFiles.filter(f => f.startUTC).map(f => Object.assign({}, f, { finalized: true })),
+    trimmedBefore: wgcTrimmedBeforeUTC,
+    audioSegs: hlAudioSegs.map(s => Object.assign({}, s, { endedAt: s.endedAt || Date.now() })),
+    micPath: hlMicPath,
+    micChunks: hlMicChunkCount,
+    micFirst: micFirstChunkTime,
+    peakLog: peakLogBuffer.slice()
+  };
+  let kept = 0;
+  const hold = (ctx) => { if (ctx && ctx.mode === 'wgc' && !ctx.capture) { ctx.capture = cap; kept++; } };
+  for (const q of pendingSaveQueue) hold(q.ctx);
+  hold(activeSaveCtx);
+  if (kept && cap.wgcFiles.length) {
+    retiredCaptures.push(cap);
+    console.log(`Kept the previous window capture for ${kept} queued save(s) (${cap.wgcFiles.length} buffer file(s))`);
+  }
+  return kept;
+}
+
+function retiredCapturePaths() {
+  const keep = new Set();
+  for (const cap of retiredCaptures) {
+    for (const f of cap.wgcFiles) keep.add(path.basename(f.path));
+    for (const s of cap.audioSegs) keep.add(path.basename(s.path));
+    if (cap.micPath) keep.add(path.basename(cap.micPath));
+  }
+  return keep;
+}
+
+// A file in BUFFER_DIR that a start-of-recording wipe must leave alone:
+// a retired capture's footage/audio, or a running save's temp file.
+function isRetainedBufferFile(name, keep) {
+  if (keep.has(name)) return true;
+  return pipelineBusy && name.startsWith('wgc_temp_');
+}
+
+function pruneRetiredCaptures() {
+  for (let i = retiredCaptures.length - 1; i >= 0; i--) {
+    const cap = retiredCaptures[i];
+    const inUse = (activeSaveCtx && activeSaveCtx.capture === cap) ||
+      pendingSaveQueue.some(q => q.ctx && q.ctx.capture === cap);
+    if (inUse) continue;
+    retiredCaptures.splice(i, 1);
+    const files = cap.wgcFiles.map(f => f.path)
+      .concat(cap.audioSegs.map(s => s.path))
+      .concat(cap.micPath ? [cap.micPath] : []);
+    for (const p of files) { try { fs.unlinkSync(p); } catch (e) {} }
+    console.log(`Previous window capture released (${files.length} file(s) removed)`);
+  }
+}
+
 function releaseSavePipeline() {
   if (!pipelineBusy) return; // already released, avoid double-drain
   pipelineBusy = false;
   wgcSaveInFlight = false;
   wgcActiveSave = null;
   activeSaveWindowStart = null;
+  activeSaveCtx = null;
   markFightSignal();   // quiet period restarts from the end of the save
+  if (retiredCaptures.length) {
+    // The next save takes the pipeline below; count it as in use first.
+    activeSaveCtx = pendingSaveQueue.length ? pendingSaveQueue[0].ctx : null;
+    pruneRetiredCaptures();
+    activeSaveCtx = null;
+  }
   if (pendingSaveQueue.length > 0) {
     const next = pendingSaveQueue.shift();
     console.log(`Save pipeline free — starting queued ${next.triggerSource || 'manual'} save (${pendingSaveQueue.length} still queued)`);
@@ -2149,9 +2226,10 @@ function wgcRetire(reason) {
   });
 }
 
-function wgcFindCoveringFiles(startUTC, endUTC) {
-  const candidates = wgcFiles.filter(f => f.startUTC && fs.existsSync(f.path));
-  return wgcPickCovering(candidates, startUTC, endUTC, wgcTrimmedBeforeUTC);
+function wgcFindCoveringFiles(startUTC, endUTC, cap = null) {
+  const files = cap ? cap.wgcFiles : wgcFiles;
+  const candidates = files.filter(f => f.startUTC && fs.existsSync(f.path));
+  return wgcPickCovering(candidates, startUTC, endUTC, cap ? cap.trimmedBefore : wgcTrimmedBeforeUTC);
 }
 
 // Pure: which buffer file(s) hold [startUTC, endUTC]. Files are contiguous
@@ -2352,7 +2430,8 @@ function startRecording(monitor) {
 
   if (wgcCaptureMode && wgcSourceId) {
     try {
-      const staleWgc = fs.readdirSync(BUFFER_DIR).filter(f => f.startsWith('wgc_'));
+      const keep = retiredCapturePaths();
+      const staleWgc = fs.readdirSync(BUFFER_DIR).filter(f => f.startsWith('wgc_') && !isRetainedBufferFile(f, keep));
       for (const f of staleWgc) { try { fs.unlinkSync(path.join(BUFFER_DIR, f)); } catch (e) {} }
       if (staleWgc.length) console.log(`Cleaned ${staleWgc.length} stale WGC files`);
     } catch (e) {}
@@ -3425,8 +3504,28 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     pipelineBusy = true;
     broadcastQueueState();
   }
-  activeSaveWindowStart = saveWindowLocal(saveTimeUTC, durationMs, triggerSource).start;
-  if (ctx.mode === 'wgc' && wgcFiles.length > 0) {
+  activeSaveCtx = ctx;
+  // A save from a recording that has since been restarted cuts from that
+  // recording's kept files (see RETIRED CAPTURES), not the live buffer —
+  // so it doesn't hold the live buffer's oldest footage either.
+  const cap = ctx.capture || null;
+  activeSaveWindowStart = cap ? null : saveWindowLocal(saveTimeUTC, durationMs, triggerSource).start;
+  const capFiles = cap ? cap.wgcFiles : wgcFiles;
+  if (ctx.mode === 'wgc' && !cap && wgcFiles.length === 0) {
+    // A window capture just starting has no buffer file yet — wait for it.
+    if (wgcCaptureMode && wgcSourceId && retryCount < 4) {
+      setTimeout(() => doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs, retryCount + 1, triggerSource, ctx), 3000);
+      return;
+    }
+    // Otherwise the footage is gone entirely. Falling through to the
+    // monitor path below burned 12 s of retries per save before failing
+    // as "no buffered footage" (36 in 8CBJH5).
+    console.log('WGC save: no window-capture footage left — skipping');
+    recordSaveFailure(ctx, coordinatedTs, 'window capture footage was already cleared');
+    releaseSavePipeline();
+    return;
+  }
+  if (ctx.mode === 'wgc' && capFiles.length > 0) {
     wgcSaveInFlight = true;
 
     const durationSec = durationMs / 1000;
@@ -3438,7 +3537,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     const windowStartLocal = win.start;
     const windowEndLocal = win.end;
 
-    const covering = wgcFindCoveringFiles(windowStartLocal, windowEndLocal);
+    const covering = wgcFindCoveringFiles(windowStartLocal, windowEndLocal, cap);
     if (covering && covering.mode === 'expired') {
       const lateSec = Math.round((Date.now() - windowEndLocal) / 1000);
       console.log(`WGC save: footage for this window was already deleted (${lateSec}s after the moment) — skipping`);
@@ -3487,7 +3586,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
     const outputPath = path.join(clipDir, `highlight-${timestamp}.mp4`);
     const metadataPath = path.join(clipDir, `highlight-${timestamp}.json`);
 
-    const wgcClipPeaks = peakLogBuffer
+    const wgcClipPeaks = (cap ? cap.peakLog : peakLogBuffer)
       .filter(p => p.t >= windowStartLocal && p.t <= windowEndLocal)
       .map(p => {
         const out = { tMs: Math.max(0, Math.round(p.t - windowStartLocal)), source: p.source };
@@ -3555,7 +3654,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
       extract.stderr.on('data', d => console.log('WGC extract:', d.toString()));
       extract.on('close', (code) => {
         if (code === 0 && fs.existsSync(outputPath)) {
-          wgcFinishSave(outputPath, metadataPath, metadata, durationMs, windowStartLocal);
+          wgcFinishSave(outputPath, metadataPath, metadata, durationMs, windowStartLocal, cap);
         } else {
           wgcExtractFail('Failed to extract window capture clip');
         }
@@ -3625,7 +3724,7 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
           concat.on('close', (codeC) => {
             cleanupParts();
             if (codeC === 0 && fs.existsSync(outputPath)) {
-              wgcFinishSave(outputPath, metadataPath, metadata, durationMs, windowStartLocal);
+              wgcFinishSave(outputPath, metadataPath, metadata, durationMs, windowStartLocal, cap);
             } else {
               wgcExtractFail('Failed to join window capture clip parts');
             }
@@ -4057,10 +4156,14 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
   }
 }
 
-function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVideoStartMs) {
-  const deskAudio = pickAudioSegment(clipVideoStartMs, clipVideoStartMs + durationMs);   // see GAME AUDIO SEGMENTS
+function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVideoStartMs, cap = null) {
+  // A save from a restarted recording uses that recording's audio (see RETIRED CAPTURES).
+  const deskAudio = pickAudioSegment(clipVideoStartMs, clipVideoStartMs + durationMs, cap ? cap.audioSegs : hlAudioSegs);   // see GAME AUDIO SEGMENTS
+  const micPath = cap ? cap.micPath : hlMicPath;
+  const micChunks = cap ? cap.micChunks : hlMicChunkCount;
+  const micFirst = cap ? cap.micFirst : micFirstChunkTime;
   const hasAudio = !!deskAudio;
-  const hasMic = !!(hlMicPath && hlMicChunkCount > 0 && !micMuted && fs.existsSync(hlMicPath));
+  const hasMic = !!(micPath && micChunks > 0 && !micMuted && fs.existsSync(micPath));
 
   function finish(finalPath) {
     const placed = placeClip(finalPath, metadataPath, metadata.sessionId);   // see CLIP FOLDERS
@@ -4080,7 +4183,7 @@ function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVi
   const audioDeltaSec = (clipVideoStartMs - deskAudio.startedAt) / 1000;
   const audioSkipSec = Math.max(0, audioDeltaSec);
   const audioDelaySec = Math.max(0, -audioDeltaSec);
-  const micDeltaSec = micFirstChunkTime ? (clipVideoStartMs - micFirstChunkTime) / 1000 : 0;
+  const micDeltaSec = micFirst ? (clipVideoStartMs - micFirst) / 1000 : 0;
   const micSkipSec = Math.max(0, micDeltaSec);
   const micDelaySec = Math.max(0, -micDeltaSec);
 
@@ -4143,7 +4246,7 @@ function wgcFinishSave(videoOnlyPath, metadataPath, metadata, durationMs, clipVi
     if (hasMic && tempMicPath) {
       const repairMic = spawn(getFFmpegPath(), [
         '-fflags', '+genpts+igndts', '-err_detect', 'ignore_err',
-        '-i', hlMicPath,
+        '-i', micPath,
         '-af', 'aresample=async=1000:first_pts=0',
         '-ss', micSkipSec.toFixed(3), '-t', clipSpanSec.toFixed(3),
         '-c:a', 'aac', '-b:a', '192k', '-y', tempMicPath
@@ -5919,10 +6022,19 @@ function createWindow() {
     autoFpsDroppedThisSession = false;
     if (liveRestartTimer) { clearTimeout(liveRestartTimer); liveRestartTimer = null; }
     // Saves still queued from the previous recording would cut against this
-    // recording's fresh buffer and audio — the wrong footage. Drop them
-    // (recorded, and the user is told how many); a save already running
-    // finishes on its own.
-    dropQueuedSaves('a new recording started before they ran');
+    // recording's fresh buffer and audio — the wrong footage. Window-capture
+    // saves keep the old recording's files and finish from them (see
+    // RETIRED CAPTURES); anything else is dropped (recorded, and the user is
+    // told how many). A save already running finishes on its own.
+    snapshotCaptureForSaves();
+    {
+      const keep = pendingSaveQueue.filter(q => q.ctx && q.ctx.capture);
+      const drop = pendingSaveQueue.filter(q => !(q.ctx && q.ctx.capture));
+      pendingSaveQueue.splice(0, pendingSaveQueue.length, ...drop);
+      dropQueuedSaves('a new recording started before they ran');
+      pendingSaveQueue.push(...keep);
+      if (keep.length) broadcastQueueState();
+    }
     // A queued mid-session restart would spawn a SECOND capture ~1.5s after
     // this one. ffmpegProcess is already null during that window, so the
     // kill below sees nothing to kill.
@@ -5951,8 +6063,10 @@ function createWindow() {
     } catch(e) {}
 
     try {
+      const keep = retiredCapturePaths();
       const stale = fs.readdirSync(BUFFER_DIR).filter(f =>
-        f.endsWith('.mp4') || f.startsWith('hl_audio_') || f.startsWith('hl_mic_') || f.startsWith('chunklist_')
+        (f.endsWith('.mp4') || f.startsWith('hl_audio_') || f.startsWith('hl_mic_') || f.startsWith('chunklist_')) &&
+        !isRetainedBufferFile(f, keep)
       );
       for (const f of stale) { try { fs.unlinkSync(path.join(BUFFER_DIR, f)); } catch (e) {} }
       console.log(`Buffer cleaned: removed ${stale.length} stale files`);
