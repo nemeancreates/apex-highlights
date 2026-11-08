@@ -16,6 +16,7 @@ const sessionLookupLimiter = createRateLimiter({ windowMs: 60000, max: 20 });
 const { sessions, users, saveUsersToDisk, getSessionsByUser } = require('../stores');
 const { requireAuth, getEffectiveTier, getMonthKey } = require('../auth');
 const { listStars, getSquadCanStar } = require('./stars');
+const { uploadsForViewer, hiddenMomentSet } = require('./hidden');
 // A session on legal hold reads as "not found" to everyone.
 const { isOnHold } = require('../moderation/legal-hold');
 const access = require('../session-access');
@@ -170,7 +171,7 @@ function initSessionRoutes(app) {
         isRecording: m.isRecording,
         joinedAt: m.joinedAt
       })),
-      uploads: session.uploads
+      uploads: uploadsForViewer(req, session, session.uploads)   // hidden moments: host only
     });
   });
 
@@ -196,11 +197,14 @@ function initSessionRoutes(app) {
     // ?around=<ms>: just the one peak (the clips saved together at that
     // moment). Peak Roulette uses this so it doesn't pull a whole session's
     // clip list, and every clip's metadata, to play a single moment.
-    let uploads = session.uploads;
+    // Hidden moments (routes/hidden.js) are the host's alone.
+    const visible = uploadsForViewer(req, session, session.uploads || []);
+    let uploads = visible;
     const around = Number(req.query.around);
     if (req.query.around !== undefined && Number.isFinite(around) && around > 0) {
-      uploads = uploadsAroundMoment(session.uploads || [], around);
+      uploads = uploadsAroundMoment(visible, around);
     }
+    const hostView = access.isHostReq(req, session);
     // deleted: the signed-in viewer's own clips that were deleted from this
     // session, so their desktop Sync skips the local copies (v1.0.0).
     // Nobody else's — anonymous viewers get [].
@@ -213,7 +217,8 @@ function initSessionRoutes(app) {
     res.json({
       uploads,
       deleted,
-      partial: uploads !== session.uploads,
+      partial: uploads !== visible,
+      hiddenMoments: hostView ? Array.from(hiddenMomentSet(code)) : [],
       closed: !!session.closed,
       createdBy: session.createdBy,
       expiresAt: session.expiresAt || null,

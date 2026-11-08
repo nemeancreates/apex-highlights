@@ -28,6 +28,7 @@ const { createRateLimiter } = require('../ratelimit');
 const { JWT_SECRET } = require('../config');
 const { sessions, saveSessionsToDisk } = require('../stores');
 const access = require('../session-access');
+const { hiddenMomentSet, isHiddenUpload } = require('./hidden');
 const { requireAuth, requireAdmin } = require('../auth');
 const db = require('../db');
 const mod = require('../moderation');
@@ -157,9 +158,11 @@ function isPublic(code) {
   } catch (err) { return false; }
 }
 
-// Real clips only — a placeholder (no videoFile yet) isn't watchable.
+// Real clips only — a placeholder (no videoFile yet) isn't watchable — and
+// never a moment the host hid (routes/hidden.js).
 function realClips(session) {
-  return (session.uploads || []).filter(u => u.videoFile);
+  const hidden = hiddenMomentSet(session.code);
+  return (session.uploads || []).filter(u => u.videoFile && !isHiddenUpload(hidden, u));
 }
 
 function clipTs(u) {

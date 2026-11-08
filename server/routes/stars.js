@@ -228,5 +228,6 @@ module.exports = {
   getSquadCanStar,
   canStar,
   addStars,
-  removeStar
+  removeStar,
+  parseMomentTs
 };
