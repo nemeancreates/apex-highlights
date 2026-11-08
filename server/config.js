@@ -252,9 +252,9 @@ const BANDWIDTH_ALERT_BYTES = 500 * 1024 * 1024 * 1024; // 500GB
 const PRIVACY_POLICY_VERSION = '2026-09-07';
 
 const LATEST_CLIENT_VERSION = {
-  version: '0.1.99',
-  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-0.1.99.exe',
-    releaseNotes: "AI Reels have an Editor's notes box next to Style: tell the editor what you want, like \"keep the clutch at 0:42\" or \"3 POVs at once\". Signing in and making an account now have a Show password box. You can delete your account from Settings. Crash reporting is updated and still only sends what our Privacy Policy describes."
+  version: '1.0.0',
+  downloadUrl: 'https://pub-2480e9beab9c4e958815881370670616.r2.dev/releases/peak-abu-setup-1.0.0.exe',
+    releaseNotes: "Peakabu 1.0. Long sessions keep up: highlights no longer get lost when saves fall behind or you restart capture, and saves are much faster. Talking now keeps auto-capture going. Closing your game keeps the session going and picks the game back up when it reopens (Settings). Hosts can hide a highlight from everyone else with the eye on its pill in the web player. Also: pick your clip length before joining a session, session names stay as you set them, clips you deleted aren't offered for Sync again, timeline markers line up with the action, and a muted mic stays fully muted."
 };
 
 
