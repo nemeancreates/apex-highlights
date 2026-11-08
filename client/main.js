@@ -5966,6 +5966,40 @@ function createWindow() {
     wgcFinalizeFile(fileId);
   });
 
+  // GAME CLOSED (v1.0.0, see index.html): capture pauses while the game is
+  // closed — no rollovers into an empty buffer — and resumes on its new window.
+  // The buffer files from before stay, so saves of earlier moments still work.
+  ipcMain.on('wgc-game-closed', () => {
+    wgcStopRolloverSchedule();
+    console.log('WGC: game window closed — waiting for it to reopen');
+  });
+  ipcMain.on('wgc-game-back', (event, p) => {
+    if (p && typeof p.sourceId === 'string') wgcSourceId = p.sourceId;
+    wgcMidSessionRestarts = 0;
+    console.log('WGC: game window is back — resuming capture');
+  });
+  // The picked game's window, if it's open again: same title, else the same
+  // process (titles can change between launches).
+  ipcMain.handle('wgc-find-window', async (event, p) => {
+    const name = p && typeof p.name === 'string' ? p.name : null;
+    const proc = p && typeof p.processName === 'string' ? normalizeProcName(p.processName) : null;
+    if (!name && !proc) return null;
+    try {
+      const { desktopCapturer } = require('electron');
+      const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 0, height: 0 } });
+      let hit = name ? sources.find(s => s.name === name) : null;
+      if (!hit && proc) {
+        const wins = await enumerateWindowsPS();
+        const w = wins.find(x => normalizeProcName(x.processName) === proc);
+        if (w) hit = sources.find(s => s.name === w.title) || null;
+      }
+      return hit ? { id: hit.id, name: hit.name } : null;
+    } catch (e) {
+      console.log('Game window lookup failed:', e.message);
+      return null;
+    }
+  });
+
   ipcMain.on('wgc-capture-failed', (event, { reason }) => {
     console.log(`WGC capture failed: ${reason}`);
     if (wgcMidSessionRestarts < WGC_MAX_RESTARTS) {
