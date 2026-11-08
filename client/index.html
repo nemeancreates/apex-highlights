@@ -4142,7 +4142,8 @@
           var elx = document.getElementById(p[1]);
           if (!elx) return;
           var tap = liveMeter.taps[p[0]];
-          elx.setAttribute('data-level', tap ? liveLevel(tap) : 0);
+          var muted = (p[0] === 'mic' && window.micMuted);   // muted mic shows silent
+          elx.setAttribute('data-level', (tap && !muted) ? liveLevel(tap) : 0);
         });
         liveMeter.raf = requestAnimationFrame(liveTick);
       }
@@ -4222,6 +4223,8 @@
         btn.textContent = window.micMuted ? 'Unmute' : 'Mute';
         btn.classList.toggle('muted', window.micMuted);
         ipcRenderer.send('update-mic-settings', { muted: window.micMuted });
+        var acMic = document.getElementById('acMonkeyMic');   // dim the mic monkey while muted
+        if (acMic) acMic.classList.toggle('listening', !window.micMuted && !!window._acMic);
       };
             // ===== Noise suppression =====
       // window.micNsBackend persists the user's engine choice; 'off' means
@@ -4557,6 +4560,10 @@
 
         var windowActive = !!window.autoCaptureWindowActive;
 
+        // A muted mic isn't recorded, so it mustn't flash its monkey, log
+        // mic peaks or hold a capture window open either.
+        if (isMic && window.micMuted) return;
+
         acReadBands(state);
         state.sampleCount++;
 
@@ -4746,7 +4753,7 @@
         var state = acCreateAnalyzer(stream);
         state.timer = setInterval(function() { acPollSource('mic', state); }, AC_POLL_MS); // TEMP: was 200ms — testing sampling-gap theory
         window._acMic = state;
-        acSetMonkeyListening('mic', true);
+        acSetMonkeyListening('mic', !window.micMuted);
       };
       function acDetachDesktop() {
         if (window._acDesktop) {
