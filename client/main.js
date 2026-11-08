@@ -1654,9 +1654,14 @@ function pruneOldChunks() {
 // never steal frame time from the game. Capture already did this; the
 // save path did not, which is what made every clip cost a hitch.
 // ================================
+// Saves run below normal so they don't steal frames from the game — but
+// once SAVE_CATCHUP_QUEUE saves are waiting, a raid can starve them and the
+// queue only grows (8CBJH5). Behind that far, they run at normal priority
+// until the queue is back under it.
+const SAVE_CATCHUP_QUEUE = 3;
 function spawnFFmpegLow(args) {
   const p = spawn(getFFmpegPath(), args, { windowsHide: true });
-  if (p.pid) setBelowNormalPriority(p.pid);
+  if (p.pid && pendingSaveQueue.length < SAVE_CATCHUP_QUEUE) setBelowNormalPriority(p.pid);
   return p;
 }
 
@@ -4085,12 +4090,14 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
 
       // STEP 3: audio repair + merge (unchanged behavior, new offsets)
       console.log(`Audio sync: skip=${audioSkipSec.toFixed(3)}s delay=${audioDelaySec.toFixed(3)}s span=${clipSpanSec.toFixed(1)}s`);
+      const audioSeek = audioSeekArgs(audioSkipSec);   // see AUDIO SEEK
       const repairAudio = spawnFFmpegLow([
         '-hide_banner', '-nostats', '-loglevel', 'error',
         '-fflags', '+genpts+igndts', '-err_detect', 'ignore_err',
+        ...audioSeek.pre,
         '-i', deskAudio.path,
         '-af', 'aresample=async=1000:first_pts=0',
-        '-ss', audioSkipSec.toFixed(3), '-t', clipSpanSec.toFixed(3),
+        '-ss', audioSeek.fine, '-t', clipSpanSec.toFixed(3),
         '-c:a', 'aac', '-b:a', '192k', '-y', tempAudioPath
       ]);
       repairAudio.stderr.on('data', d => queueFFmpegLog('RepairAudio: ' + d.toString()));
@@ -4102,12 +4109,14 @@ function doSaveHighlight(saveTimeUTC, clipChunks, durationMs, coordinatedTs = nu
         }
 
         if (hasMic && tempMicPath) {
+          const micSeek = audioSeekArgs(micSkipSec);
           const repairMic = spawnFFmpegLow([
             '-hide_banner', '-nostats', '-loglevel', 'error',
             '-fflags', '+genpts+igndts', '-err_detect', 'ignore_err',
+            ...micSeek.pre,
             '-i', hlMicPath,
             '-af', 'aresample=async=1000:first_pts=0',
-            '-ss', micSkipSec.toFixed(3), '-t', clipSpanSec.toFixed(3),
+            '-ss', micSeek.fine, '-t', clipSpanSec.toFixed(3),
             '-c:a', 'aac', '-b:a', '192k', '-y', tempMicPath
           ]);
           repairMic.stderr.on('data', d => queueFFmpegLog('RepairMic: ' + d.toString()));
