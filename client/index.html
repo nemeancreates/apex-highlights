@@ -932,6 +932,19 @@
 
             <hr style="border:1px solid #1e3527;margin:16px 0;">
 
+            <div class="fs-toggle-row" style="margin:0 0 4px;">
+              <div class="fs-toggle-label">
+                <span style="font-size:13px;color:var(--pa-text-dim, #8fbfa3);">Keep the session going when the game closes</span>
+              </div>
+              <label class="switch" style="margin:0;">
+                <input type="checkbox" id="gameCloseWaitToggle" checked onchange="onGameCloseWaitToggle()" />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <p style="font-size:11px;color:#3a5244;margin:0 0 16px;">Game Window capture: picks the game back up when it reopens. Off: recording stops and you press Start again.</p>
+
+            <hr style="border:1px solid #1e3527;margin:16px 0;">
+
             <div class="ac-toggle-row">
               <div class="fs-toggle-label">
                 <span style="font-size:13px;color:var(--pa-text-dim, #8fbfa3);">🌿 Tutorial button</span>
@@ -5812,6 +5825,11 @@
       stopBufferCountdown();
       stopInitialBufferCountdown();
       if (window.mediaRecorder && window.mediaRecorder.state !== 'inactive') { window.mediaRecorder.stop(); window.mediaRecorder = null; }
+      if (window.wgcWaitingForGame) {   // stopped while waiting for the game (see GAME CLOSED)
+        wgcStopWaitingForGame();
+        var pickedEl = document.getElementById('wgcPickedName');
+        if (pickedEl && window.wgcWindowName) pickedEl.textContent = '✓ ' + window.wgcWindowName;
+      }
       wgcStopAll();
       stopMicCapture();
       stopDeskOutputWatch();
@@ -5918,6 +5936,7 @@
             card.onclick = function() {
               window.wgcSourceId = s.id;
               window.wgcWindowName = s.name;
+              window.wgcProcessName = s.processName || null;   // finds the game again after it closes
               document.getElementById('wgcPickedName').textContent = '✓ ' + s.name;
               ipcRenderer.invoke('wgc-set-capture-mode', { mode: 'window', windowTitle: s.name });
               window.closeWindowPicker();
@@ -5995,6 +6014,7 @@
       function wgcWatchTrack(stream) {
         var track = stream.getVideoTracks()[0];
         if (track) track.onended = function() {
+          if (window.gameCloseWait && window.isRecordingActive) { wgcWaitForGame(); return; }   // see GAME CLOSED
           ipcRenderer.send('wgc-capture-failed', { reason: 'Window closed' });
         };
       }
@@ -6085,6 +6105,60 @@
           if (oldStream) setTimeout(function() { oldStream.getTracks().forEach(function(t){ t.stop(); }); }, 800);
         }, 1000);
       });
+
+      // =====================
+      // GAME CLOSED (v1.0.0) — closing the game ended window capture, which
+      // burned the restart attempts on a window that no longer existed and
+      // then stopped recording, so the player had to press Start again. With
+      // the setting on (default), capture pauses, Peakabu tells the squad
+      // it isn't recording, and it watches for the same game's window to
+      // come back, then carries on into the same buffer.
+      // =====================
+      window.gameCloseWait = true;
+      ipcRenderer.invoke('get-user-pref', 'gameCloseWait').then(function(v) {
+        window.gameCloseWait = (v !== false);
+        var el = document.getElementById('gameCloseWaitToggle');
+        if (el) el.checked = window.gameCloseWait;
+      }).catch(function() {});
+      window.onGameCloseWaitToggle = function() {
+        window.gameCloseWait = !!document.getElementById('gameCloseWaitToggle').checked;
+        ipcRenderer.invoke('set-user-pref', 'gameCloseWait', window.gameCloseWait);
+      };
+
+      var GAME_WAIT_POLL_MS = 3000;
+      window.wgcWaitingForGame = false;
+
+      function wgcStopWaitingForGame() {
+        if (window._gameWaitTimer) { clearInterval(window._gameWaitTimer); window._gameWaitTimer = null; }
+        window.wgcWaitingForGame = false;
+      }
+
+      function wgcWaitForGame() {
+        if (window.wgcWaitingForGame) return;
+        window.wgcWaitingForGame = true;
+        var name = window.wgcWindowName || (window.wgcCfg && window.wgcCfg.windowName) || 'the game';
+        wgcStopAll();
+        ipcRenderer.send('wgc-game-closed');
+        if (window.socket) window.socket.emit('recording-status', { isRecording: false });
+        hudLog('system', '🎮 ' + name + ' closed — waiting for it to reopen (press Stop to end)', 'info');
+        var picked = document.getElementById('wgcPickedName');
+        if (picked) picked.textContent = '⏳ Waiting for ' + name + ' to reopen…';
+
+        window._gameWaitTimer = setInterval(async function() {
+          if (!window.isRecordingActive) { wgcStopWaitingForGame(); return; }
+          var found = null;
+          try { found = await ipcRenderer.invoke('wgc-find-window', { name: window.wgcWindowName, processName: window.wgcProcessName }); } catch (e) {}
+          if (!found || !window.wgcWaitingForGame || !window.isRecordingActive) return;
+          wgcStopWaitingForGame();
+          window.wgcSourceId = found.id;
+          window.wgcWindowName = found.name;
+          ipcRenderer.send('wgc-game-back', { sourceId: found.id });
+          if (picked) picked.textContent = '✓ ' + found.name;
+          if (window.socket) window.socket.emit('recording-status', { isRecording: true });
+          hudLog('system', '🎮 ' + found.name + ' is back — recording again', 'success');
+          wgcStartCapture(Object.assign({}, window.wgcCfg, { sourceId: found.id }));
+        }, GAME_WAIT_POLL_MS);
+      }
 
       ipcRenderer.on('wgc-restart-capture', function(ev, d) {
         hudLog('system', '⚠ Window capture died — auto-restarting (' + d.attempt + '/' + d.maxAttempts + ')', 'error');
