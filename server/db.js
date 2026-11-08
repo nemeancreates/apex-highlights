@@ -142,6 +142,18 @@ db.exec(`
   );
 `);
 
+// Highlight moments the host hid from everyone else (v1.0.0, routes/hidden.js).
+// Keyed like stars; routes/hidden.js sweeps orphans hourly.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS hidden_moments (
+    sessionCode TEXT NOT NULL,
+    momentTs    INTEGER NOT NULL,
+    hiddenBy    TEXT NOT NULL,
+    createdAt   INTEGER NOT NULL,
+    PRIMARY KEY (sessionCode, momentTs)
+  );
+`);
+
 // ================================
 // MIGRATIONS — additive only, idempotent, safe to run on every boot.
 //

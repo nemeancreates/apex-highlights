@@ -1205,6 +1205,16 @@
     .hl-chapter-chev { width: 10px; flex-shrink: 0; color: #5f7a6a; }
     .hl-chapter-meta { padding-left: 13px; color: #7a9686; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+    /* HIDE (v1.0.0, host only): eye on the pill's right. Open eye appears on
+       hover; a hidden highlight shows a shut eye and a dimmed pill. */
+    .hl-eye { display: inline-flex; margin-left: 3px; flex-shrink: 0; cursor: pointer; color: #5f7a6a; visibility: hidden; }
+    .hl-pill:hover .hl-eye, .hl-pill.active .hl-eye, .hl-eye.on { visibility: visible; }
+    .hl-eye:hover { color: #39d3a0; }
+    .hl-eye.on { color: #c98a8a; }
+    .hl-pill.active .hl-eye { color: #0c3a28; }
+    .hl-pill.hl-hidden { opacity: 0.55; }
+    .hl-pill.hl-hidden.active { opacity: 0.8; }
+
     .hl-star { font-size: 11px; margin-left: 3px; flex-shrink: 0; color: #d8a838; }
     .hl-star.can { cursor: pointer; }
     /* Unstarred: no icon until the pill is hovered or active. It still takes
@@ -1619,6 +1629,7 @@
     // (the coordinated timestamp every POV of a highlight shares). They
     // arrive with GET /sessions/:code/uploads.
     let starSet = new Set();
+    let hiddenSet = new Set();        // host only: moments hidden from everyone else (routes/hidden.js)
     let squadCanStar = true;
     let sessionMemberNames = [];
     let starredOnly = false;
@@ -2470,7 +2481,51 @@
       if (!changed) for (const t of next) { if (!starSet.has(t)) { changed = true; break; } }
       starSet = next;
       squadCanStar = nextCan;
+      // Hidden moments ride along (host only; [] for everyone else).
+      const nextHidden = new Set((Array.isArray(data.hiddenMoments) ? data.hiddenMoments : [])
+        .filter(t => typeof t === 'number'));
+      if (nextHidden.size !== hiddenSet.size) changed = true;
+      else for (const t of nextHidden) { if (!hiddenSet.has(t)) { changed = true; break; } }
+      hiddenSet = nextHidden;
       return changed;
+    }
+
+    const EYE_OPEN_SVG = "<svg viewBox='0 0 24 24' width='12' height='12' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z'/><circle cx='12' cy='12' r='3'/></svg>";
+    const EYE_SHUT_SVG = "<svg viewBox='0 0 24 24' width='12' height='12' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M2 10c3 4 6.5 6 10 6s7-2 10-6'/><path d='M5 13.5 3 16'/><path d='M9.5 15.7 9 18.5'/><path d='M14.5 15.7l.5 2.8'/><path d='M19 13.5l2 2.5'/></svg>";
+
+    function isHlHidden(hl) {
+      return momentTsOf(hl).some(ts => hiddenSet.has(ts));
+    }
+
+    // Host: hide / unhide a highlight from everyone else. Server-enforced.
+    async function toggleHidden(i) {
+      const hl = highlights[i];
+      if (!hl || !currentSessionCode || !myAuthToken || !isHost) return;
+      const tsList = momentTsOf(hl);
+      if (!tsList.length) return;
+      const want = !isHlHidden(hl);
+      tsList.forEach(ts => { if (want) hiddenSet.add(ts); else hiddenSet.delete(ts); });
+      renderHighlightsColumn();
+      let failed = null;
+      for (const ts of tsList) {
+        try {
+          const res = await fetch('/sessions/' + currentSessionCode + '/hidden/' + ts, {
+            method: want ? 'PUT' : 'DELETE',
+            headers: { 'Authorization': 'Bearer ' + myAuthToken }
+          });
+          if (!res.ok) {
+            let msg = '';
+            try { msg = (await res.json()).error || ''; } catch (e) {}
+            failed = msg || ('Could not ' + (want ? 'hide' : 'unhide') + ' that highlight.');
+            break;
+          }
+        } catch (e) { failed = 'Could not reach the server.'; break; }
+      }
+      if (failed) {
+        tsList.forEach(ts => { if (want) hiddenSet.delete(ts); else hiddenSet.add(ts); });
+        renderHighlightsColumn();
+        alert(failed);
+      }
     }
 
     async function toggleStar(i) {
@@ -2733,8 +2788,10 @@
         const locked = clusterAgeMs(hl) >= DELETE_WINDOW_MS;
 
         const pill = document.createElement('div');
+        const hiddenHl = isHost && isHlHidden(hl);
         pill.className = 'hl-pill' + (i === currentHighlightIndex ? ' active' : '') +
-          (!locked ? ' temp' : '') + (selectedForDelete.has(i) ? ' selected-delete' : '');
+          (!locked ? ' temp' : '') + (selectedForDelete.has(i) ? ' selected-delete' : '') +
+          (hiddenHl ? ' hl-hidden' : '');
 
         // Locked (permanent) pills are intentionally bare — plain label,
         // nothing to select since there's no action available on them.
@@ -2791,6 +2848,20 @@
             });
           }
           pill.appendChild(star);
+        }
+
+        // 👁 host only: hide this highlight from everyone else (squad,
+        // public, /browse, Peak Roulette). Shut eye = hidden.
+        if (isHost && myAuthToken && momentTsOf(hl).length > 0) {
+          const eye = document.createElement('span');
+          eye.className = 'hl-eye' + (hiddenHl ? ' on' : '');
+          eye.innerHTML = hiddenHl ? EYE_SHUT_SVG : EYE_OPEN_SVG;
+          eye.title = hiddenHl ? 'Hidden from everyone but you — click to show it again' : 'Hide this highlight from everyone but you';
+          eye.addEventListener('click', function(e) {
+            e.stopPropagation();
+            toggleHidden(i);
+          });
+          pill.appendChild(eye);
         }
 
         if (isHost && !locked) {
@@ -2925,6 +2996,9 @@
         const uploadsRes = await fetch(viewUrl('/sessions/' + code + '/uploads' + (around ? '?around=' + around : '')), viewOpts());
         if (uploadsRes.status === 403) { showExpiredState(MEMBERS_ONLY_TEXT); return; }
         const uploadsData = await uploadsRes.json();
+        // A member's own clips of a hidden moment come back flagged (for the
+        // desktop app's Sync) — the player doesn't show them.
+        if (Array.isArray(uploadsData.uploads)) uploadsData.uploads = uploadsData.uploads.filter(u => !u.hiddenMoment);
         partialSession = !!around;
         if (!uploadsData.uploads || uploadsData.uploads.length === 0) {
           showExpiredState('No uploads in this session yet. Clips will appear once squad members save highlights.');
@@ -3090,6 +3164,7 @@
         if (!uploadsRes.ok) return;
         const uploadsData = await uploadsRes.json();
         if (!uploadsData.uploads) return;
+        uploadsData.uploads = uploadsData.uploads.filter(u => !u.hiddenMoment);   // see loadSession
         const starsChanged = applyStarsFromServer(uploadsData);
 
         const existingIds = new Set(allUploads.map(u => u.uploadId));
