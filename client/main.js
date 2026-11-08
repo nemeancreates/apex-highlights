@@ -720,11 +720,13 @@ function snapshotCaptureForSaves() {
     micFirst: micFirstChunkTime,
     peakLog: peakLogBuffer.slice()
   };
+  // No window-capture footage to keep: the saves have nothing to cut from.
+  if (cap.wgcFiles.length === 0) return 0;
   let kept = 0;
   const hold = (ctx) => { if (ctx && ctx.mode === 'wgc' && !ctx.capture) { ctx.capture = cap; kept++; } };
   for (const q of pendingSaveQueue) hold(q.ctx);
   hold(activeSaveCtx);
-  if (kept && cap.wgcFiles.length) {
+  if (kept) {
     retiredCaptures.push(cap);
     console.log(`Kept the previous window capture for ${kept} queued save(s) (${cap.wgcFiles.length} buffer file(s))`);
   }
