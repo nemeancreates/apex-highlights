@@ -2267,6 +2267,21 @@
     let isScrubbing = false;
     let wasPlayingBeforeScrub = false;
 
+    // One seek in flight per POV while dragging: a tile still landing its
+    // last seek only remembers the newest position and goes there next, so
+    // a fast drag never piles up seeks.
+    function scrubSeek(v, t) {
+      const el = v.element;
+      if (!el.seeking) { v.scrubPending = null; el.currentTime = t; return; }
+      const first = v.scrubPending == null;
+      v.scrubPending = t;
+      if (first) el.addEventListener('seeked', function () {
+        const next = v.scrubPending;
+        v.scrubPending = null;
+        if (next != null && isScrubbing) scrubSeek(v, next);
+      }, { once: true });
+    }
+
     function scrubNeedleToEvent(event) {
       if (masterDuration <= 0) return;
 
@@ -2287,16 +2302,14 @@
       document.getElementById('timeDisplay').textContent =
         formatTime(withinFraction * masterDuration) + ' / ' + formatTime(masterDuration);
 
-      const primary = focusedIndex >= 0
-        ? videos[focusedIndex]
-        : videos.find(v => !v.missing && !v.processing && v.loaded);
-      if (primary && primary.element) {
-        const targetTime = withinFraction * masterDuration;
-        const adjusted = targetTime - primary.offset;
-        if (adjusted >= 0 && adjusted <= primary.element.duration) {
-          primary.element.currentTime = adjusted;
-        }
-      }
+      // Every loaded POV follows the drag, so the whole grid shows the
+      // moment under the needle (it used to be one POV, the rest frozen).
+      const targetTime = withinFraction * masterDuration;
+      videos.forEach(v => {
+        if (v.missing || v.processing || !v.loaded || !v.element) return;
+        const adjusted = targetTime - (v.offset || 0);
+        if (adjusted >= 0 && adjusted <= v.element.duration) scrubSeek(v, adjusted);
+      });
 
       track._pendingSeek = withinFraction;
     }
@@ -2334,8 +2347,13 @@
 
     function seekToFraction(fraction) {
       const targetTime = fraction * masterDuration;
+      // A jump made while the grid is held for buffering replaces the hold:
+      // the start-together wait below does the waiting at the new spot.
+      endBufferHold(false);
       videos.forEach(v => {
         if (v.missing || v.processing || !v.loaded) return;
+        clearSync(v);
+        v.scrubPending = null;
         const adjustedTime = targetTime - v.offset;
         if (adjustedTime < 0) {
           v.element.currentTime = 0;
@@ -2345,9 +2363,11 @@
           v.element.pause();
         } else {
           v.element.currentTime = adjustedTime;
-          if (isPlaying) v.element.play().catch(() => {});
         }
       });
+      // Playing: hold everyone until each POV has its new frame, then start
+      // them in one go (they used to restart one by one as each seek landed).
+      if (isPlaying) beginSyncGate(targetTime);
     }
 
     // ========================
@@ -2366,6 +2386,8 @@
       if (!el) return;
       u.loadToken = (u.loadToken || 0) + 1;   // cancels a loadPOV still waiting on it
       u.loaded = false;
+      u.joining = false;
+      clearSync(u);
       if (!el.getAttribute('src')) return;
       el.pause();
       el.playbackRate = 1.0;
@@ -3317,6 +3339,7 @@
       const v = videos[index];
       if (!v || v.missing || v.processing || v.loaded) return;
       v.loaded = true;
+      v.joining = true;    // still fetching: the playing POVs don't wait for it
       const token = v.loadToken = (v.loadToken || 0) + 1;
 
       const container = document.getElementById('pov-container-' + index);
@@ -3355,11 +3378,19 @@
       // a different tile (or none) now.
       index = videos.indexOf(v);
       if (index < 0) return;
+      v.joining = false;
 
       if (isFirst) {
         v.isMuted = false;
         v.element.muted = false;
         v.element.volume = v.volume / 100;
+      } else if (isPlaying && !syncGate && !bufferHold &&
+                 getCurrentMasterTime() - v.offset > 0 &&
+                 getCurrentMasterTime() - v.offset <= v.element.duration) {
+        // Joining a grid that is already playing: park a little ahead of
+        // the clock; the sync loop starts this POV the instant the clock
+        // gets there, so it comes in on the beat instead of late.
+        parkAhead(v, getCurrentMasterTime() - v.offset);
       } else {
         const masterTime = getCurrentMasterTime();
         const adjustedTime = masterTime - v.offset;
@@ -3383,7 +3414,9 @@
           if (index < 0) return;
         }
         if (isPlaying) {
-          v.element.play().catch(() => {});
+          // Waiting to start together, or held for buffering: stay paused,
+          // the grid takes this POV along when it goes.
+          if (!syncGate && !bufferHold) v.element.play().catch(() => {});
         } else {
           // Paused: force exactly one decode so a real frame paints instead
           // of the frozen poster. play() then immediate pause() is the
@@ -3405,20 +3438,14 @@
     }
 
     function getCurrentMasterTime() {
+      // Waiting to start together: the timeline sits where the start will be.
+      if (syncGate) return syncGate.master;
       const loaded = videos.filter(v => !v.missing && !v.processing && v.loaded);
       if (!loaded.length) return 0;
       // Clock hands off to the next still-playing POV when the current one
       // ends or gets parked — a frozen master time made the drift corrector
-      // snap longer POVs back to it forever.
-      // Pick by OFFSET, not array order. Master time is currentTime+offset,
-      // so handing the clock between POVs with different offsets teleports
-      // the timeline by the offset delta — forward when a late POV grabs it,
-      // backward when it ends and an early one takes over. Anchoring on the
-      // earliest-starting POV keeps master time monotonic.
-      const byOffset = loaded.slice().sort((a, b) => (a.offset || 0) - (b.offset || 0));
-      const clock = byOffset.find(v => !v.element.ended && !v.element.paused)
-                 || byOffset.find(v => !v.element.ended)
-                 || byOffset[0];
+      // snap longer POVs back to it forever (see pickClock).
+      const clock = pickClock(loaded);
       return (clock.element.currentTime || 0) + (clock.offset || 0);
     }
 
@@ -4076,10 +4103,191 @@
     }
 
     function playAll() {
-      videos.forEach(v => { if (!v.missing && !v.processing && v.loaded) v.element.play().catch(() => {}); });
       isPlaying = true;
       document.getElementById('playPauseBtn').textContent = '\u23F8';
+      // Pressing play at the very end starts the highlight over.
+      const loaded = syncLoaded();
+      const master = getCurrentMasterTime();
+      const atEnd = loaded.length > 0 && loaded.every(v => v.element.ended ||
+        (v.element.duration > 0 && master - (v.offset || 0) >= v.element.duration - 0.15));
+      beginSyncGate(atEnd ? 0 : master);
       startProgressUpdate();
+    }
+
+    // ========================
+    // MULTI-POV SYNC
+    // One POV is the clock; every other POV is kept on the clock's moment.
+    // The clock is a POV with its sound off when there is one: silent
+    // players all run off the same steady clock, while a player with sound
+    // on keeps time by its audio, which jitters by a few ms and re-times
+    // itself by a few tens of ms shortly after every start. With a silent
+    // clock the silent POVs stay locked with no correction at all, and only
+    // the POV with sound gets eased (gently, so it isn't heard).
+    // Three tools, cheapest first:
+    //   1. Easing: a POV a few ms off plays very slightly faster or slower
+    //      until it is back on the clock. No visible jump.
+    //   2. Start on the beat: a POV that has to wait (before its clip starts,
+    //      joining late, or re-seeking after falling far behind) is parked a
+    //      little AHEAD of the clock and started the instant the clock gets
+    //      there, instead of being started late and left to catch up.
+    //   3. Start together: after play, a seek or a buffer hold, nobody moves
+    //      until every POV has its frame ready, then all start in one go.
+    // ========================
+    const SYNC_TICK_MS = 50;         // how often running POVs get their speed adjusted
+    const SYNC_HARD = 0.20;          // further off than this: park and restart on the beat
+    const SYNC_GAIN = 4;             // rate change per second of error
+    // Easing settings: silent POV against a silent clock / anything with sound.
+    //   smooth  - the measured error is averaged over about this long (ms)
+    //   engage  - start easing when a POV is this far off (s)…
+    //   release - …and stop once it is this close
+    //   max     - largest speed change (0.12 = 12%); kept small where it could be heard
+    const SYNC_QUIET = { smooth: 50, engage: 0.006, release: 0.002, max: 0.12 };
+    const SYNC_LOUD = { smooth: 150, engage: 0.008, release: 0.003, max: 0.12 };
+    const SYNC_LOUD_MAX = 0.06;      // a POV that can be heard never changes speed by more than 6%
+    const SYNC_SETTLE_MAX = 0.03;    // …and only 3% right after a start, when anything with sound is involved
+    const SYNC_GATE_MAX_MS = 2500;   // longest the grid waits for everyone before starting anyway
+    const SYNC_LEAD_MIN = 0.15;      // how far ahead of the clock a waiting POV parks (seconds)…
+    const SYNC_LEAD_MAX = 1.5;       // …grows when its seeks land late (slow connection)
+    const SYNC_SETTLE_MS = 600;      // how long "right after a start" lasts (see SYNC_SETTLE_MAX)
+    let syncGate = null;             // { master, since, tiles } while the grid waits to start together
+    let syncSettleUntil = 0;         // the whole grid started together; gentle easing until this time
+    // A player doesn't move the instant play() is called: measured, it takes
+    // anywhere from almost nothing to ~60 ms. A POV started "on the beat" is
+    // started this much early, which roughly halves the typical miss without
+    // ever putting it far ahead; easing takes care of the rest.
+    const SYNC_START_LAG = 0.02;
+
+    function syncLoaded() {
+      return videos.filter(v => !v.missing && !v.processing && v.loaded && v.element);
+    }
+
+    // Can this POV be heard? (Its clock then runs off its audio.)
+    function syncLoud(v) { return !v.element.muted && v.element.volume > 0; }
+
+    // The POV whose playhead is the master clock: a silent one if any.
+    // Then pick by OFFSET, not array order. Master time is currentTime+offset,
+    // so handing the clock between POVs with different offsets teleports
+    // the timeline by the offset delta — forward when a late POV grabs it,
+    // backward when it ends and an early one takes over. Anchoring on the
+    // earliest-starting POV keeps master time monotonic.
+    function pickClock(loaded) {
+      const byOffset = loaded.slice().sort((a, b) => (a.offset || 0) - (b.offset || 0));
+      const playing = v => !v.element.ended && !v.element.paused;
+      // Nothing playing (paused, or waiting to start together): a POV parked
+      // on its last frame, or one still fetching its first, can't say where
+      // the timeline is — prefer one that sits inside its clip.
+      const inside = v => !v.element.ended && v.element.readyState >= 1 &&
+        v.element.duration - v.element.currentTime > 0.1;
+      return byOffset.find(v => playing(v) && !syncLoud(v))
+          || byOffset.find(playing)
+          || byOffset.find(inside)
+          || byOffset.find(v => !v.element.ended)
+          || byOffset[0];
+    }
+
+    function clearSync(v) {
+      if (v.syncTimer) { clearTimeout(v.syncTimer); v.syncTimer = null; }
+      v.syncParked = false;
+      v.syncErr = null;
+    }
+
+    // Park a POV a little ahead of the clock. The sync loop starts it when
+    // the clock arrives (syncWaiting below).
+    function parkAhead(v, target) {
+      const el = v.element;
+      clearSync(v);
+      const lead = Math.min(SYNC_LEAD_MAX, Math.max(SYNC_LEAD_MIN, v.syncLead || 0.25));
+      v.syncLead = Math.max(SYNC_LEAD_MIN, lead * 0.9);   // creeps back down while seeks land in time
+      v.syncParked = true;
+      el.pause();
+      el.playbackRate = 1.0;
+      el.currentTime = Math.min(target + lead, Math.max(0, el.duration - 0.05));
+    }
+
+    // Start a waiting POV once the clock has covered `delaySec`.
+    function scheduleStart(v, delaySec) {
+      if (v.syncTimer) return;
+      v.syncTimer = setTimeout(() => {
+        v.syncTimer = null;
+        if (!isPlaying || syncGate || bufferHold || !v.loaded) return;
+        // The clock may have stalled meanwhile; only go when it is really there.
+        const ahead = v.element.currentTime - (getCurrentMasterTime() - (v.offset || 0));
+        if (ahead - SYNC_START_LAG > 0.02) { scheduleStart(v, ahead); return; }
+        v.syncParked = false;
+        v.syncErr = null;
+        v.syncSettleUntil = performance.now() + SYNC_SETTLE_MS;
+        v.element.play().catch(() => {});
+      }, Math.max(0, (delaySec - SYNC_START_LAG) * 1000));
+    }
+
+    // Handles a POV that is waiting rather than playing. True if it was.
+    function syncWaiting(v, target) {
+      const el = v.element;
+      if (v.joining) return true;                        // loadPOV still has it
+      if (target < -0.03) {
+        // Before its clip starts: hold the first frame, start on time.
+        v.syncParked = false;
+        if (!el.paused) el.pause();
+        if (el.currentTime > 0.05 && !el.seeking) el.currentTime = 0;
+        if (target > -0.5 && !el.seeking && el.readyState >= 2) scheduleStart(v, -target);
+        return true;
+      }
+      if (v.syncTimer) return true;                      // its start is booked
+      if (!v.syncParked) return false;
+      if (el.seeking || el.readyState < 3) return true;  // its seek hasn't landed yet
+      const ahead = el.currentTime - target;
+      if (ahead >= 0) { scheduleStart(v, ahead); return true; }
+      // The clock got there first (slow seek): ask for more lead next time,
+      // and either go now or, if it is far behind already, park again.
+      v.syncLead = Math.min(SYNC_LEAD_MAX, (v.syncLead || 0.25) - ahead + 0.1);
+      if (-ahead > SYNC_HARD) parkAhead(v, target);
+      else { clearSync(v); v.syncSettleUntil = performance.now() + SYNC_SETTLE_MS; el.play().catch(() => {}); }
+      return true;
+    }
+
+    // Line every POV up on `master` (default: where the timeline is now) and
+    // hold them paused; pollSyncGate lets them go together.
+    function beginSyncGate(master, noWait) {
+      if (master == null) master = getCurrentMasterTime();
+      if (syncGate) syncGate.tiles.forEach(i => hidePOVLoader(i));
+      syncLoaded().forEach(v => {
+        const el = v.element;
+        clearSync(v);
+        v.scrubPending = null;
+        if (!el.paused) el.pause();
+        el.playbackRate = 1.0;
+        if (el.readyState < 1) return;
+        const t = master - (v.offset || 0);
+        if (t < 0) { if (el.currentTime > 0.05) el.currentTime = 0; }
+        else if (t > el.duration) { /* already past its end: leave it there */ }
+        else if (Math.abs(el.currentTime - t) > 0.008) el.currentTime = t;
+      });
+      syncGate = { master, since: noWait ? -Infinity : performance.now(), tiles: [] };
+    }
+
+    // True while the grid is still waiting for someone's frame.
+    function pollSyncGate() {
+      const g = syncGate;
+      const inWindow = syncLoaded().filter(v => {
+        const el = v.element;
+        if (v.joining || el.readyState < 1 || el.error) return false;
+        const t = g.master - (v.offset || 0);
+        return t >= 0 && t <= el.duration - 0.1;
+      });
+      const waiting = inWindow.filter(v => v.element.seeking || v.element.readyState < 3);
+      const waited = performance.now() - g.since;
+      if (waiting.length && waited < SYNC_GATE_MAX_MS) {
+        if (waited > 300) waiting.forEach(v => {
+          const i = videos.indexOf(v);
+          if (i >= 0 && !g.tiles.includes(i)) { showPOVLoader(i); g.tiles.push(i); }
+        });
+        return true;
+      }
+      g.tiles.forEach(i => hidePOVLoader(i));
+      syncGate = null;
+      syncSettleUntil = performance.now() + SYNC_SETTLE_MS;
+      inWindow.forEach(v => { v.syncErr = null; v.element.play().catch(() => {}); });
+      return false;
     }
 
     // BUFFER HOLD. With 2+ POVs playing, one that ran out of downloaded
@@ -4095,12 +4303,14 @@
     let bufferStarvedSince = 0;
     let bufferHoldCooldownUntil = 0;
 
-    function endBufferHold(resume) {
+    function endBufferHold(resume, noWait) {
       if (!bufferHold) return;
       bufferHold.tiles.forEach(i => hidePOVLoader(i));
-      if (resume) bufferHold.paused.forEach(el => { el.play().catch(() => {}); });
       bufferHold = null;
       bufferStarvedSince = 0;
+      // Everyone restarts together, from wherever the grid is now (the held
+      // moment, or a spot the viewer jumped to while it was held).
+      if (resume) beginSyncGate(null, noWait);
     }
 
     // Seconds of video downloaded past the playhead.
@@ -4113,11 +4323,23 @@
     }
 
     function pauseAll() {
+      // Where the timeline is, read before anything stops.
+      const master = !isPlaying ? null
+        : syncGate ? syncGate.master
+        : getCurrentMasterTime();
       endBufferHold(false);
+      if (syncGate) { syncGate.tiles.forEach(i => hidePOVLoader(i)); syncGate = null; }
       videos.forEach(v => {
         if (!v.missing && !v.processing && v.loaded) {
+          const parked = v.syncParked;
+          clearSync(v);
           v.element.pause();
           v.element.playbackRate = 1.0;
+          // A POV caught waiting ahead of the clock goes back to the shared moment.
+          if (parked && master !== null && v.element.readyState >= 1) {
+            const t = master - (v.offset || 0);
+            if (t >= 0 && t <= v.element.duration) v.element.currentTime = t;
+          }
         }
       });
       isPlaying = false;
@@ -4125,13 +4347,14 @@
       if (animFrameId) cancelAnimationFrame(animFrameId);
     }
 
-    // Runs on the drift-check cadence. True while the group is held (the
-    // caller then skips drift correction, which would restart the videos).
+    // Runs on the sync-check cadence. True while the group is held (the
+    // caller then skips sync correction, which would restart the videos).
     function checkBufferHold(loaded, masterTime, ts) {
-      // POVs that should be playing right now: inside their window, not done.
+      // POVs that should be playing right now: inside their window, not done,
+      // and not deliberately waiting (joining, or parked to start on the beat).
       const active = loaded.filter(v => {
         const el = v.element;
-        if (el.ended || el.error) return false;
+        if (el.ended || el.error || v.joining || v.syncParked) return false;
         const t = masterTime - (v.offset || 0);
         return t >= 0 && !(t > el.duration);
       });
@@ -4145,7 +4368,7 @@
         const timedOut = ts - bufferHold.since > HOLD_MAX_MS;
         if (!waiting.length || active.length < 2 || timedOut) {
           if (timedOut) bufferHoldCooldownUntil = ts + HOLD_COOLDOWN_MS;
-          endBufferHold(true);
+          endBufferHold(true, timedOut);
           return false;
         }
         // Anything restarted meanwhile (a timeline seek, a tile click) waits too.
@@ -4161,16 +4384,25 @@
 
       // A single POV buffers on its own; the browser already handles that.
       if (active.length < 2 || ts < bufferHoldCooldownUntil) { bufferStarvedSince = 0; return false; }
-      const starved = active.filter(v => v.element.readyState < 3);
+      const starved = active.filter(v => v.element.readyState < 3 && !v.element.seeking);
       if (!starved.length) { bufferStarvedSince = 0; return false; }
       if (!bufferStarvedSince) { bufferStarvedSince = ts; return false; }
       if (ts - bufferStarvedSince < HOLD_AFTER_MS) return false;
 
-      bufferHold = { since: ts, paused: [], tiles: [] };
       // Line everyone up on the POV furthest behind (the one that ran dry).
       // The others just played that stretch, so seeking them back lands in
       // video they already have; they all resume from the same moment.
       const behind = Math.min(...active.map(v => v.element.currentTime + (v.offset || 0)));
+      bufferHold = { since: ts, paused: [], tiles: [] };
+      // A POV parked ahead of the clock comes back to the shared moment too:
+      // while everyone is paused it would otherwise read as "the timeline is
+      // ahead" when the hold ends.
+      loaded.forEach(v => {
+        if (!v.syncParked) return;
+        clearSync(v);
+        const t = behind - (v.offset || 0);
+        if (v.element.readyState >= 1 && t >= 0 && t <= v.element.duration) v.element.currentTime = t;
+      });
       active.forEach(v => {
         if (!v.element.paused) { v.element.pause(); bufferHold.paused.push(v.element); }
         v.element.playbackRate = 1.0;
@@ -4185,75 +4417,108 @@
     }
 
     function startProgressUpdate() {
-      const HARD_RESYNC = 0.30;  // >300ms off: hard seek
-      const SOFT_RESYNC = 0.08;  // >80ms off: nudge via playbackRate
-      let lastResyncCheck = 0;
+      let lastSyncTick = 0;
+      let lastFrame = 0;
+      if (animFrameId) cancelAnimationFrame(animFrameId);
 
       function update(ts) {
         if (!isPlaying) return;
-        const loaded = videos.filter(v => !v.missing && !v.processing && v.loaded);
+        const loaded = syncLoaded();
         if (!loaded.length) return;
 
-        // Clock source: first POV still playing. When the shortest POV ends
-        // first, the clock hands off instead of freezing — a frozen master
-        // time made the corrector loop longer POVs on their final seconds.
-        // Pick by OFFSET, not array order. Master time is currentTime+offset,
-      // so handing the clock between POVs with different offsets teleports
-      // the timeline by the offset delta — forward when a late POV grabs it,
-      // backward when it ends and an early one takes over. Anchoring on the
-      // earliest-starting POV keeps master time monotonic.
-      const byOffset = loaded.slice().sort((a, b) => (a.offset || 0) - (b.offset || 0));
-      const clock = byOffset.find(v => !v.element.ended && !v.element.paused)
-                 || byOffset.find(v => !v.element.ended)
-                 || byOffset[0];
-      const masterTime = (clock.element.currentTime || 0) + (clock.offset || 0);
+        // Waiting to start together: nothing else to do until everyone is ready.
+        if (syncGate && pollSyncGate()) {
+          document.getElementById('timeDisplay').textContent = formatTime(syncGate.master) + ' / ' + formatTime(masterDuration);
+          updateNeedle();
+          animFrameId = requestAnimationFrame(update);
+          return;
+        }
+
+        // Clock source: the earliest-starting silent POV still playing (see
+        // MULTI-POV SYNC above). When it ends, the clock hands off instead
+        // of freezing — a frozen master time made the corrector loop longer
+        // POVs on their final seconds.
+        const clock = pickClock(loaded);
+        const clockLoud = syncLoud(clock);
+        const masterTime = (clock.element.currentTime || 0) + (clock.offset || 0);
         document.getElementById('timeDisplay').textContent = formatTime(masterTime) + ' / ' + formatTime(masterDuration);
         updateNeedle();
 
-        // Drift correction — check ~4x/sec, not every frame (seeking every
-        // frame would stutter). Keep every POV locked to master time.
-        if (!lastResyncCheck || ts - lastResyncCheck > 250) {
-          lastResyncCheck = ts;
-          if (checkBufferHold(loaded, masterTime, ts)) {
-            animFrameId = requestAnimationFrame(update);
+        // Buffer check and speed changes run ~20x/sec; waiting POVs are
+        // watched every frame so they start on the beat.
+        const tick = !lastSyncTick || ts - lastSyncTick >= SYNC_TICK_MS;
+        if (tick) lastSyncTick = ts;
+        const frameMs = lastFrame ? Math.min(100, ts - lastFrame) : 16;
+        lastFrame = ts;
+        let held = !!bufferHold;
+        if (tick) held = checkBufferHold(loaded, masterTime, ts);
+        if (held || syncGate) {
+          animFrameId = requestAnimationFrame(update);
+          return;
+        }
+
+        // Everyone else ended while the clock POV was parked: let it run.
+        if (clock.syncParked && clock.element.paused) { clearSync(clock); clock.element.play().catch(() => {}); }
+
+        videos.forEach(v => {
+          if (v.missing || v.processing || !v.loaded || v === clock) return;
+          const el = v.element;
+          if (el.ended) return;
+          const target = masterTime - v.offset;
+          // A POV whose window hasn't started must be held still, and one
+          // that is rejoining waits for the clock (syncWaiting).
+          if (syncWaiting(v, target)) return;
+          if (el.seeking) { v.syncErr = null; return; }
+          if (target > el.duration) {
+            if (tick && !el.paused) el.pause();
             return;
           }
-          videos.forEach(v => {
-            if (v.missing || v.processing || !v.loaded || v === clock) return;
-            if (v.element.ended || v.element.seeking) return;
-            const target = masterTime - v.offset;
-            // A POV whose window hasn't started (or has finished) must be
-            // held still. Returning early left it free-running from its own
-            // frame 0 while the rest of the squad played the real moment.
-            if (target < 0) {
-              if (!v.element.paused) v.element.pause();
-              if (v.element.currentTime > 0.05) v.element.currentTime = 0;
-              return;
-            }
-            if (target > v.element.duration) {
-              if (!v.element.paused) v.element.pause();
-              return;
-            }
-            if (v.element.paused && isPlaying && !v.element.ended) {
-              v.element.play().catch(() => {});
-            }
-            // Still buffering: seeking it now would throw away what it's
-            // fetching and start over. The buffer hold waits for it instead.
-            if (v.element.readyState < 3) return;
-            const drift = v.element.currentTime - target;
-            const absDrift = Math.abs(drift);
-            if (absDrift > HARD_RESYNC) {
-              // Too far gone — snap it
-              v.element.currentTime = target;
-              v.element.playbackRate = 1.0;
-            } else if (absDrift > SOFT_RESYNC) {
-              // Gently speed up / slow down to ease back into sync
-              v.element.playbackRate = drift > 0 ? 0.95 : 1.05;
-            } else {
-              v.element.playbackRate = 1.0;
-            }
-          });
-        }
+          if (el.paused) {
+            v.syncErr = null;
+            if (tick && isPlaying && !el.ended) el.play().catch(() => {});
+            return;
+          }
+          // Still buffering: seeking it now would throw away what it's
+          // fetching and start over. The buffer hold waits for it instead.
+          if (el.readyState < 3) { v.syncErr = null; return; }
+          // How far this POV is from the clock, read every frame and
+          // averaged: a player with sound on reports its time with a few ms
+          // of jitter, and chasing jitter would only add wobble.
+          const loud = syncLoud(v);
+          const cfg = (loud || clockLoud) ? SYNC_LOUD : SYNC_QUIET;
+          const raw = el.currentTime - target;
+          v.syncErr = v.syncErr == null ? raw
+            : v.syncErr + (raw - v.syncErr) * (1 - Math.exp(-frameMs / cfg.smooth));
+          if (!tick) return;
+          const drift = v.syncErr;
+          const absDrift = Math.abs(drift);
+          if (absDrift > SYNC_HARD) {
+            // Too far gone to ease back: restart it on the beat.
+            parkAhead(v, target);
+            return;
+          }
+          // Just started: a player with sound on often starts a few tens of
+          // ms late, and about half a second in it may re-time its clock by
+          // about as much the other way. Until that has passed, an error
+          // under a frame and a half is left alone (correcting it would only
+          // push the POV further out when the re-time comes), and a bigger
+          // one is eased gently.
+          const settling = cfg === SYNC_LOUD && absDrift < 0.06 &&
+            (ts < syncSettleUntil || ts < (v.syncSettleUntil || 0));
+          if (settling && absDrift < 0.025) {
+            if (el.playbackRate !== 1.0) el.playbackRate = 1.0;
+            return;
+          }
+          // Ease back: speed up or slow down in proportion to the error.
+          let rate = 1.0;
+          if (absDrift > (el.playbackRate !== 1.0 ? cfg.release : cfg.engage)) {
+            const max = settling ? SYNC_SETTLE_MAX : loud ? SYNC_LOUD_MAX : cfg.max;
+            const step = Math.max(-max, Math.min(max, drift * SYNC_GAIN));
+            rate = Math.round((1 - step) * 200) / 200;
+            if (rate === 1.0) rate = drift > 0 ? 0.995 : 1.005;
+          }
+          if (el.playbackRate !== rate) el.playbackRate = rate;
+        });
 
         // Ended = every playable POV has reached the end of its clip. A POV
         // that's merely paused (autoplay blocked, waiting for its turn in the
