@@ -145,16 +145,17 @@
     .video-grid::-webkit-scrollbar-track { background: #04140d; }
     .video-grid::-webkit-scrollbar-thumb { background: #24402e; border-radius: 3px; }
 
-    .grid-1 { grid-template-columns: 1fr; }
-    .grid-2 { grid-template-columns: 1fr 1fr; }
-    .grid-3, .grid-4 { grid-template-columns: 1fr 1fr; }
-    .grid-5, .grid-6 { grid-template-columns: 1fr 1fr 1fr; }
-    .grid-7, .grid-8, .grid-9 { grid-template-columns: 1fr 1fr 1fr; }
-    .grid-10plus { grid-template-columns: 1fr 1fr 1fr 1fr; }
-    /* POV cap (4 phone / 8 tablet+PC): 7-8 tiles go 4x2 landscape, 2x4 portrait */
+    /* Fit layout (grid view): rows of tiles sized to each clip's shape by
+       fitPovGrid(), centered so a short last row sits in the middle. */
     .video-grid { position: relative; }
-    .video-grid.pov-wide { grid-template-columns: repeat(4, 1fr); }
-    .video-grid.pov-tall { grid-template-columns: 1fr 1fr; }
+    .video-grid.fit-layout { display: flex; flex-direction: column; justify-content: center; align-items: center; }
+    .fit-row { display: flex; justify-content: center; gap: 3px; }
+    .fit-row > .pov-container { flex: 0 0 auto; }
+    .fit-row .pov-placeholder, .fit-row .pov-loading,
+    .fit-row .pov-missing, .fit-row .pov-processing { min-height: 0; }
+    /* "Not shown:" line under the grid, same look as .pov-missing .missing-text */
+    .pov-not-shown { flex-shrink: 0; padding: 3px 10px 5px; text-align: center; font-size: 11px; color: #3a5244; }
+    .pov-not-shown[hidden] { display: none; }
     /* POV paging arrows sit on the grid's side edges, clear of tile labels and comment icons */
     .pov-pager-btn { position: absolute; top: 50%; transform: translateY(-50%); z-index: 6;
       display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
@@ -1407,6 +1408,8 @@
           <div>Enter a session code to watch multi-POV highlights</div>
         </div>
       </div>
+      <!-- "Not shown:" line for POVs without a tile (renderNotShown) -->
+      <div class="pov-not-shown" id="povNotShown" hidden></div>
 
       <!-- SESSION TIMELINE -->
       <div class="session-timeline" id="sessionTimeline" style="display:none;">
@@ -3133,6 +3136,9 @@
       hideSessionLoading();
       const grid = document.getElementById('videoGrid');
       grid.innerHTML = '';
+      grid.className = 'video-grid';
+      const notShown = document.getElementById('povNotShown');
+      if (notShown) notShown.hidden = true;
       const state = document.createElement('div');
       state.className = 'empty-state';
       state.innerHTML = '<div class="monkey">&#x1F648;</div><div class="expired-msg">' + message + '</div>';
@@ -3481,6 +3487,11 @@
         povLoadQueue.forEach(function (i) { showPOVLoader(i); });
       }, 0);
 
+      // Only playable POVs get a tile; everyone else is named in the
+      // "Not shown" line under the grid (see visiblePovOrder).
+      const order = visiblePovOrder();
+      renderNotShown(order);
+
       if (focusedIndex >= 0) {
         grid.className = 'video-grid focused-mode';
 
@@ -3489,11 +3500,12 @@
         mainContainer.addEventListener('click', () => { focusedIndex = -1; renderVideoGrid(); highlightActiveMember(); });
         grid.appendChild(mainContainer);
 
-        if (videos.length > 1) {
+        const others = order.filter(i => i !== focusedIndex);
+        if (others.length) {
           const sidebar = document.createElement('div');
           sidebar.className = 'focused-sidebar';
-          videos.forEach((v, i) => {
-            if (i === focusedIndex) return;
+          others.forEach(i => {
+            const v = videos[i];
             const container = buildPOVContainer(i, false);
             if (!v.missing && !v.processing) container.addEventListener('click', () => focusOnVideo(i));
             sidebar.appendChild(container);
@@ -3501,21 +3513,16 @@
           grid.appendChild(sidebar);
         }
       } else {
-        // Host POV first, then everyone else; show at most povCap() at a
-        // time and page through the rest (arrows, or swipe on touch).
-        const order = videos.map((v, i) => i);
-        const hostAt = order.findIndex(i => sessionHostName && videos[i].username === sessionHostName);
-        if (hostAt > 0) order.unshift(order.splice(hostAt, 1)[0]);
+        // Host POV first (visiblePovOrder), then everyone else; show at most
+        // povCap() at a time and page through the rest (arrows, or swipe on touch).
         const cap = povCap();
         const pages = Math.max(1, Math.ceil(order.length / cap));
         povPage = Math.min(Math.max(0, povPage), pages - 1);
         const shown = order.slice(povPage * cap, povPage * cap + cap);
 
-        const count = shown.length;
-        let gridClass = 'grid-' + Math.min(count, 9);
-        if (count >= 10) gridClass = 'grid-10plus';
-        if (count >= 7) gridClass += window.innerHeight > window.innerWidth ? ' pov-tall' : ' pov-wide';
-        grid.className = 'video-grid ' + gridClass;
+        // Tile sizes and rows come from fitPovGrid() once the tiles are in.
+        grid.className = 'video-grid fit-layout';
+        grid.dataset.cols = '';
 
         shown.forEach(i => {
           const v = videos[i];
@@ -3541,6 +3548,8 @@
           if (povPage > 0) arrow(-1, '\u2039', 'Previous POVs');
           if (povPage < pages - 1) arrow(1, '\u203A', 'More POVs');
         }
+
+        fitPovGrid();
       }
     }
 
@@ -3548,8 +3557,111 @@
     // the actual viewport, so a narrow desktop window drops to 4 too.
     function povCap() { return window.innerWidth < 700 ? 4 : 8; }
 
+    // Indexes into videos[] for the tiles the grid draws, host first. Missing
+    // and still-processing POVs are left out (they go in the "Not shown" line).
+    // If nothing can play yet, the processing tiles stay so the grid isn't blank.
+    // videos[] itself is never filtered: focus, sync and volume use its indexes.
+    function visiblePovOrder() {
+      let order = videos.map((v, i) => i).filter(i => !videos[i].missing && !videos[i].processing);
+      if (!order.length) order = videos.map((v, i) => i).filter(i => !videos[i].missing);
+      const hostAt = order.findIndex(i => sessionHostName && videos[i].username === sessionHostName);
+      if (hostAt > 0) order.unshift(order.splice(hostAt, 1)[0]);
+      return order;
+    }
+
+    // "Not shown:" line under the grid: who has no tile and why, using only
+    // the two reasons the player knows. POVs on other pages count as shown.
+    // Hidden when nobody is left out. Names go in as text, never as HTML.
+    function renderNotShown(order) {
+      const el = document.getElementById('povNotShown');
+      if (!el) return;
+      const shown = new Set(order);
+      if (focusedIndex >= 0) shown.add(focusedIndex);
+      const missing = [], processing = [];
+      videos.forEach((v, i) => {
+        if (shown.has(i)) return;
+        if (v.missing) missing.push(v.username);
+        else if (v.processing) processing.push(v.username);
+      });
+      const parts = [];
+      if (missing.length) parts.push(missing.join(', ') + ' (no clip in this highlight)');
+      if (processing.length) parts.push(processing.join(', ') + ' (still processing)');
+      el.textContent = parts.length ? 'Not shown: ' + parts.join(' \u00B7 ') : '';
+      el.hidden = !parts.length;
+    }
+
+    // Width / height of a POV's clip. Most tiles aren't loaded yet (click to
+    // load), so the thumbnail's shape stands in until the video's is known;
+    // server thumbnails keep the clip's shape (scale=480:-1). Default 16:9.
+    // Each video element gets one loadedmetadata hook that re-runs the fit.
+    const povFitHooked = new WeakSet();
+    function povAspect(v) {
+      const el = v && v.element;
+      if (el && !povFitHooked.has(el)) {
+        povFitHooked.add(el);
+        el.addEventListener('loadedmetadata', schedulePovFit);
+      }
+      let a = 16 / 9;
+      if (el && el.videoWidth && el.videoHeight) a = el.videoWidth / el.videoHeight;
+      else if (v && v.thumbAspect) a = v.thumbAspect;
+      return Math.min(Math.max(a, 0.3), 3);
+    }
+
+    let povFitFrame = 0;
+    function schedulePovFit() {
+      if (povFitFrame) return;
+      povFitFrame = requestAnimationFrame(() => { povFitFrame = 0; fitPovGrid(); });
+    }
+
+    // Fit layout: try every column count, give all tiles one shared height
+    // (the largest that fits every row), and keep the count with the biggest
+    // tiles. Each tile is as wide as its clip at that height, so there are no
+    // black bars and portrait clips get the full row height. Rows are centered,
+    // so a short last row sits in the middle at the same tile size. Runs on
+    // render, grid resize (ResizeObserver), and when a clip's shape is learned.
+    function fitPovGrid() {
+      const grid = document.getElementById('videoGrid');
+      if (!grid || !grid.classList.contains('fit-layout')) return;
+      const tiles = Array.from(grid.querySelectorAll('.pov-container'));
+      const n = tiles.length;
+      const W = grid.clientWidth - 6, H = grid.clientHeight - 6;   // inside the grid's 3px padding
+      if (!n || W <= 0 || H <= 0) return;
+      const ars = tiles.map(t => povAspect(videos[parseInt(t.id.replace('pov-container-', ''), 10)]));
+      const GAP = 3, EDGE = 4;   // gap between tiles; tile border, 2px a side
+      let best = null;
+      for (let cols = 1; cols <= n; cols++) {
+        const rows = Math.ceil(n / cols);
+        let h = (H - (rows - 1) * GAP) / rows - EDGE;
+        for (let r = 0; r < rows; r++) {
+          const row = ars.slice(r * cols, r * cols + cols);
+          const sum = row.reduce((a, b) => a + b, 0);
+          h = Math.min(h, (W - (row.length - 1) * GAP - row.length * EDGE) / sum);
+        }
+        if (!best || h > best.h + 0.5) best = { cols, h };   // ties keep fewer columns
+      }
+      const h = Math.max(20, Math.floor(best.h));
+      const inRows = tiles.every(t => t.parentNode && t.parentNode.classList.contains('fit-row'));
+      if (!inRows || grid.dataset.cols !== String(best.cols)) {
+        // Regroup the same tile elements into rows; clips keep playing.
+        const oldRows = Array.from(grid.querySelectorAll(':scope > .fit-row'));
+        const pager = grid.querySelector(':scope > .pov-pager-btn');
+        for (let k = 0; k < n; k += best.cols) {
+          const row = document.createElement('div');
+          row.className = 'fit-row';
+          tiles.slice(k, k + best.cols).forEach(t => row.appendChild(t));
+          grid.insertBefore(row, pager);
+        }
+        oldRows.forEach(r => r.remove());
+        grid.dataset.cols = String(best.cols);
+      }
+      tiles.forEach((t, k) => {
+        t.style.width = (Math.floor(h * ars[k]) + EDGE) + 'px';
+        t.style.height = (h + EDGE) + 'px';
+      });
+    }
+
     function stepPovPage(dir) {
-      const pages = Math.max(1, Math.ceil(videos.length / povCap()));
+      const pages = Math.max(1, Math.ceil(visiblePovOrder().length / povCap()));
       const next = Math.min(Math.max(0, povPage + dir), pages - 1);
       if (next === povPage) return;
       povPage = next;
@@ -3592,6 +3704,12 @@
         if (v.thumbnailSrc) {
           placeholder.className = 'pov-placeholder';
           const img = document.createElement('img');
+          // The thumbnail's shape tells the fit layout the clip's shape before it loads.
+          img.addEventListener('load', () => {
+            if (!img.naturalWidth || !img.naturalHeight) return;
+            const a = img.naturalWidth / img.naturalHeight;
+            if (Math.abs(a - (v.thumbAspect || 0)) > 0.01) { v.thumbAspect = a; schedulePovFit(); }
+          });
           img.src = v.thumbnailSrc; img.alt = v.username;
           img.style.cssText = 'width:100%;height:100%;object-fit:contain;position:absolute;top:0;left:0;';
           const overlay = document.createElement('div');
@@ -3700,12 +3818,16 @@
       const existing = document.getElementById('pov-container-' + index);
       if (!existing) return;
       const newContainer = buildPOVContainer(index, index === focusedIndex);
+      // Keep the fit layout's size; a just-loaded clip may also change shape.
+      newContainer.style.width = existing.style.width;
+      newContainer.style.height = existing.style.height;
       if (index === focusedIndex) {
         newContainer.addEventListener('click', () => { focusedIndex = -1; renderVideoGrid(); highlightActiveMember(); });
       } else if (!videos[index].missing && !videos[index].processing) {
         newContainer.addEventListener('click', () => focusOnVideo(index));
       }
       existing.replaceWith(newContainer);
+      schedulePovFit();
     }
 
     async function focusOnVideo(index) {
@@ -6889,6 +7011,9 @@
     (function () {
       var grid = document.getElementById('videoGrid');
       if (!grid) return;
+      // Re-fit tile sizes whenever the grid's box changes: window resize, side
+      // panels opening or closing, the "Not shown" line wrapping.
+      if (window.ResizeObserver) new ResizeObserver(function () { schedulePovFit(); }).observe(grid);
       var x0 = null, y0 = null;
       grid.addEventListener('touchstart', function (e) {
         if (e.touches.length !== 1) return;
