@@ -591,14 +591,14 @@
     $('signOut').addEventListener('click', function () {
       api('/auth/logout', { method: 'POST' }).catch(function () {}).then(signedOutNow);
     });
-    // Go-Pro footage: opens m.peakabu.app's footage page already signed in.
+    // Peak action-cam: opens m.peakabu.app's footage page already signed in.
     $('goproOpen').addEventListener('click', function () {
       var b = $('goproOpen');
       b.disabled = true;
       say('goproMsg', '');
       api('/api/account/footage-handoff', { method: 'POST' }).then(function (r) {
         if (r.ok && r.data.url) { location.href = r.data.url; return; }
-        b.disabled = false; say('goproMsg', r.data.error || 'Could not open Go-Pro footage right now.');
+        b.disabled = false; say('goproMsg', r.data.error || 'Could not open Peak action-cam right now.');
       }).catch(function () { b.disabled = false; });
     });
     $('linkDiscord').addEventListener('click', function () {
